@@ -28,7 +28,7 @@
          @notify.window="show = true; msg = $event.detail.msg; type = $event.detail.type; setTimeout(() => show = false, 3000)"
          x-show="show"
          x-transition
-         class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50">
+         class="fixed bottom-24 left-half translate-x-half z-50">
         <div class="glass-card py-3 px-6 shadow-2xl border-white/10"
              :class="type === 'error' ? 'border-red-500/50' : 'border-purple-500/50'">
             <p class="text-sm font-bold" x-text="msg"></p>

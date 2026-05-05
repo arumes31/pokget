@@ -31,7 +31,7 @@
 
     <div class="app-container">
         <!-- Toast Container -->
-        <div class="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-[90%] pointer-events-none">
+        <div class="fixed top-6 left-half translate-x-half z-100 flex flex-col gap-2 w-full max-w-[90%] pointer-events-none">
             <template x-for="toast in toasts" :key="toast.id">
                 <div x-transition.duration.300ms
                      class="glass-card px-6 py-3 shadow-2xl flex items-center gap-3 border-l-4"

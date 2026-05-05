@@ -276,8 +276,8 @@ label {
 .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
 .fixed { position: fixed; }
 .top-6 { top: 1.5rem; }
-.left-1/2 { left: 50%; }
-.-translate-x-1/2 { transform: translateX(-50%); }
+.left-half { left: 50%; }
+.translate-x-half { transform: translateX(-50%); }
 .z-50 { z-index: 50; }
 .z-100 { z-index: 100; }
 .pointer-events-none { pointer-events: none; }
