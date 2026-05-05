@@ -47,7 +47,13 @@ type Handler struct {
 	Fingerprint *service.FingerprintService
 }
 
-func (h *Handler) Index(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
+	session, _ := auth.Store.Get(r, "session")
+	if userID, ok := session.Values["user_id"].(string); !ok || userID == "" {
+		http.Redirect(w, r, "/auth", http.StatusSeeOther)
+		return
+	}
+
 	data := map[string]interface{}{
 		"Portfolio": h.MockCards,
 		"Currency":  "USD",
