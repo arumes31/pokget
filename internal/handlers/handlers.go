@@ -37,6 +37,8 @@ import (
 	"pokget/internal/db"
 	"pokget/internal/models"
 	"pokget/internal/service"
+
+	"github.com/shopspring/decimal"
 )
 
 type Handler struct {
