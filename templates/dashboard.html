@@ -104,7 +104,49 @@
     </div>
 </section>
 
-<!-- Set Completion -->
+<!-- Top Holdings -->
+<section class="mb-8">
+    <div class="flex items-center justify-between mb-4 px-1">
+        <h3 class="text-sm font-bold text-white/80 uppercase tracking-wider">Top Holdings</h3>
+        <button class="text-purple-400 text-xs font-bold hover:underline">View All</button>
+    </div>
+    <div class="space-y-3">
+        {{range .Portfolio}}
+        <div class="glass-card p-3 flex items-center gap-4 group hover:border-purple-500/30 transition-all">
+            <div class="w-12 h-16 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
+                <img src="{{.ImageURL}}" class="w-full h-full object-cover transition-transform group-hover:scale-110" alt="{{.Name}}">
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold truncate">{{.Name}}</p>
+                <div class="flex items-center gap-2 mt-0.5">
+                    <span class="text-[10px] text-white/40 font-bold uppercase">{{.Set}}</span>
+                    <span class="text-[8px] bg-white/5 px-1.5 py-0.5 rounded text-white/60 font-bold uppercase">{{.Variant}}</span>
+                </div>
+                <div class="flex items-center gap-3 mt-2">
+                    <a href="https://www.cardmarket.com/en/Pokemon/Products/Search?searchString={{.Name}}" target="_blank" 
+                       class="text-[9px] font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        Cardmarket
+                    </a>
+                    <a href="https://www.tcgplayer.com/search/pokemon/product?q={{.Name}}" target="_blank" 
+                       class="text-[9px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        TCGPlayer
+                    </a>
+                </div>
+            </div>
+            <div class="text-right">
+                <p class="text-sm font-bold tracking-tight">
+                    {{if eq $.Currency "USD"}}${{else}}€{{end}}{{.PriceUSD}}
+                </p>
+                <p class="text-[10px] {{if gt .Change24h 0.0}}text-emerald-400{{else}}text-red-400{{end}} font-bold">
+                    {{if gt .Change24h 0.0}}+{{end}}{{.Change24h}}%
+                </p>
+            </div>
+        </div>
+        {{end}}
+    </div>
+</section>
 <section class="mb-8">
     <div class="flex items-center justify-between mb-4 px-1">
         <h3 class="text-sm font-bold text-white/80 uppercase tracking-wider">Set Progress</h3>

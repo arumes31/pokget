@@ -79,6 +79,7 @@ func main() {
 	protected.HandleFunc("/centering", h.Centering).Methods("GET")
 	protected.HandleFunc("/binders", h.Binders).Methods("GET")
 	protected.HandleFunc("/trade", h.Trade).Methods("GET")
+	protected.HandleFunc("/api/portfolio/add", h.AddCardToPortfolio).Methods("POST")
 
 	port := os.Getenv("PORT")
 	if port == "" {
