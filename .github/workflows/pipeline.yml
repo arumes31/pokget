@@ -24,7 +24,7 @@ jobs:
       - name: Install Tesseract dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libtesseract-dev libleptonica-dev
+          sudo apt-get install -y libtesseract-dev libleptonica-dev pkg-config
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -33,6 +33,7 @@ jobs:
       - name: Install and run golangci-lint
         run: |
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          export CGO_ENABLED=1
           $(go env GOPATH)/bin/golangci-lint run ./...
 
   security:
@@ -42,7 +43,7 @@ jobs:
       - name: Install Tesseract dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libtesseract-dev libleptonica-dev
+          sudo apt-get install -y libtesseract-dev libleptonica-dev pkg-config
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -51,6 +52,7 @@ jobs:
       - name: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
+          export CGO_ENABLED=1
           govulncheck ./...
       - name: gosec
         uses: securego/gosec@v2.22.0
