@@ -48,6 +48,7 @@ type Handler struct {
 }
 
 func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: Index", "method", r.Method, "url", r.URL.String())
 	session, _ := auth.Store.Get(r, "session")
 	if userID, ok := session.Values["user_id"].(string); !ok || userID == "" {
 		http.Redirect(w, r, "/auth", http.StatusSeeOther)
@@ -65,6 +66,7 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: Dashboard", "method", r.Method, "url", r.URL.String())
 	currency := r.URL.Query().Get("currency")
 	if currency == "" {
 		currency = "USD"
@@ -144,6 +146,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: AddCardToPortfolio", "method", r.Method, "url", r.URL.String())
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -176,7 +179,8 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("Card added to collection!"))
 }
 
-func (h *Handler) Centering(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) Centering(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: Centering", "method", r.Method, "url", r.URL.String())
 	if err := h.Templates.ExecuteTemplate(w, "centering_tool.html", nil); err != nil {
 		slog.Error("Template execution failed", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -184,6 +188,7 @@ func (h *Handler) Centering(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: Auth", "method", r.Method, "url", r.URL.String())
 	templateName := "auth.html"
 	if r.Header.Get("HX-Request") == "true" {
 		templateName = "auth_fragment"
@@ -195,14 +200,16 @@ func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) Binders(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) Binders(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: Binders", "method", r.Method, "url", r.URL.String())
 	if err := h.Templates.ExecuteTemplate(w, "binders.html", nil); err != nil {
 		slog.Error("Template execution failed", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
 
-func (h *Handler) Trade(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: Trade", "method", r.Method, "url", r.URL.String())
 	if err := h.Templates.ExecuteTemplate(w, "trade.html", nil); err != nil {
 		slog.Error("Template execution failed", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -210,6 +217,7 @@ func (h *Handler) Trade(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: APIScan", "method", r.Method, "url", r.URL.String())
 	// Limit request body to 10MB to prevent memory exhaustion
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	err := r.ParseMultipartForm(10 << 20) // #nosec G120 - bounded by MaxBytesReader

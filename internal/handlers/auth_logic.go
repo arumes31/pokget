@@ -34,6 +34,7 @@ import (
 )
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: Register", "method", r.Method, "url", r.URL.String())
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 
@@ -84,6 +85,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: ResendVerification", "method", r.Method, "url", r.URL.String())
 	email := r.FormValue("email")
 	if email == "" {
 		http.Error(w, "Email is required", http.StatusBadRequest)
@@ -133,6 +135,7 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: Login", "method", r.Method, "url", r.URL.String())
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 
@@ -163,6 +166,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: ConfirmEmail", "method", r.Method, "url", r.URL.String())
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		http.Error(w, "Missing token", http.StatusBadRequest)

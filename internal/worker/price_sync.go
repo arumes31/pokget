@@ -96,6 +96,8 @@ func (w *PriceSyncWorker) syncPrices() {
 			decimal.NewFromFloat(usd), decimal.NewFromFloat(eur), c.ID)
 		if err != nil {
 			slog.Error("Sync: Failed to update DB", "card", c.Name, "error", err)
+		} else {
+			slog.Debug("Sync: Updated card price", "card", c.Name, "usd", usd, "eur", eur)
 		}
 	}
 	slog.Info("Price synchronization cycle completed")

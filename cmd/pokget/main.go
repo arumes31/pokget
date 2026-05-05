@@ -40,7 +40,14 @@ import (
 
 func main() {
 	// Initialize Structured Logger
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logLevel := slog.LevelInfo
+	if os.Getenv("DEBUG") == "true" {
+		logLevel = slog.LevelDebug
+	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	}))
 	slog.SetDefault(logger)
 
 	// Initialize Database
