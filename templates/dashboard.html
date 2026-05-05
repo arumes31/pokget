@@ -21,7 +21,9 @@
             {{if eq .Currency "USD"}}${{else}}€{{end}}1,677.31 (90d)
         </div>
     </div>
-    <h2 class="text-4xl font-bold tracking-tight">${{if eq .Currency "USD"}}156,494.99{{else}}142,320.50{{end}}</h2>
+    <h2 class="text-4xl font-bold tracking-tight">
+        {{if eq .Currency "USD"}}${{.TotalValuation}}{{else}}€{{.TotalValuation}}{{end}}
+    </h2>
 </div>
 
 <!-- Portfolio Chart -->

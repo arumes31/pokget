@@ -107,14 +107,27 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Calculate Portfolio Valuation
+	var totalValuation decimal.Decimal
+	err = db.DB.QueryRow(`
+		SELECT COALESCE(SUM(c.price_usd), 0)
+		FROM portfolio p
+		JOIN cards c ON p.card_id = c.id
+		WHERE p.user_id = $1`, userID).Scan(&totalValuation)
+	if err != nil {
+		slog.Error("Failed to calculate valuation", "error", err)
+	}
+
 	data := struct {
-		Currency      string
-		SetCompletion []SetProgress
-		Portfolio     []models.Card
+		Currency       string
+		TotalValuation decimal.Decimal
+		SetCompletion  []SetProgress
+		Portfolio      []models.Card
 	}{
-		Currency:      currency,
-		SetCompletion: setCompletion,
-		Portfolio:     h.MockCards, // For now use mock, but in real app fetch from DB
+		Currency:       currency,
+		TotalValuation: totalValuation,
+		SetCompletion:  setCompletion,
+		Portfolio:      h.MockCards,
 	}
 
 	if err := h.Templates.ExecuteTemplate(w, "dashboard.html", data); err != nil {
