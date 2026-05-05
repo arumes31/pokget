@@ -34,6 +34,7 @@ WORKDIR /app
 COPY --from=builder /app/main .
 COPY --from=builder /app/templates ./templates
 COPY --from=builder /app/static ./static
+COPY --from=builder /app/migrations ./migrations
 
 # Expose port
 EXPOSE 8080
