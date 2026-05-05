@@ -12,6 +12,7 @@ services:
       - DB_USER=${DB_USER:-pokget_user}
       - DB_PASSWORD=${DB_PASSWORD:-pokget_pass}
       - DB_NAME=${DB_NAME:-pokget_db}
+      - DB_SSLMODE=disable
       - OLLAMA_HOST=pokget_ollama
       - SESSION_KEY=${SESSION_KEY}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}

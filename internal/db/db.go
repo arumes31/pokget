@@ -48,7 +48,7 @@ func InitDB() {
 	}
 
 	if sslmode == "" {
-		sslmode = "require" // Secure default
+		sslmode = "disable" // Default to disable for easy local/docker setup
 	}
 
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",

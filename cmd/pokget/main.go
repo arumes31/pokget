@@ -45,27 +45,31 @@ func main() {
 
 	// Initialize Database
 	db.InitDB()
-	if err := db.SeedDatabase(db.DB); err != nil {
-		slog.Error("Database seeding failed", "error", err)
-	}
+	if db.DB != nil {
+		if err := db.SeedDatabase(db.DB); err != nil {
+			slog.Error("Database seeding failed", "error", err)
+		}
 
-	// Start Price Sync Worker after DB is ready
-	priceClient := &service.DefaultPriceClient{Scraper: &service.ScraperPriceClient{}}
-	priceWorker := worker.NewPriceSyncWorker(db.DB, priceClient, 1*time.Hour)
-	go priceWorker.Start(context.Background())
+		// Start Price Sync Worker after DB is ready
+		priceClient := &service.DefaultPriceClient{Scraper: &service.ScraperPriceClient{}}
+		priceWorker := worker.NewPriceSyncWorker(db.DB, priceClient, 1*time.Hour)
+		go priceWorker.Start(context.Background())
+	}
 
 	// Fetch cards from DB for handlers
 	var mockCards []models.Card
-	rows, err := db.DB.Query("SELECT id, name, set_name, price_usd, price_eur, image_url FROM cards LIMIT 50")
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var c models.Card
-			if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL); err != nil {
-				slog.Error("Failed to scan card row", "error", err)
-				continue
+	if db.DB != nil {
+		rows, err := db.DB.Query("SELECT id, name, set_name, price_usd, price_eur, image_url FROM cards LIMIT 50")
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var c models.Card
+				if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL); err != nil {
+					slog.Error("Failed to scan card row", "error", err)
+					continue
+				}
+				mockCards = append(mockCards, c)
 			}
-			mockCards = append(mockCards, c)
 		}
 	}
 
