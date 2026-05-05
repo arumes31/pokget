@@ -1,17 +1,18 @@
 version: '3.8'
 
 services:
-  app:
+  pokget_app:
+    container_name: pokget_app
     build: .
     ports:
       - "8080:8080"
     environment:
-      - DB_HOST=db
+      - DB_HOST=pokget_db
       - DB_PORT=5432
       - DB_USER=${DB_USER:-gettos_user}
       - DB_PASSWORD=${DB_PASSWORD:-gettos_pass}
       - DB_NAME=${DB_NAME:-gettos_db}
-      - OLLAMA_HOST=ollama
+      - OLLAMA_HOST=pokget_ollama
       - SESSION_KEY=${SESSION_KEY}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -19,14 +20,15 @@ services:
       - SMTP_PASS=${SMTP_PASS}
       - SMTP_FROM=${SMTP_FROM:-no-reply@gettos.com}
     depends_on:
-      db:
+      pokget_db:
         condition: service_healthy
-      ollama:
+      pokget_ollama:
         condition: service_started
     volumes:
       - ./data/cache:/app/data/cache
 
-  db:
+  pokget_db:
+    container_name: pokget_db
     image: postgres:15-alpine
     environment:
       - POSTGRES_USER=${DB_USER:-gettos_user}
@@ -43,7 +45,8 @@ services:
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
 
-  ollama:
+  pokget_ollama:
+    container_name: pokget_ollama
     image: ollama/ollama:0.1.32
     ports:
       - "11434:11434"

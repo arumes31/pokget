@@ -19,10 +19,11 @@ type LLMService struct {
 }
 
 func NewLLMService() *LLMService {
-	url := os.Getenv("OLLAMA_URL")
-	if url == "" {
-		url = "http://ollama:11434"
+	host := os.Getenv("OLLAMA_HOST")
+	if host == "" {
+		host = "pokget_ollama"
 	}
+	url := fmt.Sprintf("http://%s:11434", host)
 	return &LLMService{
 		BaseURL: url,
 		Model:   "tinyllama", // Extremely fast on CPU
