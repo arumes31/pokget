@@ -42,6 +42,9 @@ func InitDB() {
 	dbname := os.Getenv("DB_NAME")
 	sslmode := os.Getenv("DB_SSLMODE")
 
+	wd, _ := os.Getwd()
+	slog.Info("Database initialization", "working_dir", wd)
+
 	if host == "" || port == "" || user == "" || dbname == "" {
 		slog.Warn("Missing required database environment variables, skipping DB initialization")
 		return
@@ -83,20 +86,25 @@ func RunMigrations() error {
 		return fmt.Errorf("database connection is not initialized")
 	}
 
+	// Verify migrations directory exists
+	if _, err := os.Stat("migrations"); os.IsNotExist(err) {
+		return fmt.Errorf("migrations directory not found at current path")
+	}
+
 	driver, err := postgres.WithInstance(DB, &postgres.Config{})
 	if err != nil {
-		return err
+		return fmt.Errorf("could not create migration driver: %w", err)
 	}
 
 	m, err := migrate.NewWithDatabaseInstance(
 		"file://migrations",
 		"postgres", driver)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not create migration instance: %w", err)
 	}
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return err
+		return fmt.Errorf("could not apply migrations: %w", err)
 	}
 
 	slog.Info("Database migrations applied successfully")
