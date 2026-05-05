@@ -30,6 +30,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+          args: ./...
 
   security:
     runs-on: ubuntu-latest
