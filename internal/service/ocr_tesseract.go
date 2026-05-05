@@ -12,10 +12,16 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
+	"log/slog"
 	"regexp"
 )
 
-func ProcessCardScan(imgBytes []byte, mockCards []models.Card) (string, string, error) {
+func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (string, string, error) {
+	if lang == "" {
+		lang = "eng"
+	}
+	slog.Info("OCR: Starting scan...", "lang", lang)
+
 	// 1. Preprocess image to harden OCR
 	src, _, err := image.Decode(bytes.NewReader(imgBytes))
 	if err != nil {
@@ -38,6 +44,11 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card) (string, string, 
 	// 2. Perform OCR
 	client := gosseract.NewClient()
 	defer client.Close()
+
+	if err := client.SetLanguage(lang); err != nil {
+		slog.Warn("OCR: Failed to set language, falling back to eng", "lang", lang, "error", err)
+		_ = client.SetLanguage("eng")
+	}
 
 	if err := client.SetImageFromBytes(buf.Bytes()); err != nil {
 		return "", "", err

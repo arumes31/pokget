@@ -6,6 +6,7 @@
         scanning: false,
         result: '',
         detectedCard: '',
+        lang: 'eng',
         init() {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
                 .then(stream => { this.$refs.video.srcObject = stream; })
@@ -20,7 +21,8 @@
             
             const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
             const formData = new FormData();
-            formData.append('image', blob);
+            formData.append('card_image', blob);
+            formData.append('lang', this.lang);
 
             const res = await fetch('/api/scan', { method: 'POST', body: formData });
             const data = await res.json();
@@ -116,6 +118,14 @@
 
     <!-- Controls / Metrics -->
     <div class="space-y-4">
+        <!-- Language Selector -->
+        <div class="flex items-center justify-between glass-card p-1">
+            <button @click="lang = 'eng'" :class="lang === 'eng' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">ENG</button>
+            <button @click="lang = 'jpn'" :class="lang === 'jpn' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">JPN</button>
+            <button @click="lang = 'deu'" :class="lang === 'deu' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">DEU</button>
+            <button @click="lang = 'fra'" :class="lang === 'fra' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">FRA</button>
+        </div>
+
         <!-- Scan Button -->
         <button @click="capture()" 
                 class="w-full py-4 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-xl"

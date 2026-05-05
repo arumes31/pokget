@@ -54,8 +54,9 @@ func main() {
 
 	// Initialize Handlers
 	h := &handlers.Handler{
-		Templates: templates,
-		MockCards: mockCards,
+		Templates:   templates,
+		MockCards:   mockCards,
+		Fingerprint: service.NewFingerprintService(db.DB),
 	}
 
 	r := mux.NewRouter()

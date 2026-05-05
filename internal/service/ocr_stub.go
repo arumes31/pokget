@@ -7,7 +7,7 @@ import (
 	"log/slog"
 )
 
-func ProcessCardScan(_ []byte, _ []models.Card) (string, string, error) {
+func ProcessCardScan(_ []byte, _ []models.Card, _ string) (string, string, error) {
 	slog.Warn("OCR: Tesseract is not available on this platform or CGO is disabled. Falling back to dummy result.")
 	return "OCR Not Available", "Unknown Card", nil
 }

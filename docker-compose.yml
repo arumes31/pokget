@@ -23,6 +23,8 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+    volumes:
+      - ./data/cache:/app/data/cache
 
   db:
     image: postgres:15-alpine

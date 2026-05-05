@@ -1,8 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"html/template"
+	"image"
+	_ "image/gif"  // Register GIF decoder
+	_ "image/jpeg" // Register JPEG decoder
+	_ "image/png"  // Register PNG decoder
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,8 +18,9 @@ import (
 )
 
 type Handler struct {
-	Templates *template.Template
-	MockCards []models.Card
+	Templates   *template.Template
+	MockCards   []models.Card
+	Fingerprint *service.FingerprintService
 }
 
 func (h *Handler) Index(w http.ResponseWriter, _ *http.Request) {
@@ -103,38 +109,56 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, _, err := r.FormFile("image")
+	file, _, err := r.FormFile("card_image")
 	if err != nil {
-		http.Error(w, "Failed to get image", http.StatusBadRequest)
+		http.Error(w, "Failed to get image from form", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
-	// Read file into bytes
+	lang := r.FormValue("lang")
+	if lang == "" {
+		lang = "eng"
+	}
+
 	imgBytes, err := io.ReadAll(file)
 	if err != nil {
 		http.Error(w, "Failed to read image", http.StatusInternalServerError)
 		return
 	}
 
-	text, detectedCard, err := service.ProcessCardScan(imgBytes, h.MockCards)
-	if err != nil {
-		http.Error(w, "OCR failed", http.StatusInternalServerError)
-		return
+	// 1. Visual Fingerprint Matching (FAST & Language Independent)
+	var detectedCard string
+	var text string
+
+	if h.Fingerprint != nil {
+		img, _, err := image.Decode(bytes.NewReader(imgBytes))
+		if err == nil {
+			hash, err := h.Fingerprint.CalculateHash(img)
+			if err == nil {
+				match, distance, _ := h.Fingerprint.MatchFingerprint(hash)
+				if match != nil {
+					slog.Info("Fingerprint: Found match", "name", match.Name, "distance", distance)
+					detectedCard = match.Name
+				}
+			}
+		}
 	}
 
-	// Calculate Auto-Snap bounds
-	bounds, err := service.DetectCardEdges(imgBytes)
-	if err != nil {
-		slog.Error("Edge detection failed", "error", err)
-		// We can still return the OCR result even if edge detection fails
+	// 2. OCR Fallback (if visual matching fails)
+	if detectedCard == "" {
+		text, detectedCard, err = service.ProcessCardScan(imgBytes, h.MockCards, lang)
+		if err != nil {
+			slog.Error("OCR: Failed to process scan", "error", err)
+			http.Error(w, "Detection failed", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"text":     strings.ReplaceAll(text, "\n", " "),
 		"detected": detectedCard,
-		"bounds":   bounds,
 	}); err != nil {
 		slog.Error("Failed to encode JSON response", "error", err)
 	}

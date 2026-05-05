@@ -11,4 +11,6 @@ type Card struct {
 	ImageURL  string          `json:"image_url"`
 	Change24h float64         `json:"change_24h"`
 	Variant   string          `json:"variant"` // Holo, Reverse Holo, etc.
+	Language  string          `json:"language"` // en, jp, de, etc.
+	Phash     *int64          `json:"phash"`    // Perceptual hash for visual matching
 }
