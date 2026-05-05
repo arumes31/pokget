@@ -84,6 +84,7 @@ func main() {
 	}
 
 	r := mux.NewRouter()
+	r.Use(auth.ProxyMiddleware)
 
 	// Static files
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
