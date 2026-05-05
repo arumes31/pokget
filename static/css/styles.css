@@ -39,6 +39,12 @@ body {
     flex-direction: column;
 }
 
+@media (max-width: 480px) {
+    .app-container {
+        padding: 1rem 1rem;
+    }
+}
+
 /* Background Glow Effects */
 .glow-blob {
     position: fixed;
@@ -72,6 +78,13 @@ body {
     border-radius: 2rem;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
     padding: 2.5rem;
+}
+
+@media (max-width: 480px) {
+    .glass-card {
+        padding: 1.5rem;
+        border-radius: 1.5rem;
+    }
 }
 
 .glass-button {
