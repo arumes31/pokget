@@ -9,41 +9,8 @@
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/alpine.min.js" defer></script>
     <link rel="stylesheet" href="/static/css/styles.css">
-    <style>
-        :root { color-scheme: dark; }
-        body {
-            background-color: #0a0a0a;
-            background-image: 
-                radial-gradient(circle at 0% 0%, rgba(124, 58, 237, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 100% 100%, rgba(14, 165, 233, 0.1) 0%, transparent 50%);
-            min-height: 100vh;
-        }
-        .glass-card {
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 1.5rem;
-        }
-        .glass-button {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.3s ease;
-        }
-        .glass-button:active { transform: scale(0.95); background: rgba(255, 255, 255, 0.1); }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    </style>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/static/sw.js');
-            });
-        }
-    </script>
 </head>
-<body class="text-white font-sans antialiased" 
+<body class="text-white" 
       x-data="{ 
         activeTab: 'home', 
         currency: 'USD', 
@@ -56,6 +23,10 @@
         }
       }"
       @notify.window="addToast($event.detail.msg, $event.detail.type)">
+
+    <!-- Ambient Background Glow -->
+    <div class="glow-blob glow-purple"></div>
+    <div class="glow-blob glow-pink"></div>
 
     <!-- Toast Container -->
     <div class="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-[90%] pointer-events-none">
@@ -87,9 +58,7 @@
         
         <!-- Header -->
         <header class="flex items-center justify-between px-6 py-4 z-10" x-data="{ offline: false }">
-            <h1 class="text-xl font-bold bg-gradient-to-r from-purple-500 to-blue-500 bg-clip-text text-transparent">
-                Pokget
-            </h1>
+            <h1 class="text-xl font-bold text-gradient">Pokget</h1>
             <div class="flex items-center gap-3">
                 <button 
                     @click="offline = !offline"
@@ -102,7 +71,7 @@
                 </button>
                 <button 
                     @click="currency = (currency === 'USD' ? 'EUR' : 'USD'); $dispatch('currency-change', {val: currency})"
-                    class="glass-button px-3 py-1.5 text-xs font-bold rounded-xl"
+                    class="glass-button text-[10px] uppercase font-bold py-1.5 px-3"
                     x-text="currency"
                     hx-get="/dashboard"
                     hx-target="#main-content"
@@ -123,31 +92,29 @@
         </main>
 
         <!-- Bottom Navigation -->
-        <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto h-20 glass-card rounded-t-[2.5rem] border-x-0 border-b-0 px-4 flex items-center justify-around z-50">
-            <button @click="activeTab = 'home'" hx-get="/dashboard" hx-target="#main-content" :class="activeTab === 'home' ? 'text-purple-500' : 'text-white/40'" class="flex flex-col items-center w-full">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                <span class="text-[10px] mt-1">Home</span>
+        <nav class="bottom-nav">
+            <button @click="activeTab = 'home'" hx-get="/dashboard" hx-target="#main-content" :class="activeTab === 'home' ? 'active' : ''" class="nav-item">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                <span>Home</span>
             </button>
             
-            <button @click="activeTab = 'binders'" hx-get="/binders" hx-target="#main-content" :class="activeTab === 'binders' ? 'text-purple-500' : 'text-white/40'" class="flex flex-col items-center w-full">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
-                <span class="text-[10px] mt-1">Binders</span>
+            <button @click="activeTab = 'binders'" hx-get="/binders" hx-target="#main-content" :class="activeTab === 'binders' ? 'active' : ''" class="nav-item">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+                <span>Binders</span>
             </button>
 
-            <div class="relative -top-6">
-                <button @click="activeTab = 'scan'" hx-get="/centering" hx-target="#main-content" class="w-14 h-14 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center shadow-lg shadow-purple-500/20 active:scale-90 transition-transform">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="M2 12h20"/><path d="M7 21v-4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v4"/><rect width="20" height="14" x="2" y="3" rx="2"/></svg>
-                </button>
-            </div>
-
-            <button @click="activeTab = 'trade'" hx-get="/trade" hx-target="#main-content" :class="activeTab === 'trade' ? 'text-purple-500' : 'text-white/40'" class="flex flex-col items-center w-full">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
-                <span class="text-[10px] mt-1">Trade</span>
+            <button @click="activeTab = 'scan'" hx-get="/centering" hx-target="#main-content" class="scan-fab">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M2 12h20"/><path d="M7 21v-4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v4"/><rect width="20" height="14" x="2" y="3" rx="2"/></svg>
             </button>
 
-            <button @click="activeTab = 'profile'" hx-get="/auth" hx-target="#main-content" :class="activeTab === 'profile' ? 'text-purple-500' : 'text-white/40'" class="flex flex-col items-center w-full">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4-4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                <span class="text-[10px] mt-1">Profile</span>
+            <button @click="activeTab = 'trade'" hx-get="/trade" hx-target="#main-content" :class="activeTab === 'trade' ? 'active' : ''" class="nav-item">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
+                <span>Trade</span>
+            </button>
+
+            <button @click="activeTab = 'profile'" hx-get="/auth" hx-target="#main-content" :class="activeTab === 'profile' ? 'active' : ''" class="nav-item">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4-4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span>Profile</span>
             </button>
         </nav>
     </div>
