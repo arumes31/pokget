@@ -1,0 +1,22 @@
+{
+  "name": "Gettos TCG Tracker",
+  "short_name": "Gettos",
+  "description": "Mobile-first TCG portfolio tracker and grading utility.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#7c3aed",
+  "icons": [
+    {
+      "src": "/static/img/logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/img/logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

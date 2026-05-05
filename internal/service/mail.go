@@ -1,0 +1,87 @@
+package service
+
+import (
+	"bytes"
+	"fmt"
+	"html/template"
+	"net/smtp"
+	"os"
+)
+
+type MailService struct {
+	Host     string
+	Port     string
+	Username string
+	Password string
+	From     string
+}
+
+func NewMailService() *MailService {
+	return &MailService{
+		Host:     os.Getenv("SMTP_HOST"),
+		Port:     os.Getenv("SMTP_PORT"),
+		Username: os.Getenv("SMTP_USER"),
+		Password: os.Getenv("SMTP_PASS"),
+		From:     os.Getenv("SMTP_FROM"),
+	}
+}
+
+func (s *MailService) SendConfirmationEmail(to, token string) error {
+	subject := "Verify your Gettos account"
+	confirmURL := fmt.Sprintf("http://localhost:8080/auth/confirm?token=%s", token)
+
+	data := map[string]string{
+		"ConfirmURL": confirmURL,
+	}
+
+	tmpl, err := template.New("confirm").Parse(confirmEmailTemplate)
+	if err != nil {
+		return err
+	}
+
+	var body bytes.Buffer
+	if err := tmpl.Execute(&body, data); err != nil {
+		return err
+	}
+
+	return s.sendMail(to, subject, body.String())
+}
+
+func (s *MailService) sendMail(to, subject, body string) error {
+	auth := smtp.PlainAuth("", s.Username, s.Password, s.Host)
+	msg := []byte(fmt.Sprintf("To: %s\r\n"+
+		"Subject: %s\r\n"+
+		"MIME-version: 1.0;\r\n"+
+		"Content-Type: text/html; charset=\"UTF-8\";\r\n"+
+		"\r\n"+
+		"%s\r\n", to, subject, body))
+
+	addr := fmt.Sprintf("%s:%s", s.Host, s.Port)
+	return smtp.SendMail(addr, auth, s.From, []string{to}, msg)
+}
+
+const confirmEmailTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: 'Inter', -apple-system, sans-serif; background-color: #0a0a0a; color: #ffffff; padding: 40px; }
+        .card { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; padding: 32px; max-width: 500px; margin: 0 auto; text-align: center; }
+        .logo { font-size: 24px; font-weight: 800; background: linear-gradient(to right, #a855f7, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 24px; }
+        .btn { display: inline-block; background: #9333ea; color: white; padding: 16px 32px; border-radius: 12px; text-decoration: none; font-weight: bold; margin-top: 24px; box-shadow: 0 10px 15px -3px rgba(147, 51, 234, 0.3); }
+        .footer { margin-top: 32px; color: rgba(255, 255, 255, 0.4); font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="logo">GETTOS</div>
+        <h1>Welcome to the collection!</h1>
+        <p>You're one step away from tracking your TCG portfolio like a pro. Click the button below to verify your email.</p>
+        <a href="{{.ConfirmURL}}" class="btn">Verify Account</a>
+        <div class="footer">
+            If you didn't create an account, you can safely ignore this email.
+        </div>
+    </div>
+</body>
+</html>
+`

@@ -1,0 +1,81 @@
+<div class="flex flex-col h-full space-y-6" 
+     x-data="{ 
+        myOffer: 150, 
+        theirOffer: 165,
+        loading: false,
+        async generateLog() {
+            this.loading = true;
+            await new Promise(r => setTimeout(r, 1000));
+            this.loading = false;
+            $dispatch('notify', { msg: 'Trade log generated and saved!', type: 'success' });
+        }
+     }">
+    <div class="flex items-center justify-between px-1">
+        <h2 class="text-lg font-bold">Trade Analyzer</h2>
+        <button class="glass-button p-2 rounded-lg text-white/40 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500/50" aria-label="Add card to trade">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        </button>
+    </div>
+
+    <!-- My Side -->
+    <div class="space-y-3">
+        <div class="flex items-center justify-between px-1">
+            <span class="text-[10px] font-bold text-white/40 uppercase tracking-wider">My Offer</span>
+            <span class="text-sm font-bold text-emerald-400" x-text="'$' + myOffer.toFixed(2)"></span>
+        </div>
+        <button class="w-full glass-card p-4 flex items-center justify-between border-emerald-500/20 text-left hover:border-emerald-500/50 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/50" aria-label="Charizard VMAX from Shining Fates, valued at $150.00">
+            <div class="flex items-center gap-3">
+                <img src="https://images.pokemontcg.io/swsh45/19_hires.png" alt="Charizard VMAX" class="w-10 h-14 object-contain">
+                <div>
+                    <p class="text-xs font-bold">Charizard VMAX</p>
+                    <p class="text-[10px] text-white/40">Shining Fates</p>
+                </div>
+            </div>
+            <span class="text-xs font-bold text-white/60">$150.00</span>
+        </button>
+    </div>
+
+    <!-- Swap Icon -->
+    <div class="flex justify-center -my-3 z-10">
+        <div class="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center border-4 border-[#0a0a0a] shadow-lg shadow-purple-600/20" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
+        </div>
+    </div>
+
+    <!-- Their Side -->
+    <div class="space-y-3">
+        <div class="flex items-center justify-between px-1">
+            <span class="text-[10px] font-bold text-white/40 uppercase tracking-wider">Their Offer</span>
+            <span class="text-sm font-bold text-blue-400" x-text="'$' + theirOffer.toFixed(2)"></span>
+        </div>
+        <button class="w-full glass-card p-4 flex items-center justify-between border-blue-500/20 text-left hover:border-blue-500/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50" aria-label="Lugia V from Silver Tempest, valued at $165.00">
+            <div class="flex items-center gap-3">
+                <img src="https://images.pokemontcg.io/swsh12/186_hires.png" alt="Lugia V" class="w-10 h-14 object-contain">
+                <div>
+                    <p class="text-xs font-bold">Lugia V</p>
+                    <p class="text-[10px] text-white/40">Silver Tempest</p>
+                </div>
+            </div>
+            <span class="text-xs font-bold text-white/60">$165.00</span>
+        </button>
+    </div>
+
+    <!-- Analysis -->
+    <div class="mt-auto pt-6">
+        <div class="glass-card p-6 border-t-4 border-blue-500/50" role="region" aria-labelledby="verdict-title">
+            <div class="flex items-center justify-between mb-4">
+                <h3 id="verdict-title" class="text-sm font-bold">Trade Verdict</h3>
+                <span class="bg-blue-500/20 text-blue-400 px-2 py-1 rounded text-[10px] font-bold uppercase" x-text="'+' + (((theirOffer/myOffer)-1)*100).toFixed(0) + '% Value'"></span>
+            </div>
+            <p class="text-xs text-white/60 leading-relaxed">
+                This trade is <span class="text-blue-400 font-bold">in your favor</span>. You are gaining roughly <span class="text-white font-bold" x-text="'$' + (theirOffer - myOffer).toFixed(2)"></span> in market value.
+            </p>
+            <button @click="generateLog" 
+                    :disabled="loading"
+                    class="w-full bg-white/10 hover:bg-white/20 py-3 rounded-xl font-bold text-xs mt-6 transition-all focus:outline-none focus:ring-2 focus:ring-white/20 disabled:opacity-50">
+                <span x-show="!loading">GENERATE TRADE LOG</span>
+                <span x-show="loading">Generating...</span>
+            </button>
+        </div>
+    </div>
+</div>

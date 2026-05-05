@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gettos - TCG Tracker</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#7c3aed">
+    <script src="/static/js/htmx.min.js"></script>
+    <script src="/static/js/alpine.min.js" defer></script>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <style>
+        :root { color-scheme: dark; }
+        body {
+            background-color: #0a0a0a;
+            background-image: 
+                radial-gradient(circle at 0% 0%, rgba(124, 58, 237, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 100% 100%, rgba(14, 165, 233, 0.1) 0%, transparent 50%);
+            min-height: 100vh;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 1.5rem;
+        }
+        .glass-button {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        .glass-button:active { transform: scale(0.95); background: rgba(255, 255, 255, 0.1); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js');
+            });
+        }
+    </script>
+</head>
+<body class="text-white font-sans antialiased" 
+      x-data="{ 
+        activeTab: 'home', 
+        currency: 'USD', 
+        showAddModal: false,
+        toasts: [],
+        addToast(msg, type = 'info') {
+            const id = Date.now();
+            this.toasts.push({ id, msg, type });
+            setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id) }, 3000);
+        }
+      }"
+      @notify.window="addToast($event.detail.msg, $event.detail.type)">
+
+    <!-- Toast Container -->
+    <div class="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-[90%] pointer-events-none">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div x-transition.duration.300ms
+                 class="glass-card px-6 py-3 shadow-2xl flex items-center gap-3 border-l-4"
+                 :class="{
+                    'border-emerald-500 bg-emerald-500/10': toast.type === 'success',
+                    'border-red-500 bg-red-500/10': toast.type === 'error',
+                    'border-purple-500 bg-purple-500/10': toast.type === 'info'
+                 }">
+                <div class="w-2 h-2 rounded-full animate-pulse"
+                     :class="{
+                        'bg-emerald-500': toast.type === 'success',
+                        'bg-red-500': toast.type === 'error',
+                        'bg-purple-500': toast.type === 'info'
+                     }"></div>
+                <span class="text-sm font-bold tracking-tight" x-text="toast.msg"></span>
+            </div>
+        </template>
+    </div>
+
+    <!-- Modal -->
+    <template x-if="showAddModal">
+        {{template "add_card.html" .}}
+    </template>
+
+    <div class="flex flex-col h-screen max-w-md mx-auto relative overflow-hidden">
+        
+        <!-- Header -->
+        <header class="flex items-center justify-between px-6 py-4 z-10" x-data="{ offline: false }">
+            <h1 class="text-xl font-bold bg-gradient-to-r from-purple-500 to-blue-500 bg-clip-text text-transparent">
+                GETTOS
+            </h1>
+            <div class="flex items-center gap-3">
+                <button 
+                    @click="offline = !offline"
+                    class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-colors"
+                    :class="offline ? 'bg-emerald-500/10 text-emerald-400' : 'text-white/20'"
+                    :title="offline ? 'Collection Cached' : 'Go Offline'"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M2 9.289a15 15 0 0 1 20 0"/></svg>
+                    <span class="text-[8px] font-bold uppercase" x-show="offline">Offline</span>
+                </button>
+                <button 
+                    @click="currency = (currency === 'USD' ? 'EUR' : 'USD'); $dispatch('currency-change', {val: currency})"
+                    class="glass-button px-3 py-1.5 text-xs font-bold rounded-xl"
+                    x-text="currency"
+                    hx-get="/dashboard"
+                    hx-target="#main-content"
+                    hx-vals='js:{currency: currency}'
+                >
+                    USD
+                </button>
+                <div class="relative">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white/80"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                    <span class="absolute -top-1 -right-1 w-2 h-2 bg-pink-500 rounded-full border border-dark"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main id="main-content" class="flex-1 overflow-y-auto px-6 pb-24" hx-get="/dashboard" hx-trigger="load">
+            <!-- Content loaded via HTMX -->
+        </main>
+
+        <!-- Bottom Navigation -->
+        <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto h-20 glass-card rounded-t-[2.5rem] border-x-0 border-b-0 px-4 flex items-center justify-around z-50">
+            <button @click="activeTab = 'home'" hx-get="/dashboard" hx-target="#main-content" :class="activeTab === 'home' ? 'text-purple-500' : 'text-white/40'" class="flex flex-col items-center w-full">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                <span class="text-[10px] mt-1">Home</span>
+            </button>
+            
+            <button @click="activeTab = 'binders'" hx-get="/binders" hx-target="#main-content" :class="activeTab === 'binders' ? 'text-purple-500' : 'text-white/40'" class="flex flex-col items-center w-full">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+                <span class="text-[10px] mt-1">Binders</span>
+            </button>
+
+            <div class="relative -top-6">
+                <button @click="activeTab = 'scan'" hx-get="/centering" hx-target="#main-content" class="w-14 h-14 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center shadow-lg shadow-purple-500/20 active:scale-90 transition-transform">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="M2 12h20"/><path d="M7 21v-4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v4"/><rect width="20" height="14" x="2" y="3" rx="2"/></svg>
+                </button>
+            </div>
+
+            <button @click="activeTab = 'trade'" hx-get="/trade" hx-target="#main-content" :class="activeTab === 'trade' ? 'text-purple-500' : 'text-white/40'" class="flex flex-col items-center w-full">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
+                <span class="text-[10px] mt-1">Trade</span>
+            </button>
+
+            <button @click="activeTab = 'profile'" hx-get="/auth" hx-target="#main-content" :class="activeTab === 'profile' ? 'text-purple-500' : 'text-white/40'" class="flex flex-col items-center w-full">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4-4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span class="text-[10px] mt-1">Profile</span>
+            </button>
+        </nav>
+    </div>
+</body>
+</html>

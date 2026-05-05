@@ -1,0 +1,140 @@
+<!-- Search Bar -->
+<div class="relative mb-6">
+    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white/40"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    </div>
+    <input type="text" placeholder="Search Pokémon, MTG, Lorcana..." 
+           @click="showAddModal = true"
+           class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:border-purple-500/50 transition-all">
+    <div class="flex gap-2 mt-3 overflow-x-auto no-scrollbar">
+        <button class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-3 py-1 rounded-full text-[10px] font-bold">Pokémon</button>
+        <button class="bg-white/5 text-white/40 border border-white/10 px-3 py-1 rounded-full text-[10px] font-bold">MTG</button>
+        <button class="bg-white/5 text-white/40 border border-white/10 px-3 py-1 rounded-full text-[10px] font-bold">Lorcana</button>
+    </div>
+</div>
+
+<!-- Portfolio Overview -->
+<div class="space-y-2 mb-6 px-1">
+    <div class="flex items-center justify-between">
+        <p class="text-xs font-bold text-white/40 uppercase tracking-widest">Portfolio: Main</p>
+        <div class="bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded text-[10px] font-bold">
+            {{if eq .Currency "USD"}}${{else}}€{{end}}1,677.31 (90d)
+        </div>
+    </div>
+    <h2 class="text-4xl font-bold tracking-tight">${{if eq .Currency "USD"}}156,494.99{{else}}142,320.50{{end}}</h2>
+</div>
+
+<!-- Portfolio Chart -->
+<div class="glass-card p-4 mb-8" x-data="{ 
+    timeframe: '3M',
+    chart: null,
+    init() {
+        this.renderChart();
+    },
+    renderChart() {
+        const ctx = document.getElementById('portfolioChart').getContext('2d');
+        if (this.chart) this.chart.destroy();
+        
+        const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+        gradient.addColorStop(0, 'rgba(52, 211, 153, 0.2)');
+        gradient.addColorStop(1, 'rgba(52, 211, 153, 0)');
+
+        this.chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 30}, (_, i) => i),
+                datasets: [{
+                    data: [120, 125, 122, 130, 140, 138, 145, 150, 155, 152, 160, 158, 165, 170, 175, 180, 178, 185, 190, 195, 192, 200, 205, 210, 215, 212, 220, 225, 230, 235],
+                    borderColor: '#10b981',
+                    borderWidth: 3,
+                    fill: true,
+                    backgroundColor: gradient,
+                    tension: 0.4,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { display: false },
+                    y: { display: false }
+                }
+            }
+        });
+    }
+}">
+    <div class="h-48 w-full relative">
+        <canvas id="portfolioChart"></canvas>
+    </div>
+    <div class="flex items-center justify-between mt-4 px-2">
+        <template x-for="t in ['1D', '7D', '1M', '3M', '6M', 'MAX']">
+            <button @click="timeframe = t; renderChart()" 
+                    :class="timeframe === t ? 'text-white' : 'text-white/30'"
+                    class="text-[10px] font-bold transition-colors py-2 px-1" x-text="t"></button>
+        </template>
+    </div>
+</div>
+
+<!-- Most Valuable Cards -->
+<section class="mb-8">
+    <div class="flex items-center justify-between mb-4 px-1">
+        <h3 class="text-sm font-bold text-white/80 uppercase tracking-wider">Most Valuable</h3>
+        <button class="text-blue-400 text-xs font-bold hover:underline">View All</button>
+    </div>
+    <div class="space-y-4">
+        {{range .Portfolio}}
+        <div class="flex items-center justify-between group">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-16 relative overflow-hidden rounded-lg bg-white/5 border border-white/10 p-1">
+                    <img src="{{.ImageURL}}" alt="{{.Name}}" class="w-full h-full object-contain group-hover:scale-110 transition-transform">
+                </div>
+                <div>
+                    <p class="text-sm font-bold">{{.Name}}</p>
+                    <p class="text-[10px] text-white/40 uppercase font-bold">{{.Set}}</p>
+                </div>
+            </div>
+            <div class="text-right">
+                <p class="text-sm font-bold">{{if eq $.Currency "USD"}}${{.PriceUSD}}{{else}}€{{.PriceEUR}}{{end}}</p>
+                <p class="text-[10px] text-emerald-400 font-bold">+2.72%</p>
+            </div>
+        </div>
+        {{end}}
+    </div>
+</section>
+
+<!-- Set Completion -->
+<section class="mb-8">
+    <div class="flex items-center justify-between mb-4 px-1">
+        <h3 class="text-sm font-bold text-white/80 uppercase tracking-wider">Set Progress</h3>
+        <button class="text-blue-400 text-xs font-bold hover:underline">Browse Sets</button>
+    </div>
+    <div class="space-y-6">
+        {{range .SetCompletion}}
+        <div class="space-y-2">
+            <div class="flex justify-between items-end">
+                <div>
+                    <p class="text-sm font-bold">{{.Name}}</p>
+                    <p class="text-[10px] text-white/40 font-bold uppercase">{{.OwnedCards}} / {{.TotalCards}} Cards</p>
+                </div>
+                <div class="text-right">
+                    {{if eq .Percent 100}}
+                    <span class="bg-emerald-500/20 text-emerald-400 text-[10px] font-black px-2 py-0.5 rounded border border-emerald-500/30">MASTERED</span>
+                    {{else}}
+                    <span class="text-xs font-bold text-white/60">{{.Percent}}%</span>
+                    {{end}}
+                </div>
+            </div>
+            <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                <div class="h-full bg-gradient-to-r from-purple-500 to-blue-500 rounded-full transition-all duration-1000" 
+                     style="width: {{.Percent}}%; text-align: center;"></div>
+            </div>
+        </div>
+        {{end}}
+    </div>
+</section>
+
+<!-- Scripts -->
+<script src="/static/js/chart.js"></script>
+

@@ -1,0 +1,153 @@
+<div class="flex flex-col h-full space-y-4" 
+     x-data="{ 
+        lines: { left: 20, right: 80, top: 20, bottom: 80 },
+        metrics: { lr: '50/50', tb: '50/50' },
+        dragging: null,
+        scanning: false,
+        result: '',
+        detectedCard: '',
+        init() {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(stream => { this.$refs.video.srcObject = stream; })
+                .catch(err => console.error('Camera access denied:', err));
+        },
+        async capture() {
+            this.scanning = true;
+            const canvas = document.createElement('canvas');
+            canvas.width = this.$refs.video.videoWidth;
+            canvas.height = this.$refs.video.videoHeight;
+            canvas.getContext('2d').drawImage(this.$refs.video, 0, 0);
+            
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
+            const formData = new FormData();
+            formData.append('image', blob);
+
+            const res = await fetch('/api/scan', { method: 'POST', body: formData });
+            const data = await res.json();
+            this.result = data.text;
+            this.detectedCard = data.detected;
+            
+            // Auto-Snap logic
+            if (data.bounds) {
+                this.lines = data.bounds;
+                this.updateMetrics();
+                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Auto-Snap Success!', type: 'success' } }));
+            } else if (this.detectedCard !== 'Unknown Card') {
+                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Card Detected!', type: 'success' } }));
+            } else {
+                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'No match found. Try again.', type: 'error' } }));
+            }
+            this.scanning = false;
+        },
+        updateMetrics() {
+            let lrRatio = Math.round((this.lines.left / (this.lines.left + (100 - this.lines.right))) * 100);
+            let tbRatio = Math.round((this.lines.top / (this.lines.top + (100 - this.lines.bottom))) * 100);
+            this.metrics.lr = `${lrRatio}/${100 - lrRatio}`;
+            this.metrics.tb = `${tbRatio}/${100 - tbRatio}`;
+        },
+        handleMove(e) {
+            if (!this.dragging) return;
+            const rect = this.$refs.container.getBoundingClientRect();
+            const x = ((e.clientX || e.touches[0].clientX) - rect.left) / rect.width * 100;
+            const y = ((e.clientY || e.touches[0].clientY) - rect.top) / rect.height * 100;
+            
+            if (this.dragging === 'left') this.lines.left = Math.max(0, Math.min(x, this.lines.right - 5));
+            if (this.dragging === 'right') this.lines.right = Math.max(this.lines.left + 5, Math.min(x, 100));
+            if (this.dragging === 'top') this.lines.top = Math.max(0, Math.min(y, this.lines.bottom - 5));
+            if (this.dragging === 'bottom') this.lines.bottom = Math.max(this.lines.top + 5, Math.min(y, 100));
+            this.updateMetrics();
+        }
+     }"
+     @mousemove="handleMove($event)"
+     @touchmove="handleMove($event)"
+     @mouseup="dragging = null"
+     @touchend="dragging = null"
+>
+    <div class="flex items-center justify-between px-1">
+        <h2 class="text-lg font-bold">Card Scanner</h2>
+        <button class="text-white/40" @click="lines = { left: 20, right: 80, top: 20, bottom: 80 }; updateMetrics(); result = ''; detectedCard = ''">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        </button>
+    </div>
+
+    <div x-ref="container" class="relative aspect-[3/4] glass-card overflow-hidden border-purple-500/20 shadow-[0_0_30px_rgba(124,58,237,0.1)]">
+        <!-- Live Video Feed -->
+        <video x-ref="video" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
+
+        <!-- Camera Viewfinder Mockup -->
+        <div class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+            <div class="w-48 h-64 border-2 border-white/20 rounded-2xl relative" :class="scanning ? 'border-purple-500 animate-pulse' : ''">
+                <div class="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-purple-500 rounded-tl-lg" :class="scanning ? 'animate-ping' : ''"></div>
+                <div class="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-purple-500 rounded-tr-lg" :class="scanning ? 'animate-ping' : ''"></div>
+                <div class="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-purple-500 rounded-bl-lg" :class="scanning ? 'animate-ping' : ''"></div>
+                <div class="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-purple-500 rounded-br-lg" :class="scanning ? 'animate-ping' : ''"></div>
+            </div>
+        </div>
+        <img src="https://images.pokemontcg.io/swsh45/19_hires.png" class="w-full h-full object-contain opacity-80 select-none pointer-events-none">
+
+        <!-- Brackets / Lines -->
+        <div class="absolute inset-0 pointer-events-none">
+            <!-- Vertical Lines -->
+            <div class="absolute w-0.5 h-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ew-resize" 
+                 :style="`left: ${lines.left}%`" @mousedown="dragging = 'left'" @touchstart="dragging = 'left'"></div>
+            <div class="absolute w-0.5 h-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ew-resize" 
+                 :style="`left: ${lines.right}%`" @mousedown="dragging = 'right'" @touchstart="dragging = 'right'"></div>
+
+            <!-- Horizontal Lines -->
+            <div class="absolute h-0.5 w-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ns-resize" 
+                 :style="`top: ${lines.top}%`" @mousedown="dragging = 'top'" @touchstart="dragging = 'top'"></div>
+            <div class="absolute h-0.5 w-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ns-resize" 
+                 :style="`top: ${lines.bottom}%`" @mousedown="dragging = 'bottom'" @touchstart="dragging = 'bottom'"></div>
+
+            <!-- Metrics -->
+            <div class="absolute bg-black/80 text-purple-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-purple-500/30 backdrop-blur-sm"
+                 :style="`left: 5%; top: ${(lines.top + lines.bottom) / 2}%`" x-text="metrics.tb"></div>
+            <div class="absolute bg-black/80 text-blue-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-500/30 backdrop-blur-sm"
+                 :style="`left: ${(lines.left + lines.right) / 2}%; top: 5%`" x-text="metrics.lr"></div>
+        </div>
+
+        <div class="absolute bottom-4 left-0 right-0 flex justify-center">
+            <div class="glass-card px-4 py-2 bg-black/60 backdrop-blur-xl border-purple-500/30 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-purple-500"><path d="m15 15-3-3 3-3"/><path d="m9 15 3-3-3-3"/><path d="m18 12h-6"/><path d="m6 12h6"/></svg>
+                <span class="text-[10px] font-bold text-white/80">Drag lines to card edges</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controls / Metrics -->
+    <div class="space-y-4">
+        <!-- Scan Button -->
+        <button @click="capture()" 
+                class="w-full py-4 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-xl"
+                :class="scanning ? 'bg-white/10 text-white/40 cursor-wait' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20'">
+            <svg x-show="!scanning" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <svg x-show="scanning" class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            <span x-text="scanning ? 'SCANNING...' : 'CAPTURE CARD'"></span>
+        </button>
+
+        <!-- OCR Result Display -->
+        <div x-show="detectedCard" x-transition class="glass-card p-4 border-emerald-500/30 bg-emerald-500/5">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                </div>
+                <div>
+                    <p class="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Match Found</p>
+                    <p class="text-sm font-bold" x-text="detectedCard"></p>
+                </div>
+            </div>
+            <p class="mt-2 text-[10px] text-white/20 italic truncate" x-text="'Raw: ' + result"></p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div class="glass-card p-4 text-center">
+                <p class="text-[10px] text-white/40 font-bold uppercase tracking-widest mb-1">L / R Ratio</p>
+                <p class="text-xl font-bold font-mono text-purple-400" x-text="metrics.lr"></p>
+            </div>
+            <div class="glass-card p-4 text-center">
+                <p class="text-[10px] text-white/40 font-bold uppercase tracking-widest mb-1">T / B Ratio</p>
+                <p class="text-xl font-bold font-mono text-blue-400" x-text="metrics.tb"></p>
+            </div>
+        </div>
+    </div>
+</div>
