@@ -1,9 +1,9 @@
 <div class="max-w-container-max mx-auto w-full animate-in" x-data="{ mode: 'login', signupAttempted: false, resendDisabled: false, countdown: 0 }">
     <div class="flex flex-col md:flex-row items-end justify-between gap-lg">
         <!-- Branding Section -->
-        <div class="mb-md md:mb-0">
+        <div class="mb-md md:mb-0 w-full md:w-auto">
             <div class="flex items-center gap-4 mb-xs">
-                <img src="/static/img/logo.png" alt="Pokget" class="w-12 h-12">
+                <img src="/static/img/logo.png" alt="Pokget" class="w-14 h-14">
                 <h1 class="font-h2 text-4xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
                     Pokget
                 </h1>
@@ -11,61 +11,61 @@
             <p class="font-label-sm text-xs text-on-surface-variant uppercase tracking-widest opacity-60">
                 Digital Vault Access // v.2.0.4
             </p>
-            <div class="mt-4 flex gap-4">
+            <div class="mt-6 flex gap-6">
                 <button @click="mode = 'login'; signupAttempted = false" 
-                        class="text-xs font-bold transition-all uppercase tracking-widest"
+                        class="text-sm font-bold transition-all uppercase tracking-[0.2em]"
                         :class="mode === 'login' ? 'text-primary' : 'text-on-surface-variant/40 hover:text-on-surface-variant/60'">
-                    Vault Entry
+                    Login
                 </button>
                 <button @click="mode = 'register'" 
-                        class="text-xs font-bold transition-all uppercase tracking-widest"
+                        class="text-sm font-bold transition-all uppercase tracking-[0.2em]"
                         :class="mode === 'register' ? 'text-primary' : 'text-on-surface-variant/40 hover:text-on-surface-variant/60'">
-                    Initiate Sequence
+                    Register
                 </button>
             </div>
         </div>
 
         <!-- Inputs & CTA Cluster -->
-        <div class="w-full md:w-auto flex flex-col md:flex-row items-stretch md:items-end gap-md">
+        <div class="w-full md:w-auto flex flex-col md:flex-row items-stretch md:items-end gap-6 mt-8 md:mt-0">
             <!-- Login Form -->
-            <form x-show="mode === 'login'" hx-post="/auth/login" hx-target="body" class="flex flex-col md:flex-row items-stretch md:items-end gap-md w-full">
-                <div class="relative group">
+            <form x-show="mode === 'login'" hx-post="/auth/login" hx-target="body" class="flex flex-col md:flex-row items-stretch md:items-end gap-6 w-full">
+                <div class="relative group w-full md:w-auto">
                     <label class="absolute -top-6 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase">VAULT IDENTITY</label>
-                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-lg py-md rounded-xl w-full md:w-64 focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
+                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-6 py-5 rounded-2xl w-full md:w-80 text-lg focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
                            placeholder="collector@example.com" type="email" name="email" required/>
                 </div>
-                <div class="relative group">
+                <div class="relative group w-full md:w-auto">
                     <label class="absolute -top-6 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase">ACCESS KEY</label>
-                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-lg py-md rounded-xl w-full md:w-64 focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
+                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-6 py-5 rounded-2xl w-full md:w-80 text-lg focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
                            placeholder="••••••••" type="password" name="password" required/>
                 </div>
-                <button type="submit" class="bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-bold text-lg px-8 py-md rounded-xl hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-2">
+                <button type="submit" class="bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-bold text-xl px-12 py-5 rounded-2xl hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-3">
                     Enter
-                    <span class="material-symbols-outlined text-[24px]">keyboard_tab</span>
+                    <span class="material-symbols-outlined text-[28px]">keyboard_tab</span>
                 </button>
             </form>
 
             <!-- Register Form -->
-            <form x-show="mode === 'register'" hx-post="/auth/register" hx-target="#main-content" class="flex flex-col md:flex-row items-stretch md:items-end gap-md w-full">
-                <div class="relative group">
+            <form x-show="mode === 'register'" hx-post="/auth/register" hx-target="#main-content" class="flex flex-col md:flex-row items-stretch md:items-end gap-6 w-full">
+                <div class="relative group w-full md:w-auto">
                     <label class="absolute -top-6 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase">IDENTITY</label>
-                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-lg py-md rounded-xl w-full md:w-64 focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
+                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-6 py-5 rounded-2xl w-full md:w-80 text-lg focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
                            placeholder="collector@example.com" type="email" name="email" required/>
                 </div>
-                <div class="relative group">
+                <div class="relative group w-full md:w-auto">
                     <label class="absolute -top-6 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase">CREATE KEY</label>
-                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-lg py-md rounded-xl w-full md:w-64 focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
+                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-6 py-5 rounded-2xl w-full md:w-80 text-lg focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
                            placeholder="••••••••" type="password" name="password" required/>
                 </div>
-                <button type="submit" @click="signupAttempted = true" class="bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-bold text-lg px-8 py-md rounded-xl hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-2">
+                <button type="submit" @click="signupAttempted = true" class="bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-bold text-xl px-12 py-5 rounded-2xl hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-3">
                     Initiate
-                    <span class="material-symbols-outlined text-[24px]">vibration</span>
+                    <span class="material-symbols-outlined text-[28px]">vibration</span>
                 </button>
             </form>
 
             <!-- Resend Section -->
-            <div x-show="signupAttempted && mode === 'register'" x-transition class="md:absolute md:bottom-full md:right-0 mb-8 text-right">
-                <p class="text-[10px] text-on-surface-variant/40 uppercase tracking-widest mb-2">Key not received?</p>
+            <div x-show="signupAttempted && mode === 'register'" x-transition class="md:absolute md:bottom-full md:right-0 mb-12 text-right">
+                <p class="text-xs text-on-surface-variant/40 uppercase tracking-widest mb-3">Key not received?</p>
                 <button @click="
                     if (!resendDisabled) {
                         resendDisabled = true;
@@ -94,7 +94,7 @@
                         });
                     }"
                     :disabled="resendDisabled"
-                    class="text-[10px] font-bold text-primary uppercase tracking-widest hover:text-white transition-colors disabled:opacity-20">
+                    class="text-xs font-bold text-primary uppercase tracking-widest hover:text-white transition-colors disabled:opacity-20">
                     <span x-text="resendDisabled ? 'Retry in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend Key'"></span>
                 </button>
             </div>
@@ -102,9 +102,9 @@
     </div>
 
     <!-- Footer Elements -->
-    <div class="mt-xl flex flex-col md:flex-row justify-between items-center border-t border-outline-variant/10 pt-md">
+    <div class="mt-16 flex flex-col md:flex-row justify-between items-center border-t border-outline-variant/10 pt-8">
         <span class="font-label-sm text-[10px] text-on-surface-variant/40 uppercase tracking-widest">© 2026 POKGET VAULT. PRESTIGE ENCRYPTED.</span>
-        <div class="flex gap-lg mt-sm md:mt-0">
+        <div class="flex gap-12 mt-6 md:mt-0">
             <a class="font-label-sm text-[10px] text-on-surface-variant/40 hover:text-primary transition-colors uppercase tracking-widest" href="#">Lost Access?</a>
             <a class="font-label-sm text-[10px] text-on-surface-variant/40 hover:text-primary transition-colors uppercase tracking-widest" href="#">Security Protocols</a>
         </div>
