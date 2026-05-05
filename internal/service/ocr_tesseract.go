@@ -29,9 +29,9 @@ import (
 	"github.com/anthonynsimon/bild/effect"
 	"github.com/otiai10/gosseract/v2"
 	"image"
-	_ "image/gif"
+	_ "image/gif"  // Register GIF format for image.Decode
 	"image/jpeg"
-	_ "image/png"
+	_ "image/png"  // Register PNG format for image.Decode
 	"log/slog"
 	"regexp"
 )
