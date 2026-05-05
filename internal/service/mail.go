@@ -47,7 +47,7 @@ func NewMailService() *MailService {
 }
 
 func (s *MailService) SendConfirmationEmail(to, token string) error {
-	subject := "Verify your Gettos account"
+	subject := "Verify your Pokget account"
 	confirmURL := fmt.Sprintf("http://localhost:8080/auth/confirm?token=%s", token)
 
 	data := map[string]string{
@@ -94,7 +94,7 @@ const confirmEmailTemplate = `
 </head>
 <body>
     <div class="card">
-        <div class="logo">GETTOS</div>
+        <div class="logo">POKGET</div>
         <h1>Welcome to the collection!</h1>
         <p>You're one step away from tracking your TCG portfolio like a pro. Click the button below to verify your email.</p>
         <a href="{{.ConfirmURL}}" class="btn">Verify Account</a>

@@ -28,12 +28,12 @@ import (
 	"os"
 	"time"
 
-	"gettos/internal/auth"
-	"gettos/internal/db"
-	"gettos/internal/handlers"
-	"gettos/internal/models"
-	"gettos/internal/service"
-	"gettos/internal/worker"
+	"pokget/internal/auth"
+	"pokget/internal/db"
+	"pokget/internal/handlers"
+	"pokget/internal/models"
+	"pokget/internal/service"
+	"pokget/internal/worker"
 
 	"github.com/gorilla/mux"
 )

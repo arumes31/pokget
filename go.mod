@@ -1,4 +1,4 @@
-module gettos
+module pokget
 
 go 1.26
 

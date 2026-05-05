@@ -9,16 +9,16 @@ services:
     environment:
       - DB_HOST=pokget_db
       - DB_PORT=5432
-      - DB_USER=${DB_USER:-gettos_user}
-      - DB_PASSWORD=${DB_PASSWORD:-gettos_pass}
-      - DB_NAME=${DB_NAME:-gettos_db}
+      - DB_USER=${DB_USER:-pokget_user}
+      - DB_PASSWORD=${DB_PASSWORD:-pokget_pass}
+      - DB_NAME=${DB_NAME:-pokget_db}
       - OLLAMA_HOST=pokget_ollama
       - SESSION_KEY=${SESSION_KEY}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
-      - SMTP_FROM=${SMTP_FROM:-no-reply@gettos.com}
+      - SMTP_FROM=${SMTP_FROM:-no-reply@pokget.com}
     depends_on:
       pokget_db:
         condition: service_healthy
@@ -31,9 +31,9 @@ services:
     container_name: pokget_db
     image: postgres:15-alpine
     environment:
-      - POSTGRES_USER=${DB_USER:-gettos_user}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-gettos_pass}
-      - POSTGRES_DB=${DB_NAME:-gettos_db}
+      - POSTGRES_USER=${DB_USER:-pokget_user}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-pokget_pass}
+      - POSTGRES_DB=${DB_NAME:-pokget_db}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s

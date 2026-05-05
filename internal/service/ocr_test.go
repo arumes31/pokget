@@ -21,7 +21,7 @@
 package service
 
 import (
-	"gettos/internal/models"
+	"pokget/internal/models"
 	"regexp"
 	"testing"
 )

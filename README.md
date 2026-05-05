@@ -1,4 +1,4 @@
-# GetTos
+# Pokget
 
 ## CI/CD Pipeline
 

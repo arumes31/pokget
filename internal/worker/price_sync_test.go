@@ -21,8 +21,8 @@
 package worker
 
 import (
-	"gettos/internal/models"
-	"gettos/internal/service"
+	"pokget/internal/models"
+	"pokget/internal/service"
 	"testing"
 	"time"
 

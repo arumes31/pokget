@@ -23,7 +23,7 @@ package service
 import (
 	"database/sql"
 	"fmt"
-	"gettos/internal/models"
+	"pokget/internal/models"
 	"image"
 
 	"github.com/corona10/goimagehash"

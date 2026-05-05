@@ -20,7 +20,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN go build -o main ./cmd/gettos/main.go
+RUN go build -o main ./cmd/pokget/main.go
 
 # Final stage
 FROM alpine:latest

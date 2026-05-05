@@ -22,7 +22,7 @@ package db
 
 import (
 	"database/sql"
-	"gettos/internal/models"
+	"pokget/internal/models"
 	"log/slog"
 
 	"github.com/shopspring/decimal"

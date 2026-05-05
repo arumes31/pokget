@@ -24,7 +24,7 @@ package service
 
 import (
 	"bytes"
-	"gettos/internal/models"
+	"pokget/internal/models"
 	"github.com/anthonynsimon/bild/adjust"
 	"github.com/anthonynsimon/bild/effect"
 	"github.com/otiai10/gosseract/v2"

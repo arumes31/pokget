@@ -23,7 +23,7 @@
 package service
 
 import (
-	"gettos/internal/models"
+	"pokget/internal/models"
 	"log/slog"
 )
 

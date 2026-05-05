@@ -24,7 +24,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gettos/internal/models"
+	"pokget/internal/models"
 	"io"
 	"log/slog"
 	"net/http"

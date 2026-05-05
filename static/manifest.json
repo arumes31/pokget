@@ -1,6 +1,6 @@
 {
-  "name": "Gettos TCG Tracker",
-  "short_name": "Gettos",
+  "name": "Pokget TCG Tracker",
+  "short_name": "Pokget",
   "description": "Mobile-first TCG portfolio tracker and grading utility.",
   "start_url": "/",
   "display": "standalone",

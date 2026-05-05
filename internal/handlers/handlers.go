@@ -33,10 +33,10 @@ import (
 	"net/http"
 	"strings"
 
-	"gettos/internal/auth"
-	"gettos/internal/db"
-	"gettos/internal/models"
-	"gettos/internal/service"
+	"pokget/internal/auth"
+	"pokget/internal/db"
+	"pokget/internal/models"
+	"pokget/internal/service"
 )
 
 type Handler struct {

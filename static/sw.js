@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gettos-v1';
+const CACHE_NAME = 'Pokget-v1';
 const ASSETS = [
   '/',
   '/static/css/styles.css',

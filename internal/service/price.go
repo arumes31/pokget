@@ -22,7 +22,7 @@ package service
 
 import (
 	"fmt"
-	"gettos/internal/models"
+	"pokget/internal/models"
 	"log/slog"
 	"net/url"
 	"strconv"

@@ -23,8 +23,8 @@ package worker
 import (
 	"context"
 	"database/sql"
-	"gettos/internal/models"
-	"gettos/internal/service"
+	"pokget/internal/models"
+	"pokget/internal/service"
 	"log/slog"
 	"time"
 
