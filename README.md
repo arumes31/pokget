@@ -20,3 +20,16 @@ To manually trigger a Docker build:
 3. Click **Run workflow**.
 4. (Optional) Specify the `target_branch`.
 5. Click **Run workflow**.
+
+## Deployment Examples
+
+### Local Development (Build from Source)
+```bash
+docker-compose up -d
+```
+
+### GHCR Production (Pull Pre-built Image)
+Use this if you want to run the latest version without building locally:
+```bash
+docker-compose -f docker-compose.ghcr.yml up -d
+```

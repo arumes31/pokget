@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  pokget_app:
+    container_name: pokget_app
+    image: ghcr.io/arumes31/pokget:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=pokget_db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-gettos_user}
+      - DB_PASSWORD=${DB_PASSWORD:-gettos_pass}
+      - DB_NAME=${DB_NAME:-gettos_db}
+      - OLLAMA_HOST=pokget_ollama
+      - SESSION_KEY=${SESSION_KEY}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM:-no-reply@gettos.com}
+    depends_on:
+      pokget_db:
+        condition: service_healthy
+      pokget_ollama:
+        condition: service_started
+    volumes:
+      - ./data/cache:/app/data/cache
+
+  pokget_db:
+    container_name: pokget_db
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=${DB_USER:-gettos_user}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-gettos_pass}
+      - POSTGRES_DB=${DB_NAME:-gettos_db}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+
+  pokget_ollama:
+    container_name: pokget_ollama
+    image: ollama/ollama:0.1.32
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
