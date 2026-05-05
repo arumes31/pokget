@@ -21,14 +21,17 @@
 package service
 
 import (
+	"context"
 	"fmt"
-	"pokget/internal/models"
 	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"pokget/internal/models"
+
+	"github.com/chromedp/chromedp"
 	"github.com/gocolly/colly/v2"
 )
 
@@ -41,10 +44,30 @@ type PriceClient interface {
 type MockPriceClient struct {
 	FixedUSD float64
 	FixedEUR float64
+	Err      error
 }
 
 func (m *MockPriceClient) FetchPrice(_ models.Card) (float64, float64, error) {
-	return m.FixedUSD, m.FixedEUR, nil
+	return m.FixedUSD, m.FixedEUR, m.Err
+}
+
+// MockMailer for testing
+type MockMailer struct {
+	Err error
+}
+
+func (m *MockMailer) SendConfirmationEmail(_, _ string) error {
+	return m.Err
+}
+
+// MockLLMClient for testing
+type MockLLMClient struct {
+	Response string
+	Err      error
+}
+
+func (m *MockLLMClient) FuzzyMatchCard(_ string, _ []models.Card) (string, error) {
+	return m.Response, m.Err
 }
 
 // ScraperPriceClient fetches prices via Web Scraping (No API key needed)
@@ -73,7 +96,16 @@ func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, err
 	c.UserAgent = userAgents[time.Now().UnixNano()%int64(len(userAgents))]
 
 	// --- 1. Scrape Cardmarket (EUR) ---
-	cmURL := fmt.Sprintf("https://www.cardmarket.com/en/Pokemon/Products/Singles/%s/%s",
+	var gameSegment string
+	switch strings.ToLower(card.Game) {
+	case "one piece":
+		gameSegment = "One-Piece-Card-Game"
+	default:
+		gameSegment = "Pokemon"
+	}
+
+	cmURL := fmt.Sprintf("https://www.cardmarket.com/en/%s/Products/Singles/%s/%s",
+		gameSegment,
 		url.PathEscape(strings.ReplaceAll(card.Set, " ", "-")),
 		url.PathEscape(strings.ReplaceAll(card.Name, " ", "-")))
 
@@ -105,10 +137,50 @@ func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, err
 		scrapeErr = err
 	}
 
-	// --- 2. Scrape TCGPlayer (USD) ---
-	usd, _ = card.PriceUSD.Float64() // Fallback for TCGPlayer's complex React-based DOM
+	// --- 2. Headless Fallback for TCGPlayer (USD) ---
+	if usd == 0 {
+		headlessPrice, err := s.fetchPriceHeadless(card)
+		if err == nil {
+			usd = headlessPrice
+		} else {
+			slog.Warn("Scraper: Headless fallback failed", "card", card.Name, "error", err)
+		}
+	}
 
 	return usd, eur, scrapeErr
+}
+
+func (s *ScraperPriceClient) fetchPriceHeadless(card models.Card) (float64, error) {
+	ctx, cancel := chromedp.NewContext(context.Background())
+	defer cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	var priceStr string
+	var targetURL string
+	
+	switch strings.ToLower(card.Game) {
+	case "pokemon":
+		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/pokemon/product?q=%s", url.QueryEscape(card.Name))
+	case "one piece":
+		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/one-piece-card-game/product?q=%s", url.QueryEscape(card.Name))
+	default:
+		return 0, fmt.Errorf("unsupported game for headless scrape")
+	}
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(targetURL),
+		chromedp.WaitVisible(`.search-result__market-price--value`, chromedp.ByQuery),
+		chromedp.Text(`.search-result__market-price--value`, &priceStr, chromedp.ByQuery),
+	)
+
+	if err != nil {
+		return 0, err
+	}
+
+	priceStr = strings.TrimPrefix(priceStr, "$")
+	return strconv.ParseFloat(priceStr, 64)
 }
 
 // DefaultPriceClient for production (can choose between Scraper or API)

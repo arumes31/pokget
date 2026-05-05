@@ -3,9 +3,22 @@
     <div class="absolute -top-10 -left-10 w-64 h-64 bg-primary/10 blur-[100px] rounded-full"></div>
     <div class="glass-card rounded-xl p-lg relative overflow-hidden border border-white/5">
         <div class="flex flex-col gap-xs">
-            <span class="font-label-sm text-xs uppercase text-on-surface-variant tracking-widest opacity-60">Total Portfolio Value</span>
+            <div class="flex justify-between items-center">
+                <span class="font-label-sm text-xs uppercase text-on-surface-variant tracking-widest opacity-60">Total Portfolio Value</span>
+                <!-- Rank Display -->
+                <div class="flex items-center gap-sm glass-card px-3 py-1.5 rounded-full border border-white/10">
+                    <img src="{{ .RankIcon }}" alt="Rank" class="w-6 h-6 object-contain">
+                    <div class="flex flex-col">
+                        <span class="text-[10px] uppercase font-bold text-primary tracking-tighter">{{ .Rank }}</span>
+                        <div class="w-16 h-1 bg-white/10 rounded-full mt-0.5 overflow-hidden">
+                            <div class="h-full bg-primary" style="width: {{ .XPPercent }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="flex items-baseline gap-md">
-                <span class="font-h1 text-4xl md:text-5xl font-bold text-on-surface tracking-tight">$12,450.80</span>
+                <span class="font-h1 text-4xl md:text-5xl font-bold text-on-surface tracking-tight roll-counter" 
+                      data-target="{{ .TotalValuation }}" data-prefix="$">$0.00</span>
                 <div class="flex items-center text-tertiary gap-xs px-2 py-1 bg-tertiary/10 rounded-full border border-tertiary/20">
                     <span class="material-symbols-outlined text-[16px]">trending_up</span>
                     <span class="font-label-sm text-[10px] font-bold">+4.2%</span>
@@ -33,13 +46,13 @@
     <!-- Stat 1 -->
     <div class="glass-card min-w-[160px] flex-shrink-0 p-md rounded-xl flex flex-col gap-xs border-l-4 border-l-primary/40">
         <span class="font-label-sm text-[10px] uppercase tracking-widest text-on-surface-variant opacity-60">Total Cards</span>
-        <span class="font-bold text-2xl text-on-surface">342</span>
+        <span class="font-bold text-2xl text-on-surface roll-counter" data-target="{{ len .Portfolio }}">0</span>
     </div>
     <!-- Stat 2 -->
     <div class="glass-card min-w-[200px] flex-shrink-0 p-md rounded-xl flex flex-col gap-xs border-l-4 border-l-secondary/40">
         <span class="font-label-sm text-[10px] uppercase tracking-widest text-on-surface-variant opacity-60">Top Performer</span>
         <div class="flex items-center gap-xs">
-            <span class="font-bold text-lg text-secondary truncate">Charizard VMAX</span>
+            <span class="font-bold text-lg text-secondary truncate">{{ (index .Portfolio 0).Name }}</span>
         </div>
     </div>
     <!-- Stat 3 -->
@@ -56,23 +69,23 @@
         <button class="font-label-sm text-[10px] text-primary uppercase tracking-widest hover:opacity-80 transition-opacity" hx-get="/binders" hx-target="#main-content">See All</button>
     </div>
     <div class="grid grid-cols-2 gap-md md:grid-cols-4 lg:grid-cols-6 pb-8">
-        <!-- Mock Card Items for now, will be dynamic soon -->
-        <template x-for="i in 6" :key="i">
-            <div class="glass-card rounded-xl p-sm flex flex-col gap-sm group hover:border-primary/40 transition-all duration-300 cursor-pointer active:scale-95">
-                <div class="aspect-[3/4] rounded-lg overflow-hidden relative shadow-lg">
-                    <img :src="'https://images.pokemontcg.io/swsh4/174_hires.png'" alt="Card" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                    <div class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                </div>
-                <div class="px-xs pb-xs">
-                    <p class="font-label-sm text-xs text-on-surface-variant truncate">Mewtwo GX</p>
-                    <div class="flex justify-between items-center mt-1">
-                        <span class="font-bold text-lg text-on-surface">$245.00</span>
-                        <svg class="w-12 h-6" viewBox="0 0 100 40">
-                            <path d="M0,30 Q25,25 50,15 T100,5" fill="none" stroke="#4cd7f6" stroke-width="2"></path>
-                        </svg>
-                    </div>
+        {{ range .Portfolio }}
+        <div class="glass-card rounded-xl p-sm flex flex-col gap-sm group hover:border-primary/40 transition-all duration-300 cursor-pointer active:scale-95">
+            <div class="aspect-[3/4] rounded-lg overflow-hidden relative shadow-lg">
+                <img src="{{ .ImageURL }}" alt="{{ .Name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                <div class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            </div>
+            <div class="px-xs pb-xs">
+                <p class="font-label-sm text-[10px] text-primary-fixed-dim uppercase tracking-widest">{{ .Game }}</p>
+                <p class="font-label-sm text-xs text-on-surface-variant truncate">{{ .Name }}</p>
+                <div class="flex justify-between items-center mt-1">
+                    <span class="font-bold text-lg text-on-surface">${{ .PriceUSD }}</span>
+                    <svg class="w-12 h-6" viewBox="0 0 100 40">
+                        <path d="M0,30 Q25,25 50,15 T100,5" fill="none" stroke="#4cd7f6" stroke-width="2"></path>
+                    </svg>
                 </div>
             </div>
-        </template>
+        </div>
+        {{ end }}
     </div>
 </section>

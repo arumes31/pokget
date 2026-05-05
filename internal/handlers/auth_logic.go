@@ -37,9 +37,15 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Register", "method", r.Method, "url", r.URL.String())
 	email := r.FormValue("email")
 	password := r.FormValue("password")
+	confirmPassword := r.FormValue("confirm_password")
 
-	if email == "" || password == "" {
+	if email == "" || password == "" || confirmPassword == "" {
 		http.Error(w, "Email and password are required", http.StatusBadRequest)
+		return
+	}
+
+	if password != confirmPassword {
+		http.Error(w, "Passwords do not match", http.StatusBadRequest)
 		return
 	}
 
@@ -73,10 +79,15 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailSvc := service.NewMailService()
+	mailSvc := h.Mailer
+	if mailSvc == nil {
+		mailSvc = service.NewMailService()
+	}
 	if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
 		slog.Error("Failed to send confirmation email", "error", err)
 	}
+
+	h.Audit.Log("", "USER_REGISTER", map[string]interface{}{"email": email})
 
 	w.WriteHeader(http.StatusCreated)
 	if err := h.Templates.ExecuteTemplate(w, "auth_success", map[string]string{"Message": "Registration successful! Please check your email to verify your account."}); err != nil {
@@ -124,7 +135,10 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailSvc := service.NewMailService()
+	mailSvc := h.Mailer
+	if mailSvc == nil {
+		mailSvc = service.NewMailService()
+	}
 	if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
 		slog.Error("Failed to resend confirmation email", "error", err)
 		http.Error(w, "Failed to send email", http.StatusInternalServerError)
@@ -161,6 +175,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save session", http.StatusInternalServerError)
 		return
 	}
+
+	h.Audit.Log(u.ID, "USER_LOGIN", map[string]interface{}{"email": u.Email})
 
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }

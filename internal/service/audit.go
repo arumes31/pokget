@@ -18,18 +18,32 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package models
+package service
 
-import "time"
+import (
+	"database/sql"
+	"encoding/json"
+	"log/slog"
+)
 
-type User struct {
-	ID                string    `json:"id"`
-	Email             string    `json:"email"`
-	PasswordHash      string    `json:"-"`
-	IsVerified        bool      `json:"is_verified"`
-	VerificationToken string    `json:"-"`
-	XP                int       `json:"xp"`
-	RankTitle         string    `json:"rank_title"`
-	AvatarURL         string    `json:"avatar_url"`
-	CreatedAt         time.Time `json:"created_at"`
+type AuditService struct {
+	db *sql.DB
+}
+
+func NewAuditService(db *sql.DB) *AuditService {
+	return &AuditService{db: db}
+}
+
+func (s *AuditService) Log(userID, action string, metadata map[string]interface{}) {
+	metaJSON, err := json.Marshal(metadata)
+	if err != nil {
+		slog.Error("Audit: Failed to marshal metadata", "error", err)
+		metaJSON = []byte("{}")
+	}
+
+	_, err = s.db.Exec("INSERT INTO audit_logs (user_id, action, metadata) VALUES ($1, $2, $3)",
+		userID, action, metaJSON)
+	if err != nil {
+		slog.Error("Audit: Failed to insert log", "error", err)
+	}
 }

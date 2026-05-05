@@ -1,0 +1,45 @@
+<div class="space-y-lg animate-in">
+    <div class="flex justify-between items-end">
+        <h2 class="font-h2 text-2xl font-bold text-on-surface">Your Wantlist</h2>
+        <button class="glass-card px-md py-sm rounded-lg text-primary text-xs uppercase font-bold hover:opacity-80 transition-opacity"
+                onclick="openAddWantlistModal()">+ Add Grail</button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
+        {{ range .Items }}
+        <div class="glass-card rounded-xl p-md flex gap-md relative overflow-hidden group hover:border-primary/40 transition-all">
+            <div class="w-24 aspect-[3/4] rounded-lg overflow-hidden flex-shrink-0 shadow-lg">
+                <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover">
+            </div>
+            <div class="flex flex-col justify-between py-xs">
+                <div>
+                    <h3 class="font-bold text-on-surface truncate">{{ .Card.Name }}</h3>
+                    <p class="text-[10px] text-on-surface-variant uppercase tracking-widest opacity-60">{{ .Card.Set }}</p>
+                </div>
+                <div class="space-y-1">
+                    <div class="flex items-center gap-xs">
+                        <span class="text-[10px] text-on-surface-variant uppercase font-bold">Target Price:</span>
+                        <span class="text-tertiary font-bold">${{ .TargetPrice }}</span>
+                    </div>
+                    <div class="flex items-center gap-xs">
+                        <span class="text-[10px] text-on-surface-variant uppercase font-bold">Market:</span>
+                        <span class="text-on-surface font-bold">${{ .Card.PriceUSD }}</span>
+                    </div>
+                </div>
+                {{ if .Notes }}
+                <p class="text-[10px] text-on-surface-variant italic line-clamp-2">"{{ .Notes }}"</p>
+                {{ end }}
+            </div>
+            <!-- Progress towards target -->
+            <div class="absolute bottom-0 left-0 h-1 bg-tertiary/20 w-full">
+                <div class="h-full bg-tertiary" style="width: {{ div .Card.PriceUSD .TargetPrice | mul 100 }}%"></div>
+            </div>
+        </div>
+        {{ else }}
+        <div class="col-span-full py-20 flex flex-col items-center justify-center opacity-40">
+            <span class="material-symbols-outlined text-6xl">heart_broken</span>
+            <p class="mt-4 font-label-md uppercase tracking-widest">Your wantlist is empty</p>
+        </div>
+        {{ end }}
+    </div>
+</div>

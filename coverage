@@ -1,0 +1,25 @@
+mode: set
+pokget/internal/auth/auth.go:34.13,38.15 2 1
+pokget/internal/auth/auth.go:38.15,40.3 1 1
+pokget/internal/auth/auth.go:41.2,41.19 1 1
+pokget/internal/auth/auth.go:41.19,42.59 1 0
+pokget/internal/auth/auth.go:44.2,44.46 1 1
+pokget/internal/auth/auth.go:47.52,50.2 2 1
+pokget/internal/auth/auth.go:52.52,55.2 2 1
+pokget/internal/auth/auth.go:60.49,61.71 1 1
+pokget/internal/auth/auth.go:61.71,63.17 2 1
+pokget/internal/auth/auth.go:63.17,67.4 2 1
+pokget/internal/auth/auth.go:68.3,69.26 2 1
+pokget/internal/auth/auth.go:69.26,72.4 2 1
+pokget/internal/auth/auth.go:74.3,75.40 2 1
+pokget/internal/auth/proxy.go:31.54,36.71 3 1
+pokget/internal/auth/proxy.go:36.71,39.14 2 1
+pokget/internal/auth/proxy.go:39.14,42.4 1 1
+pokget/internal/auth/proxy.go:44.3,44.33 1 1
+pokget/internal/auth/proxy.go:44.33,46.53 1 1
+pokget/internal/auth/proxy.go:46.53,48.5 1 1
+pokget/internal/auth/proxy.go:48.10,48.64 1 1
+pokget/internal/auth/proxy.go:48.64,52.5 2 1
+pokget/internal/auth/proxy.go:58.3,58.19 1 1
+pokget/internal/auth/proxy.go:58.19,60.4 1 1
+pokget/internal/auth/proxy.go:62.3,62.23 1 1

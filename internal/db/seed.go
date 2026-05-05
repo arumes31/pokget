@@ -32,17 +32,18 @@ func SeedDatabase(db *sql.DB) error {
 	slog.Info("Worker: Seeding database with initial card data...")
 
 	mockCards := []models.Card{
-		{ID: "swsh45-19", Name: "Charizard VMAX", Set: "Shining Fates", PriceUSD: decimal.NewFromFloat(120.50), PriceEUR: decimal.NewFromFloat(110.00), ImageURL: "https://images.pokemontcg.io/swsh45/19_hires.png", Variant: "Holo"},
-		{ID: "swsh7-215", Name: "Umbreon VMAX", Set: "Evolving Skies", PriceUSD: decimal.NewFromFloat(650.00), PriceEUR: decimal.NewFromFloat(600.00), ImageURL: "https://images.pokemontcg.io/swsh7/215_hires.png", Variant: "Alt Art"},
-		{ID: "swsh12-186", Name: "Lugia V", Set: "Silver Tempest", PriceUSD: decimal.NewFromFloat(180.00), PriceEUR: decimal.NewFromFloat(165.00), ImageURL: "https://images.pokemontcg.io/swsh12/186_hires.png", Variant: "Holo"},
+		{ID: "swsh45-19", Name: "Charizard VMAX", Set: "Shining Fates", PriceUSD: decimal.NewFromFloat(120.50), PriceEUR: decimal.NewFromFloat(110.00), ImageURL: "https://images.pokemontcg.io/swsh45/19_hires.png", Variant: "Holo", Game: "Pokemon"},
+		{ID: "swsh7-215", Name: "Umbreon VMAX", Set: "Evolving Skies", PriceUSD: decimal.NewFromFloat(650.00), PriceEUR: decimal.NewFromFloat(600.00), ImageURL: "https://images.pokemontcg.io/swsh7/215_hires.png", Variant: "Alt Art", Game: "Pokemon"},
+		{ID: "op01-016", Name: "Nami", Set: "Romance Dawn", PriceUSD: decimal.NewFromFloat(15.00), PriceEUR: decimal.NewFromFloat(14.00), ImageURL: "https://example.com/op01-016.png", Variant: "Parallel", Game: "One Piece"},
+		{ID: "op01-120", Name: "Shanks", Set: "Romance Dawn", PriceUSD: decimal.NewFromFloat(250.00), PriceEUR: decimal.NewFromFloat(230.00), ImageURL: "https://example.com/op01-120.png", Variant: "SEC", Game: "One Piece"},
 	}
 
 	for _, card := range mockCards {
 		_, err := db.Exec(`
-			INSERT INTO cards (id, name, set_name, image_url, price_usd, price_eur, variant)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			INSERT INTO cards (id, name, set_name, image_url, price_usd, price_eur, variant, game)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			ON CONFLICT (id) DO NOTHING`,
-			card.ID, card.Name, card.Set, card.ImageURL, card.PriceUSD, card.PriceEUR, card.Variant)
+			card.ID, card.Name, card.Set, card.ImageURL, card.PriceUSD, card.PriceEUR, card.Variant, card.Game)
 		if err != nil {
 			return err
 		}

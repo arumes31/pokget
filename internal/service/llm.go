@@ -33,9 +33,14 @@ import (
 	"time"
 )
 
+type LLMClient interface {
+	FuzzyMatchCard(ocrText string, knownCards []models.Card) (string, error)
+}
+
 type LLMService struct {
-	BaseURL string
-	Model   string
+	BaseURL    string
+	Model      string
+	HTTPClient *http.Client
 }
 
 func NewLLMService() *LLMService {
@@ -45,8 +50,9 @@ func NewLLMService() *LLMService {
 	}
 	url := fmt.Sprintf("http://%s:11434", host)
 	return &LLMService{
-		BaseURL: url,
-		Model:   "tinyllama", // Extremely fast on CPU
+		BaseURL:    url,
+		Model:      "tinyllama", // Extremely fast on CPU
+		HTTPClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -72,8 +78,7 @@ Respond ONLY with the card name. If no match is found, respond with "Unknown Car
 		return "", fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Post(s.BaseURL+"/api/generate", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := s.HTTPClient.Post(s.BaseURL+"/api/generate", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("LLM request failed: %w", err)
 	}

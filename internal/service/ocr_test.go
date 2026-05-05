@@ -21,6 +21,9 @@
 package service
 
 import (
+	"bytes"
+	"image"
+	"image/png"
 	"pokget/internal/models"
 	"regexp"
 	"testing"
@@ -68,4 +71,35 @@ func containsIgnoreCase(s, substr string) bool {
 	pattern := `(?i)\b` + regexp.QuoteMeta(substr) + `\b`
 	matched, _ := regexp.MatchString(pattern, s)
 	return matched
+}
+
+func TestVision_DetectCardEdges(t *testing.T) {
+	// Test error case (invalid image bytes)
+	_, err := DetectCardEdges([]byte("invalid image data"))
+	if err == nil {
+		t.Error("Expected error when decoding invalid image bytes")
+	}
+
+	// Create a valid 10x10 PNG
+	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+
+	bounds, err := DetectCardEdges(buf.Bytes())
+	if err != nil {
+		t.Errorf("DetectCardEdges failed with valid image: %v", err)
+	}
+	if bounds.Left == 0 && bounds.Right == 0 && bounds.Top == 0 && bounds.Bottom == 0 {
+		t.Error("Expected non-zero bounds")
+	}
+}
+
+func TestProcessCardScan_Stub(t *testing.T) {
+	text, card, err := ProcessCardScan([]byte("dummy"), nil, "")
+	if err != nil {
+		t.Errorf("ProcessCardScan failed: %v", err)
+	}
+	if text != "OCR Not Available" || card != "Unknown Card" {
+		t.Errorf("Unexpected stub results: text=%s, card=%s", text, card)
+	}
 }

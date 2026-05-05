@@ -22,14 +22,30 @@ package models
 
 import "time"
 
-type User struct {
-	ID                string    `json:"id"`
-	Email             string    `json:"email"`
-	PasswordHash      string    `json:"-"`
-	IsVerified        bool      `json:"is_verified"`
-	VerificationToken string    `json:"-"`
-	XP                int       `json:"xp"`
-	RankTitle         string    `json:"rank_title"`
-	AvatarURL         string    `json:"avatar_url"`
-	CreatedAt         time.Time `json:"created_at"`
+type PortfolioItem struct {
+	ID              string    `json:"id"`
+	UserID          string    `json:"user_id"`
+	CardID          string    `json:"card_id"`
+	Condition       string    `json:"condition"`
+	Format          string    `json:"format"` // Raw, Graded
+	Grade           string    `json:"grade"`
+	GradingCompany  string    `json:"grading_company"`
+	Notes           string    `json:"notes"`
+	IsPublic        bool      `json:"is_public"`
+	CreatedAt       time.Time `json:"created_at"`
+	
+	// Join fields
+	Card Card `json:"card"`
+}
+
+type WantlistItem struct {
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	CardID      string    `json:"card_id"`
+	TargetPrice float64   `json:"target_price"`
+	Notes       string    `json:"notes"`
+	CreatedAt   time.Time `json:"created_at"`
+	
+	// Join fields
+	Card Card `json:"card"`
 }

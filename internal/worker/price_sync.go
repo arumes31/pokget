@@ -92,12 +92,40 @@ func (w *PriceSyncWorker) syncPrices() {
 			continue
 		}
 
+		// 1. Update Card Price in DB
 		_, err = w.db.Exec("UPDATE cards SET price_usd = $1, price_eur = $2, last_updated = NOW() WHERE id = $3",
 			decimal.NewFromFloat(usd), decimal.NewFromFloat(eur), c.ID)
 		if err != nil {
 			slog.Error("Sync: Failed to update DB", "card", c.Name, "error", err)
 		} else {
 			slog.Debug("Sync: Updated card price", "card", c.Name, "usd", usd, "eur", eur)
+		}
+
+		// 2. Record Price History (Improvement #26)
+		_, err = w.db.Exec("INSERT INTO price_history (card_id, price_usd, price_eur) VALUES ($1, $2, $3)",
+			c.ID, decimal.NewFromFloat(usd), decimal.NewFromFloat(eur))
+		if err != nil {
+			slog.Error("Sync: Failed to record price history", "card", c.Name, "error", err)
+		}
+
+		// 3. Check Price Alerts (Improvement #38)
+		rowsAlerts, err := w.db.Query("SELECT id, user_id, target_price FROM price_alerts WHERE card_id = $1 AND is_active = TRUE", c.ID)
+		if err == nil {
+			defer rowsAlerts.Close()
+			for rowsAlerts.Next() {
+				var alertID int
+				var userID string
+				var targetPrice decimal.Decimal
+				if err := rowsAlerts.Scan(&alertID, &userID, &targetPrice); err == nil {
+					currentPrice := decimal.NewFromFloat(usd)
+					if currentPrice.LessThanOrEqual(targetPrice) {
+						slog.Info("ALERT: Price target hit!", "user", userID, "card", c.Name, "target", targetPrice, "current", currentPrice)
+						// In a real app, send email/push here
+						// Deactivate alert after hit?
+						// _, _ = w.db.Exec("UPDATE price_alerts SET is_active = FALSE WHERE id = $1", alertID)
+					}
+				}
+			}
 		}
 	}
 	slog.Info("Price synchronization cycle completed")

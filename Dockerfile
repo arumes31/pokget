@@ -25,8 +25,15 @@ RUN go build -o main ./cmd/pokget/main.go
 # Final stage
 FROM alpine:latest
 
-# Install Tesseract runtime
-RUN apk add --no-cache tesseract-ocr
+# Install runtime dependencies: Tesseract for OCR and Chromium for headless scraping
+RUN apk add --no-cache \
+    tesseract-ocr \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
 
 WORKDIR /app
 

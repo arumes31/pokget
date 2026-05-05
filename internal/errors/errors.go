@@ -18,18 +18,45 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package models
+package errors
 
-import "time"
+import (
+	"fmt"
+	"net/http"
+	"runtime"
+)
 
-type User struct {
-	ID                string    `json:"id"`
-	Email             string    `json:"email"`
-	PasswordHash      string    `json:"-"`
-	IsVerified        bool      `json:"is_verified"`
-	VerificationToken string    `json:"-"`
-	XP                int       `json:"xp"`
-	RankTitle         string    `json:"rank_title"`
-	AvatarURL         string    `json:"avatar_url"`
-	CreatedAt         time.Time `json:"created_at"`
+// AppError represents a domain-specific error with extra context.
+type AppError struct {
+	Code       int    // HTTP status code
+	Message    string // User-facing message
+	Inner      error  // Underlying error
+	StackTrace string // Where it happened
+}
+
+func (e *AppError) Error() string {
+	if e.Inner != nil {
+		return fmt.Sprintf("%s: %v", e.Message, e.Inner)
+	}
+	return e.Message
+}
+
+// Wrap creates a new AppError with a stack trace.
+func Wrap(code int, message string, err error) *AppError {
+	stack := make([]byte, 1024)
+	length := runtime.Stack(stack, false)
+	return &AppError{
+		Code:       code,
+		Message:    message,
+		Inner:      err,
+		StackTrace: string(stack[:length]),
+	}
+}
+
+// MapToStatusCode returns the HTTP status code for an error.
+func MapToStatusCode(err error) int {
+	if appErr, ok := err.(*AppError); ok {
+		return appErr.Code
+	}
+	return http.StatusInternalServerError
 }

@@ -18,18 +18,45 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package models
+package service
 
-import "time"
+import (
+	"context"
+	"encoding/json"
+	"time"
 
-type User struct {
-	ID                string    `json:"id"`
-	Email             string    `json:"email"`
-	PasswordHash      string    `json:"-"`
-	IsVerified        bool      `json:"is_verified"`
-	VerificationToken string    `json:"-"`
-	XP                int       `json:"xp"`
-	RankTitle         string    `json:"rank_title"`
-	AvatarURL         string    `json:"avatar_url"`
-	CreatedAt         time.Time `json:"created_at"`
+	"github.com/redis/go-redis/v9"
+)
+
+type CacheService struct {
+	client *redis.Client
+}
+
+func NewCacheService(addr, password string) *CacheService {
+	client := redis.NewClient(&redis.Options{
+		Addr:     addr,
+		Password: password,
+		DB:       0,
+	})
+	return &CacheService{client: client}
+}
+
+func (s *CacheService) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return s.client.Set(ctx, key, data, ttl).Err()
+}
+
+func (s *CacheService) Get(ctx context.Context, key string, dest interface{}) error {
+	data, err := s.client.Get(ctx, key).Bytes()
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, dest)
+}
+
+func (s *CacheService) Delete(ctx context.Context, key string) error {
+	return s.client.Del(ctx, key).Err()
 }

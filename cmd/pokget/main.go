@@ -26,22 +26,34 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"pokget/internal/auth"
+	"pokget/internal/config"
 	"pokget/internal/db"
 	"pokget/internal/handlers"
+	"pokget/internal/middleware"
 	"pokget/internal/models"
 	"pokget/internal/service"
 	"pokget/internal/worker"
 
+	"github.com/gorilla/csrf"
 	"github.com/gorilla/mux"
 )
 
 func main() {
+	// Load Configuration
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("Failed to load configuration", "error", err)
+		os.Exit(1)
+	}
+
 	// Initialize Structured Logger
 	logLevel := slog.LevelInfo
-	if os.Getenv("DEBUG") == "true" {
+	if cfg.App.Debug {
 		logLevel = slog.LevelDebug
 	}
 
@@ -52,6 +64,7 @@ func main() {
 
 	// Initialize Database
 	db.InitDB()
+	var priceWorker *worker.PriceSyncWorker
 	if db.DB != nil {
 		if err := db.SeedDatabase(db.DB); err != nil {
 			slog.Error("Database seeding failed", "error", err)
@@ -59,7 +72,7 @@ func main() {
 
 		// Start Price Sync Worker after DB is ready
 		priceClient := &service.DefaultPriceClient{Scraper: &service.ScraperPriceClient{}}
-		priceWorker := worker.NewPriceSyncWorker(db.DB, priceClient, 1*time.Hour)
+		priceWorker = worker.NewPriceSyncWorker(db.DB, priceClient, 1*time.Hour)
 		go priceWorker.Start(context.Background())
 	}
 
@@ -83,15 +96,35 @@ func main() {
 	// Load Templates
 	templates := template.Must(template.ParseGlob("templates/*.html"))
 
+	// Initialize Services
+	auditSvc := service.NewAuditService(db.DB)
+	cryptoSvc, err := service.NewCryptoService(cfg.Auth.SessionKey)
+	if err != nil {
+		slog.Error("Failed to initialize crypto service", "error", err)
+		os.Exit(1)
+	}
+
 	// Initialize Handlers
 	h := &handlers.Handler{
 		Templates:   templates,
 		MockCards:   mockCards,
 		Fingerprint: service.NewFingerprintService(db.DB),
+		Audit:       auditSvc,
+		Crypto:      cryptoSvc,
+		Game:        service.NewGamificationService(db.DB),
 	}
 
 	r := mux.NewRouter()
+	r.Use(middleware.LoggingMiddleware)
+	r.Use(auth.RateLimitMiddleware)
 	r.Use(auth.ProxyMiddleware)
+	
+	// CSRF Protection
+	csrfMiddleware := csrf.Protect(
+		[]byte(cfg.Auth.SessionKey),
+		csrf.Secure(false), // Disable for local development without HTTPS
+	)
+	r.Use(csrfMiddleware)
 
 	// Static files
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
@@ -104,6 +137,7 @@ func main() {
 	r.HandleFunc("/auth/resend", h.ResendVerification).Methods("POST")
 	r.HandleFunc("/auth/confirm", h.ConfirmEmail).Methods("GET")
 	r.HandleFunc("/api/scan", h.APIScan).Methods("POST")
+	r.HandleFunc("/vault/{user_id}", h.PublicVault).Methods("GET")
 
 	// Protected Routes (Require Authentication)
 	protected := r.PathPrefix("/").Subrouter()
@@ -112,23 +146,48 @@ func main() {
 	protected.HandleFunc("/centering", h.Centering).Methods("GET")
 	protected.HandleFunc("/binders", h.Binders).Methods("GET")
 	protected.HandleFunc("/trade", h.Trade).Methods("GET")
+	protected.HandleFunc("/portfolio/add", h.AddCardToPortfolio).Methods("POST")
+	protected.HandleFunc("/portfolio/toggle-visibility", h.ToggleVisibility).Methods("POST")
+	protected.HandleFunc("/wantlist", h.Wantlist).Methods("GET")
+	protected.HandleFunc("/wantlist/add", h.AddToWantlist).Methods("POST")
+	protected.HandleFunc("/api/gamification/heartbeat", h.Heartbeat).Methods("POST")
 	protected.HandleFunc("/api/portfolio/add", h.AddCardToPortfolio).Methods("POST")
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	slog.Info("Server starting", "port", port)
+	slog.Info("Server starting", "port", cfg.App.Port)
 	srv := &http.Server{
-		Addr:         ":" + port,
+		Addr:         ":" + cfg.App.Port,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("Server failed to start", "error", err)
-		os.Exit(1)
+
+	// Graceful Shutdown Logic
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server failed to start", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	slog.Info("Shutting down server...")
+
+	// Stop workers
+	if priceWorker != nil {
+		priceWorker.Stop()
 	}
+
+	// Create a context with timeout for shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		slog.Error("Server forced to shutdown", "error", err)
+	}
+
+	slog.Info("Server exiting")
 }

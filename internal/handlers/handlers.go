@@ -38,6 +38,7 @@ import (
 	"pokget/internal/models"
 	"pokget/internal/service"
 
+	"github.com/gorilla/csrf"
 	"github.com/shopspring/decimal"
 )
 
@@ -45,6 +46,21 @@ type Handler struct {
 	Templates   *template.Template
 	MockCards   []models.Card
 	Fingerprint *service.FingerprintService
+	Mailer      service.Mailer
+	Audit       *service.AuditService
+	Crypto      *service.CryptoService
+	Game        *service.GamificationService
+}
+
+func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+	data["CSRFToken"] = csrf.Token(r)
+	if err := h.Templates.ExecuteTemplate(w, name, data); err != nil {
+		slog.Error("Template execution failed", "template", name, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
@@ -55,14 +71,10 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := map[string]interface{}{
+	h.render(w, r, "index.html", map[string]interface{}{
 		"Portfolio": h.MockCards,
 		"Currency":  "USD",
-	}
-	if err := h.Templates.ExecuteTemplate(w, "index.html", data); err != nil {
-		slog.Error("Template execution failed", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	})
 }
 
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
@@ -127,22 +139,25 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("Failed to calculate valuation", "error", err)
 	}
+	
+	// Fetch User XP and Rank
+	var xp int
+	var rankTitle string
+	_ = db.DB.QueryRow("SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle)
+	
+	rank := h.Game.GetUserRank(xp)
+	_, _, xpPercent := h.Game.GetProgressToNextRank(xp)
 
-	data := struct {
-		Currency       string
-		TotalValuation decimal.Decimal
-		SetCompletion  []SetProgress
-		Portfolio      []models.Card
-	}{
-		Currency:       currency,
-		TotalValuation: totalValuation,
-		SetCompletion:  setCompletion,
-		Portfolio:      h.MockCards,
-	}
-
-	if err := h.Templates.ExecuteTemplate(w, "dashboard.html", data); err != nil {
-		slog.Error("Template execution failed", "error", err)
-	}
+	h.render(w, r, "dashboard.html", map[string]interface{}{
+		"Currency":       currency,
+		"TotalValuation": totalValuation,
+		"SetCompletion":  setCompletion,
+		"Portfolio":      h.MockCards,
+		"XP":             xp,
+		"Rank":           rankTitle,
+		"RankIcon":       rank.IconURL,
+		"XPPercent":      xpPercent,
+	})
 }
 
 func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
@@ -175,45 +190,64 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Award XP
+	_, _, _ = h.Game.AddXP(userID, 100)
+
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("Card added to collection!"))
+	_, _ = w.Write([]byte("Card added to collection! (+100 XP)"))
+}
+
+func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: Heartbeat", "method", r.Method)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Award 1 XP for being active
+	newXP, newRank, err := h.Game.AddXP(userID, 1)
+	if err != nil {
+		slog.Error("Failed to award heartbeat XP", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"xp":   newXP,
+		"rank": newRank,
+	})
 }
 
 func (h *Handler) Centering(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Centering", "method", r.Method, "url", r.URL.String())
-	if err := h.Templates.ExecuteTemplate(w, "centering_tool.html", nil); err != nil {
-		slog.Error("Template execution failed", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	h.render(w, r, "centering_tool.html", nil)
 }
 
 func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Auth", "method", r.Method, "url", r.URL.String())
 	templateName := "auth.html"
 	if r.Header.Get("HX-Request") == "true" {
-		templateName = "auth_fragment"
+		templateName = "auth_fragment.html" // Added .html extension for safety
 	}
 
-	if err := h.Templates.ExecuteTemplate(w, templateName, nil); err != nil {
-		slog.Error("Template execution failed", "template", templateName, "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	h.render(w, r, templateName, nil)
 }
 
 func (h *Handler) Binders(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Binders", "method", r.Method, "url", r.URL.String())
-	if err := h.Templates.ExecuteTemplate(w, "binders.html", nil); err != nil {
-		slog.Error("Template execution failed", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	h.render(w, r, "binders.html", nil)
 }
 
 func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Trade", "method", r.Method, "url", r.URL.String())
-	if err := h.Templates.ExecuteTemplate(w, "trade.html", nil); err != nil {
-		slog.Error("Template execution failed", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
+	h.render(w, r, "trade.html", nil)
 }
 
 func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {

@@ -28,12 +28,18 @@ import (
 	"os"
 )
 
+type Mailer interface {
+	SendConfirmationEmail(to, token string) error
+}
+
 type MailService struct {
 	Host     string
 	Port     string
 	Username string
 	Password string
 	From     string
+	// Internal field for testing smtp.SendMail
+	sendMailFunc func(addr string, a smtp.Auth, from string, to []string, msg []byte) error
 }
 
 func NewMailService() *MailService {
@@ -43,6 +49,7 @@ func NewMailService() *MailService {
 		Username: os.Getenv("SMTP_USER"),
 		Password: os.Getenv("SMTP_PASS"),
 		From:     os.Getenv("SMTP_FROM"),
+		sendMailFunc: smtp.SendMail,
 	}
 }
 
@@ -77,7 +84,7 @@ func (s *MailService) sendMail(to, subject, body string) error {
 		"%s\r\n", to, subject, body))
 
 	addr := fmt.Sprintf("%s:%s", s.Host, s.Port)
-	return smtp.SendMail(addr, auth, s.From, []string{to}, msg)
+	return s.sendMailFunc(addr, auth, s.From, []string{to}, msg)
 }
 
 const confirmEmailTemplate = `

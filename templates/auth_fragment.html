@@ -49,13 +49,18 @@
             <form x-show="mode === 'register'" hx-post="/auth/register" hx-target="#main-content" class="flex flex-col md:flex-row items-stretch md:items-end gap-10 w-full">
                 <div class="relative group w-full">
                     <label class="absolute -top-6 left-0 font-label-sm text-[11px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest">Mail</label>
-                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-8 py-6 md:py-5 rounded-[2rem] md:rounded-2xl w-full md:w-80 text-xl md:text-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-xl placeholder:text-on-surface-variant/40" 
+                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-8 py-6 md:py-5 rounded-[2rem] md:rounded-2xl w-full md:w-64 text-xl md:text-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-xl placeholder:text-on-surface-variant/40" 
                            placeholder="collector@example.com" type="email" name="email" required/>
                 </div>
                 <div class="relative group w-full">
                     <label class="absolute -top-6 left-0 font-label-sm text-[11px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest">Password</label>
-                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-8 py-6 md:py-5 rounded-[2rem] md:rounded-2xl w-full md:w-80 text-xl md:text-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-xl placeholder:text-on-surface-variant/40" 
+                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-8 py-6 md:py-5 rounded-[2rem] md:rounded-2xl w-full md:w-64 text-xl md:text-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-xl placeholder:text-on-surface-variant/40" 
                            placeholder="••••••••" type="password" name="password" required/>
+                </div>
+                <div class="relative group w-full">
+                    <label class="absolute -top-6 left-0 font-label-sm text-[11px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest">Confirm Password</label>
+                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-8 py-6 md:py-5 rounded-[2rem] md:rounded-2xl w-full md:w-64 text-xl md:text-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-xl placeholder:text-on-surface-variant/40" 
+                           placeholder="••••••••" type="password" name="confirm_password" required/>
                 </div>
                 <button type="submit" @click="signupAttempted = true" class="bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-bold text-2xl md:text-xl px-12 py-6 md:py-5 rounded-[2rem] md:rounded-2xl hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-4">
                     Initiate

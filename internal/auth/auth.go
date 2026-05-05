@@ -24,9 +24,11 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/gorilla/sessions"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/time/rate"
 )
 
 var Store *sessions.CookieStore
@@ -73,5 +75,35 @@ func Middleware(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), UserContextKey{}, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+var (
+	limiters = make(map[string]*rate.Limiter)
+	mu       sync.Mutex
+)
+
+func getLimiter(ip string) *rate.Limiter {
+	mu.Lock()
+	defer mu.Unlock()
+
+	limiter, exists := limiters[ip]
+	if !exists {
+		limiter = rate.NewLimiter(1, 5) // 1 request per second with a burst of 5
+		limiters[ip] = limiter
+	}
+
+	return limiter
+}
+
+func RateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := r.RemoteAddr
+		limiter := getLimiter(ip)
+		if !limiter.Allow() {
+			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }

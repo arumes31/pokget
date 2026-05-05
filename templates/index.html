@@ -8,8 +8,21 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <script src="/static/js/alpine.min.js?v=3" defer></script>
     <script src="/static/js/htmx.min.js?v=3"></script>
+    <script src="/static/js/vault.js?v=3" defer></script>
     <link rel="icon" type="image/png" href="/static/img/logo.png?v=3">
     <link rel="stylesheet" href="/static/css/styles.css?v=3">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#ddb7ff">
+    <meta name="csrf-token" content="{{ .CSRFToken }}">
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/js/sw.js');
+            });
+        }
+    </script>
     <script id="tailwind-config">
           tailwind.config = {
             darkMode: "class",
@@ -127,6 +140,7 @@
 </head>
 <body class="bg-background text-on-surface font-body-md min-h-screen pb-32" 
       x-data="{ activeTab: 'home' }"
+      hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'
       @notify.window="addToast($event.detail.msg, $event.detail.type)">
 
     <!-- TopAppBar -->
@@ -159,6 +173,13 @@
                     :class="activeTab === 'home' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
                 <span class="material-symbols-outlined" :class="activeTab === 'home' && 'fill-icon'">home</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Vault</span>
+            </button>
+            <!-- Wantlist -->
+            <button @click="activeTab = 'wantlist'" hx-get="/wantlist" hx-target="#main-content"
+                    class="flex flex-col items-center justify-center transition-all duration-200"
+                    :class="activeTab === 'wantlist' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                <span class="material-symbols-outlined" :class="activeTab === 'wantlist' && 'fill-icon'">favorite</span>
+                <span class="font-label-sm text-[10px] uppercase tracking-tighter">Grails</span>
             </button>
             <!-- Binders -->
             <button @click="activeTab = 'binders'" hx-get="/binders" hx-target="#main-content"
