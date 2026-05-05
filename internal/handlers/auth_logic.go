@@ -53,14 +53,15 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	// Check if user exists and is verified
 	var existingVerified bool
 	err = db.DB.QueryRow("SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
-	if err == nil {
+	switch {
+	case err == nil:
 		if existingVerified {
 			http.Error(w, "User already exists", http.StatusConflict)
 			return
 		}
 		// User exists but is NOT verified, update their record instead of failing
 		_, err = db.DB.Exec("UPDATE users SET password_hash = $1, verification_token = $2, last_email_sent_at = NOW() WHERE email = $3", hash, token, email)
-	} else if err == sql.ErrNoRows {
+	case err == sql.ErrNoRows:
 		// New user
 		_, err = db.DB.Exec("INSERT INTO users (email, password_hash, verification_token, last_email_sent_at) VALUES ($1, $2, $3, NOW())", email, hash, token)
 	}
