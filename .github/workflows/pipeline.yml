@@ -55,9 +55,10 @@ jobs:
           export CGO_ENABLED=1
           govulncheck ./...
       - name: gosec
-        uses: securego/gosec@v2.22.0
-        with:
-          args: ./...
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          export CGO_ENABLED=1
+          $(go env GOPATH)/bin/gosec ./...
 
   docker:
     needs: [lint, security]
