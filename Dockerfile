@@ -6,7 +6,9 @@ RUN apk add --no-cache \
     tesseract-ocr \
     tesseract-ocr-dev \
     gcc \
-    musl-dev
+    g++ \
+    musl-dev \
+    build-base
 
 WORKDIR /app
 
