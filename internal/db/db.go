@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -86,9 +87,15 @@ func RunMigrations() error {
 		return fmt.Errorf("database connection is not initialized")
 	}
 
+	// Get absolute path for migrations
+	absPath, err := filepath.Abs("migrations")
+	if err != nil {
+		return fmt.Errorf("could not get absolute path for migrations: %w", err)
+	}
+
 	// Verify migrations directory exists
-	if _, err := os.Stat("migrations"); os.IsNotExist(err) {
-		return fmt.Errorf("migrations directory not found at current path")
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return fmt.Errorf("migrations directory not found at: %s", absPath)
 	}
 
 	driver, err := postgres.WithInstance(DB, &postgres.Config{})
@@ -97,7 +104,7 @@ func RunMigrations() error {
 	}
 
 	m, err := migrate.NewWithDatabaseInstance(
-		"file://migrations",
+		"file://"+absPath,
 		"postgres", driver)
 	if err != nil {
 		return fmt.Errorf("could not create migration instance: %w", err)

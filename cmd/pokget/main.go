@@ -59,12 +59,12 @@ func main() {
 	// Fetch cards from DB for handlers
 	var mockCards []models.Card
 	if db.DB != nil {
-		rows, err := db.DB.Query("SELECT id, name, set_name, price_usd, price_eur, image_url FROM cards LIMIT 50")
+		rows, err := db.DB.Query("SELECT id, name, set_name, price_usd, price_eur, image_url, variant, change_24h FROM cards LIMIT 50")
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var c models.Card
-				if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL); err != nil {
+				if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h); err != nil {
 					slog.Error("Failed to scan card row", "error", err)
 					continue
 				}
