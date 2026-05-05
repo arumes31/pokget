@@ -94,6 +94,7 @@ func main() {
 	r.HandleFunc("/auth", h.Auth).Methods("GET")
 	r.HandleFunc("/auth/register", h.Register).Methods("POST")
 	r.HandleFunc("/auth/login", h.Login).Methods("POST")
+	r.HandleFunc("/auth/resend", h.ResendVerification).Methods("POST")
 	r.HandleFunc("/auth/confirm", h.ConfirmEmail).Methods("GET")
 	r.HandleFunc("/api/scan", h.APIScan).Methods("POST")
 

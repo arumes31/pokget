@@ -30,6 +30,7 @@ import (
 	"pokget/internal/service"
 	"log/slog"
 	"net/http"
+	"time"
 )
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -48,23 +49,86 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := generateToken()
-	_, err = db.DB.Exec("INSERT INTO users (email, password_hash, verification_token) VALUES ($1, $2, $3)", email, hash, token)
+	
+	// Check if user exists and is verified
+	var existingVerified bool
+	err = db.DB.QueryRow("SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
+	if err == nil {
+		if existingVerified {
+			http.Error(w, "User already exists", http.StatusConflict)
+			return
+		}
+		// User exists but is NOT verified, update their record instead of failing
+		_, err = db.DB.Exec("UPDATE users SET password_hash = $1, verification_token = $2, last_email_sent_at = NOW() WHERE email = $3", hash, token, email)
+	} else if err == sql.ErrNoRows {
+		// New user
+		_, err = db.DB.Exec("INSERT INTO users (email, password_hash, verification_token, last_email_sent_at) VALUES ($1, $2, $3, NOW())", email, hash, token)
+	}
+
 	if err != nil {
-		slog.Error("Failed to register user", "error", err)
-		http.Error(w, "User already exists or internal error", http.StatusConflict)
+		slog.Error("Failed to register/update user", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
 	mailSvc := service.NewMailService()
 	if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
 		slog.Error("Failed to send confirmation email", "error", err)
-		// We still created the user, but they'll need to re-request or we'll need a better retry logic
 	}
 
 	w.WriteHeader(http.StatusCreated)
 	if err := h.Templates.ExecuteTemplate(w, "auth_success", map[string]string{"Message": "Registration successful! Please check your email to verify your account."}); err != nil {
 		slog.Error("Failed to execute success template", "error", err)
 	}
+}
+
+func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
+	email := r.FormValue("email")
+	if email == "" {
+		http.Error(w, "Email is required", http.StatusBadRequest)
+		return
+	}
+
+	var lastSent sql.NullTime
+	var token string
+	var isVerified bool
+	err := db.DB.QueryRow("SELECT last_email_sent_at, verification_token, is_verified FROM users WHERE email = $1", email).Scan(&lastSent, &token, &isVerified)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Don't leak email existence, just return OK but don't send
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if isVerified {
+		http.Error(w, "Account already verified", http.StatusBadRequest)
+		return
+	}
+
+	// 5 minute rate limit
+	if lastSent.Valid && time.Since(lastSent.Time) < 5*time.Minute {
+		http.Error(w, "Please wait 5 minutes before resending", http.StatusTooManyRequests)
+		return
+	}
+
+	// Update last sent time
+	_, err = db.DB.Exec("UPDATE users SET last_email_sent_at = NOW() WHERE email = $1", email)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	mailSvc := service.NewMailService()
+	if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
+		slog.Error("Failed to resend confirmation email", "error", err)
+		http.Error(w, "Failed to send email", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {

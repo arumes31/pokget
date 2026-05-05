@@ -28,37 +28,35 @@
     <div class="glow-blob glow-purple"></div>
     <div class="glow-blob glow-pink"></div>
 
-    <!-- Toast Container -->
-    <div class="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-[90%] pointer-events-none">
-        <template x-for="toast in toasts" :key="toast.id">
-            <div x-transition.duration.300ms
-                 class="glass-card px-6 py-3 shadow-2xl flex items-center gap-3 border-l-4"
-                 :class="{
-                    'border-emerald-500 bg-emerald-500/10': toast.type === 'success',
-                    'border-red-500 bg-red-500/10': toast.type === 'error',
-                    'border-purple-500 bg-purple-500/10': toast.type === 'info'
-                 }">
-                <div class="w-2 h-2 rounded-full animate-pulse"
+    <div class="app-container">
+        <!-- Toast Container -->
+        <div class="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-[90%] pointer-events-none">
+            <template x-for="toast in toasts" :key="toast.id">
+                <div x-transition.duration.300ms
+                     class="glass-card px-6 py-3 shadow-2xl flex items-center gap-3 border-l-4"
                      :class="{
-                        'bg-emerald-500': toast.type === 'success',
-                        'bg-red-500': toast.type === 'error',
-                        'bg-purple-500': toast.type === 'info'
-                     }"></div>
-                <span class="text-sm font-bold tracking-tight" x-text="toast.msg"></span>
-            </div>
+                        'border-emerald-500 bg-emerald-500/10': toast.type === 'success',
+                        'border-red-500 bg-red-500/10': toast.type === 'error',
+                        'border-purple-500 bg-purple-500/10': toast.type === 'info'
+                     }">
+                    <div class="w-2 h-2 rounded-full animate-pulse"
+                         :class="{
+                            'bg-emerald-500': toast.type === 'success',
+                            'bg-red-500': toast.type === 'error',
+                            'bg-purple-500': toast.type === 'info'
+                         }"></div>
+                    <span class="text-sm font-bold tracking-tight" x-text="toast.msg"></span>
+                </div>
+            </template>
+        </div>
+
+        <!-- Modal -->
+        <template x-if="showAddModal">
+            {{template "add_card.html" .}}
         </template>
-    </div>
-
-    <!-- Modal -->
-    <template x-if="showAddModal">
-        {{template "add_card.html" .}}
-    </template>
-
-    <div class="flex flex-col h-screen max-w-md mx-auto relative overflow-hidden">
-        
         <!-- Header -->
-        <header class="flex items-center justify-between px-6 py-4 z-10" x-data="{ offline: false }">
-            <h1 class="text-xl font-bold text-gradient">Pokget</h1>
+        <header class="flex items-center justify-between py-6 z-10" x-data="{ offline: false }">
+            <h1 class="text-2xl font-bold text-gradient">Pokget</h1>
             <div class="flex items-center gap-3">
                 <button 
                     @click="offline = !offline"
@@ -66,8 +64,7 @@
                     :class="offline ? 'bg-emerald-500/10 text-emerald-400' : 'text-white/20'"
                     :title="offline ? 'Collection Cached' : 'Go Offline'"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M2 9.289a15 15 0 0 1 20 0"/></svg>
-                    <span class="text-[8px] font-bold uppercase" x-show="offline">Offline</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M2 9.289a15 15 0 0 1 20 0"/></svg>
                 </button>
                 <button 
                     @click="currency = (currency === 'USD' ? 'EUR' : 'USD'); $dispatch('currency-change', {val: currency})"
@@ -80,14 +77,14 @@
                     USD
                 </button>
                 <div class="relative">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white/80"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-                    <span class="absolute -top-1 -right-1 w-2 h-2 bg-pink-500 rounded-full border border-dark"></span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white/80"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                    <span class="absolute top-0 right-0 w-2 h-2 bg-pink-500 rounded-full border-2 border-[#050505]"></span>
                 </div>
             </div>
         </header>
 
         <!-- Main Content -->
-        <main id="main-content" class="flex-1 overflow-y-auto px-6 pb-24" hx-get="/dashboard" hx-trigger="load">
+        <main id="main-content" class="flex-1 no-scrollbar overflow-y-auto pb-24" hx-get="/dashboard" hx-trigger="load">
             <!-- Content loaded via HTMX -->
         </main>
 

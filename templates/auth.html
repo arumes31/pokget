@@ -1,108 +1,122 @@
-<div class="flex flex-col items-center justify-center h-full space-y-8" 
-     x-data="{ 
-        mode: 'login', 
-        email: '',
-        password: '',
-        loading: false,
-        error: '',
-        message: '',
-        async submit() {
-            this.loading = true;
-            this.error = '';
-            this.message = '';
-            
-            const url = this.mode === 'login' ? '/auth/login' : '/auth/register';
-            const formData = new FormData();
-            formData.append('email', this.email);
-            formData.append('password', this.password);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pokget | Auth</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body class="bg-[#050505]">
+    <div class="app-container">
+        <!-- Ambient Background Glow -->
+        <div class="glow-blob glow-purple"></div>
+        <div class="glow-blob glow-pink"></div>
 
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    body: formData
-                });
+        <header class="flex items-center justify-center py-12">
+            <h1 class="text-4xl font-bold text-gradient">Pokget</h1>
+        </header>
 
-                if (response.redirected) {
-                    window.location.href = response.url;
-                    return;
-                }
-
-                if (response.ok) {
-                    if (this.mode === 'signup') {
-                        this.message = 'Registration successful! Please check your email to verify.';
-                        $dispatch('notify', { msg: this.message, type: 'success' });
-                    }
-                } else {
-                    const text = await response.text();
-                    this.error = text;
-                    $dispatch('notify', { msg: text, type: 'error' });
-                }
-            } catch (err) {
-                this.error = 'Connection error. Please try again.';
-            } finally {
-                this.loading = false;
-            }
-        }
-     }">
-    <!-- Ambient Background Glow -->
-    <div class="glow-blob glow-purple"></div>
-    <div class="glow-blob glow-pink"></div>
-
-    <div class="w-full flex flex-col items-center space-y-8 animate-in">
-        <!-- Logo/Brand -->
-        <div class="text-center">
-            <h2 class="text-4xl font-bold text-gradient">Pokget</h2>
-            <p class="text-white/40 text-sm mt-2">Collector's Financial Hub</p>
-        </div>
-
-        <!-- Auth Form -->
-        <div class="glass-card w-full p-8" role="tabpanel">
-            <div class="flex gap-6 mb-8" role="tablist">
-                <button @click="mode = 'login'" role="tab" :aria-selected="mode === 'login'" :class="mode === 'login' ? 'text-white border-b-2 border-primary-light' : 'text-white/40'" class="pb-2 font-bold text-sm transition-all focus:outline-none">LOGIN</button>
-                <button @click="mode = 'signup'" role="tab" :aria-selected="mode === 'signup'" :class="mode === 'signup' ? 'text-white border-b-2 border-primary-light' : 'text-white/40'" class="pb-2 font-bold text-sm transition-all focus:outline-none">SIGN UP</button>
-            </div>
-
-            <div x-show="message" class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 mb-6 text-emerald-400 text-xs font-bold text-center" x-text="message"></div>
-            <div x-show="error" class="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 mb-6 text-rose-400 text-xs font-bold text-center" x-text="error"></div>
-
-            <form @submit.prevent="submit" class="flex flex-col gap-4">
-                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                
-                <div>
-                    <label for="auth-email">Email Address</label>
-                    <input type="email" id="auth-email" x-model="email" placeholder="collector@example.com" required>
-                </div>
-                <div>
-                    <label for="auth-password">Password</label>
-                    <input type="password" id="auth-password" x-model="password" placeholder="••••••••" required>
-                </div>
-                
-                <button type="submit" 
-                        :disabled="loading"
-                        class="glass-button primary-button w-full mt-4">
-                    <span x-show="!loading" x-text="mode === 'login' ? 'Sign In' : 'Create Account'"></span>
-                    <span x-show="loading">Processing...</span>
-                </button>
-            </form>
-
-            <div class="mt-8">
-                <div class="relative flex items-center justify-center">
-                    <div class="border-t border-white/10 w-full"></div>
-                    <span class="absolute bg-transparent px-4 text-[10px] font-bold text-white/20 uppercase">Or continue with</span>
-                </div>
-                <div class="grid grid-cols-2 gap-4 mt-8">
-                    <button type="button" class="glass-button" aria-label="Sign in with Google">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-1.92 5.4-7.84 5.4-5.12 0-9.28-4.24-9.28-9.44s4.16-9.44 9.28-9.44c2.92 0 4.88 1.24 6 2.32l2.6-2.52C19.24 1.84 16.16 0 12.48 0 5.72 0 0 5.72 0 12.48S5.72 24.96 12.48 24.96c6.4 0 10.68-4.52 10.68-10.88 0-.72-.08-1.28-.2-1.84h-10.48z"/></svg>
-                        <span class="text-xs">Google</span>
+        <main class="flex-1 animate-in" x-data="{ mode: 'login', resendDisabled: false, countdown: 0 }">
+            <div class="glass-card">
+                <!-- Mode Toggle -->
+                <div class="flex p-1 mb-8 bg-white/5 rounded-2xl border border-white/5">
+                    <button @click="mode = 'login'" 
+                            class="flex-1 py-2.5 text-sm font-bold rounded-xl transition-all"
+                            :class="mode === 'login' ? 'bg-white/10 text-white shadow-lg' : 'text-white/40 hover:text-white/60'">
+                        Login
                     </button>
-                    <button type="button" class="glass-button" aria-label="Sign in with GitHub">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.341-3.369-1.341-.454-1.152-1.11-1.458-1.11-1.458-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
-                        <span class="text-xs">GitHub</span>
+                    <button @click="mode = 'register'" 
+                            class="flex-1 py-2.5 text-sm font-bold rounded-xl transition-all"
+                            :class="mode === 'register' ? 'bg-white/10 text-white shadow-lg' : 'text-white/40 hover:text-white/60'">
+                        Sign Up
                     </button>
                 </div>
+
+                <!-- Login Form -->
+                <form x-show="mode === 'login'" action="/auth/login" method="POST" class="space-y-6">
+                    <div class="input-group">
+                        <label>Email Address</label>
+                        <input type="email" name="email" placeholder="collector@example.com" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Password</label>
+                        <input type="password" name="password" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="w-full primary-button py-4 mt-4">
+                        Sign In
+                    </button>
+                </form>
+
+                <!-- Register Form -->
+                <form x-show="mode === 'register'" action="/auth/register" method="POST" class="space-y-6">
+                    <div class="input-group">
+                        <label>Email Address</label>
+                        <input type="email" name="email" placeholder="collector@example.com" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Create Password</label>
+                        <input type="password" name="password" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="w-full primary-button py-4 mt-4">
+                        Create Account
+                    </button>
+                </form>
+
+                <!-- Resend Verification (Visible when needed) -->
+                <div class="mt-8 pt-8 border-t border-white/5 text-center">
+                    <p class="text-xs text-white/40 mb-4">Didn't get the email?</p>
+                    <button @click="
+                        if (!resendDisabled) {
+                            resendDisabled = true;
+                            countdown = 300;
+                            let timer = setInterval(() => {
+                                countdown--;
+                                if (countdown <= 0) {
+                                    clearInterval(timer);
+                                    resendDisabled = false;
+                                }
+                            }, 1000);
+                            
+                            const emailInput = $el.closest('.glass-card').querySelector('input[type=\'email\']');
+                            const formData = new FormData();
+                            formData.append('email', emailInput.value);
+
+                            fetch('/auth/resend', { 
+                                method: 'POST', 
+                                body: formData 
+                            }).then(res => {
+                                if (res.ok) {
+                                    alert('Verification email resent!');
+                                } else {
+                                    alert('Too many requests. Please wait.');
+                                }
+                            });
+                        }"
+                        :disabled="resendDisabled"
+                        class="text-xs font-bold text-purple-400 hover:text-purple-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span x-text="resendDisabled ? 'Resend available in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend Verification Email'"></span>
+                    </button>
+                </div>
             </div>
+
+            <p class="mt-8 text-center text-xs text-white/20">
+                Collector's Financial Hub &copy; 2026 Pokget
+            </p>
+        </main>
+    </div>
+
+    <!-- Notification Toast -->
+    <div x-data="{ show: false, msg: '', type: 'info' }"
+         @notify.window="show = true; msg = $event.detail.msg; type = $event.detail.type; setTimeout(() => show = false, 3000)"
+         x-show="show"
+         x-transition
+         class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50">
+        <div class="glass-card py-3 px-6 shadow-2xl border-white/10"
+             :class="type === 'error' ? 'border-red-500/50' : 'border-purple-500/50'">
+            <p class="text-sm font-bold" x-text="msg"></p>
         </div>
     </div>
-        </div>
-    </div>
-</div>
+</body>
+</html>
