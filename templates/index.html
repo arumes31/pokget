@@ -1,120 +1,213 @@
 <!DOCTYPE html>
-<html lang="en">
+<html class="dark" lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pokget - TCG Tracker</title>
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#7c3aed">
-    <script src="/static/js/htmx.min.js?v=2"></script>
-    <script src="/static/js/alpine.min.js?v=2" defer></script>
-    <link rel="icon" type="image/png" href="/static/img/logo.png?v=2">
-    <link rel="stylesheet" href="/static/css/styles.css?v=2">
-</head>
-<body class="text-white" 
-      x-data="{ 
-        activeTab: 'home', 
-        currency: 'USD', 
-        showAddModal: false,
-        toasts: [],
-        addToast(msg, type = 'info') {
-            const id = Date.now();
-            this.toasts.push({ id, msg, type });
-            setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id) }, 3000);
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Pokget Vault - Premium TCG Portfolio</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script src="/static/js/alpine.min.js?v=3" defer></script>
+    <script src="/static/js/htmx.min.js?v=3"></script>
+    <link rel="icon" type="image/png" href="/static/img/logo.png?v=3">
+    <link rel="stylesheet" href="/static/css/styles.css?v=3">
+    <script id="tailwind-config">
+          tailwind.config = {
+            darkMode: "class",
+            theme: {
+              extend: {
+                "colors": {
+                        "tertiary-fixed-dim": "#4cd7f6",
+                        "background": "#131314",
+                        "primary": "#ddb7ff",
+                        "surface-container-low": "#1c1b1c",
+                        "primary-fixed-dim": "#ddb7ff",
+                        "on-surface-variant": "#cfc2d6",
+                        "on-primary-container": "#400071",
+                        "outline-variant": "#4d4354",
+                        "inverse-primary": "#842bd2",
+                        "tertiary-container": "#009eb9",
+                        "on-error": "#690005",
+                        "inverse-surface": "#e5e2e3",
+                        "primary-container": "#b76dff",
+                        "on-primary-fixed": "#2c0051",
+                        "surface-container-lowest": "#0e0e0f",
+                        "error": "#ffb4ab",
+                        "secondary-container": "#aa0266",
+                        "on-primary": "#490080",
+                        "error-container": "#93000a",
+                        "on-tertiary-fixed": "#001f26",
+                        "surface-dim": "#131314",
+                        "outline": "#988d9f",
+                        "secondary-fixed": "#ffd9e4",
+                        "on-tertiary": "#003640",
+                        "on-background": "#e5e2e3",
+                        "surface-variant": "#353436",
+                        "on-secondary-fixed-variant": "#8c0053",
+                        "tertiary-fixed": "#acedff",
+                        "surface-container-highest": "#353436",
+                        "on-error-container": "#ffdad6",
+                        "on-secondary-fixed": "#3e0022",
+                        "inverse-on-surface": "#313031",
+                        "surface-tint": "#ddb7ff",
+                        "secondary-fixed-dim": "#ffb0cd",
+                        "surface-bright": "#3a393a",
+                        "on-secondary-container": "#ffbad3",
+                        "on-tertiary-fixed-variant": "#004e5c",
+                        "on-primary-fixed-variant": "#6900b3",
+                        "tertiary": "#4cd7f6",
+                        "secondary": "#ffb0cd",
+                        "primary-fixed": "#f0dbff",
+                        "on-secondary": "#640039",
+                        "surface-container-high": "#2a2a2b",
+                        "on-tertiary-container": "#002f38",
+                        "surface-container": "#201f20",
+                        "on-surface": "#e5e2e3",
+                        "surface": "#131314"
+                },
+                "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                },
+                "spacing": {
+                        "unit": "4px",
+                        "md": "16px",
+                        "lg": "24px",
+                        "gutter": "24px",
+                        "sm": "8px",
+                        "xxl": "80px",
+                        "xl": "48px",
+                        "margin": "32px",
+                        "xs": "4px",
+                        "container-max": "1440px"
+                },
+                "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "h3": ["Inter"],
+                        "body-md": ["Inter"],
+                        "stat-value": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "h2": ["Inter"],
+                        "h1": ["Inter"]
+                },
+                "fontSize": {
+                        "body-lg": ["18px", {"lineHeight": "1.6", "letterSpacing": "0", "fontWeight": "400"}],
+                        "h3": ["24px", {"lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "1.6", "letterSpacing": "0", "fontWeight": "400"}],
+                        "stat-value": ["20px", {"lineHeight": "1", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                        "label-sm": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "h2": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "h1": ["48px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+                }
+              },
+            },
+          }
+    </script>
+    <style>
+        .glass-card {
+            background: rgba(28, 27, 28, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
-      }"
+        .neon-glow {
+            box-shadow: 0 0 15px rgba(221, 183, 255, 0.15);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .fill-icon {
+            font-variation-settings: 'FILL' 1;
+        }
+        body {
+          min-height: max(884px, 100dvh);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen pb-32" 
+      x-data="{ activeTab: 'home' }"
       @notify.window="addToast($event.detail.msg, $event.detail.type)">
 
-    <!-- Ambient Background Glow -->
-    <div class="glow-blob glow-purple"></div>
-    <div class="glow-blob glow-pink"></div>
-
-    <div class="app-container">
-        <!-- Toast Container -->
-        <div class="fixed top-6 left-half translate-x-half z-100 flex flex-col gap-2 w-full max-w-[90%] pointer-events-none">
-            <template x-for="toast in toasts" :key="toast.id">
-                <div x-transition.duration.300ms
-                     class="glass-card px-6 py-3 shadow-2xl flex items-center gap-3 border-l-4"
-                     :class="{
-                        'border-emerald-500 bg-emerald-500/10': toast.type === 'success',
-                        'border-red-500 bg-red-500/10': toast.type === 'error',
-                        'border-purple-500 bg-purple-500/10': toast.type === 'info'
-                     }">
-                    <div class="w-2 h-2 rounded-full animate-pulse"
-                         :class="{
-                            'bg-emerald-500': toast.type === 'success',
-                            'bg-red-500': toast.type === 'error',
-                            'bg-purple-500': toast.type === 'info'
-                         }"></div>
-                    <span class="text-sm font-bold tracking-tight" x-text="toast.msg"></span>
-                </div>
-            </template>
-        </div>
-
-        <!-- Modal -->
-        <template x-if="showAddModal">
-            {{template "add_card.html" .}}
-        </template>
-        <!-- Header -->
-        <header class="flex items-center justify-between py-6 z-10" x-data="{ offline: false }">
-            <img src="/static/img/logo.png" alt="Pokget Logo" class="h-10 w-auto">
-            <div class="flex items-center gap-3">
-                <button 
-                    @click="offline = !offline"
-                    class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-colors"
-                    :class="offline ? 'bg-emerald-500/10 text-emerald-400' : 'text-white/20'"
-                    :title="offline ? 'Collection Cached' : 'Go Offline'"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M2 9.289a15 15 0 0 1 20 0"/></svg>
-                </button>
-                <button 
-                    @click="currency = (currency === 'USD' ? 'EUR' : 'USD'); $dispatch('currency-change', {val: currency})"
-                    class="glass-button text-[10px] uppercase font-bold py-1.5 px-3"
-                    x-text="currency"
-                    hx-get="/dashboard"
-                    hx-target="#main-content"
-                    hx-vals='js:{currency: currency}'
-                >
-                    USD
-                </button>
-                <div class="relative">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white/80"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-                    <span class="absolute top-0 right-0 w-2 h-2 bg-pink-500 rounded-full border-2 border-[#050505]"></span>
-                </div>
+    <!-- TopAppBar -->
+    <header class="fixed top-0 w-full z-50 bg-surface/60 backdrop-blur-[60px] border-b border-outline-variant/10">
+        <div class="flex justify-between items-center px-lg h-16 w-full max-w-container-max mx-auto">
+            <div class="flex items-center gap-md">
+                <span class="material-symbols-outlined text-primary cursor-pointer active:scale-95 transition-transform">menu</span>
+                <h1 class="font-h3 text-h3 uppercase tracking-widest font-bold text-primary">VAULT</h1>
             </div>
-        </header>
+            <div class="w-10 h-10 rounded-full border border-primary/30 overflow-hidden active:scale-95 transition-transform cursor-pointer">
+                <img alt="User" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCj7r2jcjkIPzCnIWdl81c_zvMWsrTnfReN29OfZJcKY7QDJIcr0JZ8aWrfMIjGkOqlRU-8amurNTnS3V6ocE7r12mwNxFtrOfg2ePKMlTqMT9I-Y4TLNExFJ3IAG44E1SjN_Ycnf0W3z1kfG887hQg0a2VlNx-YvBM2QXnhAHbX_jqrOYwpoJjJvmkwLM5iTR4qri-j6evoNV5e0NYDrFjpcIg2U4ED4Ew7mrMzeZEljz5dEYwnL-QKRV19MuPodyLEI8bSDDP7wY">
+            </div>
+        </div>
+    </header>
 
-        <!-- Main Content -->
-        <main id="main-content" class="flex-1 no-scrollbar overflow-y-auto pb-24" hx-get="/dashboard" hx-trigger="load">
-            <!-- Content loaded via HTMX -->
-        </main>
+    <main id="main-content" class="pt-24 px-md max-w-container-max mx-auto space-y-xl" 
+          hx-get="/dashboard" hx-trigger="load">
+        <!-- Content will be loaded here via HTMX -->
+        <div class="flex items-center justify-center py-20">
+            <div class="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        </div>
+    </main>
 
-        <!-- Bottom Navigation -->
-        <nav class="bottom-nav">
-            <button @click="activeTab = 'home'" hx-get="/dashboard" hx-target="#main-content" :class="activeTab === 'home' ? 'active' : ''" class="nav-item">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                <span>Home</span>
+    <!-- BottomNavBar -->
+    <nav class="fixed bottom-0 w-full z-50 rounded-t-xl bg-surface/70 backdrop-blur-xl border-t border-outline-variant/20 shadow-[0_-4px_20px_rgba(221,183,255,0.05)]">
+        <div class="flex justify-around items-center h-20 px-md w-full max-w-container-max mx-auto">
+            <!-- Home -->
+            <button @click="activeTab = 'home'" hx-get="/dashboard" hx-target="#main-content"
+                    class="flex flex-col items-center justify-center transition-all duration-200"
+                    :class="activeTab === 'home' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                <span class="material-symbols-outlined" :class="activeTab === 'home' && 'fill-icon'">home</span>
+                <span class="font-label-sm text-[10px] uppercase tracking-tighter">Vault</span>
             </button>
-            
-            <button @click="activeTab = 'binders'" hx-get="/binders" hx-target="#main-content" :class="activeTab === 'binders' ? 'active' : ''" class="nav-item">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
-                <span>Binders</span>
+            <!-- Binders -->
+            <button @click="activeTab = 'binders'" hx-get="/binders" hx-target="#main-content"
+                    class="flex flex-col items-center justify-center transition-all duration-200"
+                    :class="activeTab === 'binders' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                <span class="material-symbols-outlined" :class="activeTab === 'binders' && 'fill-icon'">style</span>
+                <span class="font-label-sm text-[10px] uppercase tracking-tighter">Binders</span>
             </button>
+            <!-- Scan -->
+            <button @click="activeTab = 'scan'" hx-get="/centering" hx-target="#main-content"
+                    class="flex flex-col items-center justify-center transition-all duration-200"
+                    :class="activeTab === 'scan' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                <div class="bg-primary/10 p-2 rounded-full mb-1 border border-primary/20">
+                    <span class="material-symbols-outlined text-primary">qr_code_scanner</span>
+                </div>
+                <span class="font-label-sm text-[10px] uppercase tracking-tighter">Scan</span>
+            </button>
+            <!-- Trade -->
+            <button @click="activeTab = 'trade'" hx-get="/trade" hx-target="#main-content"
+                    class="flex flex-col items-center justify-center transition-all duration-200"
+                    :class="activeTab === 'trade' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                <span class="material-symbols-outlined" :class="activeTab === 'trade' && 'fill-icon'">swap_horiz</span>
+                <span class="font-label-sm text-[10px] uppercase tracking-tighter">Trade</span>
+            </button>
+            <!-- Profile -->
+            <button @click="activeTab = 'profile'" hx-get="/auth" hx-target="#main-content"
+                    class="flex flex-col items-center justify-center transition-all duration-200"
+                    :class="activeTab === 'profile' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                <span class="material-symbols-outlined" :class="activeTab === 'profile' && 'fill-icon'">person</span>
+                <span class="font-label-sm text-[10px] uppercase tracking-tighter">Access</span>
+            </button>
+        </div>
+    </nav>
 
-            <button @click="activeTab = 'scan'" hx-get="/centering" hx-target="#main-content" class="scan-fab">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M2 12h20"/><path d="M7 21v-4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v4"/><rect width="20" height="14" x="2" y="3" rx="2"/></svg>
-            </button>
-
-            <button @click="activeTab = 'trade'" hx-get="/trade" hx-target="#main-content" :class="activeTab === 'trade' ? 'active' : ''" class="nav-item">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
-                <span>Trade</span>
-            </button>
-
-            <button @click="activeTab = 'profile'" hx-get="/auth" hx-target="#main-content" :class="activeTab === 'profile' ? 'active' : ''" class="nav-item">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4-4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                <span>Profile</span>
-            </button>
-        </nav>
+    <!-- Toast Notification -->
+    <div x-data="{ toasts: [] }" 
+         @notify.window="toasts.push({ id: Date.now(), msg: $event.detail.msg, type: $event.detail.type }); setTimeout(() => toasts.shift(), 3000)"
+         class="fixed top-6 left-half translate-x-half z-[100] flex flex-col gap-2 w-full max-w-[90%] pointer-events-none">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div x-transition.duration.300ms
+                 class="glass-card px-6 py-3 shadow-2xl flex items-center gap-3 border-l-4"
+                 :class="toast.type === 'error' ? 'border-red-500' : 'border-primary'">
+                <span class="material-symbols-outlined text-lg" 
+                      :class="toast.type === 'error' ? 'text-red-400' : 'text-primary'"
+                      x-text="toast.type === 'error' ? 'error' : 'check_circle'"></span>
+                <p class="text-sm font-bold" x-text="toast.msg"></p>
+            </div>
+        </template>
     </div>
+
 </body>
 </html>

@@ -1,184 +1,78 @@
-<!-- Search Bar -->
-<div class="relative mb-6 animate-in">
-    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white/40"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-    </div>
-    <input type="text" placeholder="Search Pokémon, MTG, Lorcana..." 
-           @click="showAddModal = true"
-           class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:border-purple-500/50 transition-all">
-    <div class="flex gap-2 mt-3 overflow-x-auto no-scrollbar">
-        <button class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-3 py-1 rounded-full text-[10px] font-bold">Pokémon</button>
-        <button class="bg-white/5 text-white/40 border border-white/10 px-3 py-1 rounded-full text-[10px] font-bold">MTG</button>
-        <button class="bg-white/5 text-white/40 border border-white/10 px-3 py-1 rounded-full text-[10px] font-bold">Lorcana</button>
-    </div>
-</div>
-
-<!-- Portfolio Overview -->
-<div class="space-y-2 mb-6 px-1">
-    <div class="flex items-center justify-between">
-        <p class="text-xs font-bold text-white/40 uppercase tracking-widest">Portfolio: Main</p>
-        <div class="bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded text-[10px] font-bold">
-            {{if eq .Currency "USD"}}${{else}}€{{end}}1,677.31 (90d)
+<!-- Hero Section: Total Portfolio Value -->
+<section class="relative animate-in">
+    <div class="absolute -top-10 -left-10 w-64 h-64 bg-primary/10 blur-[100px] rounded-full"></div>
+    <div class="glass-card rounded-xl p-lg relative overflow-hidden border border-white/5">
+        <div class="flex flex-col gap-xs">
+            <span class="font-label-sm text-xs uppercase text-on-surface-variant tracking-widest opacity-60">Total Portfolio Value</span>
+            <div class="flex items-baseline gap-md">
+                <span class="font-h1 text-4xl md:text-5xl font-bold text-on-surface tracking-tight">$12,450.80</span>
+                <div class="flex items-center text-tertiary gap-xs px-2 py-1 bg-tertiary/10 rounded-full border border-tertiary/20">
+                    <span class="material-symbols-outlined text-[16px]">trending_up</span>
+                    <span class="font-label-sm text-[10px] font-bold">+4.2%</span>
+                </div>
+            </div>
+        </div>
+        <!-- Mini Sparkline visualization -->
+        <div class="mt-lg h-24 w-full relative">
+            <svg class="w-full h-full" preserveAspectRatio="none" viewBox="0 0 400 100">
+                <defs>
+                    <linearGradient id="gradient-hero" x1="0%" x2="0%" y1="0%" y2="100%">
+                        <stop offset="0%" stop-color="#ddb7ff" stop-opacity="0.3"></stop>
+                        <stop offset="100%" stop-color="#ddb7ff" stop-opacity="0"></stop>
+                    </linearGradient>
+                </defs>
+                <path class="drop-shadow-[0_0_8px_rgba(221,183,255,0.8)]" d="M0,80 Q50,70 100,85 T200,40 T300,60 T400,20" fill="transparent" stroke="#ddb7ff" stroke-width="3"></path>
+                <path d="M0,80 Q50,70 100,85 T200,40 T300,60 T400,20 L400,100 L0,100 Z" fill="url(#gradient-hero)"></path>
+            </svg>
         </div>
     </div>
-    <h2 class="text-4xl font-bold tracking-tight">
-        {{if eq .Currency "USD"}}${{.TotalValuation}}{{else}}€{{.TotalValuation}}{{end}}
-    </h2>
-</div>
+</section>
 
-<!-- Portfolio Chart -->
-<div class="glass-card p-4 mb-8" x-data="{ 
-    timeframe: '3M',
-    chart: null,
-    init() {
-        this.renderChart();
-    },
-    renderChart() {
-        const ctx = document.getElementById('portfolioChart').getContext('2d');
-        if (this.chart) this.chart.destroy();
-        
-        const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-        gradient.addColorStop(0, 'rgba(52, 211, 153, 0.2)');
-        gradient.addColorStop(1, 'rgba(52, 211, 153, 0)');
-
-        this.chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: Array.from({length: 30}, (_, i) => i),
-                datasets: [{
-                    data: [120, 125, 122, 130, 140, 138, 145, 150, 155, 152, 160, 158, 165, 170, 175, 180, 178, 185, 190, 195, 192, 200, 205, 210, 215, 212, 220, 225, 230, 235],
-                    borderColor: '#10b981',
-                    borderWidth: 3,
-                    fill: true,
-                    backgroundColor: gradient,
-                    tension: 0.4,
-                    pointRadius: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { display: false },
-                    y: { display: false }
-                }
-            }
-        });
-    }
-}">
-    <div class="h-48 w-full relative">
-        <canvas id="portfolioChart"></canvas>
+<!-- Portfolio Stats: Horizontal Scrolling -->
+<section class="flex overflow-x-auto gap-md no-scrollbar pb-md -mx-md px-md scroll-smooth">
+    <!-- Stat 1 -->
+    <div class="glass-card min-w-[160px] flex-shrink-0 p-md rounded-xl flex flex-col gap-xs border-l-4 border-l-primary/40">
+        <span class="font-label-sm text-[10px] uppercase tracking-widest text-on-surface-variant opacity-60">Total Cards</span>
+        <span class="font-bold text-2xl text-on-surface">342</span>
     </div>
-    <div class="flex items-center justify-between mt-4 px-2">
-        <template x-for="t in ['1D', '7D', '1M', '3M', '6M', 'MAX']">
-            <button @click="timeframe = t; renderChart()" 
-                    :class="timeframe === t ? 'text-white' : 'text-white/30'"
-                    class="text-[10px] font-bold transition-colors py-2 px-1" x-text="t"></button>
+    <!-- Stat 2 -->
+    <div class="glass-card min-w-[200px] flex-shrink-0 p-md rounded-xl flex flex-col gap-xs border-l-4 border-l-secondary/40">
+        <span class="font-label-sm text-[10px] uppercase tracking-widest text-on-surface-variant opacity-60">Top Performer</span>
+        <div class="flex items-center gap-xs">
+            <span class="font-bold text-lg text-secondary truncate">Charizard VMAX</span>
+        </div>
+    </div>
+    <!-- Stat 3 -->
+    <div class="glass-card min-w-[160px] flex-shrink-0 p-md rounded-xl flex flex-col gap-xs border-l-4 border-l-tertiary/40">
+        <span class="font-label-sm text-[10px] uppercase tracking-widest text-on-surface-variant opacity-60">Binders</span>
+        <span class="font-bold text-2xl text-on-surface">12</span>
+    </div>
+</section>
+
+<!-- Card Collection Grid -->
+<section class="space-y-lg">
+    <div class="flex justify-between items-end">
+        <h2 class="font-h2 text-2xl font-bold text-on-surface">Your Collection</h2>
+        <button class="font-label-sm text-[10px] text-primary uppercase tracking-widest hover:opacity-80 transition-opacity" hx-get="/binders" hx-target="#main-content">See All</button>
+    </div>
+    <div class="grid grid-cols-2 gap-md md:grid-cols-4 lg:grid-cols-6 pb-8">
+        <!-- Mock Card Items for now, will be dynamic soon -->
+        <template x-for="i in 6" :key="i">
+            <div class="glass-card rounded-xl p-sm flex flex-col gap-sm group hover:border-primary/40 transition-all duration-300 cursor-pointer active:scale-95">
+                <div class="aspect-[3/4] rounded-lg overflow-hidden relative shadow-lg">
+                    <img :src="'https://images.pokemontcg.io/swsh4/174_hires.png'" alt="Card" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                    <div class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                </div>
+                <div class="px-xs pb-xs">
+                    <p class="font-label-sm text-xs text-on-surface-variant truncate">Mewtwo GX</p>
+                    <div class="flex justify-between items-center mt-1">
+                        <span class="font-bold text-lg text-on-surface">$245.00</span>
+                        <svg class="w-12 h-6" viewBox="0 0 100 40">
+                            <path d="M0,30 Q25,25 50,15 T100,5" fill="none" stroke="#4cd7f6" stroke-width="2"></path>
+                        </svg>
+                    </div>
+                </div>
+            </div>
         </template>
     </div>
-</div>
-
-<!-- Most Valuable Cards -->
-<section class="mb-8">
-    <div class="flex items-center justify-between mb-4 px-1">
-        <h3 class="text-sm font-bold text-white/80 uppercase tracking-wider">Most Valuable</h3>
-        <button class="text-blue-400 text-xs font-bold hover:underline">View All</button>
-    </div>
-    <div class="space-y-4">
-        {{range .Portfolio}}
-        <div class="flex items-center justify-between group">
-            <div class="flex items-center gap-4">
-                <div class="w-12 h-16 relative overflow-hidden rounded-lg bg-white/5 border border-white/10 p-1">
-                    <img src="{{.ImageURL}}" alt="{{.Name}}" class="w-full h-full object-contain group-hover:scale-110 transition-transform">
-                </div>
-                <div>
-                    <p class="text-sm font-bold">{{.Name}}</p>
-                    <p class="text-[10px] text-white/40 uppercase font-bold">{{.Set}}</p>
-                </div>
-            </div>
-            <div class="text-right">
-                <p class="text-sm font-bold">{{if eq $.Currency "USD"}}${{.PriceUSD}}{{else}}€{{.PriceEUR}}{{end}}</p>
-                <p class="text-[10px] text-emerald-400 font-bold">+2.72%</p>
-            </div>
-        </div>
-        {{end}}
-    </div>
 </section>
-
-<!-- Top Holdings -->
-<section class="mb-8">
-    <div class="flex items-center justify-between mb-4 px-1">
-        <h3 class="text-sm font-bold text-white/80 uppercase tracking-wider">Top Holdings</h3>
-        <button class="text-purple-400 text-xs font-bold hover:underline">View All</button>
-    </div>
-    <div class="space-y-3">
-        {{range .Portfolio}}
-        <div class="glass-card p-3 flex items-center gap-4 group hover:border-purple-500/30 transition-all">
-            <div class="w-12 h-16 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
-                <img src="{{.ImageURL}}" class="w-full h-full object-cover transition-transform group-hover:scale-110" alt="{{.Name}}">
-            </div>
-            <div class="flex-1 min-w-0">
-                <p class="text-sm font-bold truncate">{{.Name}}</p>
-                <div class="flex items-center gap-2 mt-0.5">
-                    <span class="text-[10px] text-white/40 font-bold uppercase">{{.Set}}</span>
-                    <span class="text-[8px] bg-white/5 px-1.5 py-0.5 rounded text-white/60 font-bold uppercase">{{.Variant}}</span>
-                </div>
-                <div class="flex items-center gap-3 mt-2">
-                    <a href="https://www.cardmarket.com/en/Pokemon/Products/Search?searchString={{.Name}}" target="_blank" 
-                       class="text-[9px] font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                        Cardmarket
-                    </a>
-                    <a href="https://www.tcgplayer.com/search/pokemon/product?q={{.Name}}" target="_blank" 
-                       class="text-[9px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                        TCGPlayer
-                    </a>
-                </div>
-            </div>
-            <div class="text-right">
-                <p class="text-sm font-bold tracking-tight">
-                    {{if eq $.Currency "USD"}}${{else}}€{{end}}{{.PriceUSD}}
-                </p>
-                <p class="text-[10px] {{if gt .Change24h 0.0}}text-emerald-400{{else}}text-red-400{{end}} font-bold">
-                    {{if gt .Change24h 0.0}}+{{end}}{{.Change24h}}%
-                </p>
-            </div>
-        </div>
-        {{end}}
-    </div>
-</section>
-<section class="mb-8">
-    <div class="flex items-center justify-between mb-4 px-1">
-        <h3 class="text-sm font-bold text-white/80 uppercase tracking-wider">Set Progress</h3>
-        <button class="text-blue-400 text-xs font-bold hover:underline">Browse Sets</button>
-    </div>
-    <div class="space-y-6">
-        {{range .SetCompletion}}
-        <div class="space-y-2">
-            <div class="flex justify-between items-end">
-                <div>
-                    <p class="text-sm font-bold">{{.Name}}</p>
-                    <p class="text-[10px] text-white/40 font-bold uppercase">{{.OwnedCards}} / {{.TotalCards}} Cards</p>
-                </div>
-                <div class="text-right">
-                    {{if eq .Percent 100}}
-                    <span class="bg-emerald-500/20 text-emerald-400 text-[10px] font-black px-2 py-0.5 rounded border border-emerald-500/30">MASTERED</span>
-                    {{else}}
-                    <span class="text-xs font-bold text-white/60">{{.Percent}}%</span>
-                    {{end}}
-                </div>
-            </div>
-            <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                <div class="h-full bg-gradient-to-r from-purple-500 to-blue-500 rounded-full transition-all duration-1000" 
-                     style="width: {{.Percent}}%; text-align: center;"></div>
-            </div>
-        </div>
-        {{end}}
-    </div>
-</section>
-
-<!-- Scripts -->
-<script src="/static/js/chart.js"></script>
-
