@@ -1,87 +1,112 @@
-<div class="animate-in" x-data="{ mode: 'login', resendDisabled: false, countdown: 0, signupAttempted: false }">
-    <div class="glass-card">
-        <!-- Mode Toggle -->
-        <div class="toggle-group">
-            <button @click="mode = 'login'; signupAttempted = false" 
-                    class="toggle-button"
-                    :class="mode === 'login' ? 'active' : 'inactive'">
-                Login
-            </button>
-            <button @click="mode = 'register'" 
-                    class="toggle-button"
-                    :class="mode === 'register' ? 'active' : 'inactive'">
-                Sign Up
-            </button>
+<div class="max-w-container-max mx-auto w-full animate-in" x-data="{ mode: 'login', signupAttempted: false, resendDisabled: false, countdown: 0 }">
+    <div class="flex flex-col md:flex-row items-end justify-between gap-lg">
+        <!-- Branding Section -->
+        <div class="mb-md md:mb-0">
+            <div class="flex items-center gap-4 mb-xs">
+                <img src="/static/img/logo.png" alt="Pokget" class="w-12 h-12">
+                <h1 class="font-h2 text-4xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
+                    Pokget
+                </h1>
+            </div>
+            <p class="font-label-sm text-xs text-on-surface-variant uppercase tracking-widest opacity-60">
+                Digital Vault Access // v.2.0.4
+            </p>
+            <div class="mt-4 flex gap-4">
+                <button @click="mode = 'login'; signupAttempted = false" 
+                        class="text-xs font-bold transition-all uppercase tracking-widest"
+                        :class="mode === 'login' ? 'text-primary' : 'text-on-surface-variant/40 hover:text-on-surface-variant/60'">
+                    Vault Entry
+                </button>
+                <button @click="mode = 'register'" 
+                        class="text-xs font-bold transition-all uppercase tracking-widest"
+                        :class="mode === 'register' ? 'text-primary' : 'text-on-surface-variant/40 hover:text-on-surface-variant/60'">
+                    Initiate Sequence
+                </button>
+            </div>
         </div>
 
-        <!-- Login Form -->
-        <form x-show="mode === 'login'" hx-post="/auth/login" hx-target="body" class="auth-container">
-            <div class="input-group">
-                <label>Email Address</label>
-                <input type="email" name="email" placeholder="collector@example.com" required>
-            </div>
-            <div class="input-group">
-                <label>Password</label>
-                <input type="password" name="password" placeholder="••••••••" required>
-            </div>
-            <button type="submit" class="w-full primary-button py-4 mt-4">
-                Sign In
-            </button>
-        </form>
+        <!-- Inputs & CTA Cluster -->
+        <div class="w-full md:w-auto flex flex-col md:flex-row items-stretch md:items-end gap-md">
+            <!-- Login Form -->
+            <form x-show="mode === 'login'" hx-post="/auth/login" hx-target="body" class="flex flex-col md:flex-row items-stretch md:items-end gap-md w-full">
+                <div class="relative group">
+                    <label class="absolute -top-6 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase">VAULT IDENTITY</label>
+                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-lg py-md rounded-xl w-full md:w-64 focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
+                           placeholder="collector@example.com" type="email" name="email" required/>
+                </div>
+                <div class="relative group">
+                    <label class="absolute -top-6 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase">ACCESS KEY</label>
+                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-lg py-md rounded-xl w-full md:w-64 focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
+                           placeholder="••••••••" type="password" name="password" required/>
+                </div>
+                <button type="submit" class="bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-bold text-lg px-8 py-md rounded-xl hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-2">
+                    Enter
+                    <span class="material-symbols-outlined text-[24px]">keyboard_tab</span>
+                </button>
+            </form>
 
-        <!-- Register Form -->
-        <form x-show="mode === 'register'" hx-post="/auth/register" hx-target="#main-content" class="auth-container">
-            <div class="input-group">
-                <label>Email Address</label>
-                <input type="email" name="email" placeholder="collector@example.com" required>
-            </div>
-            <div class="input-group">
-                <label>Create Password</label>
-                <input type="password" name="password" placeholder="••••••••" required>
-            </div>
-            <button type="submit" @click="signupAttempted = true" class="w-full primary-button py-4 mt-4">
-                Create Account
-            </button>
-        </form>
+            <!-- Register Form -->
+            <form x-show="mode === 'register'" hx-post="/auth/register" hx-target="#main-content" class="flex flex-col md:flex-row items-stretch md:items-end gap-md w-full">
+                <div class="relative group">
+                    <label class="absolute -top-6 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase">IDENTITY</label>
+                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-lg py-md rounded-xl w-full md:w-64 focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
+                           placeholder="collector@example.com" type="email" name="email" required/>
+                </div>
+                <div class="relative group">
+                    <label class="absolute -top-6 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase">CREATE KEY</label>
+                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-lg py-md rounded-xl w-full md:w-64 focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-md placeholder:text-on-surface-variant/40" 
+                           placeholder="••••••••" type="password" name="password" required/>
+                </div>
+                <button type="submit" @click="signupAttempted = true" class="bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-bold text-lg px-8 py-md rounded-xl hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-2">
+                    Initiate
+                    <span class="material-symbols-outlined text-[24px]">vibration</span>
+                </button>
+            </form>
 
-        <!-- Resend Verification (Only after attempt) -->
-        <div x-show="signupAttempted && mode === 'register'" class="mt-8 pt-8 border-t border-white/5 text-center" x-transition>
-            <p class="text-xs text-white/40 mb-4">Didn't get the email?</p>
-            <button @click="
-                if (!resendDisabled) {
-                    resendDisabled = true;
-                    countdown = 300;
-                    let timer = setInterval(() => {
-                        countdown--;
-                        if (countdown <= 0) {
-                            clearInterval(timer);
-                            resendDisabled = false;
-                        }
-                    }, 1000);
-                    
-                    const emailInput = $el.closest('.glass-card').querySelector('input[type=\'email\']');
-                    const formData = new FormData();
-                    formData.append('email', emailInput.value);
+            <!-- Resend Section -->
+            <div x-show="signupAttempted && mode === 'register'" x-transition class="md:absolute md:bottom-full md:right-0 mb-8 text-right">
+                <p class="text-[10px] text-on-surface-variant/40 uppercase tracking-widest mb-2">Key not received?</p>
+                <button @click="
+                    if (!resendDisabled) {
+                        resendDisabled = true;
+                        countdown = 300;
+                        let timer = setInterval(() => {
+                            countdown--;
+                            if (countdown <= 0) {
+                                clearInterval(timer);
+                                resendDisabled = false;
+                            }
+                        }, 1000);
+                        
+                        const emailInput = $el.closest('.flex').querySelector('input[type=\'email\']');
+                        const formData = new FormData();
+                        formData.append('email', emailInput.value);
 
-                    fetch('/auth/resend', { 
-                        method: 'POST', 
-                        body: formData 
-                    }).then(res => {
-                        if (res.ok) {
-                            $dispatch('notify', { msg: 'Verification email resent!', type: 'success' });
-                        } else {
-                            $dispatch('notify', { msg: 'Too many requests. Please wait.', type: 'error' });
-                        }
-                    });
-                }"
-                :disabled="resendDisabled"
-                class="w-full glass-button py-3 text-xs font-bold">
-                <span x-text="resendDisabled ? 'Resend in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend Verification Email'"></span>
-            </button>
+                        fetch('/auth/resend', { 
+                            method: 'POST', 
+                            body: formData 
+                        }).then(res => {
+                            if (res.ok) {
+                                $dispatch('notify', { msg: 'Access Key Re-sent', type: 'success' });
+                            } else {
+                                $dispatch('notify', { msg: 'Rate Limit Breach', type: 'error' });
+                            }
+                        });
+                    }"
+                    :disabled="resendDisabled"
+                    class="text-[10px] font-bold text-primary uppercase tracking-widest hover:text-white transition-colors disabled:opacity-20">
+                    <span x-text="resendDisabled ? 'Retry in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend Key'"></span>
+                </button>
+            </div>
         </div>
     </div>
 
-    <p class="mt-8 text-center text-xs text-white/20">
-        Collector's Financial Hub &copy; 2026 Pokget
-    </p>
+    <!-- Footer Elements -->
+    <div class="mt-xl flex flex-col md:flex-row justify-between items-center border-t border-outline-variant/10 pt-md">
+        <span class="font-label-sm text-[10px] text-on-surface-variant/40 uppercase tracking-widest">© 2026 POKGET VAULT. PRESTIGE ENCRYPTED.</span>
+        <div class="flex gap-lg mt-sm md:mt-0">
+            <a class="font-label-sm text-[10px] text-on-surface-variant/40 hover:text-primary transition-colors uppercase tracking-widest" href="#">Lost Access?</a>
+            <a class="font-label-sm text-[10px] text-on-surface-variant/40 hover:text-primary transition-colors uppercase tracking-widest" href="#">Security Protocols</a>
+        </div>
+    </div>
 </div>

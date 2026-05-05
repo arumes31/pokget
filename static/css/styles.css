@@ -1,15 +1,68 @@
-/* Pokget Premium Design System */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
+/* Prestige Vault Theme */
 :root {
-    --primary: #9333ea;
-    --primary-light: #a855f7;
-    --accent: #ec4899;
-    --bg-dark: #050505;
-    --glass-bg: rgba(255, 255, 255, 0.05);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --glass-highlight: rgba(255, 255, 255, 0.15);
+    --vault-bg: #131314;
+    --vault-surface: #1c1b1c;
+    --vault-primary: #ddb7ff;
+    --vault-primary-dim: #b76dff;
+    --vault-secondary: #ffb0cd;
+    --vault-outline: #4d4354;
+    --vapor-gradient: linear-gradient(180deg, #490080 0%, #131314 60%, #0e0e0f 100%);
 }
+
+.vapor-bg {
+    background: var(--vapor-gradient);
+}
+
+.glass-card-prestige {
+    background: rgba(28, 27, 28, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.neon-bloom {
+    box-shadow: 0 0 30px rgba(168, 85, 247, 0.4);
+}
+
+.text-glow {
+    text-shadow: 0 0 10px rgba(221, 183, 255, 0.5);
+}
+
+.font-serif-italic {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+}
+
+/* Utilities for new layout */
+.tracking-tighter { letter-spacing: -0.05em; }
+.tracking-widest { letter-spacing: 0.1em; }
+.opacity-60 { opacity: 0.6; }
+.opacity-40 { opacity: 0.4; }
+.opacity-20 { opacity: 0.2; }
+.opacity-10 { opacity: 0.1; }
+.opacity-5 { opacity: 0.05; }
+
+.inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+.absolute { position: absolute; }
+.relative { position: relative; }
+
+.h-80-pct { height: 80%; }
+.h-30-pct { height: 30%; }
+
+.bottom-0 { bottom: 0; }
+.left-0 { left: 0; }
+
+.pb-xl { padding-bottom: 3rem; }
+.px-margin { padding-left: 2rem; padding-right: 2rem; }
+
+.max-w-container { max-width: 1440px; }
+
+.flex-row-md { display: flex; flex-direction: row; }
+@media (max-width: 768px) {
+    .flex-row-md { flex-direction: column; }
+}
+
+.items-end { align-items: flex-end; }
 
 * {
     margin: 0;

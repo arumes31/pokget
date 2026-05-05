@@ -3,24 +3,151 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pokget | Auth</title>
+    <title>Pokget | Vault Access</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;400;600;700&family=Playfair+Display:ital,wght@0,400;1,400&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <script src="/static/js/alpine.min.js?v=2" defer></script>
+    <script src="/static/js/htmx.min.js?v=2"></script>
     <link rel="icon" type="image/png" href="/static/img/logo.png?v=2">
     <link rel="stylesheet" href="/static/css/styles.css?v=2">
+    <script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                "surface-container-low": "#1c1b1c",
+                "secondary-fixed": "#ffd9e4",
+                "background": "#131314",
+                "on-secondary-fixed-variant": "#8c0053",
+                "on-primary-fixed": "#2c0051",
+                "outline-variant": "#4d4354",
+                "on-primary-fixed-variant": "#6900b3",
+                "secondary-fixed-dim": "#ffb0cd",
+                "on-tertiary-fixed-variant": "#004e5c",
+                "on-secondary-container": "#ffbad3",
+                "surface-container-high": "#2a2a2b",
+                "primary-fixed": "#f0dbff",
+                "on-background": "#e5e2e3",
+                "on-surface": "#e5e2e3",
+                "on-primary-container": "#400071",
+                "surface-variant": "#353436",
+                "secondary-container": "#aa0266",
+                "tertiary-fixed-dim": "#4cd7f6",
+                "surface-tint": "#ddb7ff",
+                "surface-bright": "#3a393a",
+                "on-surface-variant": "#cfc2d6",
+                "tertiary": "#4cd7f6",
+                "surface": "#131314",
+                "tertiary-container": "#009eb9",
+                "error-container": "#93000a",
+                "surface-container": "#201f20",
+                "on-tertiary-fixed": "#001f26",
+                "secondary": "#ffb0cd",
+                "surface-container-highest": "#353436",
+                "on-error": "#690005",
+                "on-secondary-fixed": "#3e0022",
+                "on-primary": "#490080",
+                "on-tertiary-container": "#002f38",
+                "on-error-container": "#ffdad6",
+                "surface-container-lowest": "#0e0e0f",
+                "outline": "#988d9f",
+                "tertiary-fixed": "#acedff",
+                "primary-container": "#b76dff",
+                "on-tertiary": "#003640",
+                "inverse-surface": "#e5e2e3",
+                "inverse-primary": "#842bd2",
+                "on-secondary": "#640039",
+                "primary": "#ddb7ff",
+                "inverse-on-surface": "#313031",
+                "error": "#ffb4ab",
+                "primary-fixed-dim": "#ddb7ff",
+                "surface-dim": "#131314"
+              },
+              "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+              },
+              "spacing": {
+                "md": "16px",
+                "margin": "32px",
+                "xxl": "80px",
+                "xs": "4px",
+                "sm": "8px",
+                "container-max": "1440px",
+                "xl": "48px",
+                "gutter": "24px",
+                "unit": "4px",
+                "lg": "24px"
+              },
+              "fontFamily": {
+                "body-md": ["Inter"],
+                "h3": ["Inter"],
+                "h1": ["Inter"],
+                "body-lg": ["Inter"],
+                "stat-value": ["Inter"],
+                "label-sm": ["Inter"],
+                "h2": ["Inter"],
+                "serif": ["Playfair Display", "serif"]
+              }
+            }
+          }
+        }
+    </script>
+    <style>
+        .glass-card {
+          background: rgba(28, 27, 28, 0.7);
+          backdrop-filter: blur(20px);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .neon-bloom {
+          box-shadow: 0 0 30px rgba(168, 85, 247, 0.4);
+        }
+        .text-glow {
+          text-shadow: 0 0 10px rgba(221, 183, 255, 0.5);
+        }
+        .vapor-bg {
+          background: linear-gradient(180deg, #490080 0%, #131314 60%, #0e0e0f 100%);
+        }
+        body {
+          min-height: max(884px, 100dvh);
+        }
+    </style>
 </head>
-<body class="bg-[#050505]">
-    <div class="app-container">
-        <!-- Ambient Background Glow -->
-        <div class="glow-blob glow-purple"></div>
-        <div class="glow-blob glow-pink"></div>
+<body class="vapor-bg text-on-background min-h-screen relative overflow-hidden font-body-md selection:bg-primary/30">
+    <!-- Floating Serifs: Top 80% -->
+    <div class="absolute inset-0 h-[80%] pointer-events-none select-none overflow-hidden">
+        <div class="absolute top-[15%] left-[10%] opacity-20 transform -rotate-6">
+            <span class="font-serif text-4xl italic">The Vault is deep.</span>
+        </div>
+        <div class="absolute top-[40%] right-[15%] opacity-10 transform rotate-12">
+            <span class="font-serif text-3xl">Your assets deserve silence.</span>
+        </div>
+        <div class="absolute top-[60%] left-[20%] opacity-30 transform -rotate-3">
+            <span class="font-serif text-2xl italic">Descend into the prestige.</span>
+        </div>
+        <div class="absolute top-[25%] right-[30%] opacity-5 transform rotate-45">
+            <span class="font-serif text-xl">Ethereal Curation</span>
+        </div>
+        <!-- Abstract Visual Elements -->
+        <div class="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[120px]"></div>
+        <div class="absolute top-[10%] right-[5%] w-32 h-32 border border-primary/20 rounded-full opacity-40"></div>
+        <div class="absolute top-[70%] left-[5%] w-48 h-48 border border-secondary/10 rotate-45 opacity-20"></div>
+    </div>
 
-        <header class="flex items-center justify-center py-8">
-            <img src="/static/img/logo.png" alt="Pokget Logo" class="w-32 h-auto">
-        </header>
+    <!-- Main Content Cluster: Bottom 20-30% -->
+    <main id="main-content" class="absolute bottom-0 left-0 w-full h-[40%] md:h-[30%] flex flex-col justify-end pb-xl px-margin">
+        {{template "auth_fragment.html" .}}
+    </main>
 
-        <main class="flex-1">
-            {{template "auth_fragment.html" .}}
-        </main>
+    <!-- Background Imagery (Depth Context) -->
+    <div class="fixed inset-0 -z-10 opacity-20 pointer-events-none">
+        <img class="w-full h-full object-cover grayscale" 
+             src="https://lh3.googleusercontent.com/aida-public/AB6AXuDNX_qqS4BkonblsrpQzMcDY36NOCrem7FnCGon0DY2MoEBUIsm6qVxfSCv59wPXe3eeZF7eOkCKCv7UpfEp-Nx4Jvtr8ahPhsqfgIdtqX414iK9n51wt5FU3xrvnFi2qFM_xEu-qCCgL8Zqc0mHdVNAnWA7TWvBtQW-qKSdCCAvFyi4WHiPdjzSWCe79LbhUxr_Pk9mn2EPshb6rXvggQrbCfn1Y18MR_BPjiQIeqYkArEcrX3cpQ6Ebc7TLIScRMDKE0zTMA1pDs" 
+             alt="Vault Background">
     </div>
 
     <!-- Notification Toast -->
@@ -29,7 +156,7 @@
          x-show="show"
          x-transition
          class="fixed bottom-24 left-half translate-x-half z-50">
-        <div class="glass-card py-3 px-6 shadow-2xl border-white/10"
+        <div class="glass-card-prestige py-3 px-6 shadow-2xl border-white/10"
              :class="type === 'error' ? 'border-red-500/50' : 'border-purple-500/50'">
             <p class="text-sm font-bold" x-text="msg"></p>
         </div>
