@@ -1,0 +1,28 @@
+name: Cleanup Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry Run (if true, will not delete anything)"
+        type: boolean
+        default: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Prune old GHCR versions
+        uses: vlaurin/action-ghcr-prune@v0.6.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          organization: ${{ github.repository_owner }}
+          container: pokget
+          keep-last: 5
+          keep-tags: |
+            main
+            latest
+          dry-run: ${{ inputs.dry_run }}
