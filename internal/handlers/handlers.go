@@ -177,9 +177,14 @@ func (h *Handler) Centering(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-func (h *Handler) Auth(w http.ResponseWriter, _ *http.Request) {
-	if err := h.Templates.ExecuteTemplate(w, "auth.html", nil); err != nil {
-		slog.Error("Template execution failed", "error", err)
+func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) {
+	templateName := "auth.html"
+	if r.Header.Get("HX-Request") == "true" {
+		templateName = "auth_fragment"
+	}
+
+	if err := h.Templates.ExecuteTemplate(w, templateName, nil); err != nil {
+		slog.Error("Template execution failed", "template", templateName, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }

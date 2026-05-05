@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pokget | Auth</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="/static/js/alpine.min.js" defer></script>
     <link rel="icon" type="image/png" href="/static/img/logo.png">
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
@@ -19,92 +18,8 @@
             <img src="/static/img/logo.png" alt="Pokget Logo" class="w-32 h-auto">
         </header>
 
-        <main class="flex-1 animate-in" x-data="{ mode: 'login', resendDisabled: false, countdown: 0 }">
-            <div class="glass-card">
-                <!-- Mode Toggle -->
-                <div class="flex p-1 mb-8 bg-white/5 rounded-2xl border border-white/5">
-                    <button @click="mode = 'login'" 
-                            class="flex-1 py-2.5 text-sm font-bold rounded-xl transition-all"
-                            :class="mode === 'login' ? 'bg-white/10 text-white shadow-lg' : 'text-white/40 hover:text-white/60'">
-                        Login
-                    </button>
-                    <button @click="mode = 'register'" 
-                            class="flex-1 py-2.5 text-sm font-bold rounded-xl transition-all"
-                            :class="mode === 'register' ? 'bg-white/10 text-white shadow-lg' : 'text-white/40 hover:text-white/60'">
-                        Sign Up
-                    </button>
-                </div>
-
-                <!-- Login Form -->
-                <form x-show="mode === 'login'" action="/auth/login" method="POST" class="space-y-6">
-                    <div class="input-group">
-                        <label>Email Address</label>
-                        <input type="email" name="email" placeholder="collector@example.com" required>
-                    </div>
-                    <div class="input-group">
-                        <label>Password</label>
-                        <input type="password" name="password" placeholder="••••••••" required>
-                    </div>
-                    <button type="submit" class="w-full primary-button py-4 mt-4">
-                        Sign In
-                    </button>
-                </form>
-
-                <!-- Register Form -->
-                <form x-show="mode === 'register'" action="/auth/register" method="POST" class="space-y-6">
-                    <div class="input-group">
-                        <label>Email Address</label>
-                        <input type="email" name="email" placeholder="collector@example.com" required>
-                    </div>
-                    <div class="input-group">
-                        <label>Create Password</label>
-                        <input type="password" name="password" placeholder="••••••••" required>
-                    </div>
-                    <button type="submit" class="w-full primary-button py-4 mt-4">
-                        Create Account
-                    </button>
-                </form>
-
-                <!-- Resend Verification (Visible when needed) -->
-                <div class="mt-8 pt-8 border-t border-white/5 text-center">
-                    <p class="text-xs text-white/40 mb-4">Didn't get the email?</p>
-                    <button @click="
-                        if (!resendDisabled) {
-                            resendDisabled = true;
-                            countdown = 300;
-                            let timer = setInterval(() => {
-                                countdown--;
-                                if (countdown <= 0) {
-                                    clearInterval(timer);
-                                    resendDisabled = false;
-                                }
-                            }, 1000);
-                            
-                            const emailInput = $el.closest('.glass-card').querySelector('input[type=\'email\']');
-                            const formData = new FormData();
-                            formData.append('email', emailInput.value);
-
-                            fetch('/auth/resend', { 
-                                method: 'POST', 
-                                body: formData 
-                            }).then(res => {
-                                if (res.ok) {
-                                    alert('Verification email resent!');
-                                } else {
-                                    alert('Too many requests. Please wait.');
-                                }
-                            });
-                        }"
-                        :disabled="resendDisabled"
-                        class="text-xs font-bold text-purple-400 hover:text-purple-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                        <span x-text="resendDisabled ? 'Resend available in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend Verification Email'"></span>
-                    </button>
-                </div>
-            </div>
-
-            <p class="mt-8 text-center text-xs text-white/20">
-                Collector's Financial Hub &copy; 2026 Pokget
-            </p>
+        <main class="flex-1">
+            {{template "auth_fragment.html" .}}
         </main>
     </div>
 
