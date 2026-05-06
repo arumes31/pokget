@@ -94,7 +94,18 @@ func main() {
 	}
 
 	// Load Templates
-	templates := template.Must(template.ParseGlob("templates/*.html"))
+	funcMap := template.FuncMap{
+		"div": func(a, b float64) float64 {
+			if b == 0 {
+				return 0
+			}
+			return a / b
+		},
+		"mul": func(a, b float64) float64 {
+			return a * b
+		},
+	}
+	templates := template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
 
 	// Initialize Services
 	auditSvc := service.NewAuditService(db.DB)
