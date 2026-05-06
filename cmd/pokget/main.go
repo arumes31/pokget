@@ -163,6 +163,7 @@ func main() {
 	r.HandleFunc("/auth/resend", h.ResendVerification).Methods("POST")
 	r.HandleFunc("/auth/confirm", h.ConfirmEmail).Methods("GET")
 	r.HandleFunc("/auth/confirm", h.ProcessConfirmEmail).Methods("POST")
+	r.HandleFunc("/auth/logout", h.Logout).Methods("GET", "POST")
 	r.HandleFunc("/api/scan", h.APIScan).Methods("POST")
 	r.HandleFunc("/vault/{user_id}", h.PublicVault).Methods("GET")
 	r.HandleFunc("/errors", h.ErrorDatabase).Methods("GET")

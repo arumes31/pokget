@@ -241,3 +241,18 @@ func generateToken() string {
 	}
 	return hex.EncodeToString(b)
 }
+
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	session, _ := auth.Store.Get(r, "session")
+	session.Values["user_id"] = ""
+	session.Options.MaxAge = -1
+	_ = session.Save(r, w)
+
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", "/auth")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	http.Redirect(w, r, "/auth", http.StatusSeeOther)
+}
