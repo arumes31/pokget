@@ -66,6 +66,12 @@ func main() {
 	// Initialize Database
 	db.InitDB()
 	var priceWorker *worker.PriceSyncWorker
+	// Apply Migrations
+	if err := db.ApplyMigrations(db.DB, cfg.DB.MigrationsPath); err != nil {
+		slog.Error("Migration error", "error", err)
+		os.Exit(1)
+	}
+
 	if db.DB != nil {
 		if err := db.SeedDatabase(db.DB); err != nil {
 			slog.Error("Database seeding failed", "error", err)

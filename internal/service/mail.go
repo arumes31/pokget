@@ -26,6 +26,7 @@ import (
 	"html/template"
 	"net/smtp"
 	"os"
+	"strings"
 )
 
 type Mailer interface {
@@ -38,24 +39,32 @@ type MailService struct {
 	Username string
 	Password string
 	From     string
+	BaseURL  string
 	// Internal field for testing smtp.SendMail
 	sendMailFunc func(addr string, a smtp.Auth, from string, to []string, msg []byte) error
 }
 
 func NewMailService() *MailService {
+	baseURL := os.Getenv("BASE_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
 	return &MailService{
-		Host:     os.Getenv("SMTP_HOST"),
-		Port:     os.Getenv("SMTP_PORT"),
-		Username: os.Getenv("SMTP_USER"),
-		Password: os.Getenv("SMTP_PASS"),
-		From:     os.Getenv("SMTP_FROM"),
+		Host:         os.Getenv("SMTP_HOST"),
+		Port:         os.Getenv("SMTP_PORT"),
+		Username:     os.Getenv("SMTP_USER"),
+		Password:     os.Getenv("SMTP_PASS"),
+		From:         os.Getenv("SMTP_FROM"),
+		BaseURL:      baseURL,
 		sendMailFunc: smtp.SendMail,
 	}
 }
 
 func (s *MailService) SendConfirmationEmail(to, token string) error {
 	subject := "Verify your Pokget account"
-	confirmURL := fmt.Sprintf("http://localhost:8080/auth/confirm?token=%s", token)
+	confirmURL := fmt.Sprintf("%s/auth/confirm?token=%s", s.BaseURL, token)
 
 	data := map[string]string{
 		"ConfirmURL": confirmURL,
