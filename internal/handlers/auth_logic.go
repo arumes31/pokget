@@ -24,6 +24,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"github.com/gorilla/csrf"
 	"pokget/internal/auth"
 	"pokget/internal/models"
 	"pokget/internal/service"
@@ -89,7 +90,11 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	h.Audit.Log("", "USER_REGISTER", map[string]interface{}{"email": email})
 
 	w.WriteHeader(http.StatusCreated)
-	if err := h.Templates.ExecuteTemplate(w, "auth_success", map[string]string{"Message": "Registration successful! Please check your email to verify your account."}); err != nil {
+	data := map[string]interface{}{
+		"Message":   "Registration successful! Please check your email to verify your account.",
+		"CSRFToken": csrf.Token(r),
+	}
+	if err := h.Templates.ExecuteTemplate(w, "auth_success", data); err != nil {
 		slog.Error("Failed to execute success template", "error", err)
 	}
 }
@@ -154,11 +159,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	var u models.User
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
-	if err == sql.ErrNoRows || !auth.CheckPasswordHash(password, u.PasswordHash) {
-		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
-		return
-	} else if err != nil {
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+			return
+		}
+		slog.Error("Login: database error", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if !auth.CheckPasswordHash(password, u.PasswordHash) {
+		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
 

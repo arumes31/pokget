@@ -1,3 +1,6 @@
+-- Ensure game column exists (fix for potential migration desync)
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS game TEXT DEFAULT 'Pokemon';
+
 -- Add indexes for performance optimization
 CREATE INDEX IF NOT EXISTS idx_cards_game ON cards(game);
 CREATE INDEX IF NOT EXISTS idx_cards_name ON cards(name);

@@ -630,11 +630,13 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		// Check vault visibility first
-		mock.ExpectQuery("SELECT vault_public").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"vault_public"}).AddRow(true))
+		rowsUser := sqlmock.NewRows([]string{"id", "email", "rank_title", "xp"}).
+			AddRow("test-user-id", "test@example.com", "Hobbyist", 1600)
+		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
+			WillReturnRows(rowsUser)
 
 		// Fetch public portfolio items
-		mock.ExpectQuery("SELECT p.id").WithArgs("test-user").
+		mock.ExpectQuery("SELECT p.id").WithArgs("test-user-id").
 			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "fmt", "gr", "comp", "notes", "name", "set", "price", "url", "game"}).
 				AddRow("1", "NM", "Raw", 0, "", "note", "Charizard", "Base", 100.0, "url", "Pokemon"))
 		
@@ -750,8 +752,8 @@ func TestHandlers(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"user_id": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT vault_public").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"vault_public"}).AddRow(false))
+		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
+			WillReturnError(sql.ErrNoRows)
 
 		h.PublicVault(rr, req)
 
@@ -768,7 +770,7 @@ func TestHandlers(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"user_id": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT vault_public").WithArgs("test-user").
+		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
 			WillReturnError(errors.New("db error"))
 
 		h.PublicVault(rr, req)

@@ -71,6 +71,9 @@ func (s *MailService) SendConfirmationEmail(to, token string) error {
 		return err
 	}
 
+	// Log the confirmation URL for easier development/testing if SMTP fails
+	fmt.Printf("\n[MAIL] Confirmation link for %s: %s\n\n", to, confirmURL)
+
 	return s.sendMail(to, subject, body.String())
 }
 

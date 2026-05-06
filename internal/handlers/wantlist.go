@@ -74,6 +74,10 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cardID := r.FormValue("card_id")
+	if cardID == "" {
+		http.Error(w, "card_id is required", http.StatusBadRequest)
+		return
+	}
 	targetPrice := r.FormValue("target_price")
 	notes := r.FormValue("notes")
 

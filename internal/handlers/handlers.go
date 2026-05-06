@@ -261,6 +261,10 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 
 	userID, _ := r.Context().Value(auth.UserContextKey{}).(string)
 	itemID := r.FormValue("item_id")
+	if itemID == "" {
+		http.Error(w, "item_id is required", http.StatusBadRequest)
+		return
+	}
 	notes := r.FormValue("notes")
 	grade := r.FormValue("grade")
 	customPrice := r.FormValue("custom_price")
