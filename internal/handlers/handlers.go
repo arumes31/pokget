@@ -564,6 +564,10 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	var detectedPrice float64
 	var detectedImage string
 
+	// Create a context with timeout for OCR
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
 	if h.Fingerprint != nil {
 		img, _, err := image.Decode(bytes.NewReader(imgBytes))
 		if err == nil {

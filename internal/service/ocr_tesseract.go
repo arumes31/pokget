@@ -35,7 +35,10 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"sync"
 )
+
+var ocrMu sync.Mutex
 
 func levenshtein(s1, s2 string) int {
 	s1 = strings.ToLower(s1)
@@ -89,16 +92,25 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 		return "", "", nil, err
 	}
 
-	// 2. Perform OCR (Simulated if stubbed)
+	// 2. Perform OCR
+	slog.Info("OCR: Initializing Tesseract client...")
 	client := gosseract.NewClient()
 	defer client.Close()
 
+	slog.Info("OCR: Setting image data...")
 	_ = client.SetLanguage(lang)
 	_ = client.SetImageFromBytes(buf.Bytes())
+	
+	slog.Info("OCR: Executing Tesseract (Locking)...")
+	ocrMu.Lock()
 	text, err := client.Text()
+	ocrMu.Unlock()
+	slog.Info("OCR: Tesseract execution released")
 	if err != nil {
+		slog.Error("OCR: Tesseract execution failed", "error", err)
 		return "", "", buf.Bytes(), err
 	}
+	slog.Info("OCR: Tesseract complete", "text_len", len(text))
 
 	// 3. Perfect Detection Logic: Multi-Stage Matching
 	detectedCard := "Unknown Card"
