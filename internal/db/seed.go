@@ -31,6 +31,14 @@ import (
 func SeedDatabase(db *sql.DB) error {
 	slog.Info("Worker: Seeding database with initial card data...")
 
+	// Safety check: verify migration 16 applied the game column
+	var exists bool
+	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cards' AND column_name='game')").Scan(&exists)
+	if err != nil || !exists {
+		slog.Warn("Skipping database seeding: 'game' column not found yet. Migration 16 might be pending.")
+		return nil
+	}
+
 	mockCards := []models.Card{
 		{ID: "swsh45-19", Name: "Charizard VMAX", Set: "Shining Fates", PriceUSD: decimal.NewFromFloat(120.50), PriceEUR: decimal.NewFromFloat(110.00), ImageURL: "https://images.pokemontcg.io/swsh45/19_hires.png", Variant: "Holo", Game: "Pokemon"},
 		{ID: "swsh7-215", Name: "Umbreon VMAX", Set: "Evolving Skies", PriceUSD: decimal.NewFromFloat(650.00), PriceEUR: decimal.NewFromFloat(600.00), ImageURL: "https://images.pokemontcg.io/swsh7/215_hires.png", Variant: "Alt Art", Game: "Pokemon"},

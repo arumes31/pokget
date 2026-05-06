@@ -193,8 +193,23 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("Action: ConfirmEmail", "method", r.Method, "url", r.URL.String())
+	slog.Debug("Action: ConfirmEmail (GET)", "method", r.Method, "url", r.URL.String())
 	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Missing token", http.StatusBadRequest)
+		return
+	}
+
+	// Just render the confirmation page with the token
+	data := map[string]interface{}{
+		"Token": token,
+	}
+	h.render(w, r, "confirm_email.html", data)
+}
+
+func (h *Handler) ProcessConfirmEmail(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: ProcessConfirmEmail (POST)", "method", r.Method, "url", r.URL.String())
+	token := r.FormValue("token")
 	if token == "" {
 		http.Error(w, "Missing token", http.StatusBadRequest)
 		return
@@ -208,11 +223,11 @@ func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
 
 	rows, _ := res.RowsAffected()
 	if rows == 0 {
-		http.Error(w, "Invalid or expired token", http.StatusBadRequest)
+		http.Error(w, "Invalid or expired token. Your account might already be verified.", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.Templates.ExecuteTemplate(w, "auth_success", map[string]string{"Message": "Email verified! You can now log in."}); err != nil {
+	if err := h.Templates.ExecuteTemplate(w, "confirm_success", nil); err != nil {
 		slog.Error("Failed to execute success template", "error", err)
 	}
 }

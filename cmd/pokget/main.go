@@ -66,6 +66,12 @@ func main() {
 	// Initialize Database
 	db.InitDB()
 	var priceWorker *worker.PriceSyncWorker
+	// Apply Migrations
+	if err := db.ApplyMigrations(db.DB, cfg.DB.MigrationsPath); err != nil {
+		slog.Error("Migration error", "error", err)
+		os.Exit(1)
+	}
+
 	if db.DB != nil {
 		if err := db.SeedDatabase(db.DB); err != nil {
 			slog.Error("Database seeding failed", "error", err)
@@ -156,6 +162,7 @@ func main() {
 	r.HandleFunc("/auth/login", h.Login).Methods("POST")
 	r.HandleFunc("/auth/resend", h.ResendVerification).Methods("POST")
 	r.HandleFunc("/auth/confirm", h.ConfirmEmail).Methods("GET")
+	r.HandleFunc("/auth/confirm", h.ProcessConfirmEmail).Methods("POST")
 	r.HandleFunc("/api/scan", h.APIScan).Methods("POST")
 	r.HandleFunc("/vault/{user_id}", h.PublicVault).Methods("GET")
 	r.HandleFunc("/errors", h.ErrorDatabase).Methods("GET")
