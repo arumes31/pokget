@@ -30,6 +30,15 @@
           min-height: max(884px, 100dvh);
         }
     </style>
+    <script>
+        document.addEventListener('htmx:responseError', function(evt) {
+            const errorDiv = document.getElementById('auth-error') || document.getElementById('auth-register-error');
+            if (errorDiv) {
+                errorDiv.innerText = evt.detail.xhr.responseText;
+                setTimeout(() => errorDiv.innerText = '', 5000);
+            }
+        });
+    </script>
 </head>
 <body class="vapor-bg text-on-background min-h-screen relative overflow-hidden font-body-md selection:bg-primary/30">
     <!-- Floating Serifs: Top 80% -->
