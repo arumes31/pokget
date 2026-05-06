@@ -34,6 +34,7 @@ import (
 	_ "image/png"  // Register PNG format for image.Decode
 	"log/slog"
 	"regexp"
+	"strings"
 )
 
 func levenshtein(s1, s2 string) int {
