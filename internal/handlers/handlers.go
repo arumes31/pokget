@@ -22,7 +22,9 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
+	"time"
 	"encoding/base64"
 	"encoding/json"
 	"html/template"
@@ -567,6 +569,12 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	// Create a context with timeout for OCR
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+
+	// Check context before starting
+	if ctx.Err() != nil {
+		http.Error(w, "Request timed out", http.StatusRequestTimeout)
+		return
+	}
 
 	if h.Fingerprint != nil {
 		img, _, err := image.Decode(bytes.NewReader(imgBytes))

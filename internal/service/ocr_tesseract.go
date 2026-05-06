@@ -33,7 +33,6 @@ import (
 	"image/jpeg"
 	_ "image/png"  // Register PNG format for image.Decode
 	"log/slog"
-	"regexp"
 	"strings"
 	"sync"
 )
