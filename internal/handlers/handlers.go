@@ -69,6 +69,22 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 	}
 	data["CSRFToken"] = csrf.Token(r)
 	data["BuildVersion"] = h.BuildVersion
+
+	// Inject Global User Data (XP, Rank)
+	if userID, ok := r.Context().Value(auth.UserContextKey{}).(string); ok {
+		var xp int
+		var rankTitle string
+		_ = h.DB.QueryRow("SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle)
+		
+		rank := h.Game.GetUserRank(xp)
+		_, _, xpPercent := h.Game.GetProgressToNextRank(xp)
+
+		data["UserXP"] = xp
+		data["UserRank"] = rankTitle
+		data["UserXPPercent"] = xpPercent
+		data["UserRankIcon"] = rank.IconURL
+	}
+
 	if err := h.Templates.ExecuteTemplate(w, name, data); err != nil {
 		slog.Error("Template execution failed", "template", name, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

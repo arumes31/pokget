@@ -55,8 +55,21 @@
             <div class="flex items-center gap-md">
                 <h1 class="font-h3 text-h3 uppercase tracking-widest font-bold text-primary">VAULT</h1>
             </div>
-            <div class="w-10 h-10 rounded-full border border-primary/30 overflow-hidden active:scale-95 transition-transform cursor-pointer">
-                <img alt="User" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCj7r2jcjkIPzCnIWdl81c_zvMWsrTnfReN29OfZJcKY7QDJIcr0JZ8aWrfMIjGkOqlRU-8amurNTnS3V6ocE7r12mwNxFtrOfg2ePKMlTqMT9I-Y4TLNExFJ3IAG44E1SjN_Ycnf0W3z1kfG887hQg0a2VlNx-YvBM2QXnhAHbX_jqrOYwpoJjJvmkwLM5iTR4qri-j6evoNV5e0NYDrFjpcIg2U4ED4Ew7mrMzeZEljz5dEYwnL-QKRV19MuPodyLEI8bSDDP7wY">
+            <div class="flex items-center gap-lg">
+                {{ if .UserRank }}
+                <div class="hidden sm:flex flex-col items-end gap-1">
+                    <span class="text-[9px] font-bold uppercase tracking-widest text-primary/60">{{ .UserRank }}</span>
+                    <div class="w-24 h-1 bg-white/5 rounded-full overflow-hidden">
+                        <div class="h-full bg-primary shadow-[0_0_8px_rgba(221,183,255,0.4)]" style="width: {{ .UserXPPercent }}%"></div>
+                    </div>
+                </div>
+                {{ end }}
+                <div class="w-10 h-10 rounded-full border border-primary/30 overflow-hidden active:scale-95 transition-transform cursor-pointer relative group">
+                    <img alt="User" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCj7r2jcjkIPzCnIWdl81c_zvMWsrTnfReN29OfZJcKY7QDJIcr0JZ8aWrfMIjGkOqlRU-8amurNTnS3V6ocE7r12mwNxFtrOfg2ePKMlTqMT9I-Y4TLNExFJ3IAG44E1SjN_Ycnf0W3z1kfG887hQg0a2VlNx-YvBM2QXnhAHbX_jqrOYwpoJjJvmkwLM5iTR4qri-j6evoNV5e0NYDrFjpcIg2U4ED4Ew7mrMzeZEljz5dEYwnL-QKRV19MuPodyLEI8bSDDP7wY">
+                    <div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-xs">settings</span>
+                    </div>
+                </div>
             </div>
         </div>
     </header>
