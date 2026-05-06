@@ -45,7 +45,7 @@ func main() {
 	successCount := 0
 	totalCount := len(cards)
 	
-	_ = os.MkdirAll("static/img/debug/bulk", 0755)
+	_ = os.MkdirAll("static/img/debug/bulk", 0750)
 
 	for i, c := range cards {
 		fmt.Printf("[%d/%d] Testing: %s... ", i+1, totalCount, c.Name)
@@ -58,7 +58,7 @@ func main() {
 			continue
 		}
 		imgBytes, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// Run OCR Preprocessing (Stubbed matching logic will run)
 		// To simulate "Perfect Detection" in a stubbed environment, 

@@ -23,7 +23,7 @@ func main() {
 	}
 
 	// Create debug directory
-	_ = os.MkdirAll("static/img/debug", 0755)
+	_ = os.MkdirAll("static/img/debug", 0750)
 
 	for name, url := range cardURLs {
 		fmt.Printf("--- Testing OCR for: %s ---\n", name)
@@ -36,7 +36,7 @@ func main() {
 			continue
 		}
 		imgBytes, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// Run OCR Preprocessing and Scan
 		text, detected, processed, err := service.ProcessCardScan(imgBytes, mockCards, "eng")
