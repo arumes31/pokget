@@ -1,6 +1,6 @@
 <div class="flex flex-col h-full space-y-4" 
      x-data="{ 
-        lines: { left: 20, right: 80, top: 20, bottom: 80 },
+        lines: { left: 10, right: 90, top: 10, bottom: 90 },
         metrics: { lr: '50/50', tb: '50/50' },
         dragging: null,
         scanning: false,
@@ -105,7 +105,7 @@
 >
     <div class="flex items-center justify-between px-1">
         <h2 class="text-lg font-bold">Card Scanner</h2>
-        <button class="text-white/40" @click="lines = { left: 20, right: 80, top: 20, bottom: 80 }; updateMetrics(); result = ''; detectedCard = ''">
+        <button class="text-white/40" @click="lines = { left: 10, right: 90, top: 10, bottom: 90 }; updateMetrics(); result = ''; detectedCard = ''">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
         </button>
     </div>
@@ -114,9 +114,19 @@
         <!-- Live Video Feed -->
         <video x-ref="video" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
 
+        <!-- Compact Language Selector Overlay -->
+        <div class="absolute top-3 left-3 z-20 flex gap-1 p-0.5 bg-black/40 backdrop-blur-md rounded-lg border border-white/10">
+            <template x-for="l in ['eng', 'jpn', 'deu', 'fra']">
+                <button @click="lang = l" 
+                        :class="lang === l ? 'bg-purple-600 text-white shadow-lg' : 'text-white/40 hover:text-white/60'" 
+                        class="px-2 py-1 text-[8px] font-black rounded-md transition-all uppercase tracking-tighter" 
+                        x-text="l"></button>
+            </template>
+        </div>
+
         <!-- Camera Viewfinder Mockup -->
         <div class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-            <div class="w-48 h-64 border-2 border-white/20 rounded-2xl relative" :class="scanning ? 'border-purple-500 animate-pulse' : ''">
+            <div class="w-64 h-80 border-2 border-white/20 rounded-2xl relative" :class="scanning ? 'border-purple-500 animate-pulse' : ''">
                 <div class="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-purple-500 rounded-tl-lg" :class="scanning ? 'animate-ping' : ''"></div>
                 <div class="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-purple-500 rounded-tr-lg" :class="scanning ? 'animate-ping' : ''"></div>
                 <div class="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-purple-500 rounded-bl-lg" :class="scanning ? 'animate-ping' : ''"></div>
@@ -145,23 +155,13 @@
                  :style="`left: ${(lines.left + lines.right) / 2}%; top: 5%`" x-text="metrics.lr"></div>
         </div>
 
-        <div class="absolute bottom-4 left-0 right-0 flex justify-center">
-            <div class="glass-card px-4 py-2 bg-black/60 backdrop-blur-xl border-purple-500/30 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-purple-500"><path d="m15 15-3-3 3-3"/><path d="m9 15 3-3-3-3"/><path d="m18 12h-6"/><path d="m6 12h6"/></svg>
-                <span class="text-[10px] font-bold text-white/80">Drag lines to card edges</span>
-            </div>
+        <div class="absolute bottom-4 left-0 right-0 flex justify-center opacity-40">
+            <span class="text-[9px] font-bold text-white uppercase tracking-widest">Drag lines to card edges</span>
         </div>
     </div>
 
     <!-- Controls / Metrics -->
     <div class="space-y-4">
-        <!-- Language Selector -->
-        <div class="flex items-center justify-between glass-card p-1">
-            <button @click="lang = 'eng'" :class="lang === 'eng' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">ENG</button>
-            <button @click="lang = 'jpn'" :class="lang === 'jpn' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">JPN</button>
-            <button @click="lang = 'deu'" :class="lang === 'deu' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">DEU</button>
-            <button @click="lang = 'fra'" :class="lang === 'fra' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">FRA</button>
-        </div>
 
         <!-- Scan Button -->
         <button @click="capture()" 
