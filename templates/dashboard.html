@@ -52,7 +52,11 @@
     <div class="glass-card min-w-[200px] flex-shrink-0 p-md rounded-xl flex flex-col gap-xs border-l-4 border-l-secondary/40">
         <span class="font-label-sm text-[10px] uppercase tracking-widest text-on-surface-variant opacity-60">Top Performer</span>
         <div class="flex items-center gap-xs">
-            <span class="font-bold text-lg text-secondary truncate">{{ (index .Portfolio 0).Name }}</span>
+            {{ if .Portfolio }}
+                <span class="font-bold text-lg text-secondary truncate">{{ (index .Portfolio 0).Card.Name }}</span>
+            {{ else }}
+                <span class="font-bold text-lg text-secondary/40 italic">No assets</span>
+            {{ end }}
         </div>
     </div>
     <!-- Stat 3 -->
