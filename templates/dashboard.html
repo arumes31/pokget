@@ -1,31 +1,37 @@
 <!-- Hero Section: Total Portfolio Value -->
 <section class="relative animate-in">
     <div class="absolute -top-10 -left-10 w-64 h-64 bg-primary/10 blur-[100px] rounded-full"></div>
-    <div class="glass-card rounded-xl p-lg relative overflow-hidden border border-white/5">
-        <div class="flex flex-col gap-4">
-            <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-2">
-                <span class="font-label-sm text-[10px] md:text-xs uppercase text-on-surface-variant tracking-[0.2em] opacity-40">Total Portfolio Valuation</span>
+    <div class="glass-card rounded-2xl p-6 md:p-lg relative overflow-hidden border border-white/5">
+        <div class="flex flex-col gap-6">
+            <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+                <div class="flex flex-col gap-1">
+                    <span class="font-label-sm text-[10px] uppercase text-on-surface-variant tracking-[0.2em] opacity-40">Total Portfolio Valuation</span>
+                    <div class="flex items-baseline gap-2">
+                        <span class="font-h1 text-4xl md:text-6xl font-black text-on-surface tracking-tighter roll-counter" 
+                              data-target="{{ .TotalValuation }}" data-prefix="$">$0.00</span>
+                        {{ if gt .TotalValuation 0.0 }}
+                        <div class="flex items-center {{ if ge .Change24h 0.0 }}text-tertiary bg-tertiary/10 border-tertiary/20{{ else }}text-red-400 bg-red-400/10 border-red-400/20{{ end }} gap-1 px-2 py-0.5 rounded-lg border">
+                            <span class="material-symbols-outlined text-[12px]">{{ if ge .Change24h 0.0 }}trending_up{{ else }}trending_down{{ end }}</span>
+                            <span class="font-label-sm text-[10px] font-black">{{ if ge .Change24h 0.0 }}+{{ end }}{{ printf "%.1f" .Change24h }}%</span>
+                        </div>
+                        {{ end }}
+                    </div>
+                </div>
                 
                 <!-- Rank Display -->
-                <div class="flex items-center gap-sm glass-card px-3 py-1.5 rounded-2xl border border-white/5 self-start md:self-auto bg-white/5">
-                    <img src="{{ .RankIcon }}" alt="Rank" class="w-5 h-5 object-contain">
+                <div class="flex items-center gap-3 glass-card px-4 py-2 rounded-2xl border border-white/10 self-start md:self-auto bg-white/5 backdrop-blur-xl">
+                    <div class="relative">
+                        <div class="absolute inset-0 bg-primary/20 blur-md rounded-full"></div>
+                        <img src="{{ .RankIcon }}" alt="Rank" class="w-8 h-8 md:w-10 md:h-10 object-contain relative z-10">
+                    </div>
                     <div class="flex flex-col">
-                        <span class="text-[9px] uppercase font-black text-primary tracking-tighter">{{ .Rank }}</span>
-                        <div class="w-16 h-1 bg-white/10 rounded-full mt-0.5 overflow-hidden">
-                            <div class="h-full bg-primary" x-init="$el.style.width = '{{ .XPPercent }}%'"></div>
+                        <span class="text-[9px] uppercase font-black text-on-surface-variant tracking-widest opacity-60">Tier Status</span>
+                        <span class="text-xs font-black text-primary uppercase tracking-tighter">{{ .Rank }}</span>
+                        <div class="w-20 md:w-24 h-1 bg-white/10 rounded-full mt-1.5 overflow-hidden">
+                            <div class="h-full bg-primary shadow-[0_0_8px_#ddb7ff]" x-init="$el.style.width = '{{ .XPPercent }}%'"></div>
                         </div>
                     </div>
                 </div>
-            </div>
-            <div class="flex flex-col md:flex-row md:items-baseline gap-2 md:gap-md">
-                <span class="font-h1 text-5xl md:text-6xl font-black text-on-surface tracking-tighter roll-counter" 
-                      data-target="{{ .TotalValuation }}" data-prefix="$">$0.00</span>
-                {{ if gt .TotalValuation 0.0 }}
-                <div class="flex items-center self-start md:self-auto {{ if ge .Change24h 0.0 }}text-tertiary bg-tertiary/10 border-tertiary/20{{ else }}text-red-400 bg-red-400/10 border-red-400/20{{ end }} gap-xs px-2.5 py-1 rounded-lg border">
-                    <span class="material-symbols-outlined text-[14px]">{{ if ge .Change24h 0.0 }}trending_up{{ else }}trending_down{{ end }}</span>
-                    <span class="font-label-sm text-[10px] font-black">{{ if ge .Change24h 0.0 }}+{{ end }}{{ printf "%.1f" .Change24h }}%</span>
-                </div>
-                {{ end }}
             </div>
         </div>
         <!-- Mini Sparkline visualization -->
@@ -45,59 +51,67 @@
 </section>
 
 <!-- Portfolio Stats: Horizontal Scrolling -->
-<section class="flex overflow-x-auto gap-4 no-scrollbar pb-4 -mx-4 px-4 scroll-smooth">
+<section class="flex overflow-x-auto gap-4 no-scrollbar pb-2 -mx-4 px-4 scroll-smooth">
     <!-- Stat 1 -->
-    <div class="glass-card min-w-[140px] md:min-w-[160px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
+    <div class="glass-card min-w-[140px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
         <span class="font-label-sm text-[9px] uppercase tracking-[0.2em] text-on-surface-variant opacity-30">Total Assets</span>
         <span class="font-black text-2xl text-on-surface roll-counter" data-target="{{ len .Portfolio }}">0</span>
     </div>
     <!-- Stat 2 -->
-    <div class="glass-card min-w-[180px] md:min-w-[200px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
+    <div class="glass-card min-w-[200px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
         <span class="font-label-sm text-[9px] uppercase tracking-[0.2em] text-on-surface-variant opacity-30">Top Performer</span>
         <div class="flex items-center gap-xs">
             {{ if .Portfolio }}
-                <span class="font-black text-base text-secondary truncate">{{ (index .Portfolio 0).Card.Name }}</span>
+                <span class="font-black text-sm text-secondary truncate">{{ (index .Portfolio 0).Card.Name }}</span>
             {{ else }}
-                <span class="font-black text-base text-secondary/20 italic tracking-tight">No data</span>
+                <span class="font-black text-sm text-secondary/20 italic tracking-tight">No data</span>
             {{ end }}
         </div>
     </div>
     <!-- Stat 3 -->
-    <div class="glass-card min-w-[140px] md:min-w-[160px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
+    <div class="glass-card min-w-[140px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
         <span class="font-label-sm text-[9px] uppercase tracking-[0.2em] text-on-surface-variant opacity-30">Archives</span>
         <span class="font-black text-2xl text-on-surface">{{ .BinderCount }}</span>
     </div>
 </section>
 
 <!-- Card Collection Grid -->
-<section class="space-y-lg">
-    <div class="flex justify-between items-end">
-        <h2 class="font-h2 text-2xl font-bold text-on-surface">Your Collection</h2>
-        <button class="font-label-sm text-[10px] text-primary uppercase tracking-widest hover:opacity-80 transition-opacity" hx-get="/binders" hx-target="#main-content">See All</button>
+<section class="space-y-6">
+    <div class="flex justify-between items-end px-1">
+        <h2 class="font-h2 text-xl font-bold text-on-surface">Vault Inventory</h2>
+        <button class="font-label-sm text-[10px] text-primary uppercase tracking-widest hover:opacity-80 transition-opacity" hx-get="/binders" hx-target="#main-content">View All</button>
     </div>
-    <div class="grid grid-cols-2 gap-md md:grid-cols-4 lg:grid-cols-6 pb-8">
+    <div class="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6 pb-10">
         {{ range .Portfolio }}
-        <div class="glass-card rounded-xl p-sm flex flex-col gap-sm group hover:border-primary/40 transition-all duration-300 cursor-pointer active:scale-95">
-            <div class="aspect-[3/4] rounded-lg overflow-hidden relative shadow-lg">
-                <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                <div class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+        <div class="glass-card rounded-2xl p-2 flex flex-col gap-3 group hover:border-primary/40 transition-all duration-300 cursor-pointer active:scale-95 border-white/5">
+            <div class="aspect-[3/4] rounded-xl overflow-hidden relative shadow-2xl">
+                <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60"></div>
+                <div class="absolute bottom-2 left-2 flex gap-1">
+                    <span class="px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[8px] font-black text-white border border-white/10 uppercase">{{ .Condition }}</span>
+                </div>
             </div>
-            <div class="px-xs pb-xs">
-                <p class="font-label-sm text-[8px] text-primary-fixed-dim uppercase tracking-widest">{{ .Card.Game }}</p>
-                <p class="font-label-sm text-xs text-on-surface-variant truncate">{{ .Card.Name }}</p>
-                {{ if .Notes }}
-                <p class="text-[10px] text-tertiary italic truncate mt-0.5">"{{ .Notes }}"</p>
-                {{ end }}
-                <div class="flex justify-between items-center mt-1">
-                    <span class="font-bold text-lg text-on-surface">
+            <div class="px-1 pb-1">
+                <div class="flex justify-between items-start gap-2">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-label-sm text-[8px] text-primary-fixed-dim uppercase tracking-widest truncate opacity-60">{{ .Card.Set }}</p>
+                        <p class="font-bold text-[11px] text-on-surface leading-tight truncate">{{ .Card.Name }}</p>
+                    </div>
+                    <button class="material-symbols-outlined text-sm text-on-surface-variant/40 hover:text-primary transition-colors mt-1" 
+                            onclick="openEditModal('{{ .ID }}', '{{ .Notes }}', '{{ .CustomPrice }}')">more_vert</button>
+                </div>
+                
+                <div class="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
+                    <span class="font-black text-xs text-on-surface">
                         {{ if .CustomPrice }}
-                            ${{ .CustomPrice }} <span class="text-[10px] opacity-40">(Override)</span>
+                            ${{ printf "%.2f" .CustomPrice }}
                         {{ else }}
-                            ${{ .Card.PriceUSD }}
+                            ${{ printf "%.2f" .Card.PriceUSD }}
                         {{ end }}
                     </span>
-                    <button class="material-symbols-outlined text-sm opacity-20 hover:opacity-100 transition-opacity" 
-                            onclick="openEditModal('{{ .ID }}', '{{ .Notes }}', '{{ .CustomPrice }}')">edit_note</button>
+                    {{ if .CustomPrice }}
+                    <span class="text-[8px] font-black text-primary uppercase tracking-tighter">Fix</span>
+                    {{ end }}
                 </div>
             </div>
         </div>

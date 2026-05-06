@@ -579,8 +579,21 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	// 2. OCR Fallback (if visual matching fails)
 	var processedImg []byte
 	if detectedCard == "" {
+		// Fetch all cards from DB for matching (OCR needs full candidate list)
+		rows, err := h.DB.Query("SELECT id, name FROM cards")
+		var dbCards []models.Card
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var c models.Card
+				if err := rows.Scan(&c.ID, &c.Name); err == nil {
+					dbCards = append(dbCards, c)
+				}
+			}
+		}
+
 		var ocrMatch string
-		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, h.MockCards, lang)
+		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, dbCards, lang)
 		if err != nil {
 			slog.Error("OCR: Failed to process scan", "error", err)
 			http.Error(w, "Detection failed", http.StatusInternalServerError)
@@ -588,8 +601,8 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		}
 		if ocrMatch != "Unknown Card" {
 			detectedCard = ocrMatch
-			// Find ID for the OCR match
-			for _, c := range h.MockCards {
+			// Find ID for the OCR match in the fetched DB cards
+			for _, c := range dbCards {
 				if c.Name == ocrMatch {
 					detectedID = c.ID
 					break
