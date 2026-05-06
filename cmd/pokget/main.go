@@ -174,6 +174,7 @@ func main() {
 	protected.HandleFunc("/dashboard", h.Dashboard).Methods("GET")
 	protected.HandleFunc("/centering", h.Centering).Methods("GET")
 	protected.HandleFunc("/binders", h.Binders).Methods("GET")
+	protected.HandleFunc("/binders/create", h.CreateBinder).Methods("POST")
 	protected.HandleFunc("/trade", h.Trade).Methods("GET")
 	protected.HandleFunc("/portfolio/add", h.AddCardToPortfolio).Methods("POST")
 	protected.HandleFunc("/portfolio/edit", h.EditPortfolioItem).Methods("POST")

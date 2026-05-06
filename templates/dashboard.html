@@ -19,10 +19,12 @@
             <div class="flex items-baseline gap-md">
                 <span class="font-h1 text-4xl md:text-5xl font-bold text-on-surface tracking-tight roll-counter" 
                       data-target="{{ .TotalValuation }}" data-prefix="$">$0.00</span>
-                <div class="flex items-center text-tertiary gap-xs px-2 py-1 bg-tertiary/10 rounded-full border border-tertiary/20">
-                    <span class="material-symbols-outlined text-[16px]">trending_up</span>
-                    <span class="font-label-sm text-[10px] font-bold">+4.2%</span>
+                {{ if gt .TotalValuation 0.0 }}
+                <div class="flex items-center {{ if ge .Change24h 0.0 }}text-tertiary bg-tertiary/10 border-tertiary/20{{ else }}text-red-400 bg-red-400/10 border-red-400/20{{ end }} gap-xs px-2 py-1 rounded-full border">
+                    <span class="material-symbols-outlined text-[16px]">{{ if ge .Change24h 0.0 }}trending_up{{ else }}trending_down{{ end }}</span>
+                    <span class="font-label-sm text-[10px] font-bold">{{ if ge .Change24h 0.0 }}+{{ end }}{{ printf "%.1f" .Change24h }}%</span>
                 </div>
+                {{ end }}
             </div>
         </div>
         <!-- Mini Sparkline visualization -->
@@ -62,7 +64,7 @@
     <!-- Stat 3 -->
     <div class="glass-card min-w-[160px] flex-shrink-0 p-md rounded-xl flex flex-col gap-xs border-l-4 border-l-tertiary/40">
         <span class="font-label-sm text-[10px] uppercase tracking-widest text-on-surface-variant opacity-60">Binders</span>
-        <span class="font-bold text-2xl text-on-surface">12</span>
+        <span class="font-bold text-2xl text-on-surface">{{ .BinderCount }}</span>
     </div>
 </section>
 
