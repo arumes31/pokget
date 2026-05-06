@@ -22,24 +22,24 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
-func TestInitDB_MissingEnv(t *testing.T) {
+func TestConnect_MissingEnv(t *testing.T) {
 	// Clear env
 	os.Setenv("DB_HOST", "")
 	
-	InitDB()
-
-	if DB != nil {
-		t.Error("Expected DB to be nil when env vars are missing")
+	_, err := Connect()
+	if err == nil {
+		t.Error("Expected error when env vars are missing")
 	}
 }
 
-func TestInitDB_PingError(t *testing.T) {
+func TestConnect_PingError(t *testing.T) {
 	// Set dummy env to pass the first check but fail the ping
 	os.Setenv("DB_HOST", "localhost")
 	os.Setenv("DB_PORT", "5432")
@@ -54,10 +54,9 @@ func TestInitDB_PingError(t *testing.T) {
 		os.Unsetenv("DB_NAME")
 	}()
 
-	InitDB()
-
-	if DB != nil {
-		t.Error("Expected DB to be nil when ping fails")
+	_, err := Connect()
+	if err == nil {
+		t.Error("Expected error when ping fails")
 	}
 }
 
@@ -120,4 +119,168 @@ func TestRunMigrations_NilDB(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for nil DB")
 	}
+}
+
+func TestApplyMigrations_NoDir(t *testing.T) {
+	db, _, _ := sqlmock.New()
+	defer db.Close()
+	
+	err := ApplyMigrations(db, "/non/existent/path")
+	if err == nil {
+		t.Error("Expected error for non-existent migration directory")
+	}
+}
+
+type mockMigrator struct {
+	err error
+}
+func (m *mockMigrator) Up() error { return m.err }
+
+func TestApplyMigrations_Success(t *testing.T) {
+	dbMock, _, _ := sqlmock.New()
+	defer dbMock.Close()
+
+	oldNewMigrator := NewMigrator
+	NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+		return &mockMigrator{err: nil}, nil
+	}
+	defer func() { NewMigrator = oldNewMigrator }()
+
+	// Use existing dir
+	wd, _ := os.Getwd()
+	err := ApplyMigrations(dbMock, wd)
+	if err != nil {
+		t.Errorf("ApplyMigrations failed: %v", err)
+	}
+}
+
+func TestApplyMigrations_ErrorNew(t *testing.T) {
+	dbMock, _, _ := sqlmock.New()
+	defer dbMock.Close()
+
+	oldNewMigrator := NewMigrator
+	NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+		return nil, fmt.Errorf("new fail")
+	}
+	defer func() { NewMigrator = oldNewMigrator }()
+
+	wd, _ := os.Getwd()
+	err := ApplyMigrations(dbMock, wd)
+	if err == nil {
+		t.Error("Expected error from NewMigrator")
+	}
+}
+
+func TestApplyMigrations_ErrorUp(t *testing.T) {
+	dbMock, _, _ := sqlmock.New()
+	defer dbMock.Close()
+
+	oldNewMigrator := NewMigrator
+	NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+		return &mockMigrator{err: fmt.Errorf("up fail")}, nil
+	}
+	defer func() { NewMigrator = oldNewMigrator }()
+
+	wd, _ := os.Getwd()
+	err := ApplyMigrations(dbMock, wd)
+	if err == nil {
+		t.Error("Expected error from migrator.Up")
+	}
+}
+
+func TestRunMigrations_Success(t *testing.T) {
+	dbMock, _, _ := sqlmock.New()
+	defer dbMock.Close()
+	DB = dbMock
+
+	oldNewMigrator := NewMigrator
+	NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+		return &mockMigrator{err: nil}, nil
+	}
+	defer func() { NewMigrator = oldNewMigrator }()
+
+	err := RunMigrations()
+	if err != nil {
+		t.Errorf("RunMigrations failed: %v", err)
+	}
+}
+
+func TestConnect_Success(t *testing.T) {
+	dbMock, _, _ := sqlmock.New(sqlmock.MonitorPingsOption(true))
+	defer dbMock.Close()
+
+	oldSqlOpen := sqlOpen
+	sqlOpen = func(driverName, dataSourceName string) (*sql.DB, error) {
+		return dbMock, nil
+	}
+	defer func() { sqlOpen = oldSqlOpen }()
+
+	os.Setenv("DB_HOST", "localhost")
+	os.Setenv("DB_PORT", "5432")
+	os.Setenv("DB_USER", "u")
+	os.Setenv("DB_NAME", "n")
+	defer os.Unsetenv("DB_HOST")
+
+	db, err := Connect()
+	if err != nil {
+		t.Errorf("Connect failed: %v", err)
+	}
+	if db != dbMock {
+		t.Error("Expected mocked DB instance")
+	}
+}
+
+func TestConnect_OpenError(t *testing.T) {
+	oldSqlOpen := sqlOpen
+	sqlOpen = func(driverName, dataSourceName string) (*sql.DB, error) {
+		return nil, fmt.Errorf("open fail")
+	}
+	defer func() { sqlOpen = oldSqlOpen }()
+
+	os.Setenv("DB_HOST", "localhost")
+	os.Setenv("DB_PORT", "5432")
+	os.Setenv("DB_USER", "u")
+	os.Setenv("DB_NAME", "n")
+	defer os.Unsetenv("DB_HOST")
+
+	_, err := Connect()
+	if err == nil {
+		t.Error("Expected error from sql.Open")
+	}
+}
+
+func TestInitDB(t *testing.T) {
+	dbMock, _, _ := sqlmock.New()
+	defer dbMock.Close()
+
+	t.Run("Success", func(t *testing.T) {
+		oldSqlOpen := sqlOpen
+		sqlOpen = func(driverName, dataSourceName string) (*sql.DB, error) {
+			return dbMock, nil
+		}
+		defer func() { sqlOpen = oldSqlOpen }()
+
+		oldNewMigrator := NewMigrator
+		NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+			return &mockMigrator{err: nil}, nil
+		}
+		defer func() { NewMigrator = oldNewMigrator }()
+
+		os.Setenv("DB_HOST", "localhost")
+		os.Setenv("DB_PORT", "5432")
+		os.Setenv("DB_USER", "u")
+		os.Setenv("DB_NAME", "n")
+		defer os.Unsetenv("DB_HOST")
+
+		InitDB()
+		if DB != dbMock {
+			t.Error("Expected global DB to be set")
+		}
+	})
+
+	t.Run("ConnectFail", func(t *testing.T) {
+		os.Unsetenv("DB_HOST")
+		InitDB()
+		// Should just log and return
+	})
 }

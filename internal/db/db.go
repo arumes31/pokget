@@ -36,6 +36,21 @@ import (
 var DB *sql.DB
 
 func InitDB() {
+	db, err := Connect()
+	if err != nil {
+		slog.Error("Database connection failed", "error", err)
+		return
+	}
+	DB = db
+
+	if err := RunMigrations(); err != nil {
+		slog.Error("Migration error", "error", err)
+	}
+}
+
+var sqlOpen = sql.Open
+
+func Connect() (*sql.DB, error) {
 	host := os.Getenv("DB_HOST")
 	port := os.Getenv("DB_PORT")
 	user := os.Getenv("DB_USER")
@@ -47,39 +62,28 @@ func InitDB() {
 	slog.Info("Database initialization", "working_dir", wd)
 
 	if host == "" || port == "" || user == "" || dbname == "" {
-		slog.Warn("Missing required database environment variables, skipping DB initialization")
-		return
+		return nil, fmt.Errorf("missing required database environment variables")
 	}
 
 	if sslmode == "" {
-		sslmode = "disable" // Default to disable for easy local/docker setup
+		sslmode = "disable"
 	}
 
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		host, port, user, password, dbname, sslmode)
 
-	var err error
-	DB, err = sql.Open("postgres", psqlInfo)
+	db, err := sqlOpen("postgres", psqlInfo)
 	if err != nil {
-		slog.Error("Error opening database", "error", err)
-		return
+		return nil, fmt.Errorf("error opening database: %w", err)
 	}
 
-	err = DB.Ping()
-	if err != nil {
-		slog.Error("Error connecting to database", "error", err)
-		if err := DB.Close(); err != nil {
-			slog.Error("Error closing database", "error", err)
-		}
-		DB = nil
-		return
+	if err = db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("error connecting to database: %w", err)
 	}
 
 	slog.Info("Successfully connected to PostgreSQL")
-
-	if err := RunMigrations(); err != nil {
-		slog.Error("Migration error", "error", err)
-	}
+	return db, nil
 }
 
 func RunMigrations() error {
@@ -87,25 +91,28 @@ func RunMigrations() error {
 		return fmt.Errorf("database connection is not initialized")
 	}
 
-	// Get absolute path for migrations
 	absPath, err := filepath.Abs("migrations")
 	if err != nil {
-		return fmt.Errorf("could not get absolute path for migrations: %w", err)
+		return err
 	}
+	return ApplyMigrations(DB, absPath)
+}
 
+var NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		return nil, err
+	}
+	return migrate.NewWithDatabaseInstance("file://"+absPath, "postgres", driver)
+}
+
+func ApplyMigrations(db *sql.DB, absPath string) error {
 	// Verify migrations directory exists
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
 		return fmt.Errorf("migrations directory not found at: %s", absPath)
 	}
 
-	driver, err := postgres.WithInstance(DB, &postgres.Config{})
-	if err != nil {
-		return fmt.Errorf("could not create migration driver: %w", err)
-	}
-
-	m, err := migrate.NewWithDatabaseInstance(
-		"file://"+absPath,
-		"postgres", driver)
+	m, err := NewMigrator(db, absPath)
 	if err != nil {
 		return fmt.Errorf("could not create migration instance: %w", err)
 	}

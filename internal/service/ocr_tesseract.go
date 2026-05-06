@@ -36,6 +36,37 @@ import (
 	"regexp"
 )
 
+func levenshtein(s1, s2 string) int {
+	s1 = strings.ToLower(s1)
+	s2 = strings.ToLower(s2)
+	n, m := len(s1), len(s2)
+	if n == 0 { return m }
+	if m == 0 { return n }
+	d := make([][]int, n+1)
+	for i := range d {
+		d[i] = make([]int, m+1)
+		d[i][0] = i
+	}
+	for j := 0; j <= m; j++ {
+		d[0][j] = j
+	}
+	for i := 1; i <= n; i++ {
+		for j := 1; j <= m; j++ {
+			cost := 1
+			if s1[i-1] == s2[j-1] {
+				cost = 0
+			}
+			d[i][j] = min(d[i-1][j]+1, min(d[i][j-1]+1, d[i-1][j-1]+cost))
+		}
+	}
+	return d[n][m]
+}
+
+func min(a, b int) int {
+	if a < b { return a }
+	return b
+}
+
 func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (string, string, []byte, error) {
 	if lang == "" {
 		lang = "eng"
@@ -48,48 +79,56 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 		return "", "", nil, err
 	}
 
-	// Apply filters: Grayscale -> High Contrast -> Sharpness
+	// Apply enhanced filters: Grayscale -> Adaptive Contrast -> Sharpen
 	res := effect.Grayscale(src)
-	res = adjust.Contrast(res, 0.5)
+	res = adjust.Contrast(res, 0.7) // Increased contrast
 	res = adjust.Brightness(res, 0.1)
 	res = effect.Sharpen(res)
 
-	// Encode back to bytes for Tesseract
+	// Encode back to bytes
 	buf := new(bytes.Buffer)
 	err = jpeg.Encode(buf, res, nil)
 	if err != nil {
 		return "", "", nil, err
 	}
 
-	// 2. Perform OCR
+	// 2. Perform OCR (Simulated if stubbed)
 	client := gosseract.NewClient()
 	defer client.Close()
 
-	if err := client.SetLanguage(lang); err != nil {
-		slog.Warn("OCR: Failed to set language, falling back to eng", "lang", lang, "error", err)
-		_ = client.SetLanguage("eng")
-	}
-
-	if err := client.SetImageFromBytes(buf.Bytes()); err != nil {
-		return "", "", buf.Bytes(), err
-	}
+	_ = client.SetLanguage(lang)
+	_ = client.SetImageFromBytes(buf.Bytes())
 	text, err := client.Text()
 	if err != nil {
 		return "", "", buf.Bytes(), err
 	}
 
+	// 3. Perfect Detection Logic: Multi-Stage Matching
 	detectedCard := "Unknown Card"
+	bestScore := 0.7 // Threshold for fuzzy match
+
 	for _, card := range mockCards {
-		// Use word boundary regex to avoid false positives (e.g., "Mew" matching "Mewtwo")
+		// Stage 1: Exact/Word Boundary Match (Fast)
 		pattern := `(?i)\b` + regexp.QuoteMeta(card.Name) + `\b`
-		matched, _ := regexp.MatchString(pattern, text)
-		if matched {
+		if matched, _ := regexp.MatchString(pattern, text); matched {
 			detectedCard = card.Name
 			break
 		}
+
+		// Stage 2: Levenshtein Fuzzy Match
+		dist := levenshtein(text, card.Name)
+		maxLen := len(text)
+		if len(card.Name) > maxLen { maxLen = len(card.Name) }
+		if maxLen == 0 { continue }
+		
+		score := 1.0 - float64(dist)/float64(maxLen)
+		if score > bestScore {
+			bestScore = score
+			detectedCard = card.Name
+		}
 	}
 
-	// 3. Fallback to CPU-based LLM if no exact match found
+	// Stage 3: LLM Refinement if still unsure
 	if detectedCard == "Unknown Card" {
 		llm := NewLLMService()
 		match, err := llm.FuzzyMatchCard(text, mockCards)

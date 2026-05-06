@@ -35,15 +35,17 @@ var Store *sessions.CookieStore
 
 func init() {
 	key := os.Getenv("SESSION_KEY")
-	// For local development or tests, allow a default key if not explicitly set
-	// but still enforce length in production environments
 	if key == "" {
 		key = "temporary-insecure-dev-key-32-chars-long" 
 	}
+	Store = InitStore(key)
+}
+
+func InitStore(key string) *sessions.CookieStore {
 	if len(key) < 32 {
 		panic("SESSION_KEY must be at least 32 characters long")
 	}
-	Store = sessions.NewCookieStore([]byte(key))
+	return sessions.NewCookieStore([]byte(key))
 }
 
 func HashPassword(password string) (string, error) {

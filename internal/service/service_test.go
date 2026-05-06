@@ -21,12 +21,14 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"image"
 	"image/color"
 	"image/draw"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"net/smtp"
@@ -63,6 +65,14 @@ func TestFingerprintService(t *testing.T) {
 		}
 		if hash == 0 {
 			t.Error("Expected non-zero hash")
+		}
+	})
+
+	t.Run("CalculateHash_Error", func(t *testing.T) {
+		// Use a nil image to trigger error
+		_, err := s.CalculateHash(nil)
+		if err == nil {
+			t.Error("Expected error for nil image")
 		}
 	})
 
@@ -230,6 +240,43 @@ func TestLLMService(t *testing.T) {
 			t.Error("Expected error for 500 response")
 		}
 	})
+
+	t.Run("FuzzyMatchCard_MalformedJSON", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{invalid-json`))
+		}))
+		defer server.Close()
+
+		s.BaseURL = server.URL
+		s.HTTPClient = server.Client()
+
+		_, err := s.FuzzyMatchCard("Chrizard", []models.Card{{Name: "Charizard"}})
+		if err == nil {
+			t.Error("Expected error for malformed JSON")
+		}
+	})
+}
+
+func TestProcessCardScan_Full(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	draw.Draw(img, img.Bounds(), &image.Uniform{color.RGBA{255, 0, 0, 255}}, image.Point{}, draw.Src)
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+
+	t.Run("Match", func(t *testing.T) {
+		cards := []models.Card{{ID: "1", Name: "Charizard"}}
+		text, card, _, err := ProcessCardScan(buf.Bytes(), cards, "")
+		if err != nil {
+			t.Errorf("ProcessCardScan failed: %v", err)
+		}
+		if card == "" {
+			t.Error("Expected to find a match")
+		}
+		if !containsIgnoreCase(text, "OCR Not Available") {
+			t.Errorf("Expected stub text, got %s", text)
+		}
+	})
 }
 
 func TestScraperPriceClient(t *testing.T) {
@@ -249,6 +296,73 @@ func TestScraperPriceClient(t *testing.T) {
 		// Should return an error because it fails to connect/find the actual URL or parse
 		if err == nil {
 			t.Error("Expected scrape error for MissingNo")
+		}
+	})
+
+	t.Run("FetchPriceHeadless_Unsupported", func(t *testing.T) {
+		scraper := &ScraperPriceClient{}
+		card := models.Card{Name: "Pikachu", Game: "Pokemon"} // Headless only supports Magic/YuGiOh
+		_, err := scraper.fetchPriceHeadless(card)
+		if err == nil {
+			t.Error("Expected error for unsupported game")
+		}
+	})
+
+	t.Run("FetchPrice_ScrapeSuccess", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			// Match .price-container .color-primary
+			_, _ = w.Write([]byte(`<div class="price-container"><span class="color-primary">12,34 €</span></div>`))
+		}))
+		defer server.Close()
+
+		scraper := NewScraperPriceClient()
+		scraper.BaseURL = server.URL
+		
+		card := models.Card{Name: "Charizard", Set: "Base", Game: "Pokemon"}
+		_, eur, err := scraper.FetchPrice(card)
+		if err != nil {
+			t.Errorf("FetchPrice failed: %v", err)
+		}
+		if eur != 12.34 {
+			t.Errorf("Expected 12.34, got %f", eur)
+		}
+	})
+
+	t.Run("FetchPrice_ParseError", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<div class="price-container"><span class="color-primary">invalid</span></div>`))
+		}))
+		defer server.Close()
+
+		scraper := NewScraperPriceClient()
+		scraper.BaseURL = server.URL
+		
+		card := models.Card{Name: "Charizard", Set: "Base"}
+		_, _, err := scraper.FetchPrice(card)
+		if err == nil {
+			t.Error("Expected parse error")
+		}
+	})
+
+	t.Run("FetchPrice_GameBranches", func(t *testing.T) {
+		games := []string{"One Piece", "Lorcana", "Weiss Schwarz", "Magic", "mtg"}
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<div class="price-container"><span class="color-primary">10,00 €</span></div>`))
+		}))
+		defer server.Close()
+
+		scraper := NewScraperPriceClient()
+		scraper.BaseURL = server.URL
+
+		for _, game := range games {
+			card := models.Card{Name: "N", Set: "S", Game: game}
+			_, _, err := scraper.FetchPrice(card)
+			if err != nil {
+				t.Errorf("FetchPrice failed for game %s: %v", game, err)
+			}
 		}
 	})
 }
@@ -438,6 +552,35 @@ func TestCacheService(t *testing.T) {
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Error(err)
+	}
+
+	t.Run("NewCacheService", func(t *testing.T) {
+		os.Setenv("REDIS_URL", "localhost:6379")
+		defer os.Unsetenv("REDIS_URL")
+		s := NewCacheService()
+		if s == nil {
+			t.Error("Expected CacheService instance")
+		}
+	})
+}
+
+func TestLevenshtein(t *testing.T) {
+	tests := []struct {
+		s1, s2 string
+		want   int
+	}{
+		{"", "", 0},
+		{"a", "", 1},
+		{"", "a", 1},
+		{"abc", "abc", 0},
+		{"abc", "abd", 1},
+		{"kitten", "sitting", 3},
+	}
+	for _, tt := range tests {
+		got := levenshtein(tt.s1, tt.s2)
+		if got != tt.want {
+			t.Errorf("levenshtein(%q, %q) = %d, want %d", tt.s1, tt.s2, got, tt.want)
+		}
 	}
 }
 

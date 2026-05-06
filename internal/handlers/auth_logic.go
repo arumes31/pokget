@@ -24,8 +24,8 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"io"
 	"pokget/internal/auth"
-	"pokget/internal/db"
 	"pokget/internal/models"
 	"pokget/internal/service"
 	"log/slog"
@@ -59,7 +59,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	
 	// Check if user exists and is verified
 	var existingVerified bool
-	err = db.DB.QueryRow("SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
+	err = h.DB.QueryRow("SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
 	switch {
 	case err == nil:
 		if existingVerified {
@@ -67,10 +67,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// User exists but is NOT verified, update their record instead of failing
-		_, err = db.DB.Exec("UPDATE users SET password_hash = $1, verification_token = $2, last_email_sent_at = NOW() WHERE email = $3", hash, token, email)
+		_, err = h.DB.Exec("UPDATE users SET password_hash = $1, verification_token = $2, last_email_sent_at = NOW() WHERE email = $3", hash, token, email)
 	case err == sql.ErrNoRows:
 		// New user
-		_, err = db.DB.Exec("INSERT INTO users (email, password_hash, verification_token, last_email_sent_at) VALUES ($1, $2, $3, NOW())", email, hash, token)
+		_, err = h.DB.Exec("INSERT INTO users (email, password_hash, verification_token, last_email_sent_at) VALUES ($1, $2, $3, NOW())", email, hash, token)
 	}
 
 	if err != nil {
@@ -106,7 +106,7 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 	var lastSent sql.NullTime
 	var token string
 	var isVerified bool
-	err := db.DB.QueryRow("SELECT last_email_sent_at, verification_token, is_verified FROM users WHERE email = $1", email).Scan(&lastSent, &token, &isVerified)
+	err := h.DB.QueryRow("SELECT last_email_sent_at, verification_token, is_verified FROM users WHERE email = $1", email).Scan(&lastSent, &token, &isVerified)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// Don't leak email existence, just return OK but don't send
@@ -129,7 +129,7 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update last sent time
-	_, err = db.DB.Exec("UPDATE users SET last_email_sent_at = NOW() WHERE email = $1", email)
+	_, err = h.DB.Exec("UPDATE users SET last_email_sent_at = NOW() WHERE email = $1", email)
 	if err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
@@ -154,7 +154,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	var u models.User
-	err := db.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
+	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
 	if err == sql.ErrNoRows || !auth.CheckPasswordHash(password, u.PasswordHash) {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
@@ -189,7 +189,7 @@ func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := db.DB.Exec("UPDATE users SET is_verified = TRUE, verification_token = NULL WHERE verification_token = $1", token)
+	res, err := h.DB.Exec("UPDATE users SET is_verified = TRUE, verification_token = NULL WHERE verification_token = $1", token)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -206,9 +206,11 @@ func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+var randReader io.Reader = rand.Reader
+
 func generateToken() string {
 	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
+	if _, err := randReader.Read(b); err != nil {
 		panic("Failed to generate secure token: " + err.Error())
 	}
 	return hex.EncodeToString(b)

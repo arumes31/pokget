@@ -24,7 +24,6 @@ import (
 	"log/slog"
 	"net/http"
 	"pokget/internal/auth"
-	"pokget/internal/db"
 	"pokget/internal/models"
 )
 
@@ -36,7 +35,7 @@ func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := db.DB.Query(`
+	rows, err := h.DB.Query(`
 		SELECT w.id, w.card_id, w.target_price, w.notes, c.name, c.set_name, c.price_usd, c.image_url
 		FROM wantlist w
 		JOIN cards c ON w.card_id = c.id
@@ -78,7 +77,7 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 	targetPrice := r.FormValue("target_price")
 	notes := r.FormValue("notes")
 
-	_, err := db.DB.Exec(`
+	_, err := h.DB.Exec(`
 		INSERT INTO wantlist (user_id, card_id, target_price, notes)
 		VALUES ($1, $2, $3, $4)`,
 		userID, cardID, targetPrice, notes)

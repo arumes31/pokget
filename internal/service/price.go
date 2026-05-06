@@ -71,7 +71,15 @@ func (m *MockLLMClient) FuzzyMatchCard(_ string, _ []models.Card) (string, error
 }
 
 // ScraperPriceClient fetches prices via Web Scraping (No API key needed)
-type ScraperPriceClient struct{}
+type ScraperPriceClient struct {
+	BaseURL string
+}
+
+func NewScraperPriceClient() *ScraperPriceClient {
+	return &ScraperPriceClient{
+		BaseURL: "https://www.cardmarket.com",
+	}
+}
 
 func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, error) {
 	var usd, eur float64
@@ -110,7 +118,8 @@ func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, err
 		gameSegment = "Pokemon"
 	}
 
-	cmURL := fmt.Sprintf("https://www.cardmarket.com/en/%s/Products/Singles/%s/%s",
+	cmURL := fmt.Sprintf("%s/en/%s/Products/Singles/%s/%s",
+		s.BaseURL,
 		gameSegment,
 		url.PathEscape(strings.ReplaceAll(card.Set, " ", "-")),
 		url.PathEscape(strings.ReplaceAll(card.Name, " ", "-")))

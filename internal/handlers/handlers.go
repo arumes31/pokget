@@ -22,6 +22,7 @@ package handlers
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"html/template"
@@ -35,7 +36,6 @@ import (
 	"strings"
 
 	"pokget/internal/auth"
-	"pokget/internal/db"
 	"pokget/internal/models"
 	"pokget/internal/service"
 
@@ -51,6 +51,7 @@ type Handler struct {
 	Audit       *service.AuditService
 	Crypto      *service.CryptoService
 	Game        *service.GamificationService
+	DB          *sql.DB
 }
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
@@ -99,7 +100,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		Percent    int
 	}
 	
-	rows, err := db.DB.Query(`
+	rows, err := h.DB.Query(`
 		SELECT 
 			c.set_name, 
 			COUNT(DISTINCT c.id) FILTER (WHERE p.id IS NOT NULL AND p.user_id = $1) as owned_cards,
@@ -132,7 +133,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 	// Calculate Portfolio Valuation
 	var totalValuation decimal.Decimal
-	err = db.DB.QueryRow(`
+	err = h.DB.QueryRow(`
 		SELECT COALESCE(SUM(c.price_usd), 0)
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
@@ -144,7 +145,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	// Fetch User XP and Rank
 	var xp int
 	var rankTitle string
-	_ = db.DB.QueryRow("SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle)
+	_ = h.DB.QueryRow("SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle)
 	
 	rank := h.Game.GetUserRank(xp)
 	_, _, xpPercent := h.Game.GetProgressToNextRank(xp)
@@ -182,7 +183,7 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 	notes := r.FormValue("notes")
 	customPrice := r.FormValue("custom_price")
 
-	_, err := db.DB.Exec(`
+	_, err := h.DB.Exec(`
 		INSERT INTO portfolio (user_id, card_id, notes, custom_price, condition, format)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
 		userID, cardID, notes, customPrice, "Near Mint", "Raw")
@@ -242,7 +243,7 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 	customPrice := r.FormValue("custom_price")
 	isPublic := r.FormValue("is_public") == "true"
 
-	_, err := db.DB.Exec(`
+	_, err := h.DB.Exec(`
 		UPDATE portfolio 
 		SET notes = $1, grade = $2, custom_price = $3, is_public = $4
 		WHERE id = $5 AND user_id = $6`,

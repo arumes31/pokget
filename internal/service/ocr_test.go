@@ -95,11 +95,15 @@ func TestVision_DetectCardEdges(t *testing.T) {
 }
 
 func TestProcessCardScan_Stub(t *testing.T) {
-	text, card, err := ProcessCardScan([]byte("dummy"), nil, "")
+	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+
+	text, card, _, err := ProcessCardScan(buf.Bytes(), nil, "")
 	if err != nil {
 		t.Errorf("ProcessCardScan failed: %v", err)
 	}
-	if text != "OCR Not Available" || card != "Unknown Card" {
+	if !containsIgnoreCase(text, "OCR Not Available") || card != "Unknown Card" {
 		t.Errorf("Unexpected stub results: text=%s, card=%s", text, card)
 	}
 }

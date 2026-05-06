@@ -18,53 +18,55 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package service
+package config
 
 import (
-	"context"
-	"encoding/json"
 	"os"
-	"time"
-
-	"github.com/redis/go-redis/v9"
+	"testing"
 )
 
-type CacheService struct {
-	client *redis.Client
-}
+func TestConfigLoad(t *testing.T) {
+	// Set dummy env
+	os.Setenv("APP_PORT", "9090")
+	os.Setenv("DB_HOST", "db")
+	os.Setenv("DB_PORT", "5432")
+	os.Setenv("DB_USER", "u")
+	os.Setenv("DB_PASSWORD", "p")
+	os.Setenv("DB_NAME", "n")
+	os.Setenv("SESSION_KEY", "12345678901234567890123456789012")
+	defer os.Unsetenv("APP_PORT")
+	defer os.Unsetenv("DB_HOST")
+	defer os.Unsetenv("DB_PORT")
+	defer os.Unsetenv("DB_USER")
+	defer os.Unsetenv("DB_PASSWORD")
+	defer os.Unsetenv("DB_NAME")
+	defer os.Unsetenv("SESSION_KEY")
 
-func NewCacheService() *CacheService {
-	addr := os.Getenv("REDIS_URL")
-	if addr == "" {
-		addr = "localhost:6379"
-	}
-	pass := os.Getenv("REDIS_PASSWORD")
-
-	client := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: pass,
-		DB:       0,
-	})
-
-	return &CacheService{client: client}
-}
-
-func (s *CacheService) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
-	data, err := json.Marshal(value)
+	cfg, err := Load()
 	if err != nil {
-		return err
+		t.Fatalf("Load failed: %v", err)
 	}
-	return s.client.Set(ctx, key, data, ttl).Err()
+
+	if cfg.App.Port != "9090" {
+		t.Errorf("Expected port 9090, got %s", cfg.App.Port)
+	}
+	if cfg.DB.Host != "db" {
+		t.Errorf("Expected db host db, got %s", cfg.DB.Host)
+	}
 }
 
-func (s *CacheService) Get(ctx context.Context, key string, dest interface{}) error {
-	data, err := s.client.Get(ctx, key).Bytes()
-	if err != nil {
-		return err
+func TestConfigLoad_Error(t *testing.T) {
+	// SESSION_KEY is required but we unset it
+	os.Setenv("APP_PORT", "8080")
+	os.Setenv("DB_HOST", "localhost")
+	os.Setenv("DB_PORT", "5432")
+	os.Setenv("DB_USER", "u")
+	os.Setenv("DB_PASSWORD", "p")
+	os.Setenv("DB_NAME", "n")
+	os.Unsetenv("SESSION_KEY")
+	
+	_, err := Load()
+	if err == nil {
+		t.Error("Expected error when SESSION_KEY is missing")
 	}
-	return json.Unmarshal(data, dest)
-}
-
-func (s *CacheService) Delete(ctx context.Context, key string) error {
-	return s.client.Del(ctx, key).Err()
 }

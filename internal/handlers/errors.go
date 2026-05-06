@@ -24,19 +24,30 @@ import (
 	"log/slog"
 	"net/http"
 	"pokget/internal/auth"
-	"pokget/internal/db"
-	"pokget/internal/models"
 )
+
+type ErrorCard struct {
+	ID                       string
+	CardID                   string
+	ErrorType                string
+	Description              string
+	EstimatedValueMultiplier float64
+	CardName                 string
+	SetName                  string
+	ImageURL                 string
+	Game                     string
+}
 
 func (h *Handler) ErrorDatabase(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: ErrorDatabase", "method", r.Method)
 
-	rows, err := db.DB.Query(`
+	rows, err := h.DB.Query(`
 		SELECT e.id, e.card_id, e.error_type, e.description, e.estimated_value_multiplier, 
 		       c.name, c.set_name, c.image_url, c.game
 		FROM error_cards e
 		JOIN cards c ON e.card_id = c.id
 		ORDER BY e.created_at DESC`)
+	
 	if err != nil {
 		slog.Error("Failed to fetch error database", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -44,11 +55,10 @@ func (h *Handler) ErrorDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var errors []models.ErrorCard
+	var errors []ErrorCard
 	for rows.Next() {
-		var e models.ErrorCard
-		if err := rows.Scan(&e.ID, &e.CardID, &e.ErrorType, &e.Description, &e.EstimatedValueMultiplier,
-			&e.Card.Name, &e.Card.Set, &e.Card.ImageURL, &e.Card.Game); err == nil {
+		var e ErrorCard
+		if err := rows.Scan(&e.ID, &e.CardID, &e.ErrorType, &e.Description, &e.EstimatedValueMultiplier, &e.CardName, &e.SetName, &e.ImageURL, &e.Game); err == nil {
 			errors = append(errors, e)
 		}
 	}
@@ -65,14 +75,18 @@ func (h *Handler) SubmitError(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := r.Context().Value(auth.UserContextKey{}).(string)
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	cardID := r.FormValue("card_id")
 	errorType := r.FormValue("error_type")
 	description := r.FormValue("description")
 	multiplier := r.FormValue("multiplier")
 
-	_, err := db.DB.Exec(`
+	_, err := h.DB.Exec(`
 		INSERT INTO error_cards (card_id, error_type, description, estimated_value_multiplier, submitted_by)
 		VALUES ($1, $2, $3, $4, $5)`,
 		cardID, errorType, description, multiplier, userID)
@@ -83,5 +97,5 @@ func (h *Handler) SubmitError(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("Error card submitted for review!"))
+	_, _ = w.Write([]byte("Error card submitted! Review in progress."))
 }

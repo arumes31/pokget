@@ -25,16 +25,47 @@ package service
 import (
 	"bytes"
 	"image"
-	_ "image/jpeg"
 	"image/jpeg"
 	"log/slog"
 	"pokget/internal/models"
+	"strings"
 
 	"github.com/anthonynsimon/bild/adjust"
 	"github.com/anthonynsimon/bild/effect"
 )
 
-func ProcessCardScan(imgBytes []byte, _ []models.Card, _ string) (string, string, []byte, error) {
+func levenshtein(s1, s2 string) int {
+	s1 = strings.ToLower(s1)
+	s2 = strings.ToLower(s2)
+	n, m := len(s1), len(s2)
+	if n == 0 { return m }
+	if m == 0 { return n }
+	d := make([][]int, n+1)
+	for i := range d {
+		d[i] = make([]int, m+1)
+		d[i][0] = i
+	}
+	for j := 0; j <= m; j++ {
+		d[0][j] = j
+	}
+	for i := 1; i <= n; i++ {
+		for j := 1; j <= m; j++ {
+			cost := 1
+			if s1[i-1] == s2[j-1] {
+				cost = 0
+			}
+			d[i][j] = min(d[i-1][j]+1, min(d[i][j-1]+1, d[i-1][j-1]+cost))
+		}
+	}
+	return d[n][m]
+}
+
+func min(a, b int) int {
+	if a < b { return a }
+	return b
+}
+
+func ProcessCardScan(imgBytes []byte, mockCards []models.Card, _ string) (string, string, []byte, error) {
 	slog.Warn("OCR: Tesseract is not available on this platform. Preprocessing ONLY.")
 
 	// Run Preprocessing even in stub to test Vision pipeline
@@ -44,12 +75,30 @@ func ProcessCardScan(imgBytes []byte, _ []models.Card, _ string) (string, string
 	}
 
 	res := effect.Grayscale(src)
-	res = adjust.Contrast(res, 0.5)
+	res = adjust.Contrast(res, 0.7)
 	res = adjust.Brightness(res, 0.1)
 	res = effect.Sharpen(res)
 
 	buf := new(bytes.Buffer)
 	_ = jpeg.Encode(buf, res, nil)
 
-	return "OCR Not Available (Stub)", "Unknown Card", buf.Bytes(), nil
+	// Mock detected text for testing matching logic
+	text := "OCR Not Available (Stub)"
+	detectedCard := "Unknown Card"
+	bestScore := 0.7
+
+	for _, card := range mockCards {
+		dist := levenshtein(text, card.Name)
+		maxLen := len(text)
+		if len(card.Name) > maxLen { maxLen = len(card.Name) }
+		if maxLen == 0 { continue }
+		
+		score := 1.0 - float64(dist)/float64(maxLen)
+		if score > bestScore {
+			bestScore = score
+			detectedCard = card.Name
+		}
+	}
+
+	return text, detectedCard, buf.Bytes(), nil
 }

@@ -27,6 +27,25 @@ import (
 	"testing"
 )
 
+func TestInitStore(t *testing.T) {
+	t.Run("ValidKey", func(t *testing.T) {
+		key := "12345678901234567890123456789012"
+		store := InitStore(key)
+		if store == nil {
+			t.Error("Expected store instance")
+		}
+	})
+
+	t.Run("ShortKey_Panic", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("The code did not panic")
+			}
+		}()
+		InitStore("short")
+	})
+}
+
 func TestPasswordHashing(t *testing.T) {
 	password := "SecretPassword123"
 

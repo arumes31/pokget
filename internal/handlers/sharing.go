@@ -21,9 +21,10 @@
 package handlers
 
 import (
+	"database/sql"
 	"log/slog"
 	"net/http"
-	"pokget/internal/db"
+	"pokget/internal/auth"
 	"pokget/internal/models"
 	"github.com/gorilla/mux"
 )
@@ -38,8 +39,25 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var vaultPublic bool
+	err := h.DB.QueryRow("SELECT vault_public FROM users WHERE id = $1", userID).Scan(&vaultPublic)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to check vault visibility", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if !vaultPublic {
+		http.Error(w, "This vault is private", http.StatusForbidden)
+		return
+	}
+
 	// Fetch public portfolio items
-	rows, err := db.DB.Query(`
+	rows, err := h.DB.Query(`
 		SELECT p.id, p.condition, p.format, p.grade, p.grading_company, p.notes, 
 		       c.name, c.set_name, c.price_usd, c.image_url, c.game
 		FROM portfolio p
@@ -64,7 +82,7 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	// Fetch user info (rank, xp)
 	var rank string
 	var xp int
-	_ = db.DB.QueryRow("SELECT rank_title, xp FROM users WHERE id = $1", userID).Scan(&rank, &xp)
+	_ = h.DB.QueryRow("SELECT rank_title, xp FROM users WHERE id = $1", userID).Scan(&rank, &xp)
 
 	h.render(w, r, "public_vault.html", map[string]interface{}{
 		"Portfolio": portfolio,
@@ -81,11 +99,15 @@ func (h *Handler) ToggleVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.Context().Value("user_id").(string)
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	itemID := r.FormValue("item_id")
 	isPublic := r.FormValue("is_public") == "true"
 
-	_, err := db.DB.Exec("UPDATE portfolio SET is_public = $1 WHERE id = $2 AND user_id = $3", isPublic, itemID, userID)
+	_, err := h.DB.Exec("UPDATE portfolio SET is_public = $1 WHERE id = $2 AND user_id = $3", isPublic, itemID, userID)
 	if err != nil {
 		http.Error(w, "Failed to update visibility", http.StatusInternalServerError)
 		return

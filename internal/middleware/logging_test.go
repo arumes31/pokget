@@ -18,53 +18,28 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package service
+package middleware
 
 import (
-	"context"
-	"encoding/json"
-	"os"
-	"time"
-
-	"github.com/redis/go-redis/v9"
+	"net/http"
+	"net/http/httptest"
+	"testing"
 )
 
-type CacheService struct {
-	client *redis.Client
-}
-
-func NewCacheService() *CacheService {
-	addr := os.Getenv("REDIS_URL")
-	if addr == "" {
-		addr = "localhost:6379"
-	}
-	pass := os.Getenv("REDIS_PASSWORD")
-
-	client := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: pass,
-		DB:       0,
+func TestLoggingMiddleware(t *testing.T) {
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("created"))
 	})
 
-	return &CacheService{client: client}
-}
+	middleware := LoggingMiddleware(nextHandler)
 
-func (s *CacheService) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return err
+	req := httptest.NewRequest("GET", "/test", nil)
+	rr := httptest.NewRecorder()
+
+	middleware.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Errorf("Expected status 201, got %d", rr.Code)
 	}
-	return s.client.Set(ctx, key, data, ttl).Err()
-}
-
-func (s *CacheService) Get(ctx context.Context, key string, dest interface{}) error {
-	data, err := s.client.Get(ctx, key).Bytes()
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, dest)
-}
-
-func (s *CacheService) Delete(ctx context.Context, key string) error {
-	return s.client.Del(ctx, key).Err()
 }
