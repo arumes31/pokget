@@ -22,6 +22,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -115,14 +116,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Versioning for assets
+	buildVersion := "1"
+	if info, err := os.Stat("static/css/tailwind.css"); err == nil {
+		buildVersion = fmt.Sprintf("%d", info.ModTime().Unix())
+	}
+
 	// Initialize Handlers
 	h := &handlers.Handler{
-		Templates:   templates,
-		MockCards:   mockCards,
-		Fingerprint: service.NewFingerprintService(db.DB),
-		Audit:       auditSvc,
-		Crypto:      cryptoSvc,
-		Game:        service.NewGamificationService(db.DB),
+		Templates:    templates,
+		MockCards:    mockCards,
+		Fingerprint:  service.NewFingerprintService(db.DB),
+		Audit:        auditSvc,
+		Crypto:       cryptoSvc,
+		Game:         service.NewGamificationService(db.DB),
+		DB:           db.DB,
+		BuildVersion: buildVersion,
 	}
 
 	r := mux.NewRouter()

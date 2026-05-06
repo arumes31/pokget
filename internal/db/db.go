@@ -98,7 +98,11 @@ func RunMigrations() error {
 	return ApplyMigrations(DB, absPath)
 }
 
-var NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+var NewMigrator = func(db *sql.DB, absPath string) (interface {
+	Up() error
+	Force(int) error
+	Version() (uint, bool, error)
+}, error) {
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		return nil, err
@@ -117,8 +121,25 @@ func ApplyMigrations(db *sql.DB, absPath string) error {
 		return fmt.Errorf("could not create migration instance: %w", err)
 	}
 
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("could not apply migrations: %w", err)
+	err = m.Up()
+	if err != nil && err != migrate.ErrNoChange {
+		version, dirty, vErr := m.Version()
+		if vErr != nil {
+			return fmt.Errorf("could not apply migrations (and failed to get version): %w (version error: %v)", err, vErr)
+		}
+		
+		if dirty {
+			slog.Warn("Database is dirty, attempting to force version and retry", "version", version)
+			if fErr := m.Force(int(version)); fErr != nil { // nolint:gosec // version is expected to be within int range
+				return fmt.Errorf("could not force version %d after dirty state: %w", version, fErr)
+			}
+			// Retry Up after forcing
+			if retryErr := m.Up(); retryErr != nil && retryErr != migrate.ErrNoChange {
+				return fmt.Errorf("could not apply migrations after forcing: %w", retryErr)
+			}
+		} else {
+			return fmt.Errorf("could not apply migrations: %w", err)
+		}
 	}
 
 	slog.Info("Database migrations applied successfully")

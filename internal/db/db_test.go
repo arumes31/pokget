@@ -135,13 +135,19 @@ type mockMigrator struct {
 	err error
 }
 func (m *mockMigrator) Up() error { return m.err }
+func (m *mockMigrator) Force(_ int) error { return nil }
+func (m *mockMigrator) Version() (uint, bool, error) { return 0, false, nil }
 
 func TestApplyMigrations_Success(t *testing.T) {
 	dbMock, _, _ := sqlmock.New()
 	defer dbMock.Close()
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(_ *sql.DB, _ string) (interface{ Up() error }, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (interface {
+		Up() error
+		Force(int) error
+		Version() (uint, bool, error)
+	}, error) {
 		return &mockMigrator{err: nil}, nil
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
@@ -159,7 +165,11 @@ func TestApplyMigrations_ErrorNew(t *testing.T) {
 	defer dbMock.Close()
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(_ *sql.DB, _ string) (interface{ Up() error }, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (interface {
+		Up() error
+		Force(int) error
+		Version() (uint, bool, error)
+	}, error) {
 		return nil, fmt.Errorf("new fail")
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
@@ -176,7 +186,11 @@ func TestApplyMigrations_ErrorUp(t *testing.T) {
 	defer dbMock.Close()
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(_ *sql.DB, _ string) (interface{ Up() error }, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (interface {
+		Up() error
+		Force(int) error
+		Version() (uint, bool, error)
+	}, error) {
 		return &mockMigrator{err: fmt.Errorf("up fail")}, nil
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
@@ -194,7 +208,11 @@ func TestRunMigrations_Success(t *testing.T) {
 	DB = dbMock
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(_ *sql.DB, _ string) (interface{ Up() error }, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (interface {
+		Up() error
+		Force(int) error
+		Version() (uint, bool, error)
+	}, error) {
 		return &mockMigrator{err: nil}, nil
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
@@ -261,7 +279,11 @@ func TestInitDB(t *testing.T) {
 		defer func() { sqlOpen = oldSQLOpen }()
 
 		oldNewMigrator := NewMigrator
-		NewMigrator = func(_ *sql.DB, _ string) (interface{ Up() error }, error) {
+		NewMigrator = func(_ *sql.DB, _ string) (interface {
+		Up() error
+		Force(int) error
+		Version() (uint, bool, error)
+	}, error) {
 			return &mockMigrator{err: nil}, nil
 		}
 		defer func() { NewMigrator = oldNewMigrator }()

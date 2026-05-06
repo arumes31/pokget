@@ -43,14 +43,15 @@ import (
 )
 
 type Handler struct {
-	Templates   *template.Template
-	MockCards   []models.Card
-	Fingerprint *service.FingerprintService
-	Mailer      service.Mailer
-	Audit       *service.AuditService
-	Crypto      *service.CryptoService
-	Game        *service.GamificationService
-	DB          *sql.DB
+	Templates    *template.Template
+	MockCards    []models.Card
+	Fingerprint  *service.FingerprintService
+	Mailer       service.Mailer
+	Audit        *service.AuditService
+	Crypto       *service.CryptoService
+	Game         *service.GamificationService
+	DB           *sql.DB
+	BuildVersion string
 }
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
@@ -58,6 +59,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 		data = make(map[string]interface{})
 	}
 	data["CSRFToken"] = csrf.Token(r)
+	data["BuildVersion"] = h.BuildVersion
 	if err := h.Templates.ExecuteTemplate(w, name, data); err != nil {
 		slog.Error("Template execution failed", "template", name, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
