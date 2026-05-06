@@ -40,6 +40,7 @@ import (
 	"pokget/internal/service"
 
 	"github.com/gorilla/csrf"
+	"github.com/gorilla/mux"
 )
 
 type Binder struct {
