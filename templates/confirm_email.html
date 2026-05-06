@@ -3,35 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Confirm Your Account | Pokget</title>
+    <title>Identity Verification | Pokget Vault</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>
-        :root {
-            --vapor-gradient: linear-gradient(180deg, #490080 0%, #131314 60%, #0e0e0f 100%);
+        .vapor-bg {
+            background: linear-gradient(180deg, #490080 0%, #131314 60%, #0e0e0f 100%);
         }
-        body {
-            background: var(--vapor-gradient);
+        .glass-card-prestige {
+            background: rgba(28, 27, 28, 0.6);
+            backdrop-filter: blur(40px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
-        .glass-card {
-            background: rgba(28, 27, 28, 0.7);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        .neon-bloom {
+            box-shadow: 0 0 30px rgba(168, 85, 247, 0.3);
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+        .animate-float {
+            animation: float 6s ease-in-out infinite;
         }
     </style>
 </head>
-<body class="text-on-background min-h-screen flex items-center justify-center p-6 font-sans">
-    <div class="w-full max-w-md">
-        <div id="confirm-content" class="glass-card rounded-3xl p-10 text-center shadow-2xl animate-in">
-            <div class="mb-8 flex justify-center">
-                <img src="/static/img/logo.png" alt="Pokget Logo" class="w-20">
+<body class="vapor-bg text-on-background min-h-screen relative overflow-hidden font-sans selection:bg-primary/30 flex items-center justify-center p-6">
+    
+    <!-- Decorative Elements (Match Auth Page) -->
+    <div class="absolute inset-0 pointer-events-none select-none overflow-hidden">
+        <div class="absolute top-[10%] left-[5%] opacity-10 transform -rotate-12">
+            <span class="font-serif text-5xl italic text-white">The final protocol.</span>
+        </div>
+        <div class="absolute bottom-[10%] right-[10%] opacity-10 transform rotate-6">
+            <span class="font-serif text-3xl text-white">Awaiting authorization.</span>
+        </div>
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[150px]"></div>
+    </div>
+
+    <div class="w-full max-w-xl relative z-10">
+        <div id="confirm-content" class="glass-card-prestige rounded-[2.5rem] p-12 md:p-16 text-center animate-in">
+            <div class="mb-12 flex justify-center animate-float">
+                <div class="relative">
+                    <div class="absolute inset-0 bg-primary/20 blur-2xl rounded-full"></div>
+                    <img src="/static/img/logo.png" alt="Pokget" class="w-24 h-24 relative z-10">
+                </div>
             </div>
             
-            <h1 class="text-4xl font-extrabold mb-4 tracking-tight">Final Step!</h1>
-            <p class="text-on-surface-variant opacity-70 mb-10 text-lg">
-                To keep your collection secure from automated scans, please click the button below to verify your email.
+            <h1 class="text-5xl font-extrabold mb-6 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
+                Final Step
+            </h1>
+            <p class="text-on-surface-variant opacity-70 mb-12 text-xl leading-relaxed">
+                To secure your collection from automated intrusion, we require manual authorization of this link.
             </p>
 
             <form hx-post="/auth/confirm" hx-target="#confirm-content" hx-swap="outerHTML">
@@ -39,13 +65,15 @@
                 <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
                 
                 <button type="submit" 
-                        class="w-full bg-primary text-on-primary font-bold py-5 rounded-2xl text-xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all duration-200">
+                        class="w-full bg-gradient-to-r from-primary to-secondary text-on-primary font-black py-6 rounded-2xl text-2xl shadow-xl hover:neon-bloom hover:scale-[1.02] active:scale-95 transition-all duration-500 uppercase tracking-[0.2em]">
                     Verify My Account
                 </button>
             </form>
 
-            <div class="mt-8 text-sm opacity-40">
-                Securing your vault access...
+            <div class="mt-12 flex items-center justify-center gap-4 opacity-30">
+                <span class="h-[1px] w-12 bg-white"></span>
+                <span class="font-label-sm text-[10px] uppercase tracking-[0.3em]">Identity Protocol v.2</span>
+                <span class="h-[1px] w-12 bg-white"></span>
             </div>
         </div>
     </div>
@@ -53,16 +81,16 @@
 </html>
 
 {{define "confirm_success"}}
-<div id="confirm-content" class="glass-card rounded-3xl p-12 text-center shadow-2xl animate-in">
-    <div class="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-8">
-        <span class="material-symbols-outlined text-primary text-4xl">verified_user</span>
+<div id="confirm-content" class="glass-card-prestige rounded-[2.5rem] p-12 md:p-16 text-center animate-in">
+    <div class="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-10 border border-primary/20">
+        <span class="material-symbols-outlined text-primary text-5xl">verified_user</span>
     </div>
-    <h2 class="text-3xl font-extrabold mb-4">Email Verified!</h2>
-    <p class="text-on-surface-variant opacity-70 mb-10 text-lg">
-        Your vault identity has been established. You can now return to the application.
+    <h2 class="text-4xl font-extrabold mb-6 tracking-tighter">Identity Verified</h2>
+    <p class="text-on-surface-variant opacity-70 mb-12 text-xl">
+        Your vault credentials have been secured. Welcome to the prestige.
     </p>
     <a href="/auth" 
-       class="inline-block bg-primary text-on-primary font-bold px-10 py-4 rounded-xl hover:scale-105 transition-transform text-lg">
+       class="inline-block bg-white text-black font-black px-12 py-5 rounded-2xl hover:scale-105 transition-transform text-xl uppercase tracking-widest shadow-2xl">
         Enter the Vault
     </a>
 </div>

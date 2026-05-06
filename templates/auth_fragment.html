@@ -137,9 +137,9 @@
     </div>
     <h2 class="text-3xl font-bold mb-4">{{.Message}}</h2>
     <p class="text-on-surface-variant opacity-60 mb-10">You can now proceed to the vault gateway.</p>
-    <button @click="mode = 'login'; signupAttempted = false" 
-            class="bg-primary text-on-primary font-bold px-10 py-4 rounded-xl hover:scale-105 transition-transform">
+    <a href="/auth" 
+       class="inline-block bg-primary text-on-primary font-bold px-10 py-4 rounded-xl hover:scale-105 transition-transform">
         Back to Login
-    </button>
+    </a>
 </div>
 {{end}}
