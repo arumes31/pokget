@@ -265,8 +265,8 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 	// Award XP
 	_, _, _ = h.Game.AddXP(userID, 100)
 
+	w.Header().Set("HX-Trigger", `{"notify": {"msg": "Asset Secured: Card added to Vault (+100 XP)", "type": "success"}}`)
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("Card added to collection! (+100 XP)"))
 }
 
 func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {

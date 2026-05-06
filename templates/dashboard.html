@@ -2,41 +2,42 @@
 <section class="relative animate-in">
     <div class="absolute -top-10 -left-10 w-64 h-64 bg-primary/10 blur-[100px] rounded-full"></div>
     <div class="glass-card rounded-xl p-lg relative overflow-hidden border border-white/5">
-        <div class="flex flex-col gap-xs">
-            <div class="flex justify-between items-center">
-                <span class="font-label-sm text-xs uppercase text-on-surface-variant tracking-widest opacity-60">Total Portfolio Value</span>
+        <div class="flex flex-col gap-4">
+            <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-2">
+                <span class="font-label-sm text-[10px] md:text-xs uppercase text-on-surface-variant tracking-[0.2em] opacity-40">Total Portfolio Valuation</span>
+                
                 <!-- Rank Display -->
-                <div class="flex items-center gap-sm glass-card px-3 py-1.5 rounded-full border border-white/10">
-                    <img src="{{ .RankIcon }}" alt="Rank" class="w-6 h-6 object-contain">
+                <div class="flex items-center gap-sm glass-card px-3 py-1.5 rounded-2xl border border-white/5 self-start md:self-auto bg-white/5">
+                    <img src="{{ .RankIcon }}" alt="Rank" class="w-5 h-5 object-contain">
                     <div class="flex flex-col">
-                        <span class="text-[10px] uppercase font-bold text-primary tracking-tighter">{{ .Rank }}</span>
+                        <span class="text-[9px] uppercase font-black text-primary tracking-tighter">{{ .Rank }}</span>
                         <div class="w-16 h-1 bg-white/10 rounded-full mt-0.5 overflow-hidden">
                             <div class="h-full bg-primary" x-init="$el.style.width = '{{ .XPPercent }}%'"></div>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="flex items-baseline gap-md">
-                <span class="font-h1 text-4xl md:text-5xl font-bold text-on-surface tracking-tight roll-counter" 
+            <div class="flex flex-col md:flex-row md:items-baseline gap-2 md:gap-md">
+                <span class="font-h1 text-5xl md:text-6xl font-black text-on-surface tracking-tighter roll-counter" 
                       data-target="{{ .TotalValuation }}" data-prefix="$">$0.00</span>
                 {{ if gt .TotalValuation 0.0 }}
-                <div class="flex items-center {{ if ge .Change24h 0.0 }}text-tertiary bg-tertiary/10 border-tertiary/20{{ else }}text-red-400 bg-red-400/10 border-red-400/20{{ end }} gap-xs px-2 py-1 rounded-full border">
-                    <span class="material-symbols-outlined text-[16px]">{{ if ge .Change24h 0.0 }}trending_up{{ else }}trending_down{{ end }}</span>
-                    <span class="font-label-sm text-[10px] font-bold">{{ if ge .Change24h 0.0 }}+{{ end }}{{ printf "%.1f" .Change24h }}%</span>
+                <div class="flex items-center self-start md:self-auto {{ if ge .Change24h 0.0 }}text-tertiary bg-tertiary/10 border-tertiary/20{{ else }}text-red-400 bg-red-400/10 border-red-400/20{{ end }} gap-xs px-2.5 py-1 rounded-lg border">
+                    <span class="material-symbols-outlined text-[14px]">{{ if ge .Change24h 0.0 }}trending_up{{ else }}trending_down{{ end }}</span>
+                    <span class="font-label-sm text-[10px] font-black">{{ if ge .Change24h 0.0 }}+{{ end }}{{ printf "%.1f" .Change24h }}%</span>
                 </div>
                 {{ end }}
             </div>
         </div>
         <!-- Mini Sparkline visualization -->
-        <div class="mt-lg h-24 w-full relative">
+        <div class="mt-8 h-16 md:h-24 w-full relative">
             <svg class="w-full h-full" preserveAspectRatio="none" viewBox="0 0 400 100">
                 <defs>
                     <linearGradient id="gradient-hero" x1="0%" x2="0%" y1="0%" y2="100%">
-                        <stop offset="0%" stop-color="#ddb7ff" stop-opacity="0.3"></stop>
+                        <stop offset="0%" stop-color="#ddb7ff" stop-opacity="0.2"></stop>
                         <stop offset="100%" stop-color="#ddb7ff" stop-opacity="0"></stop>
                     </linearGradient>
                 </defs>
-                <path class="drop-shadow-[0_0_8px_rgba(221,183,255,0.8)]" d="M0,80 Q50,70 100,85 T200,40 T300,60 T400,20" fill="transparent" stroke="#ddb7ff" stroke-width="3"></path>
+                <path class="drop-shadow-[0_0_12px_rgba(221,183,255,0.4)]" d="M0,80 Q50,70 100,85 T200,40 T300,60 T400,20" fill="transparent" stroke="#ddb7ff" stroke-width="2.5"></path>
                 <path d="M0,80 Q50,70 100,85 T200,40 T300,60 T400,20 L400,100 L0,100 Z" fill="url(#gradient-hero)"></path>
             </svg>
         </div>
@@ -44,27 +45,27 @@
 </section>
 
 <!-- Portfolio Stats: Horizontal Scrolling -->
-<section class="flex overflow-x-auto gap-md no-scrollbar pb-md -mx-md px-md scroll-smooth">
+<section class="flex overflow-x-auto gap-4 no-scrollbar pb-4 -mx-4 px-4 scroll-smooth">
     <!-- Stat 1 -->
-    <div class="glass-card min-w-[160px] flex-shrink-0 p-md rounded-xl flex flex-col gap-xs border-l-4 border-l-primary/40">
-        <span class="font-label-sm text-[10px] uppercase tracking-widest text-on-surface-variant opacity-60">Total Cards</span>
-        <span class="font-bold text-2xl text-on-surface roll-counter" data-target="{{ len .Portfolio }}">0</span>
+    <div class="glass-card min-w-[140px] md:min-w-[160px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
+        <span class="font-label-sm text-[9px] uppercase tracking-[0.2em] text-on-surface-variant opacity-30">Total Assets</span>
+        <span class="font-black text-2xl text-on-surface roll-counter" data-target="{{ len .Portfolio }}">0</span>
     </div>
     <!-- Stat 2 -->
-    <div class="glass-card min-w-[200px] flex-shrink-0 p-md rounded-xl flex flex-col gap-xs border-l-4 border-l-secondary/40">
-        <span class="font-label-sm text-[10px] uppercase tracking-widest text-on-surface-variant opacity-60">Top Performer</span>
+    <div class="glass-card min-w-[180px] md:min-w-[200px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
+        <span class="font-label-sm text-[9px] uppercase tracking-[0.2em] text-on-surface-variant opacity-30">Top Performer</span>
         <div class="flex items-center gap-xs">
             {{ if .Portfolio }}
-                <span class="font-bold text-lg text-secondary truncate">{{ (index .Portfolio 0).Card.Name }}</span>
+                <span class="font-black text-base text-secondary truncate">{{ (index .Portfolio 0).Card.Name }}</span>
             {{ else }}
-                <span class="font-bold text-lg text-secondary/40 italic">No assets</span>
+                <span class="font-black text-base text-secondary/20 italic tracking-tight">No data</span>
             {{ end }}
         </div>
     </div>
     <!-- Stat 3 -->
-    <div class="glass-card min-w-[160px] flex-shrink-0 p-md rounded-xl flex flex-col gap-xs border-l-4 border-l-tertiary/40">
-        <span class="font-label-sm text-[10px] uppercase tracking-widest text-on-surface-variant opacity-60">Binders</span>
-        <span class="font-bold text-2xl text-on-surface">{{ .BinderCount }}</span>
+    <div class="glass-card min-w-[140px] md:min-w-[160px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
+        <span class="font-label-sm text-[9px] uppercase tracking-[0.2em] text-on-surface-variant opacity-30">Archives</span>
+        <span class="font-black text-2xl text-on-surface">{{ .BinderCount }}</span>
     </div>
 </section>
 
