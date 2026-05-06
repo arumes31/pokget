@@ -561,6 +561,9 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	var detectedID string
 	var text string
 
+	var detectedPrice float64
+	var detectedImage string
+
 	if h.Fingerprint != nil {
 		img, _, err := image.Decode(bytes.NewReader(imgBytes))
 		if err == nil {
@@ -571,6 +574,9 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 					slog.Info("Fingerprint: Found match", "name", match.Name, "distance", distance)
 					detectedCard = match.Name
 					detectedID = match.ID
+					price, _ := match.PriceUSD.Float64()
+					detectedPrice = price
+					detectedImage = match.ImageURL
 				}
 			}
 		}
@@ -579,14 +585,14 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	// 2. OCR Fallback (if visual matching fails)
 	var processedImg []byte
 	if detectedCard == "" {
-		// Fetch all cards from DB for matching (OCR needs full candidate list)
-		rows, err := h.DB.Query("SELECT id, name FROM cards")
+		// Fetch cards from DB for matching
+		rows, err := h.DB.Query("SELECT id, name, price_usd, image_url FROM cards")
 		var dbCards []models.Card
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var c models.Card
-				if err := rows.Scan(&c.ID, &c.Name); err == nil {
+				if err := rows.Scan(&c.ID, &c.Name, &c.PriceUSD, &c.ImageURL); err == nil {
 					dbCards = append(dbCards, c)
 				}
 			}
@@ -601,10 +607,12 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		}
 		if ocrMatch != "Unknown Card" {
 			detectedCard = ocrMatch
-			// Find ID for the OCR match in the fetched DB cards
 			for _, c := range dbCards {
 				if c.Name == ocrMatch {
 					detectedID = c.ID
+					price, _ := c.PriceUSD.Float64()
+					detectedPrice = price
+					detectedImage = c.ImageURL
 					break
 				}
 			}
@@ -613,9 +621,11 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	resp := map[string]interface{}{
-		"text":     strings.ReplaceAll(text, "\n", " "),
-		"detected": detectedCard,
-		"id":       detectedID,
+		"text":      strings.ReplaceAll(text, "\n", " "),
+		"detected":  detectedCard,
+		"id":        detectedID,
+		"price":     detectedPrice,
+		"image_url": detectedImage,
 	}
 	if processedImg != nil {
 		resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
