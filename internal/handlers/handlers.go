@@ -569,7 +569,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			hash, err := h.Fingerprint.CalculateHash(img)
 			if err == nil {
-				match, distance, _ := h.Fingerprint.MatchFingerprint(hash)
+				match, distance, _ := h.Fingerprint.MatchFingerprint(hash, h.MockCards)
 				if match != nil {
 					slog.Info("Fingerprint: Found match", "name", match.Name, "distance", distance)
 					detectedCard = match.Name
@@ -585,21 +585,8 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	// 2. OCR Fallback (if visual matching fails)
 	var processedImg []byte
 	if detectedCard == "" {
-		// Fetch cards from DB for matching
-		rows, err := h.DB.Query("SELECT id, name, price_usd, image_url FROM cards")
-		var dbCards []models.Card
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var c models.Card
-				if err := rows.Scan(&c.ID, &c.Name, &c.PriceUSD, &c.ImageURL); err == nil {
-					dbCards = append(dbCards, c)
-				}
-			}
-		}
-
 		var ocrMatch string
-		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, dbCards, lang)
+		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, h.MockCards, lang)
 		if err != nil {
 			slog.Error("OCR: Failed to process scan", "error", err)
 			http.Error(w, "Detection failed", http.StatusInternalServerError)
@@ -607,7 +594,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		}
 		if ocrMatch != "Unknown Card" {
 			detectedCard = ocrMatch
-			for _, c := range dbCards {
+			for _, c := range h.MockCards {
 				if c.Name == ocrMatch {
 					detectedID = c.ID
 					price, _ := c.PriceUSD.Float64()

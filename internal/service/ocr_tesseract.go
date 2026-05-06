@@ -111,15 +111,26 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 		normalizedText = strings.ReplaceAll(normalizedText, "\n", "")
 	}
 
+	// Optimization: Lowercase text once
+	lowerText := strings.ToLower(normalizedText)
+
 	for _, card := range mockCards {
-		// Stage 1: Exact/Word Boundary Match (Fast)
-		pattern := `(?i)\b` + regexp.QuoteMeta(card.Name) + `\b`
-		if matched, _ := regexp.MatchString(pattern, normalizedText); matched {
+		cardNameLower := strings.ToLower(card.Name)
+		
+		// Stage 1: Fast exact substring check
+		if strings.Contains(lowerText, cardNameLower) {
 			detectedCard = card.Name
 			break
 		}
 
-		// Stage 2: Levenshtein Fuzzy Match
+		// Stage 2: Length-based pre-filter for Levenshtein (must be within 40% length)
+		lenDiff := len(normalizedText) - len(card.Name)
+		if lenDiff < 0 { lenDiff = -lenDiff }
+		if lenDiff > len(card.Name)/2 && len(card.Name) > 5 {
+			continue
+		}
+
+		// Stage 3: Levenshtein Fuzzy Match
 		dist := levenshtein(normalizedText, card.Name)
 		maxLen := len(normalizedText)
 		if len(card.Name) > maxLen { maxLen = len(card.Name) }

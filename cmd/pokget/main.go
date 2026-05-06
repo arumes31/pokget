@@ -83,20 +83,19 @@ func main() {
 		go priceWorker.Start(context.Background())
 	}
 
-	// Fetch cards from DB for handlers
-	var mockCards []models.Card
+	// Fetch all cards from DB for handlers (caching in memory for fast scanning)
+	var allCards []models.Card
 	if db.DB != nil {
-		rows, err := db.DB.Query("SELECT id, name, set_name, price_usd, price_eur, image_url, variant, change_24h FROM cards LIMIT 50")
+		rows, err := db.DB.Query("SELECT id, name, set_name, price_usd, price_eur, image_url, variant, change_24h, phash FROM cards")
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var c models.Card
-				if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h); err != nil {
-					slog.Error("Failed to scan card row", "error", err)
-					continue
+				if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash); err == nil {
+					allCards = append(allCards, c)
 				}
-				mockCards = append(mockCards, c)
 			}
+			slog.Info("Database: Loaded cards into cache", "count", len(allCards))
 		}
 	}
 
@@ -131,7 +130,7 @@ func main() {
 	// Initialize Handlers
 	h := &handlers.Handler{
 		Templates:    templates,
-		MockCards:    mockCards,
+		MockCards:    allCards,
 		Fingerprint:  service.NewFingerprintService(db.DB),
 		Audit:        auditSvc,
 		Crypto:       cryptoSvc,
