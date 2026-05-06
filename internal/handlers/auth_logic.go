@@ -179,8 +179,16 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	remember := r.FormValue("remember") == "on"
 	session, _ := auth.Store.Get(r, "session")
 	session.Values["user_id"] = u.ID
+	
+	if remember {
+		session.Options.MaxAge = 86400 * 30 // 30 days
+	} else {
+		session.Options.MaxAge = 3600 // 1 hour (Security first)
+	}
+
 	if err := session.Save(r, w); err != nil {
 		slog.Error("Failed to save session", "error", err)
 		http.Error(w, "Failed to save session", http.StatusInternalServerError)

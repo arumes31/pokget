@@ -52,6 +52,23 @@
                     Enter Vault
                     <span class="material-symbols-outlined text-[32px] md:text-[24px]">keyboard_tab</span>
                 </button>
+                
+                <div class="absolute top-full left-0 mt-4 flex items-center gap-6">
+                    <label class="flex items-center gap-2 cursor-pointer group">
+                        <div class="relative">
+                            <input type="checkbox" name="remember" class="peer hidden">
+                            <div class="w-5 h-5 border-2 border-primary/30 rounded-md peer-checked:bg-primary peer-checked:border-primary transition-all group-hover:border-primary/60"></div>
+                            <span class="material-symbols-outlined absolute inset-0 text-[16px] text-on-primary scale-0 peer-checked:scale-100 transition-transform">check</span>
+                        </div>
+                        <span class="text-[10px] font-bold text-white/40 uppercase tracking-widest group-hover:text-white/60 transition-colors">Remember Session</span>
+                    </label>
+
+                    <button type="button" @click="$dispatch('notify', { msg: 'Mobile Biometrics Active: Use your device manager to autofill.', type: 'info' })"
+                            class="flex items-center gap-2 text-[10px] font-bold text-primary/40 uppercase tracking-widest hover:text-primary transition-colors">
+                        <span class="material-symbols-outlined text-[16px]">fingerprint</span>
+                        Biometric Unlock
+                    </button>
+                </div>
             </form>
 
             <!-- Register Form -->
