@@ -7,6 +7,8 @@
         result: '',
         detectedCard: '',
         detectedID: '',
+        detectedPrice: 0,
+        detectedImage: '',
         adding: false,
         lang: 'eng',
         csrfToken: '{{.CSRFToken}}',
@@ -44,6 +46,8 @@
             this.result = data.text;
             this.detectedCard = data.detected;
             this.detectedID = data.id;
+            this.detectedPrice = data.price;
+            this.detectedImage = data.image_url;
             
             // Auto-Snap logic
             if (data.bounds) {
@@ -155,8 +159,8 @@
                  :style="`left: ${(lines.left + lines.right) / 2}%; top: 5%`" x-text="metrics.lr"></div>
         </div>
 
-        <div class="absolute bottom-4 left-0 right-0 flex justify-center opacity-40">
-            <span class="text-[9px] font-bold text-white uppercase tracking-widest">Drag lines to card edges</span>
+        <div class="absolute bottom-2 left-0 right-0 flex justify-center opacity-20">
+            <span class="text-[7px] font-black text-white uppercase tracking-[0.3em]">Align card edges with guides</span>
         </div>
     </div>
 
@@ -174,24 +178,23 @@
 
         <!-- OCR Result Display -->
         <div x-show="detectedCard" x-transition class="glass-card p-4 border-emerald-500/30 bg-emerald-500/5">
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <div class="flex items-center gap-4">
+                <div x-show="detectedImage" class="w-16 aspect-[3/4] rounded-lg overflow-hidden border border-white/10 shadow-lg">
+                    <img :src="detectedImage" class="w-full h-full object-cover">
                 </div>
-                <div>
+                <div class="flex-1">
                     <p class="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Match Found</p>
-                    <p class="text-sm font-bold" x-text="detectedCard"></p>
+                    <p class="text-sm font-black text-on-surface truncate" x-text="detectedCard"></p>
+                    <p class="text-xs font-black text-primary mt-1" x-text="detectedPrice ? '$' + parseFloat(detectedPrice).toFixed(2) : '--'"></p>
                 </div>
                 <button @click="addToCollection()" 
                         x-show="detectedID"
                         :disabled="adding"
-                        class="ml-auto bg-emerald-500 hover:bg-emerald-400 text-dark px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1.5 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50">
+                        class="bg-emerald-500 hover:bg-emerald-400 text-dark px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-1.5 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50">
                     <svg x-show="!adding" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-                    <svg x-show="adding" class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                    <span x-text="adding ? 'SAVING...' : 'ADD TO COLLECTION'"></span>
+                    <span x-text="adding ? 'SAVING...' : 'ADD'"></span>
                 </button>
             </div>
-            <p class="mt-2 text-[10px] text-white/20 italic truncate" x-text="'Raw: ' + result"></p>
         </div>
 
         <div class="grid grid-cols-2 gap-4">
