@@ -197,6 +197,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	h.Audit.Log(u.ID, "USER_LOGIN", map[string]interface{}{"email": u.Email})
 
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", "/")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
