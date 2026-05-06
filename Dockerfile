@@ -28,12 +28,18 @@ FROM alpine:latest
 # Install runtime dependencies: Tesseract for OCR and Chromium for headless scraping
 RUN apk add --no-cache \
     tesseract-ocr \
+    tesseract-ocr-data-eng \
+    tesseract-ocr-data-jpn \
+    tesseract-ocr-data-deu \
+    tesseract-ocr-data-fra \
     chromium \
     nss \
     freetype \
     harfbuzz \
     ca-certificates \
     ttf-freefont
+
+ENV TESSDATA_PREFIX=/usr/share/tessdata
 
 WORKDIR /app
 
