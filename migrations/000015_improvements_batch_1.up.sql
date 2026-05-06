@@ -1,6 +1,22 @@
 -- Migration: Improvements Batch 1
 -- Created At: 2026-05-06
 
+-- 0. Ensure base tables from previous broken migrations exist
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT,
+    action TEXT NOT NULL,
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cards' AND column_name='game') THEN
+        ALTER TABLE cards ADD COLUMN game TEXT DEFAULT 'pokemon';
+    END IF;
+END $$;
+
 -- 1. Add language support to portfolio (instance specific)
 ALTER TABLE portfolio ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en';
 

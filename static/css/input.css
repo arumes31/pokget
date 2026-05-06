@@ -1,3 +1,35 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* Custom styles previously in styles.css */
+@layer base {
+  :root {
+    --vault-bg: #131314;
+    --vault-surface: #1c1b1c;
+    --vault-primary: #ddb7ff;
+    --vault-primary-dim: #b76dff;
+    --vault-secondary: #ffb0cd;
+    --vault-outline: #4d4354;
+    --vapor-gradient: linear-gradient(180deg, #490080 0%, #131314 60%, #0e0e0f 100%);
+  }
+  
+  body {
+    @apply bg-background text-on-background;
+    min-height: max(884px, 100dvh);
+  }
+}
+
+@layer components {
+  .vapor-bg {
+    background: var(--vapor-gradient);
+  }
+
+  .glass-card {
+    @apply bg-surface-container/70 backdrop-blur-xl border border-white/10;
+  }
+
+  .neon-bloom {
+    box-shadow: 0 0 30px rgba(168, 85, 247, 0.4);
+  }
+}
