@@ -1,88 +1,137 @@
-<div class="space-y-lg animate-in" x-data="{ showAddGrailModal: false }">
-    <div class="flex justify-between items-center px-1">
-        <h2 class="font-h2 text-2xl font-bold text-on-surface">Your Wantlist</h2>
-        <button @click="showAddGrailModal = true" 
-                class="glass-card px-4 py-2 rounded-xl text-primary text-[10px] uppercase font-bold hover:bg-primary/5 transition-all border border-primary/20 shadow-lg shadow-primary/10">
-            + Add Grail
-        </button>
+<div class="space-y-xl animate-in" x-data="{ showAddGrailModal: false }">
+    <!-- Premium Header -->
+    <div class="relative overflow-hidden rounded-3xl p-8 bg-gradient-to-br from-primary/20 to-transparent border border-white/5">
+        <div class="absolute top-0 right-0 w-32 h-32 bg-primary/20 blur-[60px] rounded-full -mr-16 -mt-16"></div>
+        <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div>
+                <h2 class="font-h1 text-4xl font-bold text-on-surface tracking-tight">The Wantlist</h2>
+                <p class="text-on-surface-variant/60 text-sm mt-2 max-w-md">Track the grails you're hunting. Monitor market prices against your target and strike when the time is right.</p>
+            </div>
+            <button @click="showAddGrailModal = true" 
+                    class="group relative overflow-hidden bg-primary px-8 py-4 rounded-2xl text-on-primary font-bold text-sm tracking-widest shadow-2xl shadow-primary/20 active:scale-95 transition-all">
+                <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform"></div>
+                <span class="relative z-10 flex items-center gap-2">
+                    <span class="material-symbols-outlined text-lg">add_circle</span>
+                    ADD NEW GRAIL
+                </span>
+            </button>
+        </div>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
+    <!-- Collection Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {{ range .Items }}
-        <div class="glass-card rounded-xl p-md flex gap-md relative overflow-hidden group hover:border-primary/40 transition-all">
-            <div class="w-20 aspect-[3/4] rounded-lg overflow-hidden flex-shrink-0 shadow-lg bg-black/40">
-                <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover">
-            </div>
-            <div class="flex flex-col justify-between py-1 overflow-hidden">
-                <div class="overflow-hidden">
-                    <h3 class="font-bold text-on-surface truncate">{{ .Card.Name }}</h3>
-                    <p class="text-[10px] text-on-surface-variant uppercase tracking-widest opacity-60 truncate">{{ .Card.Set }}</p>
+        <div class="glass-card group relative rounded-3xl p-6 border-white/5 hover:border-primary/30 transition-all duration-500 overflow-hidden">
+            <!-- Subtle background glow on hover -->
+            <div class="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+            
+            <div class="relative z-10 flex gap-6">
+                <!-- Card Image with Glow -->
+                <div class="relative w-28 aspect-[3/4] rounded-2xl overflow-hidden shadow-2xl flex-shrink-0 bg-black/40 border border-white/10 group-hover:border-primary/40 transition-colors">
+                    <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover">
+                    <div class="absolute inset-0 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]"></div>
                 </div>
-                <div class="space-y-1 mt-2">
-                    <div class="flex justify-between items-center text-[10px] font-bold">
-                        <span class="text-on-surface-variant uppercase opacity-40">Target</span>
-                        <span class="text-primary">${{ .TargetPrice }}</span>
+
+                <!-- Info -->
+                <div class="flex flex-col justify-between py-1 flex-1 min-w-0">
+                    <div>
+                        <p class="text-primary text-[10px] font-bold uppercase tracking-[0.2em] mb-1">{{ .Card.Set }}</p>
+                        <h3 class="text-lg font-bold text-on-surface truncate group-hover:text-primary transition-colors">{{ .Card.Name }}</h3>
                     </div>
-                    <div class="flex justify-between items-center text-[10px] font-bold">
-                        <span class="text-on-surface-variant uppercase opacity-40">Market</span>
-                        <span class="text-on-surface">${{ .Card.PriceUSD }}</span>
+                    
+                    <div class="space-y-3 mt-4">
+                        <div class="flex flex-col">
+                            <span class="text-[9px] text-white/30 uppercase font-bold tracking-widest">Your Target</span>
+                            <span class="text-2xl font-bold text-primary tracking-tighter">${{ .TargetPrice }}</span>
+                        </div>
+                        <div class="flex items-center justify-between text-[10px]">
+                            <span class="text-white/30 uppercase font-bold">Market Price</span>
+                            <span class="text-on-surface font-mono font-bold">${{ .Card.PriceUSD }}</span>
+                        </div>
                     </div>
                 </div>
             </div>
-            <!-- Progress towards target -->
-            <div class="absolute bottom-0 left-0 h-1 bg-white/5 w-full">
-                {{ if .TargetPrice }}
-                <div class="h-full bg-primary shadow-[0_0_8px_rgba(221,183,255,0.6)]" 
-                     :style="{ width: Math.min(({{ .Card.PriceUSD }} / {{ .TargetPrice }}) * 100, 100) + '%' }"></div>
-                {{ end }}
+
+            <!-- Progress Bar / Status -->
+            <div class="mt-6">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-[9px] font-bold uppercase tracking-widest text-white/20">Market Convergence</span>
+                    <span class="text-[10px] font-bold text-primary">{{ if .TargetPrice }}{{ printf "%.0f" (mul (div .Card.PriceUSD .TargetPrice) 100) }}%{{ else }}0%{{ end }}</span>
+                </div>
+                <div class="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                    {{ if .TargetPrice }}
+                    <div class="h-full bg-gradient-to-r from-primary to-primary-fixed-dim shadow-[0_0_12px_rgba(221,183,255,0.4)] transition-all duration-1000" 
+                         x-init="$el.style.width = Math.min(({{ .Card.PriceUSD }} / {{ .TargetPrice }}) * 100, 100) + '%'"></div>
+                    {{ end }}
+                </div>
             </div>
         </div>
         {{ else }}
-        <div class="col-span-full py-24 flex flex-col items-center justify-center opacity-40">
-            <div class="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
-                <span class="material-symbols-outlined text-4xl">favorite</span>
+        <!-- Empty State: High Impact -->
+        <div class="col-span-full py-32 flex flex-col items-center justify-center relative">
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-primary/5 blur-[100px] rounded-full"></div>
+            <div class="relative z-10 glass-card p-12 rounded-[40px] border-dashed border-white/10 flex flex-col items-center text-center max-w-sm">
+                <div class="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6 border border-primary/20">
+                    <span class="material-symbols-outlined text-4xl text-primary animate-pulse">explore</span>
+                </div>
+                <h3 class="text-xl font-bold text-on-surface tracking-tight">Empty Armory</h3>
+                <p class="text-sm text-white/40 mt-3">You haven't identified any grails for your collection yet. Start hunting to build your legacy.</p>
+                <button @click="showAddGrailModal = true" 
+                        class="mt-8 text-primary text-xs font-bold uppercase tracking-widest border-b border-primary/40 pb-1 hover:border-primary transition-all">
+                    Initiate First Hunt
+                </button>
             </div>
-            <p class="font-label-md uppercase tracking-widest text-[10px] font-bold">Your wantlist is empty</p>
-            <p class="text-[10px] mt-1 text-white/40">Start adding cards you're hunting for!</p>
         </div>
         {{ end }}
     </div>
 
-    <!-- Add Grail Modal -->
+    <!-- Add Grail Modal (Enhanced) -->
     <div x-show="showAddGrailModal" 
          x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0 scale-95"
-         x-transition:enter-end="opacity-100 scale-100"
-         class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+         x-transition:enter-start="opacity-0 translate-y-10"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-background/80 backdrop-blur-xl"
          x-cloak>
-        <div class="glass-card w-full max-w-sm p-6 space-y-4 border-primary/30" @click.away="showAddGrailModal = false">
+        <div class="glass-card w-full max-w-md p-10 space-y-8 border-primary/30 relative overflow-hidden" @click.away="showAddGrailModal = false">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary to-transparent"></div>
+            
             <div class="flex justify-between items-center">
-                <h3 class="text-lg font-bold text-primary">Add to Wantlist</h3>
+                <h3 class="text-2xl font-bold text-on-surface tracking-tight">Identify <span class="text-primary">Grail</span></h3>
                 <button @click="showAddGrailModal = false" class="text-white/20 hover:text-white transition-colors">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
             
-            <form hx-post="/wantlist/add" hx-target="#main-content" @submit="showAddGrailModal = false" class="space-y-4">
+            <form hx-post="/wantlist/add" hx-target="#main-content" @submit="showAddGrailModal = false" class="space-y-6">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
-                <div class="space-y-1">
-                    <label class="text-[10px] uppercase font-bold text-white/40">Search Card ID</label>
-                    <input type="text" name="card_id" required placeholder="e.g. swsh1-1"
-                           class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-all">
+                
+                <div class="space-y-2">
+                    <label class="text-[10px] uppercase font-bold text-white/30 tracking-widest px-1">Card ID / Fingerprint</label>
+                    <input type="text" name="card_id" required placeholder="e.g. swsh4-19"
+                           class="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm focus:outline-none focus:border-primary focus:bg-white/10 transition-all placeholder:text-white/10">
                 </div>
-                <div class="space-y-1">
-                    <label class="text-[10px] uppercase font-bold text-white/40">Target Purchase Price ($)</label>
-                    <input type="number" step="0.01" name="target_price" required placeholder="50.00"
-                           class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-all text-primary font-bold">
+
+                <div class="space-y-2">
+                    <label class="text-[10px] uppercase font-bold text-white/30 tracking-widest px-1">Target Acquisition Price ($)</label>
+                    <div class="relative">
+                        <span class="absolute left-5 top-1/2 -translate-y-1/2 text-primary font-bold">$</span>
+                        <input type="number" step="0.01" name="target_price" required placeholder="0.00"
+                               class="w-full bg-white/5 border border-white/10 rounded-2xl pl-9 pr-5 py-4 text-lg font-bold text-primary focus:outline-none focus:border-primary focus:bg-white/10 transition-all">
+                    </div>
                 </div>
-                <div class="space-y-1">
-                    <label class="text-[10px] uppercase font-bold text-white/40">Notes</label>
-                    <textarea name="notes" placeholder="Condition preference, seller info..." rows="2"
-                              class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-all"></textarea>
+
+                <div class="space-y-2">
+                    <label class="text-[10px] uppercase font-bold text-white/30 tracking-widest px-1">Strategic Notes</label>
+                    <textarea name="notes" placeholder="Condition, seller, or priority..." rows="3"
+                              class="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm focus:outline-none focus:border-primary focus:bg-white/10 transition-all placeholder:text-white/10"></textarea>
                 </div>
+
                 <button type="submit"
-                        class="w-full bg-primary text-on-primary py-4 rounded-2xl text-xs font-bold shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all active:scale-95">
-                    ADD TO HUNT
+                        class="w-full bg-primary text-on-primary py-5 rounded-2xl font-bold text-sm tracking-widest shadow-2xl shadow-primary/30 hover:shadow-primary/50 transition-all active:scale-95 group">
+                    <span class="flex items-center justify-center gap-2">
+                        <span class="material-symbols-outlined text-lg">target</span>
+                        ADD TO HUNT
+                    </span>
                 </button>
             </form>
         </div>
