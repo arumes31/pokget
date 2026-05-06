@@ -30,8 +30,7 @@
             <!-- Login Form -->
             <form x-show="mode === 'login'" 
                   hx-post="/auth/login" 
-                  hx-target="body" 
-                  hx-swap="outerHTML"
+                  hx-target="#main-content" 
                   class="flex flex-col md:flex-row items-stretch md:items-end gap-10 w-full relative">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
                 

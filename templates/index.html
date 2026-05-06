@@ -45,7 +45,18 @@
     </style>
 </head>
 <body class="bg-background text-on-surface font-body-md min-h-screen pb-32" 
-      x-data="{ activeTab: 'home', showEditModal: false, editItemId: '', editNotes: '', editCustomPrice: '' }"
+      x-data="{ 
+          activeTab: 'home', 
+          showEditModal: false, 
+          editItemId: '', 
+          editNotes: '', 
+          editCustomPrice: '',
+          deferredPrompt: null,
+          showPwaPrompt: false,
+          isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream,
+          isPwaInstalled: window.matchMedia('(display-mode: standalone)').matches
+      }"
+      @beforeinstallprompt.window="deferredPrompt = $event; showPwaPrompt = !isPwaInstalled"
       hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'
       @open-edit-modal.window="showEditModal = true; editItemId = $event.detail.id; editNotes = $event.detail.notes; editCustomPrice = $event.detail.price">
 
@@ -187,6 +198,61 @@
                     <button type="submit" class="flex-1 px-md py-sm rounded-lg bg-primary text-on-primary font-bold">Save Changes</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- PWA Install Prompt (Prestige Edition) -->
+    <div x-show="showPwaPrompt" 
+         x-transition:enter="transition ease-out duration-500"
+         x-transition:enter-start="translate-y-full opacity-0"
+         x-transition:enter-end="translate-y-0 opacity-100"
+         class="fixed bottom-24 left-md right-md z-[110] md:max-w-md md:left-auto md:right-lg"
+         x-cloak>
+        <div class="glass-card p-6 rounded-[32px] border-primary/30 shadow-[0_20px_50px_rgba(221,183,255,0.2)]">
+            <div class="flex items-start gap-4">
+                <div class="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 flex-shrink-0">
+                    <img src="/static/img/logo.png" alt="Pokget" class="w-10 h-10">
+                </div>
+                <div class="flex-1">
+                    <h4 class="text-lg font-bold text-on-surface tracking-tight">Deploy to Home Screen</h4>
+                    <p class="text-xs text-on-surface-variant/60 mt-1 leading-relaxed">Install Pokget as a native app for the fastest, most immersive vault experience.</p>
+                </div>
+                <button @click="showPwaPrompt = false" class="text-white/20 hover:text-white">
+                    <span class="material-symbols-outlined text-lg">close</span>
+                </button>
+            </div>
+            
+            <div class="mt-6 flex gap-3">
+                <template x-if="!isIOS">
+                    <button @click="
+                        if (deferredPrompt) {
+                            deferredPrompt.prompt();
+                            deferredPrompt.userChoice.then((choiceResult) => {
+                                if (choiceResult.outcome === 'accepted') {
+                                    showPwaPrompt = false;
+                                }
+                                deferredPrompt = null;
+                            });
+                        }"
+                        class="flex-1 bg-primary text-on-primary py-3 rounded-xl font-bold text-xs tracking-widest uppercase shadow-xl shadow-primary/20 active:scale-95 transition-all">
+                        Install Now
+                    </button>
+                </template>
+                
+                <template x-if="isIOS">
+                    <div class="flex-1 flex flex-col gap-3">
+                        <div class="bg-white/5 rounded-xl p-3 border border-white/5 flex items-center gap-3">
+                            <span class="material-symbols-outlined text-primary text-lg">ios_share</span>
+                            <span class="text-[10px] font-bold text-on-surface/80 uppercase tracking-widest">Tap Share</span>
+                        </div>
+                        <div class="bg-white/5 rounded-xl p-3 border border-white/5 flex items-center gap-3">
+                            <span class="material-symbols-outlined text-primary text-lg">add_box</span>
+                            <span class="text-[10px] font-bold text-on-surface/80 uppercase tracking-widest">Add to Home Screen</span>
+                        </div>
+                        <button @click="showPwaPrompt = false" class="text-[10px] font-bold text-primary/60 uppercase tracking-widest self-center mt-2 border-b border-primary/20">I'll do it later</button>
+                    </div>
+                </template>
+            </div>
         </div>
     </div>
 
