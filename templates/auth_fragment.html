@@ -1,102 +1,109 @@
 <div class="max-w-container-max mx-auto w-full animate-in" x-data="{ mode: 'login', signupAttempted: false, resendDisabled: false, countdown: 0 }">
-    <div class="flex flex-col md:flex-row items-end justify-between gap-lg">
+    <div class="flex flex-col lg:flex-row items-center lg:items-end justify-between gap-12 lg:gap-20">
         <!-- Branding Section -->
-        <div class="mb-md md:mb-0 w-full md:w-auto text-center md:text-left">
-            <div class="flex items-center justify-center md:justify-start gap-4 mb-xs">
-                <img src="/static/img/logo.png" alt="Pokget" class="w-16 h-16 md:w-14 md:h-14">
-                <h1 class="font-h2 text-5xl md:text-4xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
+        <div class="w-full lg:w-auto text-center lg:text-left">
+            <div class="flex items-center justify-center lg:justify-start gap-6 mb-4">
+                <img src="/static/img/logo.png" alt="Pokget" class="w-20 h-20 lg:w-16 lg:h-16">
+                <h1 class="font-h2 text-6xl lg:text-5xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
                     Pokget
                 </h1>
             </div>
-            <p class="font-label-sm text-xs text-on-surface-variant uppercase tracking-widest opacity-60">
+            <p class="font-label-sm text-[11px] text-on-surface-variant uppercase tracking-[0.3em] opacity-40 mb-10">
                 Digital Vault Access // v.2.0.4
             </p>
-            <div class="mt-8 flex justify-center md:justify-start gap-10">
+            <div class="flex justify-center lg:justify-start gap-12">
                 <button @click="mode = 'login'; signupAttempted = false" 
-                        class="text-base font-bold transition-all uppercase tracking-[0.2em]"
-                        :class="mode === 'login' ? 'text-primary' : 'text-on-surface-variant/40 hover:text-on-surface-variant/60'">
+                        class="text-lg font-black transition-all uppercase tracking-[0.3em]"
+                        :class="mode === 'login' ? 'text-primary' : 'text-on-surface-variant/20 hover:text-on-surface-variant/40'">
                     Login
                 </button>
                 <button @click="mode = 'register'" 
-                        class="text-base font-bold transition-all uppercase tracking-[0.2em]"
-                        :class="mode === 'register' ? 'text-primary' : 'text-on-surface-variant/40 hover:text-on-surface-variant/60'">
+                        class="text-lg font-black transition-all uppercase tracking-[0.3em]"
+                        :class="mode === 'register' ? 'text-primary' : 'text-on-surface-variant/20 hover:text-on-surface-variant/40'">
                     Register
                 </button>
             </div>
         </div>
 
         <!-- Inputs & CTA Cluster -->
-        <div class="w-full md:w-auto flex flex-col items-stretch md:items-end gap-10 mt-12 md:mt-0">
+        <div class="w-full lg:flex-grow flex flex-col items-center lg:items-end gap-12">
             <!-- Login Form -->
             <form x-show="mode === 'login'" 
                   hx-post="/auth/login" 
                   hx-target="#main-content" 
-                  class="flex flex-col md:flex-row items-stretch md:items-end gap-10 w-full relative">
+                  class="flex flex-col lg:flex-row items-center lg:items-end gap-10 w-full lg:w-auto relative">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
                 
-                <!-- Error Message Display -->
-                <div id="auth-error" class="absolute -top-12 left-0 w-full text-red-400 font-bold text-sm text-center md:text-left h-8">
+                <div id="auth-error" class="absolute -top-12 left-0 w-full text-red-400 font-bold text-sm text-center lg:text-left h-8">
                 </div>
-                <div class="relative group w-full">
-                    <label class="absolute -top-6 left-0 font-label-sm text-[11px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest">Mail</label>
-                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-8 py-6 md:py-5 rounded-[2rem] md:rounded-2xl w-full md:w-80 text-xl md:text-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-xl placeholder:text-on-surface-variant/40" 
+                
+                <div class="relative group w-full lg:w-80">
+                    <label class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Access Node (Mail)</label>
+                    <input class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20" 
                            placeholder="collector@example.com" type="email" name="email" required/>
                 </div>
-                <div class="relative group w-full">
-                    <label class="absolute -top-6 left-0 font-label-sm text-[11px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest">Password</label>
-                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-8 py-6 md:py-5 rounded-[2rem] md:rounded-2xl w-full md:w-80 text-xl md:text-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-xl placeholder:text-on-surface-variant/40" 
+                
+                <div class="relative group w-full lg:w-80">
+                    <label class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Security Key</label>
+                    <input class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20" 
                            placeholder="••••••••" type="password" name="password" required/>
                 </div>
-                <button type="submit" class="bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-bold text-2xl md:text-xl px-12 py-6 md:py-5 rounded-[2rem] md:rounded-2xl hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-4">
-                    Enter Vault
-                    <span class="material-symbols-outlined text-[32px] md:text-[24px]">keyboard_tab</span>
-                </button>
                 
-                <div class="absolute top-full left-0 mt-4 flex items-center gap-6">
-                    <label class="flex items-center gap-2 cursor-pointer group">
-                        <div class="relative">
-                            <input type="checkbox" name="remember" class="peer hidden">
-                            <div class="w-5 h-5 border-2 border-primary/30 rounded-md peer-checked:bg-primary peer-checked:border-primary transition-all group-hover:border-primary/60"></div>
-                            <span class="material-symbols-outlined absolute inset-0 text-[16px] text-on-primary scale-0 peer-checked:scale-100 transition-transform">check</span>
-                        </div>
-                        <span class="text-[10px] font-bold text-white/40 uppercase tracking-widest group-hover:text-white/60 transition-colors">Remember Session</span>
-                    </label>
-
-                    <button type="button" @click="$dispatch('notify', { msg: 'Mobile Biometrics Active: Use your device manager to autofill.', type: 'info' })"
-                            class="flex items-center gap-2 text-[10px] font-bold text-primary/40 uppercase tracking-widest hover:text-primary transition-colors">
-                        <span class="material-symbols-outlined text-[16px]">fingerprint</span>
-                        Biometric Unlock
+                <div class="w-full lg:w-auto flex flex-col items-center lg:items-end gap-8">
+                    <button type="submit" class="w-full lg:w-auto bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-black text-xl px-14 py-6 rounded-[2.5rem] hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-4">
+                        Enter Vault
+                        <span class="material-symbols-outlined text-[28px]">keyboard_tab</span>
                     </button>
+                    
+                    <div class="flex flex-col sm:flex-row items-center gap-8 lg:gap-10">
+                        <label class="flex items-center gap-3 cursor-pointer group">
+                            <div class="relative w-6 h-6">
+                                <input type="checkbox" name="remember" class="peer hidden">
+                                <div class="w-full h-full border-2 border-primary/20 rounded-lg peer-checked:bg-primary peer-checked:border-primary transition-all group-hover:border-primary/40"></div>
+                                <span class="material-symbols-outlined absolute inset-0 flex items-center justify-center text-[18px] text-on-primary scale-0 peer-checked:scale-100 transition-transform font-bold">check</span>
+                            </div>
+                            <span class="text-[11px] font-black text-on-surface-variant uppercase tracking-[0.2em] group-hover:text-primary transition-colors">Remember Session</span>
+                        </label>
+
+                        <button type="button" @click="$dispatch('notify', { msg: 'Mobile Biometrics Active: Use your device manager to autofill.', type: 'info' })"
+                                class="flex items-center gap-2 text-[11px] font-black text-primary/60 uppercase tracking-[0.2em] hover:text-primary transition-colors group">
+                            <span class="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">fingerprint</span>
+                            Biometric Unlock
+                        </button>
+                    </div>
                 </div>
             </form>
 
-            <!-- Register Form -->
+            <!-- Register Form (Similar updates for consistency) -->
             <form x-show="mode === 'register'" 
                   hx-post="/auth/register" 
                   hx-target="#main-content" 
-                  class="flex flex-col md:flex-row items-stretch md:items-end gap-10 w-full relative">
+                  class="flex flex-col items-center lg:items-end gap-10 w-full relative">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
-                <div id="auth-register-error" class="absolute -top-12 left-0 w-full text-red-400 font-bold text-sm text-center md:text-left h-8">
+                <div id="auth-register-error" class="absolute -top-12 left-0 w-full text-red-400 font-bold text-sm text-center lg:text-left h-8">
                 </div>
-                <div class="relative group w-full">
-                    <label class="absolute -top-6 left-0 font-label-sm text-[11px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest">Mail</label>
-                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-8 py-6 md:py-5 rounded-[2rem] md:rounded-2xl w-full md:w-64 text-xl md:text-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-xl placeholder:text-on-surface-variant/40" 
-                           placeholder="collector@example.com" type="email" name="email" required/>
+                
+                <div class="flex flex-col lg:flex-row items-center lg:items-end gap-10 w-full lg:w-auto">
+                    <div class="relative group w-full lg:w-64">
+                        <label class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Mail</label>
+                        <input class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20" 
+                               placeholder="collector@example.com" type="email" name="email" required/>
+                    </div>
+                    <div class="relative group w-full lg:w-64">
+                        <label class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Secret Key</label>
+                        <input class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20" 
+                               placeholder="••••••••" type="password" name="password" required/>
+                    </div>
+                    <div class="relative group w-full lg:w-64">
+                        <label class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Confirm Key</label>
+                        <input class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20" 
+                               placeholder="••••••••" type="password" name="confirm_password" required/>
+                    </div>
+                    <button type="submit" @click="signupAttempted = true" class="w-full lg:w-auto bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-black text-xl px-14 py-6 rounded-[2.5rem] hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-4">
+                        Initiate
+                        <span class="material-symbols-outlined text-[28px]">vibration</span>
+                    </button>
                 </div>
-                <div class="relative group w-full">
-                    <label class="absolute -top-6 left-0 font-label-sm text-[11px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest">Password</label>
-                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-8 py-6 md:py-5 rounded-[2rem] md:rounded-2xl w-full md:w-64 text-xl md:text-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-xl placeholder:text-on-surface-variant/40" 
-                           placeholder="••••••••" type="password" name="password" required/>
-                </div>
-                <div class="relative group w-full">
-                    <label class="absolute -top-6 left-0 font-label-sm text-[11px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest">Confirm Password</label>
-                    <input class="bg-surface-container-lowest/50 border border-outline-variant/30 text-on-surface px-8 py-6 md:py-5 rounded-[2rem] md:rounded-2xl w-full md:w-64 text-xl md:text-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 backdrop-blur-xl placeholder:text-on-surface-variant/40" 
-                           placeholder="••••••••" type="password" name="confirm_password" required/>
-                </div>
-                <button type="submit" @click="signupAttempted = true" class="bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-bold text-2xl md:text-xl px-12 py-6 md:py-5 rounded-[2rem] md:rounded-2xl hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-4">
-                    Initiate
-                    <span class="material-symbols-outlined text-[32px] md:text-[24px]">vibration</span>
-                </button>
             </form>
 
             <!-- Resend Section -->

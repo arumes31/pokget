@@ -40,7 +40,7 @@
         });
     </script>
 </head>
-<body class="vapor-bg text-on-background min-h-screen relative overflow-hidden font-body-md selection:bg-primary/30">
+<body class="vapor-bg text-on-background min-h-screen flex flex-col relative overflow-x-hidden font-body-md selection:bg-primary/30">
     <!-- Floating Serifs: Top 80% -->
     <div class="absolute inset-0 h-[80%] pointer-events-none select-none overflow-hidden">
         <div class="absolute top-[15%] left-[10%] opacity-20 transform -rotate-6">
@@ -61,9 +61,11 @@
         <div class="absolute top-[70%] left-[5%] w-48 h-48 border border-secondary/10 rotate-45 opacity-20"></div>
     </div>
 
-    <!-- Main Content Cluster: Bottom 70% on Mobile, 30% on Desktop -->
-    <main id="main-content" class="absolute bottom-0 left-0 w-full h-[70%] md:h-[30%] flex flex-col justify-end pb-xl px-margin">
-        {{template "auth_fragment.html" .}}
+    <!-- Main Content Cluster -->
+    <main id="main-content" class="relative z-10 flex-grow flex flex-col justify-center items-center px-4 md:px-margin pt-20 pb-10">
+        <div class="w-full max-w-7xl">
+            {{template "auth_fragment.html" .}}
+        </div>
     </main>
 
     <!-- Background Imagery (Depth Context) -->
