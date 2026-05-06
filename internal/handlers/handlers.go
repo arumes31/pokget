@@ -452,6 +452,50 @@ func (h *Handler) CreateBinder(w http.ResponseWriter, r *http.Request) {
 	h.Binders(w, r)
 }
 
+func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: BinderDetail", "method", r.Method, "url", r.URL.String())
+	
+	vars := mux.Vars(r)
+	binderID := vars["id"]
+	
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Fetch binder info
+	var binder Binder
+	err := h.DB.QueryRow("SELECT id, name, description FROM binders WHERE id = $1 AND user_id = $2", binderID, userID).Scan(&binder.ID, &binder.Name, &binder.Description)
+	if err != nil {
+		http.Error(w, "Binder not found", http.StatusNotFound)
+		return
+	}
+
+	// Fetch cards in binder
+	rows, err := h.DB.Query(`
+		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.game
+		FROM portfolio p
+		JOIN cards c ON p.card_id = c.id
+		WHERE p.binder_id = $1 AND p.user_id = $2`, binderID, userID)
+	
+	var cards []models.PortfolioItem
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var p models.PortfolioItem
+			if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.Game); err == nil {
+				cards = append(cards, p)
+			}
+		}
+	}
+
+	h.render(w, r, "binder_detail.html", map[string]interface{}{
+		"Binder": binder,
+		"Cards":  cards,
+	})
+}
+
 func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Trade", "method", r.Method, "url", r.URL.String())
 	h.render(w, r, "trade.html", nil)
