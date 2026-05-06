@@ -250,11 +250,21 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 	}
 	notes := r.FormValue("notes")
 	customPrice := r.FormValue("custom_price")
+	binderID := r.FormValue("binder_id")
+
+	// If binderID is empty, try to find the default binder
+	if binderID == "" {
+		err := h.DB.QueryRow("SELECT id FROM binders WHERE user_id = $1 AND is_default = TRUE", userID).Scan(&binderID)
+		if err != nil {
+			slog.Warn("No default binder found for user, using NULL", "user_id", userID)
+			binderID = "" // This will result in a NULL binder_id in the DB
+		}
+	}
 
 	_, err := h.DB.Exec(`
-		INSERT INTO portfolio (user_id, card_id, notes, custom_price, condition, format)
-		VALUES ($1, $2, $3, $4, $5, $6)`,
-		userID, cardID, notes, customPrice, "Near Mint", "Raw")
+		INSERT INTO portfolio (user_id, card_id, binder_id, notes, custom_price, condition, format)
+		VALUES ($1, $2, NULLIF($3, '')::UUID, $4, $5, $6, $7)`,
+		userID, cardID, binderID, notes, customPrice, "Near Mint", "Raw")
 	
 	if err != nil {
 		slog.Error("Failed to add card to portfolio", "error", err)
