@@ -80,13 +80,11 @@ func TestFingerprintService(t *testing.T) {
 		img := createTestImage()
 		hash, _ := s.CalculateHash(img)
 
-		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "image_url", "phash"}).
-			AddRow("test-id", "Test Card", "Test Set", "http://example.com/img.png", hash)
+		cards := []models.Card{
+			{ID: "test-id", Name: "Test Card", Set: "Test Set", ImageURL: "http://example.com/img.png", Phash: &hash},
+		}
 
-		mock.ExpectQuery("SELECT id, name, set_name, image_url, phash FROM cards").
-			WillReturnRows(rows)
-
-		card, distance, err := s.MatchFingerprint(hash)
+		card, distance, err := s.MatchFingerprint(hash, cards)
 		if err != nil {
 			t.Errorf("MatchFingerprint failed: %v", err)
 		}
@@ -98,11 +96,10 @@ func TestFingerprintService(t *testing.T) {
 		}
 	})
 
-	t.Run("MatchFingerprint_QueryError", func(t *testing.T) {
-		mock.ExpectQuery("SELECT id").WillReturnError(sql.ErrConnDone)
-		_, _, err := s.MatchFingerprint(0)
-		if err == nil {
-			t.Error("Expected error from MatchFingerprint when query fails")
+	t.Run("MatchFingerprint_NoMatch", func(t *testing.T) {
+		_, _, err := s.MatchFingerprint(0, []models.Card{})
+		if err != nil {
+			t.Errorf("MatchFingerprint should not return error on empty list: %v", err)
 		}
 	})
 }
