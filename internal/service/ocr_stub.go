@@ -54,13 +54,13 @@ func levenshtein(s1, s2 string) int {
 			if s1[i-1] == s2[j-1] {
 				cost = 0
 			}
-			d[i][j] = min(d[i-1][j]+1, min(d[i][j-1]+1, d[i-1][j-1]+cost))
+			d[i][j] = minInt(d[i-1][j]+1, minInt(d[i][j-1]+1, d[i-1][j-1]+cost))
 		}
 	}
 	return d[n][m]
 }
 
-func min(a, b int) int {
+func minInt(a, b int) int {
 	if a < b { return a }
 	return b
 }
