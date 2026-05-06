@@ -1,0 +1,87 @@
+// Copyright (c) 2026 arumes31
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+package handlers
+
+import (
+	"log/slog"
+	"net/http"
+	"pokget/internal/auth"
+	"pokget/internal/db"
+	"pokget/internal/models"
+)
+
+func (h *Handler) ErrorDatabase(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: ErrorDatabase", "method", r.Method)
+
+	rows, err := db.DB.Query(`
+		SELECT e.id, e.card_id, e.error_type, e.description, e.estimated_value_multiplier, 
+		       c.name, c.set_name, c.image_url, c.game
+		FROM error_cards e
+		JOIN cards c ON e.card_id = c.id
+		ORDER BY e.created_at DESC`)
+	if err != nil {
+		slog.Error("Failed to fetch error database", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var errors []models.ErrorCard
+	for rows.Next() {
+		var e models.ErrorCard
+		if err := rows.Scan(&e.ID, &e.CardID, &e.ErrorType, &e.Description, &e.EstimatedValueMultiplier,
+			&e.Card.Name, &e.Card.Set, &e.Card.ImageURL, &e.Card.Game); err == nil {
+			errors = append(errors, e)
+		}
+	}
+
+	h.render(w, r, "error_database.html", map[string]interface{}{
+		"Errors": errors,
+	})
+}
+
+func (h *Handler) SubmitError(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: SubmitError", "method", r.Method)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, _ := r.Context().Value(auth.UserContextKey{}).(string)
+
+	cardID := r.FormValue("card_id")
+	errorType := r.FormValue("error_type")
+	description := r.FormValue("description")
+	multiplier := r.FormValue("multiplier")
+
+	_, err := db.DB.Exec(`
+		INSERT INTO error_cards (card_id, error_type, description, estimated_value_multiplier, submitted_by)
+		VALUES ($1, $2, $3, $4, $5)`,
+		cardID, errorType, description, multiplier, userID)
+	if err != nil {
+		slog.Error("Failed to submit error card", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Error card submitted for review!"))
+}

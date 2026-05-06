@@ -138,6 +138,7 @@ func main() {
 	r.HandleFunc("/auth/confirm", h.ConfirmEmail).Methods("GET")
 	r.HandleFunc("/api/scan", h.APIScan).Methods("POST")
 	r.HandleFunc("/vault/{user_id}", h.PublicVault).Methods("GET")
+	r.HandleFunc("/errors", h.ErrorDatabase).Methods("GET")
 
 	// Protected Routes (Require Authentication)
 	protected := r.PathPrefix("/").Subrouter()
@@ -147,9 +148,11 @@ func main() {
 	protected.HandleFunc("/binders", h.Binders).Methods("GET")
 	protected.HandleFunc("/trade", h.Trade).Methods("GET")
 	protected.HandleFunc("/portfolio/add", h.AddCardToPortfolio).Methods("POST")
+	protected.HandleFunc("/portfolio/edit", h.EditPortfolioItem).Methods("POST")
 	protected.HandleFunc("/portfolio/toggle-visibility", h.ToggleVisibility).Methods("POST")
 	protected.HandleFunc("/wantlist", h.Wantlist).Methods("GET")
 	protected.HandleFunc("/wantlist/add", h.AddToWantlist).Methods("POST")
+	protected.HandleFunc("/errors/submit", h.SubmitError).Methods("POST")
 	protected.HandleFunc("/api/gamification/heartbeat", h.Heartbeat).Methods("POST")
 	protected.HandleFunc("/api/portfolio/add", h.AddCardToPortfolio).Methods("POST")
 

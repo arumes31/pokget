@@ -32,6 +32,7 @@ type PortfolioItem struct {
 	GradingCompany  string    `json:"grading_company"`
 	Notes           string    `json:"notes"`
 	IsPublic        bool      `json:"is_public"`
+	CustomPrice     float64   `json:"custom_price"`
 	CreatedAt       time.Time `json:"created_at"`
 	
 	// Join fields
@@ -45,6 +46,20 @@ type WantlistItem struct {
 	TargetPrice float64   `json:"target_price"`
 	Notes       string    `json:"notes"`
 	CreatedAt   time.Time `json:"created_at"`
+	
+	// Join fields
+	Card Card `json:"card"`
+}
+
+type ErrorCard struct {
+	ID                       string    `json:"id"`
+	CardID                   string    `json:"card_id"`
+	ErrorType                string    `json:"error_type"`
+	Description              string    `json:"description"`
+	EstimatedValueMultiplier float64   `json:"estimated_value_multiplier"`
+	SubmittedBy              string    `json:"submitted_by"`
+	ImageURL                 string    `json:"image_url"`
+	CreatedAt                time.Time `json:"created_at"`
 	
 	// Join fields
 	Card Card `json:"card"`

@@ -23,11 +23,33 @@
 package service
 
 import (
-	"pokget/internal/models"
+	"bytes"
+	"image"
+	_ "image/jpeg"
+	"image/jpeg"
 	"log/slog"
+	"pokget/internal/models"
+
+	"github.com/anthonynsimon/bild/adjust"
+	"github.com/anthonynsimon/bild/effect"
 )
 
-func ProcessCardScan(_ []byte, _ []models.Card, _ string) (string, string, error) {
-	slog.Warn("OCR: Tesseract is not available on this platform or CGO is disabled. Falling back to dummy result.")
-	return "OCR Not Available", "Unknown Card", nil
+func ProcessCardScan(imgBytes []byte, _ []models.Card, _ string) (string, string, []byte, error) {
+	slog.Warn("OCR: Tesseract is not available on this platform. Preprocessing ONLY.")
+
+	// Run Preprocessing even in stub to test Vision pipeline
+	src, _, err := image.Decode(bytes.NewReader(imgBytes))
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	res := effect.Grayscale(src)
+	res = adjust.Contrast(res, 0.5)
+	res = adjust.Brightness(res, 0.1)
+	res = effect.Sharpen(res)
+
+	buf := new(bytes.Buffer)
+	_ = jpeg.Encode(buf, res, nil)
+
+	return "OCR Not Available (Stub)", "Unknown Card", buf.Bytes(), nil
 }

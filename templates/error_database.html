@@ -1,0 +1,36 @@
+<div class="space-y-lg animate-in">
+    <div class="flex flex-col gap-xs">
+        <h2 class="font-h2 text-2xl font-bold text-on-surface">Misprint Encyclopedia</h2>
+        <p class="text-on-surface-variant text-sm opacity-60">A community-driven database of known errors, miscuts, and holoshifts.</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-lg">
+        {{ range .Errors }}
+        <div class="glass-card rounded-xl p-md flex gap-md relative group hover:border-primary/40 transition-all">
+            <div class="w-32 aspect-[3/4] rounded-lg overflow-hidden flex-shrink-0 shadow-xl bg-surface">
+                <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover">
+            </div>
+            <div class="flex flex-col justify-between py-xs">
+                <div>
+                    <span class="px-2 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-wider">{{ .ErrorType }}</span>
+                    <h3 class="font-bold text-on-surface mt-2">{{ .Card.Name }}</h3>
+                    <p class="text-[10px] text-on-surface-variant uppercase tracking-widest opacity-60">{{ .Card.Set }}</p>
+                </div>
+                <div class="space-y-sm">
+                    <p class="text-xs text-on-surface-variant line-clamp-3">"{{ .Description }}"</p>
+                    <div class="flex items-center gap-sm mt-2">
+                        <span class="text-[10px] text-on-surface-variant uppercase font-bold">Est. Value:</span>
+                        <span class="text-primary font-bold">x{{ .EstimatedValueMultiplier }} Market</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{ else }}
+        <div class="col-span-full py-20 flex flex-col items-center justify-center opacity-40">
+            <span class="material-symbols-outlined text-6xl">find_in_page</span>
+            <p class="mt-4 font-label-md uppercase tracking-widest">No errors documented yet</p>
+            <button class="mt-4 glass-card px-md py-sm rounded-lg text-primary text-xs font-bold" onclick="openSubmitErrorModal()">Submit First Entry</button>
+        </div>
+        {{ end }}
+    </div>
+</div>

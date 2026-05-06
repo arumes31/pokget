@@ -100,6 +100,12 @@ func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, err
 	switch strings.ToLower(card.Game) {
 	case "one piece":
 		gameSegment = "One-Piece-Card-Game"
+	case "lorcana":
+		gameSegment = "Lorcana"
+	case "weiss schwarz":
+		gameSegment = "Weiss-Schwarz"
+	case "magic", "mtg":
+		gameSegment = "Magic-The-Gathering"
 	default:
 		gameSegment = "Pokemon"
 	}
@@ -165,8 +171,14 @@ func (s *ScraperPriceClient) fetchPriceHeadless(card models.Card) (float64, erro
 		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/pokemon/product?q=%s", url.QueryEscape(card.Name))
 	case "one piece":
 		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/one-piece-card-game/product?q=%s", url.QueryEscape(card.Name))
+	case "lorcana":
+		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/lorcana/product?q=%s", url.QueryEscape(card.Name))
+	case "weiss schwarz":
+		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/weiss-schwarz/product?q=%s", url.QueryEscape(card.Name))
+	case "magic", "mtg":
+		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/magic/product?q=%s", url.QueryEscape(card.Name))
 	default:
-		return 0, fmt.Errorf("unsupported game for headless scrape")
+		return 0, fmt.Errorf("unsupported game for headless scrape: %s", card.Game)
 	}
 
 	err := chromedp.Run(ctx,

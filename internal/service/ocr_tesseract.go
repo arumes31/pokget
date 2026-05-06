@@ -36,7 +36,7 @@ import (
 	"regexp"
 )
 
-func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (string, string, error) {
+func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (string, string, []byte, error) {
 	if lang == "" {
 		lang = "eng"
 	}
@@ -45,7 +45,7 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 	// 1. Preprocess image to harden OCR
 	src, _, err := image.Decode(bytes.NewReader(imgBytes))
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
 	// Apply filters: Grayscale -> High Contrast -> Sharpness
@@ -58,7 +58,7 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 	buf := new(bytes.Buffer)
 	err = jpeg.Encode(buf, res, nil)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
 	// 2. Perform OCR
@@ -71,11 +71,11 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 	}
 
 	if err := client.SetImageFromBytes(buf.Bytes()); err != nil {
-		return "", "", err
+		return "", "", buf.Bytes(), err
 	}
 	text, err := client.Text()
 	if err != nil {
-		return "", "", err
+		return "", "", buf.Bytes(), err
 	}
 
 	detectedCard := "Unknown Card"
@@ -98,5 +98,5 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 		}
 	}
 
-	return text, detectedCard, nil
+	return text, detectedCard, buf.Bytes(), nil
 }

@@ -160,7 +160,7 @@ func TestHashPassword_Error(t *testing.T) {
 }
 
 func TestProxyMiddleware(t *testing.T) {
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -237,7 +237,7 @@ func TestProxyMiddleware(t *testing.T) {
 }
 
 func TestRateLimitMiddleware(t *testing.T) {
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 

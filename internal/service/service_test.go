@@ -21,7 +21,9 @@
 package service
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/draw"
@@ -32,8 +34,10 @@ import (
 	"path/filepath"
 	"pokget/internal/models"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/go-redis/redismock/v9"
 )
 
 func createTestImage() image.Image {
@@ -114,9 +118,9 @@ func TestImageCacheService(t *testing.T) {
 	s := NewImageCacheService(tempDir)
 
 	t.Run("DownloadAndCache", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("fake-image-data"))
+			_, _ = w.Write([]byte("fake-image-data"))
 		}))
 		defer server.Close()
 
@@ -144,7 +148,7 @@ func TestImageCacheService(t *testing.T) {
 	})
 
 	t.Run("HTTPError", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 		}))
 		defer server.Close()
@@ -160,7 +164,7 @@ func TestMailService(t *testing.T) {
 	s := NewMailService()
 	
 	t.Run("SendConfirmationEmail", func(t *testing.T) {
-		s.sendMailFunc = func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+		s.sendMailFunc = func(_ string, _ smtp.Auth, _ string, to []string, _ []byte) error {
 			if to[0] != "test@example.com" {
 				t.Errorf("Expected recipient test@example.com, got %s", to[0])
 			}
@@ -194,9 +198,9 @@ func TestLLMService(t *testing.T) {
 	s := NewLLMService()
 
 	t.Run("FuzzyMatchCard_Success", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"response": "Charizard"}`))
+			_, _ = w.Write([]byte(`{"response": "Charizard"}`))
 		}))
 		defer server.Close()
 
@@ -268,14 +272,35 @@ func TestAuditService(t *testing.T) {
 			t.Errorf("Expectations not met: %v", err)
 		}
 	})
+
+	t.Run("Log_Error", func(t *testing.T) {
+		mock.ExpectExec("INSERT INTO audit_logs").WillReturnError(sql.ErrConnDone)
+		// Should not panic, just log the error
+		s.Log("user-1", "LOGIN", nil)
+	})
 }
 
 func TestCryptoService(t *testing.T) {
+	t.Run("New_Error", func(t *testing.T) {
+		_, err := NewCryptoService("too-short")
+		if err == nil {
+			t.Error("Expected error for short key")
+		}
+	})
+
 	key := "12345678901234567890123456789012" // 32 bytes
 	s, err := NewCryptoService(key)
 	if err != nil {
 		t.Fatalf("Failed to create CryptoService: %v", err)
 	}
+
+	t.Run("Encrypt_Error", func(t *testing.T) {
+		// Mocking cipher.AEAD is hard, but we can hit some branches
+		_, err := s.Encrypt("") // empty string is fine
+		if err != nil {
+			t.Errorf("Encrypt failed for empty string: %v", err)
+		}
+	})
 
 	t.Run("EncryptDecrypt", func(t *testing.T) {
 		plaintext := "Secret Data"
@@ -375,5 +400,62 @@ func TestGamificationService(t *testing.T) {
 		}
 	})
 }
-})
+
+func TestCacheService(t *testing.T) {
+	ctx := context.Background()
+	db, mock := redismock.NewClientMock()
+
+	s := &CacheService{client: db}
+
+	t.Run("SetGet", func(t *testing.T) {
+		val := map[string]string{"foo": "bar"}
+		data, _ := json.Marshal(val)
+		
+		mock.ExpectSet("test-key", data, 0).SetVal("OK")
+		err := s.Set(ctx, "test-key", val, 0)
+		if err != nil {
+			t.Errorf("Set failed: %v", err)
+		}
+
+		mock.ExpectGet("test-key").SetVal(string(data))
+		var got map[string]string
+		err = s.Get(ctx, "test-key", &got)
+		if err != nil {
+			t.Errorf("Get failed: %v", err)
+		}
+		if got["foo"] != "bar" {
+			t.Errorf("Expected bar, got %s", got["foo"])
+		}
+	})
+
+	t.Run("Delete", func(t *testing.T) {
+		mock.ExpectDel("test-key").SetVal(1)
+		err := s.Delete(ctx, "test-key")
+		if err != nil {
+			t.Errorf("Delete failed: %v", err)
+		}
+	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestEventBus(t *testing.T) {
+	bus := NewEventBus()
+
+	t.Run("SubscribePublish", func(t *testing.T) {
+		ch := bus.Subscribe("test-event")
+		
+		bus.Publish(Event{Type: "test-event", Payload: "hello"})
+
+		select {
+		case ev := <-ch:
+			if ev.Payload != "hello" {
+				t.Errorf("Expected hello, got %v", ev.Payload)
+			}
+		case <-time.After(100 * time.Millisecond):
+			t.Error("Timed out waiting for event")
+		}
+	})
 }

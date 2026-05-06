@@ -204,6 +204,13 @@
                 <span class="material-symbols-outlined" :class="activeTab === 'trade' && 'fill-icon'">swap_horiz</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Trade</span>
             </button>
+            <!-- Errors -->
+            <button @click="activeTab = 'errors'" hx-get="/errors" hx-target="#main-content"
+                    class="flex flex-col items-center justify-center transition-all duration-200"
+                    :class="activeTab === 'errors' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                <span class="material-symbols-outlined" :class="activeTab === 'errors' && 'fill-icon'">warning</span>
+                <span class="font-label-sm text-[10px] uppercase tracking-tighter">Misprints</span>
+            </button>
             <!-- Profile -->
             <button @click="activeTab = 'profile'" hx-get="/auth" hx-target="#main-content"
                     class="flex flex-col items-center justify-center transition-all duration-200"
@@ -230,5 +237,35 @@
         </template>
     </div>
 
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-md bg-black/60 backdrop-blur-sm">
+        <div class="glass-card w-full max-w-md rounded-2xl p-lg space-y-md">
+            <h3 class="font-h3 text-xl font-bold text-on-surface">Edit Card Details</h3>
+            <form id="edit-form" hx-post="/portfolio/edit" hx-swap="none" @htmx:after-request="document.getElementById('edit-modal').classList.add('hidden'); htmx.ajax('GET', '/dashboard', '#main-content')">
+                <input type="hidden" name="item_id" id="edit-item-id">
+                <div class="space-y-sm">
+                    <label class="text-[10px] uppercase font-bold text-on-surface-variant">Custom Price Override ($)</label>
+                    <input type="number" step="0.01" name="custom_price" id="edit-custom-price" class="w-full bg-white/5 border border-white/10 rounded-lg p-sm text-on-surface">
+                </div>
+                <div class="space-y-sm mt-md">
+                    <label class="text-[10px] uppercase font-bold text-on-surface-variant">Private Notes (e.g. Miscut, Error)</label>
+                    <textarea name="notes" id="edit-notes" class="w-full bg-white/5 border border-white/10 rounded-lg p-sm text-on-surface h-24"></textarea>
+                </div>
+                <div class="flex gap-sm mt-xl">
+                    <button type="button" class="flex-1 px-md py-sm rounded-lg bg-white/5 text-on-surface" onclick="document.getElementById('edit-modal').classList.add('hidden')">Cancel</button>
+                    <button type="submit" class="flex-1 px-md py-sm rounded-lg bg-primary text-on-primary font-bold">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openEditModal(id, notes, price) {
+            document.getElementById('edit-item-id').value = id;
+            document.getElementById('edit-notes').value = notes || '';
+            document.getElementById('edit-custom-price').value = price || '';
+            document.getElementById('edit-modal').classList.remove('hidden');
+        }
+    </script>
 </body>
 </html>

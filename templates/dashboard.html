@@ -72,17 +72,25 @@
         {{ range .Portfolio }}
         <div class="glass-card rounded-xl p-sm flex flex-col gap-sm group hover:border-primary/40 transition-all duration-300 cursor-pointer active:scale-95">
             <div class="aspect-[3/4] rounded-lg overflow-hidden relative shadow-lg">
-                <img src="{{ .ImageURL }}" alt="{{ .Name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
                 <div class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
             </div>
             <div class="px-xs pb-xs">
-                <p class="font-label-sm text-[10px] text-primary-fixed-dim uppercase tracking-widest">{{ .Game }}</p>
-                <p class="font-label-sm text-xs text-on-surface-variant truncate">{{ .Name }}</p>
+                <p class="font-label-sm text-[8px] text-primary-fixed-dim uppercase tracking-widest">{{ .Card.Game }}</p>
+                <p class="font-label-sm text-xs text-on-surface-variant truncate">{{ .Card.Name }}</p>
+                {{ if .Notes }}
+                <p class="text-[10px] text-tertiary italic truncate mt-0.5">"{{ .Notes }}"</p>
+                {{ end }}
                 <div class="flex justify-between items-center mt-1">
-                    <span class="font-bold text-lg text-on-surface">${{ .PriceUSD }}</span>
-                    <svg class="w-12 h-6" viewBox="0 0 100 40">
-                        <path d="M0,30 Q25,25 50,15 T100,5" fill="none" stroke="#4cd7f6" stroke-width="2"></path>
-                    </svg>
+                    <span class="font-bold text-lg text-on-surface">
+                        {{ if .CustomPrice }}
+                            ${{ .CustomPrice }} <span class="text-[10px] opacity-40">(Override)</span>
+                        {{ else }}
+                            ${{ .Card.PriceUSD }}
+                        {{ end }}
+                    </span>
+                    <button class="material-symbols-outlined text-sm opacity-20 hover:opacity-100 transition-opacity" 
+                            onclick="openEditModal('{{ .ID }}', '{{ .Notes }}', '{{ .CustomPrice }}')">edit_note</button>
                 </div>
             </div>
         </div>

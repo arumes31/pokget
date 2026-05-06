@@ -22,6 +22,7 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"html/template"
 	"image"
@@ -178,11 +179,13 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing card_id", http.StatusBadRequest)
 		return
 	}
+	notes := r.FormValue("notes")
+	customPrice := r.FormValue("custom_price")
 
 	_, err := db.DB.Exec(`
-		INSERT INTO portfolio (user_id, card_id, condition, format)
-		VALUES ($1, $2, $3, $4)`,
-		userID, cardID, "Near Mint", "Raw")
+		INSERT INTO portfolio (user_id, card_id, notes, custom_price, condition, format)
+		VALUES ($1, $2, $3, $4, $5, $6)`,
+		userID, cardID, notes, customPrice, "Near Mint", "Raw")
 	
 	if err != nil {
 		slog.Error("Failed to add card to portfolio", "error", err)
@@ -223,6 +226,35 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		"xp":   newXP,
 		"rank": newRank,
 	})
+}
+
+func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: EditPortfolioItem", "method", r.Method)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, _ := r.Context().Value(auth.UserContextKey{}).(string)
+	itemID := r.FormValue("item_id")
+	notes := r.FormValue("notes")
+	grade := r.FormValue("grade")
+	customPrice := r.FormValue("custom_price")
+	isPublic := r.FormValue("is_public") == "true"
+
+	_, err := db.DB.Exec(`
+		UPDATE portfolio 
+		SET notes = $1, grade = $2, custom_price = $3, is_public = $4
+		WHERE id = $5 AND user_id = $6`,
+		notes, grade, customPrice, isPublic, itemID, userID)
+	if err != nil {
+		slog.Error("Failed to edit portfolio item", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Item updated successfully!"))
 }
 
 func (h *Handler) Centering(w http.ResponseWriter, r *http.Request) {
@@ -299,9 +331,10 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. OCR Fallback (if visual matching fails)
+	var processedImg []byte
 	if detectedCard == "" {
 		var ocrMatch string
-		text, ocrMatch, err = service.ProcessCardScan(imgBytes, h.MockCards, lang)
+		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, h.MockCards, lang)
 		if err != nil {
 			slog.Error("OCR: Failed to process scan", "error", err)
 			http.Error(w, "Detection failed", http.StatusInternalServerError)
@@ -320,11 +353,15 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+	resp := map[string]interface{}{
 		"text":     strings.ReplaceAll(text, "\n", " "),
 		"detected": detectedCard,
 		"id":       detectedID,
-	}); err != nil {
+	}
+	if processedImg != nil {
+		resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
+	}
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		slog.Error("Failed to encode JSON response", "error", err)
 	}
 }

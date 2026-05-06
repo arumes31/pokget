@@ -97,6 +97,8 @@ func (s *GamificationService) GetProgressToNextRank(xp int) (int, int, float64) 
 			if i+1 < len(Ranks) {
 				nextRank = Ranks[i+1]
 				found = true
+			} else {
+				found = false // We are at the max rank
 			}
 		} else {
 			break
@@ -104,7 +106,7 @@ func (s *GamificationService) GetProgressToNextRank(xp int) (int, int, float64) 
 	}
 
 	if !found {
-		return xp, xp, 100.0 // Max rank
+		return xp, xp, 100.0 // Max rank behavior
 	}
 
 	relativeXP := xp - currentRank.MinXP
