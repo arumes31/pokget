@@ -40,7 +40,16 @@ import (
 	"pokget/internal/service"
 
 	"github.com/gorilla/csrf"
+	"github.com/gorilla/mux"
 )
+
+type Binder struct {
+	ID          string
+	Name        string
+	Description string
+	CardCount   int
+	UpdatedAt   string
+}
 
 type Handler struct {
 	Templates    *template.Template
@@ -174,10 +183,28 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	
 	rank := h.Game.GetUserRank(xp)
 	_, _, xpPercent := h.Game.GetProgressToNextRank(xp)
+	
+	// Fetch Binder Count
+	var binderCount int
+	_ = h.DB.QueryRow("SELECT COUNT(*) FROM binders WHERE user_id = $1", userID).Scan(&binderCount)
+
+	// Fetch 24h Change
+	var change24h float64
+	var oldValuation float64
+	err = h.DB.QueryRow(`
+		SELECT total_valuation 
+		FROM portfolio_history 
+		WHERE user_id = $1 AND created_at <= NOW() - INTERVAL '24 hours'
+		ORDER BY created_at DESC LIMIT 1`, userID).Scan(&oldValuation)
+	if err == nil && oldValuation > 0 {
+		change24h = ((totalValuation - oldValuation) / oldValuation) * 100
+	}
 
 	h.render(w, r, "dashboard.html", map[string]interface{}{
 		"Currency":       currency,
 		"TotalValuation": totalValuation,
+		"Change24h":      change24h,
+		"BinderCount":    binderCount,
 		"SetCompletion":  setCompletion,
 		"Portfolio":      portfolio,
 		"XP":             xp,
@@ -364,7 +391,110 @@ func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Binders(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Binders", "method", r.Method, "url", r.URL.String())
-	h.render(w, r, "binders.html", nil)
+	
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	rows, err := h.DB.Query(`
+		SELECT b.id, b.name, b.description, b.created_at, COUNT(p.id) as card_count
+		FROM binders b
+		LEFT JOIN portfolio p ON b.id = p.binder_id
+		WHERE b.user_id = $1
+		GROUP BY b.id, b.name, b.description, b.created_at
+		ORDER BY b.created_at DESC`, userID)
+	
+	var binders []Binder
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var b Binder
+			var createdAt string
+			if err := rows.Scan(&b.ID, &b.Name, &b.Description, &createdAt, &b.CardCount); err == nil {
+				b.UpdatedAt = createdAt // Simple assignment for now
+				binders = append(binders, b)
+			}
+		}
+	}
+
+	h.render(w, r, "binders.html", map[string]interface{}{
+		"Binders": binders,
+	})
+}
+
+func (h *Handler) CreateBinder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	name := r.FormValue("name")
+	description := r.FormValue("description")
+	if name == "" {
+		http.Error(w, "Name is required", http.StatusBadRequest)
+		return
+	}
+
+	_, err := h.DB.Exec("INSERT INTO binders (user_id, name, description) VALUES ($1, $2, $3)", userID, name, description)
+	if err != nil {
+		slog.Error("Failed to create binder", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	h.Binders(w, r)
+}
+
+func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: BinderDetail", "method", r.Method, "url", r.URL.String())
+	
+	vars := mux.Vars(r)
+	binderID := vars["id"]
+	
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Fetch binder info
+	var binder Binder
+	err := h.DB.QueryRow("SELECT id, name, description FROM binders WHERE id = $1 AND user_id = $2", binderID, userID).Scan(&binder.ID, &binder.Name, &binder.Description)
+	if err != nil {
+		http.Error(w, "Binder not found", http.StatusNotFound)
+		return
+	}
+
+	// Fetch cards in binder
+	rows, err := h.DB.Query(`
+		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.game
+		FROM portfolio p
+		JOIN cards c ON p.card_id = c.id
+		WHERE p.binder_id = $1 AND p.user_id = $2`, binderID, userID)
+	
+	var cards []models.PortfolioItem
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var p models.PortfolioItem
+			if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.Game); err == nil {
+				cards = append(cards, p)
+			}
+		}
+	}
+
+	h.render(w, r, "binder_detail.html", map[string]interface{}{
+		"Binder": binder,
+		"Cards":  cards,
+	})
 }
 
 func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {

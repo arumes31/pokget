@@ -9,6 +9,7 @@
         detectedID: '',
         adding: false,
         lang: 'eng',
+        csrfToken: '{{.CSRFToken}}',
         init() {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
                 .then(stream => { this.$refs.video.srcObject = stream; })
@@ -26,7 +27,19 @@
             formData.append('card_image', blob);
             formData.append('lang', this.lang);
 
-            const res = await fetch('/api/scan', { method: 'POST', body: formData });
+            const res = await fetch('/api/scan', { 
+                method: 'POST', 
+                headers: { 'X-CSRF-Token': this.csrfToken },
+                body: formData 
+            });
+            
+            if (!res.ok) {
+                const errText = await res.text();
+                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Security Breach or Server Error: ' + errText, type: 'error' } }));
+                this.scanning = false;
+                return;
+            }
+
             const data = await res.json();
             this.result = data.text;
             this.detectedCard = data.detected;
@@ -51,7 +64,11 @@
             formData.append('card_id', this.detectedID);
             
             try {
-                const res = await fetch('/api/portfolio/add', { method: 'POST', body: formData });
+                const res = await fetch('/portfolio/add', { 
+                    method: 'POST', 
+                    headers: { 'X-CSRF-Token': this.csrfToken },
+                    body: formData 
+                });
                 if (res.ok) {
                     window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Added to collection!', type: 'success' } }));
                 } else {
@@ -106,7 +123,6 @@
                 <div class="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-purple-500 rounded-br-lg" :class="scanning ? 'animate-ping' : ''"></div>
             </div>
         </div>
-        <img src="https://images.pokemontcg.io/swsh45/19_hires.png" class="w-full h-full object-contain opacity-80 select-none pointer-events-none">
 
         <!-- Brackets / Lines -->
         <div class="absolute inset-0 pointer-events-none">

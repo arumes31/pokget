@@ -53,7 +53,6 @@
     <header class="fixed top-0 w-full z-50 bg-surface/60 backdrop-blur-[60px] border-b border-outline-variant/10">
         <div class="flex justify-between items-center px-lg h-16 w-full max-w-container-max mx-auto">
             <div class="flex items-center gap-md">
-                <span class="material-symbols-outlined text-primary cursor-pointer active:scale-95 transition-transform">menu</span>
                 <h1 class="font-h3 text-h3 uppercase tracking-widest font-bold text-primary">VAULT</h1>
             </div>
             <div class="w-10 h-10 rounded-full border border-primary/30 overflow-hidden active:scale-95 transition-transform cursor-pointer">
@@ -121,12 +120,6 @@
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Scan</span>
             </button>
             <!-- Trade -->
-            <button @click="activeTab = 'trade'" hx-get="/trade" hx-target="#main-content"
-                    class="flex flex-col items-center justify-center transition-all duration-200"
-                    :class="activeTab === 'trade' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
-                <span class="material-symbols-outlined" :class="activeTab === 'trade' && 'fill-icon'">swap_horiz</span>
-                <span class="font-label-sm text-[10px] uppercase tracking-tighter">Trade</span>
-            </button>
             <!-- Errors -->
             <button @click="activeTab = 'errors'" hx-get="/errors" hx-target="#main-content"
                     class="flex flex-col items-center justify-center transition-all duration-200"
@@ -134,12 +127,11 @@
                 <span class="material-symbols-outlined" :class="activeTab === 'errors' && 'fill-icon'">warning</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Misprints</span>
             </button>
-            <!-- Profile -->
-            <button @click="activeTab = 'profile'" hx-get="/auth" hx-target="#main-content"
-                    class="flex flex-col items-center justify-center transition-all duration-200"
-                    :class="activeTab === 'profile' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
-                <span class="material-symbols-outlined" :class="activeTab === 'profile' && 'fill-icon'">person</span>
-                <span class="font-label-sm text-[10px] uppercase tracking-tighter">Access</span>
+            <!-- Logout -->
+            <button hx-get="/auth/logout"
+                    class="flex flex-col items-center justify-center transition-all duration-200 text-on-surface-variant hover:text-red-400 active:scale-90">
+                <span class="material-symbols-outlined">logout</span>
+                <span class="font-label-sm text-[10px] uppercase tracking-tighter">Logout</span>
             </button>
         </div>
     </nav>

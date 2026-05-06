@@ -1,53 +1,59 @@
-<div class="space-y-6">
+<div class="space-y-6" x-data="{ showNewBinderModal: false }">
     <div class="flex items-center justify-between px-1">
         <h2 class="text-lg font-bold">My Binders</h2>
-        <button class="text-purple-400 text-xs font-bold hover:text-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/50 rounded px-2">+ New Binder</button>
+        <button @click="showNewBinderModal = true" class="text-primary text-xs font-bold hover:text-primary-fixed-dim focus:outline-none rounded px-2 py-1 glass-card border border-primary/20">+ New Binder</button>
     </div>
 
     <div class="grid grid-cols-2 gap-4">
-        <!-- Binder Card -->
-        <button class="glass-card p-4 aspect-square flex flex-col justify-between border-purple-500/20 group hover:border-purple-500/50 transition-all focus:outline-none focus:ring-2 focus:ring-purple-500/50 text-left"
-                aria-label="Charizard Master Set, 42 cards, updated 2 hours ago">
+        {{ range .Binders }}
+        <button hx-get="/binders/{{ .ID }}" hx-target="#main-content"
+                class="glass-card p-4 aspect-square flex flex-col justify-between border-primary/20 group hover:border-primary/50 transition-all text-left">
             <div class="flex justify-between items-start">
-                <div class="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>
+                <div class="w-10 h-10 bg-primary/20 rounded-lg flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>
                 </div>
-                <span class="text-[10px] font-bold text-white/20">42 Cards</span>
+                <span class="text-[10px] font-bold text-white/20">{{ .CardCount }} Cards</span>
             </div>
             <div>
-                <p class="text-sm font-bold truncate">Charizard Master Set</p>
-                <p class="text-[10px] text-white/40">Updated 2h ago</p>
+                <p class="text-sm font-bold truncate">{{ .Name }}</p>
+                <p class="text-[10px] text-white/40 truncate">{{ .Description }}</p>
             </div>
         </button>
+        {{ else }}
+        <div class="col-span-2 glass-card p-8 text-center border-dashed border-white/10 opacity-40">
+            <p class="text-sm italic">No binders created yet.</p>
+        </div>
+        {{ end }}
+    </div>
 
-        <!-- Binder Card -->
-        <button class="glass-card p-4 aspect-square flex flex-col justify-between group hover:border-blue-500/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-left"
-                aria-label="Modern Binder, 128 cards, updated 1 day ago">
-            <div class="flex justify-between items-start">
-                <div class="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>
+    <!-- New Binder Modal -->
+    <div x-show="showNewBinderModal" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+         x-cloak>
+        <div class="glass-card w-full max-w-sm p-6 space-y-4 border-primary/30" @click.away="showNewBinderModal = false">
+            <h3 class="text-lg font-bold text-primary">Create New Binder</h3>
+            <form hx-post="/binders/create" hx-target="#main-content" @submit="showNewBinderModal = false" class="space-y-4">
+                <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+                <div class="space-y-1">
+                    <label class="text-[10px] uppercase font-bold text-white/40">Binder Name</label>
+                    <input type="text" name="name" required placeholder="e.g. Master Set 151"
+                           class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-all">
                 </div>
-                <span class="text-[10px] font-bold text-white/20">128 Cards</span>
-            </div>
-            <div>
-                <p class="text-sm font-bold truncate">Modern Binder</p>
-                <p class="text-[10px] text-white/40">Updated 1d ago</p>
-            </div>
-        </button>
-
-        <!-- Wishlist -->
-        <button class="glass-card p-4 aspect-square flex flex-col justify-between border-pink-500/20 group hover:border-pink-500/50 transition-all focus:outline-none focus:ring-2 focus:ring-pink-500/50 text-left"
-                aria-label="Wishlist, 12 cards, private">
-            <div class="flex justify-between items-start">
-                <div class="w-10 h-10 bg-pink-500/20 rounded-lg flex items-center justify-center text-pink-400 group-hover:scale-110 transition-transform">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                <div class="space-y-1">
+                    <label class="text-[10px] uppercase font-bold text-white/40">Description (Optional)</label>
+                    <textarea name="description" placeholder="Notes about this binder..." rows="2"
+                              class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-all"></textarea>
                 </div>
-                <span class="text-[10px] font-bold text-white/20">12 Cards</span>
-            </div>
-            <div>
-                <p class="text-sm font-bold truncate">Wishlist</p>
-                <p class="text-[10px] text-white/40">Private</p>
-            </div>
-        </button>
+                <div class="flex gap-3 pt-2">
+                    <button type="button" @click="showNewBinderModal = false"
+                            class="flex-1 py-3 text-xs font-bold text-white/40 hover:text-white transition-colors">Cancel</button>
+                    <button type="submit"
+                            class="flex-1 bg-primary text-on-primary py-3 rounded-xl text-xs font-bold shadow-lg shadow-primary/20">Create Binder</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>

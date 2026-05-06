@@ -1,0 +1,42 @@
+<div class="space-y-lg animate-in">
+    <div class="flex items-center gap-md px-1">
+        <button hx-get="/binders" hx-target="#main-content" class="text-white/40 hover:text-white transition-colors">
+            <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div>
+            <h2 class="font-h2 text-2xl font-bold text-on-surface">{{ .Binder.Name }}</h2>
+            <p class="text-[10px] text-white/40 uppercase tracking-widest">{{ .Binder.Description }}</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-md md:grid-cols-4 lg:grid-cols-6 pb-8">
+        {{ range .Cards }}
+        <div class="glass-card rounded-xl p-sm flex flex-col gap-sm group hover:border-primary/40 transition-all duration-300 cursor-pointer active:scale-95">
+            <div class="aspect-[3/4] rounded-lg overflow-hidden relative shadow-lg">
+                <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                <div class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            </div>
+            <div class="px-xs pb-xs">
+                <p class="font-label-sm text-[8px] text-primary-fixed-dim uppercase tracking-widest">{{ .Card.Game }}</p>
+                <p class="font-label-sm text-xs text-on-surface-variant truncate">{{ .Card.Name }}</p>
+                <div class="flex justify-between items-center mt-1">
+                    <span class="font-bold text-lg text-on-surface">
+                        {{ if .CustomPrice }}
+                            ${{ .CustomPrice }}
+                        {{ else }}
+                            ${{ .Card.PriceUSD }}
+                        {{ end }}
+                    </span>
+                    <span class="text-[10px] font-bold text-white/40 uppercase">{{ .Condition }}</span>
+                </div>
+            </div>
+        </div>
+        {{ else }}
+        <div class="col-span-full py-20 flex flex-col items-center justify-center opacity-40">
+            <span class="material-symbols-outlined text-6xl">inventory_2</span>
+            <p class="mt-4 font-label-md uppercase tracking-widest">This binder is empty</p>
+            <p class="text-[10px] mt-1 text-white/40">Add cards to this binder from your main collection!</p>
+        </div>
+        {{ end }}
+    </div>
+</div>
