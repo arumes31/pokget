@@ -38,6 +38,7 @@ import (
 // PriceClient defines the interface for fetching market data
 type PriceClient interface {
 	FetchPrice(card models.Card) (usd float64, eur float64, err error)
+	ApplyMultiplier(price float64, condition string, multipliers map[string]float64) float64
 }
 
 // MockPriceClient for testing
@@ -49,6 +50,10 @@ type MockPriceClient struct {
 
 func (m *MockPriceClient) FetchPrice(_ models.Card) (float64, float64, error) {
 	return m.FixedUSD, m.FixedEUR, m.Err
+}
+
+func (m *MockPriceClient) ApplyMultiplier(price float64, _ string, _ map[string]float64) float64 {
+	return price
 }
 
 // MockMailer for testing
@@ -204,6 +209,25 @@ func (s *ScraperPriceClient) fetchPriceHeadless(card models.Card) (float64, erro
 	return strconv.ParseFloat(priceStr, 64)
 }
 
+func (s *ScraperPriceClient) ApplyMultiplier(price float64, condition string, multipliers map[string]float64) float64 {
+	if multipliers == nil {
+		// Default multipliers
+		multipliers = map[string]float64{
+			"NM": 1.0,
+			"LP": 0.9,
+			"MP": 0.7,
+			"HP": 0.5,
+			"DMG": 0.3,
+		}
+	}
+
+	m, ok := multipliers[condition]
+	if !ok {
+		return price
+	}
+	return price * m
+}
+
 // DefaultPriceClient for production (can choose between Scraper or API)
 type DefaultPriceClient struct {
 	Scraper *ScraperPriceClient
@@ -214,4 +238,11 @@ func (d *DefaultPriceClient) FetchPrice(card models.Card) (float64, float64, err
 		return 0, 0, fmt.Errorf("nil ScraperPriceClient")
 	}
 	return d.Scraper.FetchPrice(card)
+}
+
+func (d *DefaultPriceClient) ApplyMultiplier(price float64, condition string, multipliers map[string]float64) float64 {
+	if d.Scraper == nil {
+		return price
+	}
+	return d.Scraper.ApplyMultiplier(price, condition, multipliers)
 }

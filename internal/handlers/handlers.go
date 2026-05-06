@@ -40,7 +40,6 @@ import (
 	"pokget/internal/service"
 
 	"github.com/gorilla/csrf"
-	"github.com/shopspring/decimal"
 )
 
 type Handler struct {
@@ -131,15 +130,39 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Calculate Portfolio Valuation
-	var totalValuation decimal.Decimal
-	err = h.DB.QueryRow(`
-		SELECT COALESCE(SUM(c.price_usd), 0)
+	// Fetch Portfolio with multipliers
+	rowsPortfolio, _ := h.DB.Query(`
+		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.game
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
-		WHERE p.user_id = $1`, userID).Scan(&totalValuation)
-	if err != nil {
-		slog.Error("Failed to calculate valuation", "error", err)
+		WHERE p.user_id = $1`, userID)
+	
+	var portfolio []models.PortfolioItem
+	if rowsPortfolio != nil {
+		defer rowsPortfolio.Close()
+		for rowsPortfolio.Next() {
+			var p models.PortfolioItem
+			if err := rowsPortfolio.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.Game); err == nil {
+				portfolio = append(portfolio, p)
+			}
+		}
+	}
+
+	// Calculate Total Valuation with multipliers
+	var totalValuation float64
+	var multipliers map[string]float64
+	var multStr string
+	_ = h.DB.QueryRow("SELECT condition_multipliers FROM users WHERE id = $1", userID).Scan(&multStr)
+	_ = json.Unmarshal([]byte(multStr), &multipliers)
+
+	priceService := &service.ScraperPriceClient{}
+	for _, item := range portfolio {
+		if item.CustomPrice > 0 {
+			totalValuation += item.CustomPrice
+		} else {
+			price, _ := item.Card.PriceUSD.Float64()
+			totalValuation += priceService.ApplyMultiplier(price, item.Condition, multipliers)
+		}
 	}
 	
 	// Fetch User XP and Rank
@@ -154,7 +177,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		"Currency":       currency,
 		"TotalValuation": totalValuation,
 		"SetCompletion":  setCompletion,
-		"Portfolio":      h.MockCards,
+		"Portfolio":      portfolio,
 		"XP":             xp,
 		"Rank":           rankTitle,
 		"RankIcon":       rank.IconURL,
@@ -254,8 +277,68 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audit the change
+	metadata := map[string]interface{}{
+		"item_id":      itemID,
+		"notes":        notes,
+		"grade":        grade,
+		"custom_price": customPrice,
+		"is_public":    isPublic,
+	}
+	h.Audit.Log(userID, "edit_portfolio_item", metadata)
+
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Item updated successfully!"))
+}
+
+
+func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: AutoNameBinder", "method", r.Method)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, _ := r.Context().Value(auth.UserContextKey{}).(string)
+	binderID := r.FormValue("binder_id")
+
+	// Fetch cards in binder
+	rows, err := h.DB.Query(`
+		SELECT c.name
+		FROM portfolio p
+		JOIN cards c ON p.card_id = c.id
+		WHERE p.binder_id = $1 AND p.user_id = $2`, binderID, userID)
+	
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var cards []models.Card
+	for rows.Next() {
+		var c models.Card
+		if err := rows.Scan(&c.Name); err == nil {
+			cards = append(cards, c)
+		}
+	}
+
+	llm := service.NewLLMService()
+	newName, err := llm.GenerateBinderName(cards)
+	if err != nil {
+		slog.Error("LLM: Failed to generate binder name", "error", err)
+		http.Error(w, "AI generation failed", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = h.DB.Exec("UPDATE binders SET name = $1 WHERE id = $2 AND user_id = $3", newName, binderID, userID)
+	if err != nil {
+		http.Error(w, "Failed to update binder", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"name": newName})
 }
 
 func (h *Handler) Centering(w http.ResponseWriter, r *http.Request) {

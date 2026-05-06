@@ -29,7 +29,12 @@ type User struct {
 	IsVerified        bool      `json:"is_verified"`
 	VerificationToken string    `json:"-"`
 	XP                int       `json:"xp"`
-	RankTitle         string    `json:"rank_title"`
-	AvatarURL         string    `json:"avatar_url"`
-	CreatedAt         time.Time `json:"created_at"`
+	RankTitle            string    `json:"rank_title"`
+	AvatarURL            string    `json:"avatar_url"`
+	PublicSlug           string    `json:"public_slug"`
+	IsPublicProfile      bool      `json:"is_public_profile"`
+	MFASecret            string    `json:"-"`
+	MFAEnabled           bool      `json:"mfa_enabled"`
+	ConditionMultipliers string    `json:"condition_multipliers"` // Stored as JSON string
+	CreatedAt            time.Time `json:"created_at"`
 }

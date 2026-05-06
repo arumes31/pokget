@@ -159,8 +159,25 @@
     <main id="main-content" class="pt-24 px-md max-w-container-max mx-auto space-y-xl" 
           hx-get="/dashboard" hx-trigger="load">
         <!-- Content will be loaded here via HTMX -->
-        <div class="flex items-center justify-center py-20">
-            <div class="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <!-- Skeleton Content: Shown during initial load -->
+        <div class="space-y-xl htmx-indicator" id="dashboard-skeleton">
+            <!-- Hero Skeleton -->
+            <div class="glass-card rounded-xl p-lg h-48 skeleton"></div>
+            <!-- Stats Skeleton -->
+            <div class="flex gap-md overflow-hidden">
+                <div class="glass-card min-w-[160px] h-24 skeleton"></div>
+                <div class="glass-card min-w-[200px] h-24 skeleton"></div>
+                <div class="glass-card min-w-[160px] h-24 skeleton"></div>
+            </div>
+            <!-- Grid Skeleton -->
+            <div class="grid grid-cols-2 gap-md md:grid-cols-4 lg:grid-cols-6">
+                <div class="aspect-[3/4] glass-card rounded-xl skeleton"></div>
+                <div class="aspect-[3/4] glass-card rounded-xl skeleton"></div>
+                <div class="aspect-[3/4] glass-card rounded-xl skeleton"></div>
+                <div class="aspect-[3/4] glass-card rounded-xl skeleton"></div>
+                <div class="aspect-[3/4] glass-card rounded-xl skeleton"></div>
+                <div class="aspect-[3/4] glass-card rounded-xl skeleton"></div>
+            </div>
         </div>
     </main>
 

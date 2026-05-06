@@ -35,6 +35,7 @@ import (
 
 type LLMClient interface {
 	FuzzyMatchCard(ocrText string, knownCards []models.Card) (string, error)
+	GenerateBinderName(cards []models.Card) (string, error)
 }
 
 type LLMService struct {
@@ -104,4 +105,50 @@ Respond ONLY with the card name. If no match is found, respond with "Unknown Car
 	slog.Info("LLM Fallback Result", "raw", result.Response, "cleaned", cleanedMatch)
 
 	return cleanedMatch, nil
+}
+func (s *LLMService) GenerateBinderName(cards []models.Card) (string, error) {
+	if len(cards) == 0 {
+		return "New Empty Binder", nil
+	}
+
+	cardNames := []string{}
+	for i, c := range cards {
+		cardNames = append(cardNames, c.Name)
+		if i > 20 {
+			break // Don't overwhelm the context
+		}
+	}
+
+	prompt := fmt.Sprintf(`Based on the following cards in a binder, suggest a single, creative, and premium-sounding name for the binder: %s.
+Respond ONLY with the name, no quotes or explanations.`, strings.Join(cardNames, ", "))
+
+	payload := map[string]interface{}{
+		"model":  s.Model,
+		"prompt": prompt,
+		"stream": false,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := s.HTTPClient.Post(s.BaseURL+"/api/generate", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Response string `json:"response"`
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(result.Response), nil
 }

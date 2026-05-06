@@ -21,38 +21,31 @@
 package handlers
 
 import (
-	"database/sql"
 	"log/slog"
 	"net/http"
 	"pokget/internal/auth"
 	"pokget/internal/models"
-	"github.com/gorilla/mux"
+	"strings"
 )
 
 func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("Action: PublicVault", "method", r.Method, "url", r.URL.String())
-	vars := mux.Vars(r)
-	userID := vars["user_id"]
+	slog.Debug("Action: PublicVault", "method", r.Method)
+	slug := strings.TrimPrefix(r.URL.Path, "/vault/")
 
-	if userID == "" {
-		http.Error(w, "User ID required", http.StatusBadRequest)
-		return
-	}
-
-	var vaultPublic bool
-	err := h.DB.QueryRow("SELECT vault_public FROM users WHERE id = $1", userID).Scan(&vaultPublic)
+	var userID string
+	var email string
+	var rank string
+	var xp int
+	
+	err := h.DB.QueryRow(`
+		SELECT id, email, rank_title, xp 
+		FROM users 
+		WHERE public_slug = $1 AND is_public_profile = TRUE`, 
+		slug).Scan(&userID, &email, &rank, &xp)
+	
 	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "User not found", http.StatusNotFound)
-			return
-		}
-		slog.Error("Failed to check vault visibility", "error", err)
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-
-	if !vaultPublic {
-		http.Error(w, "This vault is private", http.StatusForbidden)
+		slog.Warn("PublicVault: Vault not found", "slug", slug, "error", err)
+		http.Error(w, "Vault not found", http.StatusNotFound)
 		return
 	}
 
@@ -63,6 +56,7 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1 AND p.is_public = TRUE`, userID)
+	
 	if err != nil {
 		slog.Error("Failed to fetch public vault", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -79,12 +73,8 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fetch user info (rank, xp)
-	var rank string
-	var xp int
-	_ = h.DB.QueryRow("SELECT rank_title, xp FROM users WHERE id = $1", userID).Scan(&rank, &xp)
-
 	h.render(w, r, "public_vault.html", map[string]interface{}{
+		"Username":  strings.Split(email, "@")[0],
 		"Portfolio": portfolio,
 		"Rank":      rank,
 		"XP":        xp,

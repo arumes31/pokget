@@ -33,6 +33,7 @@ type PortfolioItem struct {
 	Notes           string    `json:"notes"`
 	IsPublic        bool      `json:"is_public"`
 	CustomPrice     float64   `json:"custom_price"`
+	Language        string    `json:"language"`
 	CreatedAt       time.Time `json:"created_at"`
 	
 	// Join fields

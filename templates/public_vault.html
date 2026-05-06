@@ -1,69 +1,75 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html class="dark" lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pokget Vault | Public Collection</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>{{ .Username }}'s Public Vault - Pokget</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <style>
+        .glass-card {
+            background: rgba(28, 27, 28, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        body {
+            background-color: #131314;
+            color: #e5e2e3;
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
 </head>
-<body class="bg-background text-on-surface font-body-md min-h-screen p-md md:p-xl">
-    <div class="max-w-7xl mx-auto space-y-xl">
-        <!-- Profile Header -->
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-md border-b border-white/5 pb-xl">
-            <div class="flex items-center gap-md">
-                <div class="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-secondary p-1">
-                    <div class="w-full h-full rounded-full bg-surface flex items-center justify-center overflow-hidden">
-                        <img src="/static/img/ranks/novice.png" alt="Avatar" class="w-12 h-12">
-                    </div>
-                </div>
-                <div>
-                    <h1 class="text-3xl font-bold tracking-tight">The Collector's Vault</h1>
-                    <div class="flex items-center gap-sm mt-1">
-                        <span class="text-primary font-bold uppercase text-xs tracking-widest">{{ .Rank }}</span>
-                        <span class="text-on-surface-variant opacity-40 text-xs">•</span>
-                        <span class="text-on-surface-variant text-xs">{{ .XP }} Total XP</span>
-                    </div>
-                </div>
+<body class="min-h-screen pb-20">
+    <!-- Header -->
+    <header class="fixed top-0 w-full z-50 bg-[#131314]/60 backdrop-blur-xl border-b border-white/5">
+        <div class="flex justify-between items-center px-8 h-16 max-w-7xl mx-auto">
+            <h1 class="text-xl font-bold text-[#ddb7ff] uppercase tracking-widest">VAULT GALLERY</h1>
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-bold opacity-60">{{ .Username }}'s Collection</span>
             </div>
-            <div class="flex gap-sm">
-                <div class="glass-card px-md py-sm rounded-lg flex flex-col items-center">
-                    <span class="text-[10px] uppercase opacity-40 font-bold">Total Value</span>
-                    <span class="text-xl font-bold text-primary">$12,450</span>
-                </div>
-                <div class="glass-card px-md py-sm rounded-lg flex flex-col items-center">
-                    <span class="text-[10px] uppercase opacity-40 font-bold">Total Cards</span>
-                    <span class="text-xl font-bold text-on-surface">{{ len .Portfolio }}</span>
-                </div>
-            </div>
-        </header>
+        </div>
+    </header>
 
-        <!-- Collection Grid -->
-        <section class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-md">
+    <main class="pt-24 px-6 max-w-7xl mx-auto space-y-12">
+        <!-- Hero -->
+        <section class="text-center space-y-4">
+            <h2 class="text-4xl md:text-6xl font-bold tracking-tight">Viewing <span class="text-[#ddb7ff]">{{ .Username }}</span></h2>
+            <p class="text-on-surface-variant opacity-60 max-w-lg mx-auto">Explore this collector's high-value grails and portfolio highlights.</p>
+        </section>
+
+        <!-- Gallery Grid -->
+        <section class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
             {{ range .Portfolio }}
-            <div class="glass-card rounded-xl p-sm flex flex-col gap-sm group transition-all duration-300">
-                <div class="aspect-[3/4] rounded-lg overflow-hidden relative shadow-lg">
-                    <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Card.Name }}" class="w-full h-full object-cover">
+            <div class="glass-card rounded-2xl p-3 flex flex-col gap-3 group transition-transform hover:-translate-y-2 duration-300">
+                <div class="aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative">
+                    <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover">
                     {{ if .Grade }}
-                    <div class="absolute top-2 right-2 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded border border-white/20 text-[10px] font-bold text-primary">
-                        {{ .GradingCompany }} {{ .Grade }}
+                    <div class="absolute top-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-md rounded-lg border border-white/10">
+                        <span class="text-[10px] font-bold text-[#ddb7ff]">{{ .Grade }}</span>
                     </div>
                     {{ end }}
                 </div>
-                <div class="px-xs pb-xs">
-                    <p class="font-label-sm text-[8px] text-primary-fixed-dim uppercase tracking-widest">{{ .Card.Game }}</p>
-                    <p class="font-label-sm text-xs text-on-surface-variant truncate">{{ .Card.Name }}</p>
-                    <div class="flex justify-between items-center mt-1">
-                        <span class="font-bold text-lg text-on-surface">${{ .Card.PriceUSD }}</span>
+                <div class="px-1">
+                    <p class="text-[8px] text-[#ddb7ff] uppercase tracking-widest">{{ .Card.Set }}</p>
+                    <p class="text-sm font-bold truncate">{{ .Card.Name }}</p>
+                    <div class="flex justify-between items-center mt-2">
+                        <span class="text-lg font-bold">${{ .Card.PriceUSD }}</span>
+                        <span class="text-[10px] opacity-40 uppercase">{{ .Condition }}</span>
                     </div>
                 </div>
             </div>
+            {{ else }}
+            <div class="col-span-full py-20 text-center space-y-4">
+                <span class="material-symbols-outlined text-6xl opacity-10">lock</span>
+                <p class="opacity-40">This vault is currently empty or private.</p>
+            </div>
             {{ end }}
         </section>
+    </main>
 
-        <footer class="text-center pt-xl opacity-20 hover:opacity-100 transition-opacity">
-            <p class="text-xs uppercase tracking-[0.3em]">Built with Pokget TCG Portfolio</p>
-        </footer>
-    </div>
+    <footer class="mt-20 py-10 border-t border-white/5 text-center">
+        <p class="text-[10px] uppercase tracking-widest opacity-20">Powered by Pokget Vault Technology</p>
+    </footer>
 </body>
 </html>
