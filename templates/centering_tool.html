@@ -114,6 +114,16 @@
         <!-- Live Video Feed -->
         <video x-ref="video" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
 
+        <!-- Compact Language Selector Overlay -->
+        <div class="absolute top-3 left-3 z-20 flex gap-1 p-0.5 bg-black/40 backdrop-blur-md rounded-lg border border-white/10">
+            <template x-for="l in ['eng', 'jpn', 'deu', 'fra']">
+                <button @click="lang = l" 
+                        :class="lang === l ? 'bg-purple-600 text-white shadow-lg' : 'text-white/40 hover:text-white/60'" 
+                        class="px-2 py-1 text-[8px] font-black rounded-md transition-all uppercase tracking-tighter" 
+                        x-text="l"></button>
+            </template>
+        </div>
+
         <!-- Camera Viewfinder Mockup -->
         <div class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
             <div class="w-64 h-80 border-2 border-white/20 rounded-2xl relative" :class="scanning ? 'border-purple-500 animate-pulse' : ''">
@@ -155,13 +165,6 @@
 
     <!-- Controls / Metrics -->
     <div class="space-y-4">
-        <!-- Language Selector -->
-        <div class="flex items-center justify-between glass-card p-1">
-            <button @click="lang = 'eng'" :class="lang === 'eng' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">ENG</button>
-            <button @click="lang = 'jpn'" :class="lang === 'jpn' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">JPN</button>
-            <button @click="lang = 'deu'" :class="lang === 'deu' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">DEU</button>
-            <button @click="lang = 'fra'" :class="lang === 'fra' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40'" class="flex-1 py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest">FRA</button>
-        </div>
 
         <!-- Scan Button -->
         <button @click="capture()" 
