@@ -104,17 +104,24 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 	detectedCard := "Unknown Card"
 	bestScore := 0.7 // Threshold for fuzzy match
 
+	// Special handling for Japanese/Chinese (CJK): remove spaces for better matching
+	normalizedText := text
+	if lang == "jpn" || lang == "chi_sim" || lang == "chi_tra" {
+		normalizedText = strings.ReplaceAll(text, " ", "")
+		normalizedText = strings.ReplaceAll(normalizedText, "\n", "")
+	}
+
 	for _, card := range mockCards {
 		// Stage 1: Exact/Word Boundary Match (Fast)
 		pattern := `(?i)\b` + regexp.QuoteMeta(card.Name) + `\b`
-		if matched, _ := regexp.MatchString(pattern, text); matched {
+		if matched, _ := regexp.MatchString(pattern, normalizedText); matched {
 			detectedCard = card.Name
 			break
 		}
 
 		// Stage 2: Levenshtein Fuzzy Match
-		dist := levenshtein(text, card.Name)
-		maxLen := len(text)
+		dist := levenshtein(normalizedText, card.Name)
+		maxLen := len(normalizedText)
 		if len(card.Name) > maxLen { maxLen = len(card.Name) }
 		if maxLen == 0 { continue }
 		
@@ -128,11 +135,11 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 	// Stage 3: LLM Refinement if still unsure
 	if detectedCard == "Unknown Card" {
 		llm := NewLLMService()
-		match, err := llm.FuzzyMatchCard(text, mockCards)
+		match, err := llm.FuzzyMatchCard(normalizedText, mockCards)
 		if err == nil && match != "Unknown Card" {
 			detectedCard = match
 		}
 	}
 
-	return text, detectedCard, buf.Bytes(), nil
+	return normalizedText, detectedCard, buf.Bytes(), nil
 }
