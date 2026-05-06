@@ -63,10 +63,6 @@ func levenshtein(s1, s2 string) int {
 	return d[n][m]
 }
 
-func min(a, b int) int {
-	if a < b { return a }
-	return b
-}
 
 func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (string, string, []byte, error) {
 	if lang == "" {

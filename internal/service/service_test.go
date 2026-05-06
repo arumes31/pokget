@@ -348,7 +348,7 @@ func TestScraperPriceClient(t *testing.T) {
 
 	t.Run("FetchPrice_GameBranches", func(t *testing.T) {
 		games := []string{"One Piece", "Lorcana", "Weiss Schwarz", "Magic", "mtg"}
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`<div class="price-container"><span class="color-primary">10,00 €</span></div>`))
 		}))
@@ -387,7 +387,7 @@ func TestAuditService(t *testing.T) {
 		}
 	})
 
-	t.Run("Log_Error", func(t *testing.T) {
+	t.Run("Log_Error", func(_ *testing.T) {
 		mock.ExpectExec("INSERT INTO audit_logs").WillReturnError(sql.ErrConnDone)
 		// Should not panic, just log the error
 		s.Log("user-1", "LOGIN", nil)

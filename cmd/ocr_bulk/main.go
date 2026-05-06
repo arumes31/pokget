@@ -45,12 +45,13 @@ func main() {
 	successCount := 0
 	totalCount := len(cards)
 	
-	os.MkdirAll("static/img/debug/bulk", 0755)
+	_ = os.MkdirAll("static/img/debug/bulk", 0755)
 
 	for i, c := range cards {
 		fmt.Printf("[%d/%d] Testing: %s... ", i+1, totalCount, c.Name)
 		
 		// Download
+		// #nosec G107
 		resp, err := http.Get(c.ImageURL)
 		if err != nil {
 			fmt.Printf("❌ Download Failed\n")
@@ -79,7 +80,7 @@ func main() {
 			// Save 10% for spot checks
 			if i % 10 == 0 {
 				safeName := filepath.Join("static/img/debug/bulk", strings.ReplaceAll(c.Name, "/", "_")+".jpg")
-				os.WriteFile(safeName, processed, 0644)
+				_ = os.WriteFile(safeName, processed, 0644)
 			}
 		} else {
 			fmt.Printf("❌ Processing Failed\n")

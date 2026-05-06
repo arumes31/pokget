@@ -141,7 +141,7 @@ func TestApplyMigrations_Success(t *testing.T) {
 	defer dbMock.Close()
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (interface{ Up() error }, error) {
 		return &mockMigrator{err: nil}, nil
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
@@ -159,7 +159,7 @@ func TestApplyMigrations_ErrorNew(t *testing.T) {
 	defer dbMock.Close()
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (interface{ Up() error }, error) {
 		return nil, fmt.Errorf("new fail")
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
@@ -176,7 +176,7 @@ func TestApplyMigrations_ErrorUp(t *testing.T) {
 	defer dbMock.Close()
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (interface{ Up() error }, error) {
 		return &mockMigrator{err: fmt.Errorf("up fail")}, nil
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
@@ -194,7 +194,7 @@ func TestRunMigrations_Success(t *testing.T) {
 	DB = dbMock
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (interface{ Up() error }, error) {
 		return &mockMigrator{err: nil}, nil
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
@@ -209,11 +209,11 @@ func TestConnect_Success(t *testing.T) {
 	dbMock, _, _ := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	defer dbMock.Close()
 
-	oldSqlOpen := sqlOpen
-	sqlOpen = func(driverName, dataSourceName string) (*sql.DB, error) {
+	oldSQLOpen := sqlOpen
+	sqlOpen = func(_, _ string) (*sql.DB, error) {
 		return dbMock, nil
 	}
-	defer func() { sqlOpen = oldSqlOpen }()
+	defer func() { sqlOpen = oldSQLOpen }()
 
 	os.Setenv("DB_HOST", "localhost")
 	os.Setenv("DB_PORT", "5432")
@@ -231,11 +231,11 @@ func TestConnect_Success(t *testing.T) {
 }
 
 func TestConnect_OpenError(t *testing.T) {
-	oldSqlOpen := sqlOpen
-	sqlOpen = func(driverName, dataSourceName string) (*sql.DB, error) {
+	oldSQLOpen := sqlOpen
+	sqlOpen = func(_, _ string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open fail")
 	}
-	defer func() { sqlOpen = oldSqlOpen }()
+	defer func() { sqlOpen = oldSQLOpen }()
 
 	os.Setenv("DB_HOST", "localhost")
 	os.Setenv("DB_PORT", "5432")
@@ -254,14 +254,14 @@ func TestInitDB(t *testing.T) {
 	defer dbMock.Close()
 
 	t.Run("Success", func(t *testing.T) {
-		oldSqlOpen := sqlOpen
-		sqlOpen = func(driverName, dataSourceName string) (*sql.DB, error) {
+		oldSQLOpen := sqlOpen
+		sqlOpen = func(_, _ string) (*sql.DB, error) {
 			return dbMock, nil
 		}
-		defer func() { sqlOpen = oldSqlOpen }()
+		defer func() { sqlOpen = oldSQLOpen }()
 
 		oldNewMigrator := NewMigrator
-		NewMigrator = func(db *sql.DB, absPath string) (interface{ Up() error }, error) {
+		NewMigrator = func(_ *sql.DB, _ string) (interface{ Up() error }, error) {
 			return &mockMigrator{err: nil}, nil
 		}
 		defer func() { NewMigrator = oldNewMigrator }()
@@ -278,7 +278,7 @@ func TestInitDB(t *testing.T) {
 		}
 	})
 
-	t.Run("ConnectFail", func(t *testing.T) {
+	t.Run("ConnectFail", func(_ *testing.T) {
 		os.Unsetenv("DB_HOST")
 		InitDB()
 		// Should just log and return

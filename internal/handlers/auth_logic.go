@@ -24,7 +24,6 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
-	"io"
 	"pokget/internal/auth"
 	"pokget/internal/models"
 	"pokget/internal/service"
@@ -206,7 +205,7 @@ func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var randReader io.Reader = rand.Reader
+var randReader = rand.Reader
 
 func generateToken() string {
 	b := make([]byte, 32)

@@ -23,12 +23,13 @@ func main() {
 	}
 
 	// Create debug directory
-	os.MkdirAll("static/img/debug", 0755)
+	_ = os.MkdirAll("static/img/debug", 0755)
 
 	for name, url := range cardURLs {
 		fmt.Printf("--- Testing OCR for: %s ---\n", name)
 		
 		// Download image
+		// #nosec G107
 		resp, err := http.Get(url)
 		if err != nil {
 			fmt.Printf("Failed to download %s: %v\n", name, err)
@@ -50,7 +51,7 @@ func main() {
 		// Save processed image for visual inspection
 		safeName := filepath.Join("static/img/debug", name+".jpg")
 		if processed != nil {
-			os.WriteFile(safeName, processed, 0644)
+			_ = os.WriteFile(safeName, processed, 0644)
 			fmt.Printf("Processed image saved to: %s\n", safeName)
 		}
 		fmt.Println()
