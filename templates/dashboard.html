@@ -1,120 +1,131 @@
 <!-- Hero Section: Total Portfolio Value -->
 <section class="relative animate-in">
-    <div class="absolute -top-10 -left-10 w-64 h-64 bg-primary/10 blur-[100px] rounded-full"></div>
-    <div class="glass-card rounded-2xl p-6 md:p-lg relative overflow-hidden border border-white/5">
-        <div class="flex flex-col gap-6">
-            <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-                <div class="flex flex-col gap-1">
-                    <span class="font-label-sm text-[10px] uppercase text-on-surface-variant tracking-[0.2em] opacity-40">Total Portfolio Valuation</span>
-                    <div class="flex items-baseline gap-2">
-                        <span class="font-h1 text-4xl md:text-6xl font-black text-on-surface tracking-tighter roll-counter" 
+    <div class="absolute -top-20 -left-20 w-72 h-72 bg-primary/20 blur-[120px] rounded-full pointer-events-none"></div>
+    <div class="glass-card rounded-[2.5rem] p-6 sm:p-8 relative overflow-hidden border border-white/5 neon-glow">
+        <div class="flex flex-col gap-6 sm:gap-8">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6">
+                <div class="flex flex-col gap-2">
+                    <span class="font-label-sm text-[10px] sm:text-xs uppercase text-on-surface-variant tracking-[0.3em] opacity-50">Portfolio Value</span>
+                    <div class="flex flex-wrap items-baseline gap-3">
+                        <span class="font-h1 text-4xl sm:text-5xl md:text-6xl font-black text-on-surface tracking-tighter roll-counter" 
                               data-target="{{ .TotalValuation }}" data-prefix="$">$0.00</span>
                         {{ if gt .TotalValuation 0.0 }}
-                        <div class="flex items-center {{ if ge .Change24h 0.0 }}text-tertiary bg-tertiary/10 border-tertiary/20{{ else }}text-red-400 bg-red-400/10 border-red-400/20{{ end }} gap-1 px-2 py-0.5 rounded-lg border">
-                            <span class="material-symbols-outlined text-[12px]">{{ if ge .Change24h 0.0 }}trending_up{{ else }}trending_down{{ end }}</span>
-                            <span class="font-label-sm text-[10px] font-black">{{ if ge .Change24h 0.0 }}+{{ end }}{{ printf "%.1f" .Change24h }}%</span>
+                        <div class="flex items-center {{ if ge .Change24h 0.0 }}text-tertiary bg-tertiary/10 border-tertiary/20{{ else }}text-red-400 bg-red-400/10 border-red-400/20{{ end }} gap-1 px-2.5 py-1 rounded-xl border backdrop-blur-md">
+                            <span class="material-symbols-outlined text-[14px]">{{ if ge .Change24h 0.0 }}trending_up{{ else }}trending_down{{ end }}</span>
+                            <span class="font-label-sm text-[11px] font-black">{{ if ge .Change24h 0.0 }}+{{ end }}{{ printf "%.1f" .Change24h }}%</span>
                         </div>
                         {{ end }}
                     </div>
                 </div>
                 
-                <!-- Rank Display -->
-                <div class="flex items-center gap-3 glass-card px-4 py-2 rounded-2xl border border-white/10 self-start md:self-auto bg-white/5 backdrop-blur-xl">
-                    <div class="relative">
-                        <div class="absolute inset-0 bg-primary/20 blur-md rounded-full"></div>
-                        <img src="{{ .RankIcon }}" alt="Rank" class="w-8 h-8 md:w-10 md:h-10 object-contain relative z-10">
+                <!-- Rank Display (Floating Card style for mobile) -->
+                <div class="flex items-center gap-4 bg-white/[0.03] backdrop-blur-3xl px-5 py-3 rounded-3xl border border-white/10 shadow-xl self-start sm:self-auto group transition-transform hover:scale-105">
+                    <div class="relative w-12 h-12 flex-shrink-0">
+                        <div class="absolute inset-0 bg-primary/30 blur-lg rounded-full animate-pulse"></div>
+                        <img src="{{ .RankIcon }}" alt="Rank" class="w-full h-full object-contain relative z-10">
                     </div>
                     <div class="flex flex-col">
-                        <span class="text-[9px] uppercase font-black text-on-surface-variant tracking-widest opacity-60">Tier Status</span>
-                        <span class="text-xs font-black text-primary uppercase tracking-tighter">{{ .Rank }}</span>
-                        <div class="w-20 md:w-24 h-1 bg-white/10 rounded-full mt-1.5 overflow-hidden">
-                            <div class="h-full bg-primary shadow-[0_0_8px_#ddb7ff]" x-init="$el.style.width = '{{ .XPPercent }}%'"></div>
+                        <span class="text-[9px] uppercase font-bold text-on-surface-variant tracking-widest opacity-60">Legacy Status</span>
+                        <span class="text-sm font-black text-primary uppercase tracking-tighter">{{ .Rank }}</span>
+                        <div class="w-24 h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden border border-white/5">
+                            <div class="h-full bg-primary shadow-[0_0_12px_#ddb7ff] transition-all duration-1000" x-init="setTimeout(() => $el.style.width = '{{ .XPPercent }}%', 500)"></div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        <!-- Mini Sparkline visualization -->
-        <div class="mt-8 h-16 md:h-24 w-full relative">
+        <!-- Modernized Sparkline -->
+        <div class="mt-10 h-20 sm:h-28 w-full relative">
             <svg class="w-full h-full" preserveAspectRatio="none" viewBox="0 0 400 100">
                 <defs>
-                    <linearGradient id="gradient-hero" x1="0%" x2="0%" y1="0%" y2="100%">
-                        <stop offset="0%" stop-color="#ddb7ff" stop-opacity="0.2"></stop>
+                    <linearGradient id="gradient-hero-v2" x1="0%" x2="0%" y1="0%" y2="100%">
+                        <stop offset="0%" stop-color="#ddb7ff" stop-opacity="0.25"></stop>
                         <stop offset="100%" stop-color="#ddb7ff" stop-opacity="0"></stop>
                     </linearGradient>
                 </defs>
-                <path class="drop-shadow-[0_0_12px_rgba(221,183,255,0.4)]" d="M0,80 Q50,70 100,85 T200,40 T300,60 T400,20" fill="transparent" stroke="#ddb7ff" stroke-width="2.5"></path>
-                <path d="M0,80 Q50,70 100,85 T200,40 T300,60 T400,20 L400,100 L0,100 Z" fill="url(#gradient-hero)"></path>
+                <path class="drop-shadow-[0_0_15px_rgba(221,183,255,0.5)]" d="M0,85 Q40,75 80,90 T160,45 T240,65 T320,25 T400,30" fill="transparent" stroke="#ddb7ff" stroke-width="3" stroke-linecap="round"></path>
+                <path d="M0,85 Q40,75 80,90 T160,45 T240,65 T320,25 T400,30 L400,100 L0,100 Z" fill="url(#gradient-hero-v2)"></path>
             </svg>
         </div>
     </div>
 </section>
 
-<!-- Portfolio Stats: Horizontal Scrolling -->
-<section class="flex overflow-x-auto gap-4 no-scrollbar pb-2 -mx-4 px-4 scroll-smooth">
-    <!-- Stat 1 -->
-    <div class="glass-card min-w-[140px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
-        <span class="font-label-sm text-[9px] uppercase tracking-[0.2em] text-on-surface-variant opacity-30">Total Assets</span>
-        <span class="font-black text-2xl text-on-surface roll-counter" data-target="{{ len .Portfolio }}">0</span>
+<!-- Stats Grid: Replaced Scrolling with Adaptive Grid for better mobile flow -->
+<section class="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+    <!-- Total Assets -->
+    <div class="glass-card p-4 sm:p-5 rounded-3xl flex flex-col gap-1 border border-white/5 bg-white/[0.02]">
+        <span class="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-40">Assets</span>
+        <span class="font-black text-2xl sm:text-3xl text-on-surface roll-counter" data-target="{{ len .Portfolio }}">0</span>
     </div>
-    <!-- Stat 2 -->
-    <div class="glass-card min-w-[200px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
-        <span class="font-label-sm text-[9px] uppercase tracking-[0.2em] text-on-surface-variant opacity-30">Top Performer</span>
-        <div class="flex items-center gap-xs">
+    <!-- Binder Count -->
+    <div class="glass-card p-4 sm:p-5 rounded-3xl flex flex-col gap-1 border border-white/5 bg-white/[0.02]">
+        <span class="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-40">Binders</span>
+        <span class="font-black text-2xl sm:text-3xl text-on-surface">{{ .BinderCount }}</span>
+    </div>
+    <!-- Top Performer: Spans 2 cols on small mobile, 1 on larger -->
+    <div class="glass-card p-4 sm:p-5 rounded-3xl flex flex-col gap-1 border border-white/5 bg-white/[0.02] col-span-2 sm:col-span-1">
+        <span class="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-40">MVP Card</span>
+        <div class="flex items-center gap-2">
             {{ if .Portfolio }}
-                <span class="font-black text-sm text-secondary truncate">{{ (index .Portfolio 0).Card.Name }}</span>
+                <span class="font-black text-xs sm:text-sm text-secondary truncate">{{ (index .Portfolio 0).Card.Name }}</span>
+                <span class="text-[10px] text-tertiary font-bold">+12%</span>
             {{ else }}
-                <span class="font-black text-sm text-secondary/20 italic tracking-tight">No data</span>
+                <span class="font-black text-xs text-on-surface/20 italic tracking-tight">Standby...</span>
             {{ end }}
         </div>
     </div>
-    <!-- Stat 3 -->
-    <div class="glass-card min-w-[140px] flex-shrink-0 p-5 rounded-2xl flex flex-col gap-1 border border-white/5 bg-white/2">
-        <span class="font-label-sm text-[9px] uppercase tracking-[0.2em] text-on-surface-variant opacity-30">Archives</span>
-        <span class="font-black text-2xl text-on-surface">{{ .BinderCount }}</span>
-    </div>
 </section>
 
-<!-- Card Collection Grid -->
-<section class="space-y-6">
-    <div class="flex justify-between items-end px-1">
-        <h2 class="font-h2 text-xl font-bold text-on-surface">Vault Inventory</h2>
-        <button class="font-label-sm text-[10px] text-primary uppercase tracking-widest hover:opacity-80 transition-opacity" hx-get="/binders" hx-target="#main-content">View All</button>
-    </div>
-    <div class="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6 pb-10">
-        {{ range .Portfolio }}
-        <div class="glass-card rounded-2xl p-2 flex flex-col gap-3 group hover:border-primary/40 transition-all duration-300 cursor-pointer active:scale-95 border-white/5">
-            <div class="aspect-[3/4] rounded-xl overflow-hidden relative shadow-2xl">
-                <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700">
-                <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60"></div>
-                <div class="absolute bottom-2 left-2 flex gap-1">
-                    <span class="px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[8px] font-black text-white border border-white/10 uppercase">{{ .Condition }}</span>
-                </div>
+<!-- Collection Header -->
+<div class="flex justify-between items-center px-2">
+    <h2 class="text-xl sm:text-2xl font-black text-on-surface tracking-tight">Main Vault</h2>
+    <button class="text-[10px] font-black text-primary uppercase tracking-[0.2em] hover:text-primary-fixed transition-colors" hx-get="/binders" hx-target="#main-content">All Archives</button>
+</div>
+
+<!-- Card Collection Grid: Optimized for 2-column mobile and responsive upward -->
+<section class="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4 xl:grid-cols-6 pb-20">
+    {{ range .Portfolio }}
+    <div class="glass-card rounded-[2rem] p-2.5 flex flex-col gap-4 group hover:border-primary/50 transition-all duration-500 cursor-pointer active:scale-[0.98] border-white/5 shadow-lg hover:shadow-primary/10">
+        <!-- Image Container -->
+        <div class="aspect-[3/4] rounded-3xl overflow-hidden relative shadow-2xl">
+            <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000">
+            <!-- Overlay Gradient -->
+            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60"></div>
+            <!-- Condition Badge -->
+            <div class="absolute top-3 right-3">
+                <span class="px-2 py-1 rounded-lg bg-black/40 backdrop-blur-xl text-[8px] font-black text-white border border-white/10 uppercase tracking-tighter">{{ .Condition }}</span>
             </div>
-            <div class="px-1 pb-1">
-                <div class="flex justify-between items-start gap-2">
-                    <div class="flex-1 min-w-0">
-                        <p class="font-label-sm text-[8px] text-primary-fixed-dim uppercase tracking-widest truncate opacity-60">{{ .Card.Set }}</p>
-                        <p class="font-bold text-[11px] text-on-surface leading-tight truncate">{{ .Card.Name }}</p>
-                    </div>
-                    <button class="material-symbols-outlined text-sm text-on-surface-variant/40 hover:text-primary transition-colors mt-1" 
-                            onclick="openEditModal('{{ .ID }}', '{{ .Notes }}', '{{ .CustomPrice }}')">more_vert</button>
+        </div>
+
+        <!-- Card Details -->
+        <div class="px-1.5 pb-2">
+            <div class="flex justify-between items-start gap-2">
+                <div class="flex-1 min-w-0">
+                    <p class="text-[8px] text-primary/70 font-black uppercase tracking-[0.2em] truncate">{{ .Card.Set }}</p>
+                    <p class="font-bold text-xs sm:text-sm text-on-surface leading-tight truncate group-hover:text-primary transition-colors">{{ .Card.Name }}</p>
                 </div>
-                
-                <div class="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
-                    <span class="font-black text-xs text-on-surface">
+                <button class="material-symbols-outlined text-lg text-on-surface-variant/30 hover:text-primary transition-colors flex-shrink-0" 
+                        onclick="openEditModal('{{ .ID }}', '{{ .Notes }}', '{{ .CustomPrice }}')">more_horiz</button>
+            </div>
+            
+            <div class="flex justify-between items-center mt-4 pt-3 border-t border-white/5">
+                <div class="flex flex-col">
+                    <span class="text-[8px] text-on-surface-variant/40 uppercase font-black tracking-widest">Market</span>
+                    <span class="font-black text-sm text-on-surface">
                         {{ if .CustomPrice }}
                             ${{ printf "%.2f" .CustomPrice }}
                         {{ else }}
                             ${{ printf "%.2f" .Card.PriceUSD }}
                         {{ end }}
                     </span>
-                    {{ if .CustomPrice }}
-                    <span class="text-[8px] font-black text-primary uppercase tracking-tighter">Fix</span>
-                    {{ end }}
                 </div>
+                {{ if .CustomPrice }}
+                <div class="bg-primary/10 px-1.5 py-0.5 rounded-md border border-primary/20">
+                    <span class="text-[7px] font-black text-primary uppercase tracking-tighter">Fix</span>
+                </div>
+                {{ end }}
             </div>
         </div>
-        {{ end }}
     </div>
+    {{ end }}
 </section>

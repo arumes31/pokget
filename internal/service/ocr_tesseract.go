@@ -35,7 +35,10 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"sync"
 )
+
+var ocrMu sync.Mutex
 
 func levenshtein(s1, s2 string) int {
 	s1 = strings.ToLower(s1)
@@ -89,16 +92,25 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 		return "", "", nil, err
 	}
 
-	// 2. Perform OCR (Simulated if stubbed)
+	// 2. Perform OCR
+	slog.Info("OCR: Initializing Tesseract client...")
 	client := gosseract.NewClient()
 	defer client.Close()
 
+	slog.Info("OCR: Setting image data...")
 	_ = client.SetLanguage(lang)
 	_ = client.SetImageFromBytes(buf.Bytes())
+	
+	slog.Info("OCR: Executing Tesseract (Locking)...")
+	ocrMu.Lock()
 	text, err := client.Text()
+	ocrMu.Unlock()
+	slog.Info("OCR: Tesseract execution released")
 	if err != nil {
+		slog.Error("OCR: Tesseract execution failed", "error", err)
 		return "", "", buf.Bytes(), err
 	}
+	slog.Info("OCR: Tesseract complete", "text_len", len(text))
 
 	// 3. Perfect Detection Logic: Multi-Stage Matching
 	detectedCard := "Unknown Card"
@@ -111,15 +123,26 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 		normalizedText = strings.ReplaceAll(normalizedText, "\n", "")
 	}
 
+	// Optimization: Lowercase text once
+	lowerText := strings.ToLower(normalizedText)
+
 	for _, card := range mockCards {
-		// Stage 1: Exact/Word Boundary Match (Fast)
-		pattern := `(?i)\b` + regexp.QuoteMeta(card.Name) + `\b`
-		if matched, _ := regexp.MatchString(pattern, normalizedText); matched {
+		cardNameLower := strings.ToLower(card.Name)
+		
+		// Stage 1: Fast exact substring check
+		if strings.Contains(lowerText, cardNameLower) {
 			detectedCard = card.Name
 			break
 		}
 
-		// Stage 2: Levenshtein Fuzzy Match
+		// Stage 2: Length-based pre-filter for Levenshtein (must be within 40% length)
+		lenDiff := len(normalizedText) - len(card.Name)
+		if lenDiff < 0 { lenDiff = -lenDiff }
+		if lenDiff > len(card.Name)/2 && len(card.Name) > 5 {
+			continue
+		}
+
+		// Stage 3: Levenshtein Fuzzy Match
 		dist := levenshtein(normalizedText, card.Name)
 		maxLen := len(normalizedText)
 		if len(card.Name) > maxLen { maxLen = len(card.Name) }
