@@ -51,7 +51,7 @@ func main() {
 		// Save processed image for visual inspection
 		safeName := filepath.Join("static/img/debug", name+".jpg")
 		if processed != nil {
-			_ = os.WriteFile(safeName, processed, 0644)
+			_ = os.WriteFile(safeName, processed, 0600)
 			fmt.Printf("Processed image saved to: %s\n", safeName)
 		}
 		fmt.Println()

@@ -80,7 +80,7 @@ func main() {
 			// Save 10% for spot checks
 			if i % 10 == 0 {
 				safeName := filepath.Join("static/img/debug/bulk", strings.ReplaceAll(c.Name, "/", "_")+".jpg")
-				_ = os.WriteFile(safeName, processed, 0644)
+				_ = os.WriteFile(safeName, processed, 0600)
 			}
 		} else {
 			fmt.Printf("❌ Processing Failed\n")
