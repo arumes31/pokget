@@ -85,7 +85,7 @@
         </div>
     </header>
 
-    <main id="main-content" class="pt-20 sm:pt-24 px-4 sm:px-6 max-w-container-max mx-auto space-y-10 sm:space-y-16" 
+    <main id="main-content" class="pt-32 sm:pt-40 px-4 sm:px-6 max-w-container-max mx-auto space-y-10 sm:space-y-16" 
           hx-get="/dashboard" hx-trigger="load">
         <!-- Content will be loaded here via HTMX -->
         <!-- Skeleton Content: Shown during initial load -->
@@ -143,7 +143,6 @@
                 </div>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Scan</span>
             </button>
-            <!-- Trade -->
             <!-- Errors -->
             <button @click="activeTab = 'errors'" hx-get="/errors" hx-target="#main-content"
                     class="flex flex-col items-center justify-center transition-all duration-200"

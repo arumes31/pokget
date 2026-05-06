@@ -13,6 +13,9 @@
         lang: 'eng',
         csrfToken: '{{.CSRFToken}}',
         init() {
+            this.lang = localStorage.getItem('pokget_scan_lang') || 'eng';
+            this.$watch('lang', val => localStorage.setItem('pokget_scan_lang', val));
+            
             navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
                 .then(stream => { this.$refs.video.srcObject = stream; })
                 .catch(err => console.error('Camera access denied:', err));
@@ -114,12 +117,12 @@
         </button>
     </div>
 
-    <div x-ref="container" class="relative aspect-[3/4] glass-card overflow-hidden border-purple-500/20 shadow-[0_0_30px_rgba(124,58,237,0.1)]">
+    <div x-ref="container" class="relative aspect-[3/4] rounded-[2rem] overflow-hidden border border-purple-500/20 shadow-[0_0_30px_rgba(124,58,237,0.1)] bg-black">
         <!-- Live Video Feed -->
         <video x-ref="video" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
 
         <!-- Compact Language Selector Overlay -->
-        <div class="absolute top-3 left-3 z-20 flex gap-1 p-0.5 bg-black/40 backdrop-blur-md rounded-lg border border-white/10">
+        <div class="absolute top-3 left-3 z-[60] flex gap-1 p-0.5 bg-black/60 backdrop-blur-md rounded-lg border border-white/10 pointer-events-auto">
             <template x-for="l in ['eng', 'jpn', 'deu', 'fra']">
                 <button @click="lang = l" 
                         :class="lang === l ? 'bg-purple-600 text-white shadow-lg' : 'text-white/40 hover:text-white/60'" 
@@ -159,8 +162,8 @@
                  :style="`left: ${(lines.left + lines.right) / 2}%; top: 5%`" x-text="metrics.lr"></div>
         </div>
 
-        <div class="absolute bottom-2 left-0 right-0 flex justify-center opacity-20">
-            <span class="text-[7px] font-black text-white uppercase tracking-[0.3em]">Align card edges with guides</span>
+        <div class="absolute bottom-4 left-0 right-0 flex justify-center z-20">
+            <span class="text-[9px] font-black text-white/40 uppercase tracking-[0.4em] bg-black/20 px-4 py-1 rounded-full backdrop-blur-md">Align card edges with guides</span>
         </div>
     </div>
 

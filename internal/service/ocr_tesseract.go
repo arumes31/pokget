@@ -78,15 +78,15 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 		return "", "", nil, err
 	}
 
-	// Apply enhanced filters: Grayscale -> Adaptive Contrast -> Sharpen
+	// Apply enhanced filters: Grayscale -> Balanced Contrast -> Sharpness
 	res := effect.Grayscale(src)
-	res = adjust.Contrast(res, 0.7) // Increased contrast
-	res = adjust.Brightness(res, 0.1)
+	res = adjust.Contrast(res, 0.3) // Tone down contrast to avoid blowout
+	res = adjust.Brightness(res, 0.05)
 	res = effect.Sharpen(res)
 
-	// Encode back to bytes
+	// Encode back to bytes with high quality
 	buf := new(bytes.Buffer)
-	err = jpeg.Encode(buf, res, nil)
+	err = jpeg.Encode(buf, res, &jpeg.Options{Quality: 95})
 	if err != nil {
 		return "", "", nil, err
 	}
