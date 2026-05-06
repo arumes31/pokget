@@ -189,7 +189,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	h.Audit.Log(u.ID, "USER_LOGIN", map[string]interface{}{"email": u.Email})
 
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
