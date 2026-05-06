@@ -37,7 +37,8 @@ type Config struct {
 		User     string `env:"DB_USER" env-required:"true"`
 		Password string `env:"DB_PASSWORD" env-required:"true"`
 		Name     string `env:"DB_NAME" env-required:"true"`
-		SSLMode  string `env:"DB_SSLMODE" env-default:"disable"`
+		SSLMode        string `env:"DB_SSLMODE" env-default:"disable"`
+		MigrationsPath string `env:"MIGRATIONS_PATH" env-default:"migrations"`
 	}
 	Redis struct {
 		Host     string `env:"REDIS_HOST" env-default:"localhost"`
