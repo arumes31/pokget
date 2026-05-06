@@ -49,7 +49,7 @@ func createTestImage() image.Image {
 }
 
 func TestFingerprintService(t *testing.T) {
-	db, mock, err := sqlmock.New()
+	db, _, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("Failed to open mock db: %v", err)
 	}
