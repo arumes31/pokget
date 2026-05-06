@@ -1,45 +1,90 @@
-<div class="space-y-lg animate-in">
-    <div class="flex justify-between items-end">
+<div class="space-y-lg animate-in" x-data="{ showAddGrailModal: false }">
+    <div class="flex justify-between items-center px-1">
         <h2 class="font-h2 text-2xl font-bold text-on-surface">Your Wantlist</h2>
-        <button class="glass-card px-md py-sm rounded-lg text-primary text-xs uppercase font-bold hover:opacity-80 transition-opacity"
-                onclick="openAddWantlistModal()">+ Add Grail</button>
+        <button @click="showAddGrailModal = true" 
+                class="glass-card px-4 py-2 rounded-xl text-primary text-[10px] uppercase font-bold hover:bg-primary/5 transition-all border border-primary/20 shadow-lg shadow-primary/10">
+            + Add Grail
+        </button>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
         {{ range .Items }}
         <div class="glass-card rounded-xl p-md flex gap-md relative overflow-hidden group hover:border-primary/40 transition-all">
-            <div class="w-24 aspect-[3/4] rounded-lg overflow-hidden flex-shrink-0 shadow-lg">
+            <div class="w-20 aspect-[3/4] rounded-lg overflow-hidden flex-shrink-0 shadow-lg bg-black/40">
                 <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover">
             </div>
-            <div class="flex flex-col justify-between py-xs">
-                <div>
+            <div class="flex flex-col justify-between py-1 overflow-hidden">
+                <div class="overflow-hidden">
                     <h3 class="font-bold text-on-surface truncate">{{ .Card.Name }}</h3>
-                    <p class="text-[10px] text-on-surface-variant uppercase tracking-widest opacity-60">{{ .Card.Set }}</p>
+                    <p class="text-[10px] text-on-surface-variant uppercase tracking-widest opacity-60 truncate">{{ .Card.Set }}</p>
                 </div>
-                <div class="space-y-1">
-                    <div class="flex items-center gap-xs">
-                        <span class="text-[10px] text-on-surface-variant uppercase font-bold">Target Price:</span>
-                        <span class="text-tertiary font-bold">${{ .TargetPrice }}</span>
+                <div class="space-y-1 mt-2">
+                    <div class="flex justify-between items-center text-[10px] font-bold">
+                        <span class="text-on-surface-variant uppercase opacity-40">Target</span>
+                        <span class="text-primary">${{ .TargetPrice }}</span>
                     </div>
-                    <div class="flex items-center gap-xs">
-                        <span class="text-[10px] text-on-surface-variant uppercase font-bold">Market:</span>
-                        <span class="text-on-surface font-bold">${{ .Card.PriceUSD }}</span>
+                    <div class="flex justify-between items-center text-[10px] font-bold">
+                        <span class="text-on-surface-variant uppercase opacity-40">Market</span>
+                        <span class="text-on-surface">${{ .Card.PriceUSD }}</span>
                     </div>
                 </div>
-                {{ if .Notes }}
-                <p class="text-[10px] text-on-surface-variant italic line-clamp-2">"{{ .Notes }}"</p>
-                {{ end }}
             </div>
             <!-- Progress towards target -->
-            <div class="absolute bottom-0 left-0 h-1 bg-tertiary/20 w-full">
-                <div class="h-full bg-tertiary" style="width: {{ div .Card.PriceUSD .TargetPrice | mul 100 }}%"></div>
+            <div class="absolute bottom-0 left-0 h-1 bg-white/5 w-full">
+                {{ if .TargetPrice }}
+                <div class="h-full bg-primary shadow-[0_0_8px_rgba(221,183,255,0.6)]" 
+                     :style="{ width: Math.min(({{ .Card.PriceUSD }} / {{ .TargetPrice }}) * 100, 100) + '%' }"></div>
+                {{ end }}
             </div>
         </div>
         {{ else }}
-        <div class="col-span-full py-20 flex flex-col items-center justify-center opacity-40">
-            <span class="material-symbols-outlined text-6xl">heart_broken</span>
-            <p class="mt-4 font-label-md uppercase tracking-widest">Your wantlist is empty</p>
+        <div class="col-span-full py-24 flex flex-col items-center justify-center opacity-40">
+            <div class="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
+                <span class="material-symbols-outlined text-4xl">favorite</span>
+            </div>
+            <p class="font-label-md uppercase tracking-widest text-[10px] font-bold">Your wantlist is empty</p>
+            <p class="text-[10px] mt-1 text-white/40">Start adding cards you're hunting for!</p>
         </div>
         {{ end }}
+    </div>
+
+    <!-- Add Grail Modal -->
+    <div x-show="showAddGrailModal" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+         x-cloak>
+        <div class="glass-card w-full max-w-sm p-6 space-y-4 border-primary/30" @click.away="showAddGrailModal = false">
+            <div class="flex justify-between items-center">
+                <h3 class="text-lg font-bold text-primary">Add to Wantlist</h3>
+                <button @click="showAddGrailModal = false" class="text-white/20 hover:text-white transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            
+            <form hx-post="/wantlist/add" hx-target="#main-content" @submit="showAddGrailModal = false" class="space-y-4">
+                <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+                <div class="space-y-1">
+                    <label class="text-[10px] uppercase font-bold text-white/40">Search Card ID</label>
+                    <input type="text" name="card_id" required placeholder="e.g. swsh1-1"
+                           class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-all">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] uppercase font-bold text-white/40">Target Purchase Price ($)</label>
+                    <input type="number" step="0.01" name="target_price" required placeholder="50.00"
+                           class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-all text-primary font-bold">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] uppercase font-bold text-white/40">Notes</label>
+                    <textarea name="notes" placeholder="Condition preference, seller info..." rows="2"
+                              class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-all"></textarea>
+                </div>
+                <button type="submit"
+                        class="w-full bg-primary text-on-primary py-4 rounded-2xl text-xs font-bold shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all active:scale-95">
+                    ADD TO HUNT
+                </button>
+            </form>
+        </div>
     </div>
 </div>
