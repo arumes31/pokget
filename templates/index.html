@@ -60,7 +60,7 @@
                 <div class="hidden sm:flex flex-col items-end gap-1">
                     <span class="text-[9px] font-bold uppercase tracking-widest text-primary/60">{{ .UserRank }}</span>
                     <div class="w-24 h-1 bg-white/5 rounded-full overflow-hidden">
-                        <div class="h-full bg-primary shadow-[0_0_8px_rgba(221,183,255,0.4)]" style="width: {{ .UserXPPercent }}%"></div>
+                        <div class="h-full bg-primary shadow-[0_0_8px_rgba(221,183,255,0.4)]" x-init="$el.style.width = '{{ .UserXPPercent }}%'"></div>
                     </div>
                 </div>
                 {{ end }}
