@@ -1,0 +1,1 @@
+ALTER TABLE binders DROP COLUMN IF EXISTS description;
