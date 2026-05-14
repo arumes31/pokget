@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"log/slog"
 
 	"github.com/gorilla/sessions"
 	"golang.org/x/crypto/bcrypt"
@@ -100,9 +101,11 @@ func getLimiter(ip string) *rate.Limiter {
 
 func RateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Use r.RemoteAddr which is potentially updated by ProxyMiddleware
 		ip := r.RemoteAddr
 		limiter := getLimiter(ip)
 		if !limiter.Allow() {
+			slog.Warn("auth: rate limit exceeded", "ip", ip)
 			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
 			return
 		}

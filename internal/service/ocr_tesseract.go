@@ -33,6 +33,8 @@ import (
 	"image/jpeg"
 	_ "image/png"  // Register PNG format for image.Decode
 	"log/slog"
+	"pokget/internal/db"
+	"pokget/internal/models"
 	"strings"
 	"sync"
 )
@@ -111,9 +113,8 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 	}
 	slog.Info("OCR: Tesseract complete", "text_len", len(text))
 
-	// 3. Perfect Detection Logic: Multi-Stage Matching
+	// 3. Perfect Detection Logic: Database-Driven Fuzzy Match
 	detectedCard := "Unknown Card"
-	bestScore := 0.7 // Threshold for fuzzy match
 
 	// Special handling for Japanese/Chinese (CJK): remove spaces for better matching
 	normalizedText := text
@@ -122,39 +123,21 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 		normalizedText = strings.ReplaceAll(normalizedText, "\n", "")
 	}
 
-	// Optimization: Lowercase text once
-	lowerText := strings.ToLower(normalizedText)
-
-	for _, card := range mockCards {
-		cardNameLower := strings.ToLower(card.Name)
+	// SQL-based Trigram matching (High performance)
+	if db.DB != nil {
+		var name string
+		err := db.DB.QueryRow(`
+			SELECT name FROM cards 
+			WHERE name % $1 
+			ORDER BY similarity(name, $1) DESC 
+			LIMIT 1`, normalizedText).Scan(&name)
 		
-		// Stage 1: Fast exact substring check
-		if strings.Contains(lowerText, cardNameLower) {
-			detectedCard = card.Name
-			break
-		}
-
-		// Stage 2: Length-based pre-filter for Levenshtein (must be within 40% length)
-		lenDiff := len(normalizedText) - len(card.Name)
-		if lenDiff < 0 { lenDiff = -lenDiff }
-		if lenDiff > len(card.Name)/2 && len(card.Name) > 5 {
-			continue
-		}
-
-		// Stage 3: Levenshtein Fuzzy Match
-		dist := levenshtein(normalizedText, card.Name)
-		maxLen := len(normalizedText)
-		if len(card.Name) > maxLen { maxLen = len(card.Name) }
-		if maxLen == 0 { continue }
-		
-		score := 1.0 - float64(dist)/float64(maxLen)
-		if score > bestScore {
-			bestScore = score
-			detectedCard = card.Name
+		if err == nil {
+			detectedCard = name
 		}
 	}
 
-	// Stage 3: LLM Refinement if still unsure
+	// Stage 4: LLM Refinement if still unsure
 	if detectedCard == "Unknown Card" {
 		llm := NewLLMService()
 		match, err := llm.FuzzyMatchCard(normalizedText, mockCards)

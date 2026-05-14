@@ -27,45 +27,16 @@ import (
 	"image"
 	"image/jpeg"
 	"log/slog"
+	"pokget/internal/db"
 	"pokget/internal/models"
-	"strings"
 
 	"github.com/anthonynsimon/bild/adjust"
 	"github.com/anthonynsimon/bild/effect"
 )
 
-func levenshtein(s1, s2 string) int {
-	s1 = strings.ToLower(s1)
-	s2 = strings.ToLower(s2)
-	n, m := len(s1), len(s2)
-	if n == 0 { return m }
-	if m == 0 { return n }
-	d := make([][]int, n+1)
-	for i := range d {
-		d[i] = make([]int, m+1)
-		d[i][0] = i
-	}
-	for j := 0; j <= m; j++ {
-		d[0][j] = j
-	}
-	for i := 1; i <= n; i++ {
-		for j := 1; j <= m; j++ {
-			cost := 1
-			if s1[i-1] == s2[j-1] {
-				cost = 0
-			}
-			d[i][j] = minInt(d[i-1][j]+1, minInt(d[i][j-1]+1, d[i-1][j-1]+cost))
-		}
-	}
-	return d[n][m]
-}
 
-func minInt(a, b int) int {
-	if a < b { return a }
-	return b
-}
 
-func ProcessCardScan(imgBytes []byte, mockCards []models.Card, _ string) (string, string, []byte, error) {
+func ProcessCardScan(imgBytes []byte, _ []models.Card, lang string) (string, string, []byte, error) {
 	slog.Warn("OCR: Tesseract is not available on this platform. Preprocessing ONLY.")
 
 	// Run Preprocessing even in stub to test Vision pipeline
@@ -85,25 +56,20 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, _ string) (string
 	// Mock detected text for testing matching logic
 	text := "OCR Not Available (Stub)"
 	detectedCard := "Unknown Card"
-	bestScore := 0.7
 
-	// Special handling for Japanese/Chinese (CJK): remove spaces for better matching
-	normalizedText := text
-	// Note: lang is _ in stub signature, but let's assume jpn for test if we want
-	// In a real test, we might want to pass the lang to the stub as well.
-
-	for _, card := range mockCards {
-		dist := levenshtein(normalizedText, card.Name)
-		maxLen := len(normalizedText)
-		if len(card.Name) > maxLen { maxLen = len(card.Name) }
-		if maxLen == 0 { continue }
+	// SQL-based Trigram matching (High performance)
+	if db.DB != nil {
+		var name string
+		err := db.DB.QueryRow(`
+			SELECT name FROM cards 
+			WHERE name % $1 
+			ORDER BY similarity(name, $1) DESC 
+			LIMIT 1`, text).Scan(&name)
 		
-		score := 1.0 - float64(dist)/float64(maxLen)
-		if score > bestScore {
-			bestScore = score
-			detectedCard = card.Name
+		if err == nil {
+			detectedCard = name
 		}
 	}
 
-	return normalizedText, detectedCard, buf.Bytes(), nil
+	return text, detectedCard, buf.Bytes(), nil
 }
