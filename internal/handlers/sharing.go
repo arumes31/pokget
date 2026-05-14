@@ -21,16 +21,20 @@
 package handlers
 
 import (
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"pokget/internal/auth"
 	"pokget/internal/models"
 	"strings"
+
+	"github.com/gorilla/mux"
 )
 
 func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: PublicVault", "method", r.Method)
-	slug := strings.TrimPrefix(r.URL.Path, "/vault/")
+	vars := mux.Vars(r)
+	slug := vars["slug"]
 
 	var userID string
 	var email string
@@ -44,8 +48,13 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 		slug).Scan(&userID, &email, &rank, &xp)
 	
 	if err != nil {
-		slog.Warn("PublicVault: Vault not found", "slug", slug, "error", err)
-		http.Error(w, "Vault not found", http.StatusNotFound)
+		if err == sql.ErrNoRows {
+			slog.Warn("PublicVault: Vault not found", "slug", slug)
+			http.Error(w, "Vault not found", http.StatusNotFound)
+		} else {
+			slog.Error("PublicVault: Database error", "slug", slug, "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 

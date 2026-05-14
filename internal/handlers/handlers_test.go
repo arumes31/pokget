@@ -57,6 +57,8 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 		{{define "error_database.html"}}error_db{{end}}
 		{{define "wantlist.html"}}wantlist{{end}}
 		{{define "public_vault.html"}}public_vault{{end}}
+		{{define "confirm_email.html"}}confirm_email{{end}}
+		{{define "confirm_success"}}confirm_success{{end}}
 	`))
 
 	dbMock, mock, err := sqlmock.New()
@@ -174,10 +176,10 @@ func TestHandlers(t *testing.T) {
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/vault/notfound", nil)
-		req = mux.SetURLVars(req, map[string]string{"user_id": "notfound"})
+		req = mux.SetURLVars(req, map[string]string{"slug": "notfound"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT vault_public").WithArgs("notfound").WillReturnError(sql.ErrNoRows)
+		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("notfound").WillReturnError(sql.ErrNoRows)
 
 		h.PublicVault(rr, req)
 
@@ -346,13 +348,14 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("GET", "/confirm?token=invalid", nil)
+		req := httptest.NewRequest("POST", "/confirm", strings.NewReader("token=invalid"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
 		mock.ExpectExec("UPDATE users").WithArgs("invalid").
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		h.ConfirmEmail(rr, req)
+		h.ProcessConfirmEmail(rr, req)
 
 		if rr.Code != http.StatusBadRequest {
 			t.Errorf("Expected status 400, got %d", rr.Code)
@@ -363,12 +366,14 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("GET", "/confirm?token=token", nil)
+		req := httptest.NewRequest("POST", "/confirm", strings.NewReader("token=token"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE users").WillReturnError(sql.ErrConnDone)
+		mock.ExpectExec("UPDATE users").WithArgs("token").
+			WillReturnError(sql.ErrConnDone)
 
-		h.ConfirmEmail(rr, req)
+		h.ProcessConfirmEmail(rr, req)
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
@@ -568,13 +573,14 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("GET", "/confirm?token=valid-token", nil)
+		req := httptest.NewRequest("POST", "/confirm", strings.NewReader("token=valid-token"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
 		mock.ExpectExec("UPDATE users").WithArgs("valid-token").
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
-		h.ConfirmEmail(rr, req)
+		h.ProcessConfirmEmail(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", rr.Code)
@@ -626,23 +632,19 @@ func TestHandlers(t *testing.T) {
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/vault/test-user", nil)
-		req = mux.SetURLVars(req, map[string]string{"user_id": "test-user"})
+		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		// Check vault visibility first
+		// 1. Fetch user info
 		rowsUser := sqlmock.NewRows([]string{"id", "email", "rank_title", "xp"}).
 			AddRow("test-user-id", "test@example.com", "Hobbyist", 1600)
 		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
 			WillReturnRows(rowsUser)
 
-		// Fetch public portfolio items
+		// 2. Fetch public portfolio items
 		mock.ExpectQuery("SELECT p.id").WithArgs("test-user-id").
 			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "fmt", "gr", "comp", "notes", "name", "set", "price", "url", "game"}).
 				AddRow("1", "NM", "Raw", 0, "", "note", "Charizard", "Base", 100.0, "url", "Pokemon"))
-		
-		// Fetch user info
-		mock.ExpectQuery("SELECT rank_title, xp FROM users").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"rank_title", "xp"}).AddRow("Hobbyist", 1600))
 
 		h.PublicVault(rr, req)
 
@@ -749,7 +751,7 @@ func TestHandlers(t *testing.T) {
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/vault/test-user", nil)
-		req = mux.SetURLVars(req, map[string]string{"user_id": "test-user"})
+		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
 		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
@@ -757,8 +759,8 @@ func TestHandlers(t *testing.T) {
 
 		h.PublicVault(rr, req)
 
-		if rr.Code != http.StatusForbidden {
-			t.Errorf("Expected status 403, got %d", rr.Code)
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404, got %d", rr.Code)
 		}
 	})
 
@@ -767,7 +769,7 @@ func TestHandlers(t *testing.T) {
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/vault/test-user", nil)
-		req = mux.SetURLVars(req, map[string]string{"user_id": "test-user"})
+		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
 		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
@@ -811,11 +813,17 @@ func TestHandlers(t *testing.T) {
 	})
 
 	t.Run("Binders", func(t *testing.T) {
-		h, _, cleanup := setupTestHandler(t)
+		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/binders", nil)
+		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
+
+		mock.ExpectQuery("SELECT b.id").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "desc", "created", "count"}).
+				AddRow("b1", "Test Binder", "Desc", "2026-01-01", 5))
 
 		h.Binders(rr, req)
 
@@ -829,6 +837,8 @@ func TestHandlers(t *testing.T) {
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/trade", nil)
+		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
 		h.Trade(rr, req)
@@ -894,16 +904,16 @@ func TestHandlers(t *testing.T) {
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/vault/test-user", nil)
-		req = mux.SetURLVars(req, map[string]string{"user_id": "test-user"})
+		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT vault_public").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"vault_public"}).AddRow(false))
+		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
+			WillReturnError(sql.ErrNoRows)
 
 		h.PublicVault(rr, req)
 
-		if rr.Code != http.StatusForbidden {
-			t.Errorf("Expected status 403, got %d", rr.Code)
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404, got %d", rr.Code)
 		}
 	})
 

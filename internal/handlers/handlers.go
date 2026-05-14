@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 	"encoding/base64"
 	"encoding/json"
@@ -528,6 +529,40 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Trade", "method", r.Method, "url", r.URL.String())
 	h.render(w, r, "trade.html", nil)
+}
+
+func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
+	slog.Info("Action: RefreshCache", "user", r.Context().Value(auth.UserContextKey{}))
+	
+	count, err := h.reloadCards()
+	if err != nil {
+		http.Error(w, "Failed to refresh cache: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(fmt.Sprintf("Successfully reloaded %d cards", count)))
+}
+
+func (h *Handler) reloadCards() (int, error) {
+	rows, err := h.DB.Query("SELECT id, name, set_name, price_usd, price_eur, image_url, variant, change_24h, phash FROM cards")
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var allCards []models.Card
+	for rows.Next() {
+		var c models.Card
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash); err != nil {
+			continue
+		}
+		allCards = append(allCards, c)
+	}
+
+	h.MockCards = allCards
+	slog.Info("Database: Reloaded cards into cache", "count", len(allCards))
+	return len(allCards), nil
 }
 
 func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {

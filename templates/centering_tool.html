@@ -1,24 +1,60 @@
-<div class="flex flex-col h-full space-y-4" 
-     x-data="{ 
+{{define "centering_tool.html"}}
+<div x-data="{ 
+        scanning: false,
         lines: { left: 10, right: 90, top: 10, bottom: 90 },
         metrics: { lr: '50/50', tb: '50/50' },
         dragging: null,
-        scanning: false,
         result: '',
         detectedCard: '',
         detectedID: '',
-        detectedPrice: 0,
+        detectedPrice: '',
         detectedImage: '',
         adding: false,
         lang: 'eng',
+        cameras: [],
+        currentCamera: null,
         csrfToken: '{{.CSRFToken}}',
         init() {
             this.lang = localStorage.getItem('pokget_scan_lang') || 'eng';
             this.$watch('lang', val => localStorage.setItem('pokget_scan_lang', val));
+            this.setupScanner();
+        },
+        async setupScanner() {
+            await this.loadCameras();
+            await this.startCamera();
+        },
+        async loadCameras() {
+            try {
+                // Request permissions first to get labels
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                stream.getTracks().forEach(track => track.stop()); // Stop immediately
+                
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                this.cameras = devices.filter(device => device.kind === 'videoinput');
+                if (this.cameras.length > 0) {
+                    // Prefer back camera if found
+                    const backCam = this.cameras.find(cam => cam.label.toLowerCase().includes('back') || cam.label.toLowerCase().includes('environment'));
+                    this.currentCamera = backCam ? backCam.deviceId : this.cameras[0].deviceId;
+                }
+            } catch (err) {
+                console.error('Error listing cameras:', err);
+            }
+        },
+        async startCamera() {
+            const constraints = {
+                video: this.currentCamera ? { deviceId: { exact: this.currentCamera } } : { facingMode: 'environment' }
+            };
             
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-                .then(stream => { this.$refs.video.srcObject = stream; })
+            if (this.$refs.video.srcObject) {
+                this.$refs.video.srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(stream => this.$refs.video.srcObject = stream)
                 .catch(err => console.error('Camera access denied:', err));
+        },
+        async switchCamera() {
+            await this.startCamera();
         },
         async capture() {
             if (this.scanning) return;
@@ -125,6 +161,7 @@
      @touchmove="handleMove($event)"
      @mouseup="dragging = null"
      @touchend="dragging = null"
+     class="space-y-6"
 >
     <div class="flex items-center justify-between px-1">
         <h2 class="text-lg font-bold">Card Scanner</h2>
@@ -145,6 +182,15 @@
                         class="px-2 py-1 text-[8px] font-black rounded-md transition-all uppercase tracking-tighter" 
                         x-text="l"></button>
             </template>
+        </div>
+
+        <!-- Camera Selector Overlay -->
+        <div x-show="cameras.length > 1" class="absolute top-3 right-3 z-[60] bg-black/60 backdrop-blur-md rounded-lg border border-white/10 pointer-events-auto">
+            <select x-model="currentCamera" @change="switchCamera()" class="bg-transparent text-white/80 text-[8px] font-bold px-2 py-1 outline-none appearance-none">
+                <template x-for="cam in cameras">
+                    <option :value="cam.deviceId" x-text="cam.label || 'Camera ' + (cameras.indexOf(cam) + 1)"></option>
+                </template>
+            </select>
         </div>
 
         <!-- Camera Viewfinder Mockup -->
@@ -227,4 +273,7 @@
             </div>
         </div>
     </div>
+    <!-- Background CSRF Fallback -->
+    <input type="hidden" name="gorilla.csrf.Token" :value="csrfToken">
 </div>
+{{end}}
