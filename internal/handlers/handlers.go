@@ -540,12 +540,15 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, _, err := r.FormFile("card_image")
+	file, header, err := r.FormFile("card_image")
 	if err != nil {
-		http.Error(w, "Failed to get image from form", http.StatusBadRequest)
+		slog.Warn("APIScan: Failed to get image from form", "error", err)
+		http.Error(w, "Failed to get image from form: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
+
+	slog.Info("APIScan: Received image", "filename", header.Filename, "size", header.Size)
 
 	lang := r.FormValue("lang")
 	if lang == "" {
@@ -554,7 +557,14 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 
 	imgBytes, err := io.ReadAll(file)
 	if err != nil {
+		slog.Error("APIScan: Failed to read image", "error", err)
 		http.Error(w, "Failed to read image", http.StatusInternalServerError)
+		return
+	}
+
+	if len(imgBytes) == 0 {
+		slog.Warn("APIScan: Received empty image bytes")
+		http.Error(w, "Empty image received", http.StatusBadRequest)
 		return
 	}
 

@@ -21,48 +21,64 @@
                 .catch(err => console.error('Camera access denied:', err));
         },
         async capture() {
-            this.scanning = true;
-            const canvas = document.createElement('canvas');
-            canvas.width = this.$refs.video.videoWidth;
-            canvas.height = this.$refs.video.videoHeight;
-            canvas.getContext('2d').drawImage(this.$refs.video, 0, 0);
+            if (this.scanning) return;
             
-            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
-            const formData = new FormData();
-            formData.append('card_image', blob);
-            formData.append('lang', this.lang);
-
-            const res = await fetch('/api/scan', { 
-                method: 'POST', 
-                headers: { 'X-CSRF-Token': this.csrfToken },
-                body: formData 
-            });
-            
-            if (!res.ok) {
-                const errText = await res.text();
-                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Security Breach or Server Error: ' + errText, type: 'error' } }));
-                this.scanning = false;
+            // Check if video is ready
+            if (!this.$refs.video.videoWidth || !this.$refs.video.videoHeight) {
+                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Camera not ready. Please wait.', type: 'error' } }));
                 return;
             }
 
-            const data = await res.json();
-            this.result = data.text;
-            this.detectedCard = data.detected;
-            this.detectedID = data.id;
-            this.detectedPrice = data.price;
-            this.detectedImage = data.image_url;
-            
-            // Auto-Snap logic
-            if (data.bounds) {
-                this.lines = data.bounds;
-                this.updateMetrics();
-                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Auto-Snap Success!', type: 'success' } }));
-            } else if (this.detectedCard !== 'Unknown Card') {
-                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Card Detected!', type: 'success' } }));
-            } else {
-                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'No match found. Try again.', type: 'error' } }));
+            this.scanning = true;
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = this.$refs.video.videoWidth;
+                canvas.height = this.$refs.video.videoHeight;
+                canvas.getContext('2d').drawImage(this.$refs.video, 0, 0);
+                
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+                if (!blob) {
+                    throw new Error('Failed to capture frame');
+                }
+
+                const formData = new FormData();
+                formData.append('card_image', blob, 'capture.jpg');
+                formData.append('lang', this.lang);
+
+                const res = await fetch('/api/scan', { 
+                    method: 'POST', 
+                    headers: { 'X-CSRF-Token': this.csrfToken },
+                    body: formData 
+                });
+                
+                if (!res.ok) {
+                    const errText = await res.text();
+                    throw new Error(errText || 'Server error');
+                }
+
+                const data = await res.json();
+                this.result = data.text;
+                this.detectedCard = data.detected;
+                this.detectedID = data.id;
+                this.detectedPrice = data.price;
+                this.detectedImage = data.image_url;
+                
+                // Auto-Snap logic
+                if (data.bounds) {
+                    this.lines = data.bounds;
+                    this.updateMetrics();
+                    window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Auto-Snap Success!', type: 'success' } }));
+                } else if (this.detectedCard && this.detectedCard !== 'Unknown Card') {
+                    window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Card Detected!', type: 'success' } }));
+                } else {
+                    window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'No match found. Try again.', type: 'error' } }));
+                }
+            } catch (err) {
+                console.error('Capture failed:', err);
+                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Scanner Error: ' + err.message, type: 'error' } }));
+            } finally {
+                this.scanning = false;
             }
-            this.scanning = false;
         },
         async addToCollection() {
             if (!this.detectedID) return;
@@ -119,7 +135,7 @@
 
     <div x-ref="container" class="relative aspect-[3/4] rounded-[2rem] overflow-hidden border border-purple-500/20 shadow-[0_0_30px_rgba(124,58,237,0.1)] bg-black">
         <!-- Live Video Feed -->
-        <video x-ref="video" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
+        <video x-ref="video" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
 
         <!-- Compact Language Selector Overlay -->
         <div class="absolute top-3 left-3 z-[60] flex gap-1 p-0.5 bg-black/60 backdrop-blur-md rounded-lg border border-white/10 pointer-events-auto">
