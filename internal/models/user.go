@@ -36,5 +36,6 @@ type User struct {
 	MFASecret            string    `json:"-"`
 	MFAEnabled           bool      `json:"mfa_enabled"`
 	ConditionMultipliers string    `json:"condition_multipliers"` // Stored as JSON string
+	IsAdmin              bool      `json:"is_admin"`
 	CreatedAt            time.Time `json:"created_at"`
 }

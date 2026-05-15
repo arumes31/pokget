@@ -171,7 +171,6 @@ func main() {
 	protected := r.PathPrefix("/").Subrouter()
 	protected.Use(auth.Middleware)
 	protected.HandleFunc("/dashboard", h.Dashboard).Methods("GET")
-	protected.HandleFunc("/api/admin/refresh-cache", h.RefreshCache).Methods("POST")
 	protected.HandleFunc("/centering", h.Centering).Methods("GET")
 	protected.HandleFunc("/binders", h.Binders).Methods("GET")
 	protected.HandleFunc("/binders/create", h.CreateBinder).Methods("POST")
@@ -185,6 +184,12 @@ func main() {
 	protected.HandleFunc("/errors/submit", h.SubmitError).Methods("POST")
 	protected.HandleFunc("/api/gamification/heartbeat", h.Heartbeat).Methods("POST")
 	protected.HandleFunc("/api/portfolio/add", h.AddCardToPortfolio).Methods("POST")
+
+	// Admin Routes (Require Authentication + Admin Role)
+	admin := r.PathPrefix("/api/admin").Subrouter()
+	admin.Use(auth.Middleware)
+	admin.Use(auth.AdminMiddleware(db.DB))
+	admin.HandleFunc("/refresh-cache", h.RefreshCache).Methods("POST")
 
 	slog.Info("Server starting", "port", cfg.App.Port)
 	srv := &http.Server{

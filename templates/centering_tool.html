@@ -89,7 +89,8 @@
                 
                 if (!res.ok) {
                     const errText = await res.text();
-                    throw new Error(errText || 'Server error');
+                    console.error('Scanner API error:', res.status, errText);
+                    throw new Error('Server error');
                 }
 
                 const data = await res.json();
@@ -111,7 +112,7 @@
                 }
             } catch (err) {
                 console.error('Capture failed:', err);
-                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Scanner Error: ' + err.message, type: 'error' } }));
+                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Scanner Error: please try again', type: 'error' } }));
             } finally {
                 this.scanning = false;
             }

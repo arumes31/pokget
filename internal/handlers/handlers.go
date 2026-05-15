@@ -24,10 +24,9 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"fmt"
-	"time"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"image"
 	_ "image/gif"  // Register GIF decoder
@@ -37,6 +36,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"pokget/internal/auth"
 	"pokget/internal/models"
@@ -57,6 +58,7 @@ type Binder struct {
 type Handler struct {
 	Templates    *template.Template
 	MockCards    []models.Card
+	CardsMu      sync.RWMutex   // Protects concurrent access to MockCards
 	Fingerprint  *service.FingerprintService
 	Mailer       service.Mailer
 	Audit        *service.AuditService
@@ -560,13 +562,22 @@ func (h *Handler) reloadCards() (int, error) {
 		allCards = append(allCards, c)
 	}
 
+	h.CardsMu.Lock()
 	h.MockCards = allCards
+	h.CardsMu.Unlock()
 	slog.Info("Database: Reloaded cards into cache", "count", len(allCards))
 	return len(allCards), nil
 }
 
 func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: APIScan", "method", r.Method, "url", r.URL.String())
+
+	// Snapshot MockCards under read lock to avoid races with reloadCards
+	h.CardsMu.RLock()
+	cards := make([]models.Card, len(h.MockCards))
+	copy(cards, h.MockCards)
+	h.CardsMu.RUnlock()
+
 	// Limit request body to 10MB to prevent memory exhaustion
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	err := r.ParseMultipartForm(10 << 20) // #nosec G120 - bounded by MaxBytesReader
@@ -626,7 +637,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			hash, err := h.Fingerprint.CalculateHash(img)
 			if err == nil {
-				match, distance, _ := h.Fingerprint.MatchFingerprint(hash, h.MockCards)
+				match, distance, _ := h.Fingerprint.MatchFingerprint(hash, cards)
 				if match != nil {
 					slog.Info("Fingerprint: Found match", "name", match.Name, "distance", distance)
 					detectedCard = match.Name
@@ -643,7 +654,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	var processedImg []byte
 	if detectedCard == "" {
 		var ocrMatch string
-		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, h.MockCards, lang)
+		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, cards, lang)
 		if err != nil {
 			slog.Error("OCR: Failed to process scan", "error", err)
 			http.Error(w, "Detection failed", http.StatusInternalServerError)
@@ -651,7 +662,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		}
 		if ocrMatch != "Unknown Card" {
 			detectedCard = ocrMatch
-			for _, c := range h.MockCards {
+			for _, c := range cards {
 				if c.Name == ocrMatch {
 					detectedID = c.ID
 					price, _ := c.PriceUSD.Float64()
