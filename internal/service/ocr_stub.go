@@ -36,7 +36,7 @@ import (
 
 
 
-func ProcessCardScan(imgBytes []byte, _ []models.Card, lang string) (string, string, []byte, error) {
+func ProcessCardScan(imgBytes []byte, _ []models.Card, _ string) (string, string, []byte, error) {
 	slog.Warn("OCR: Tesseract is not available on this platform. Preprocessing ONLY.")
 
 	// Run Preprocessing even in stub to test Vision pipeline
