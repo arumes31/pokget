@@ -123,15 +123,15 @@ func (s *LLMService) AutoSetup() {
 }
 
 func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (string, error) {
-	cardNames := []string{}
+	cardDetails := []string{}
 	for _, c := range knownCards {
-		cardNames = append(cardNames, c.Name)
+		cardDetails = append(cardDetails, fmt.Sprintf("%s (ID/Number: %s)", c.Name, c.ID))
 	}
 
 	prompt := fmt.Sprintf(`The following text was extracted from a trading card using OCR and might have typos: "%s".
-Which of these card names is the most likely match?
+Which of these card names is the most likely match based on the text? Look carefully for card names or small card numbers (like 50/50, 19/122, or IDs like swsh45-19) that match the known cards.
 Known cards: %s.
-Respond ONLY with the card name. If no match is found, respond with "Unknown Card".`, ocrText, strings.Join(cardNames, ", "))
+Respond ONLY with the exact card name from the known cards list (do not include the ID in your response). If no match is found, respond with "Unknown Card".`, ocrText, strings.Join(cardDetails, ", "))
 
 	payload := map[string]interface{}{
 		"model":  s.Model,

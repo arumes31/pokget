@@ -106,10 +106,11 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	if db.DB != nil {
 		var name string
 		slog.Info("OCR: Attempting SQL Trigram match", "text", normalizedText)
+		// word_similarity finds the similarity of 'name' to the most similar substring of '$1' (the long OCR text)
 		err := db.DB.QueryRow(`
 			SELECT name FROM cards 
-			WHERE name % $1 
-			ORDER BY similarity(name, $1) DESC 
+			WHERE word_similarity(name, $1) > 0.4
+			ORDER BY word_similarity(name, $1) DESC 
 			LIMIT 1`, normalizedText).Scan(&name)
 		
 		if err == nil {
