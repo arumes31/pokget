@@ -86,6 +86,8 @@ Respond ONLY with the card name. If no match is found, respond with "Unknown Car
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Error("LLM API error", "status", resp.StatusCode, "body", string(body))
 		return "", fmt.Errorf("LLM API returned non-OK status: %d", resp.StatusCode)
 	}
 

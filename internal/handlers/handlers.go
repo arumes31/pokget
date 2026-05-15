@@ -597,9 +597,6 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	slog.Info("APIScan: Received image", "filename", header.Filename, "size", header.Size)
 
 	lang := r.FormValue("lang")
-	if lang == "" {
-		lang = "eng"
-	}
 
 	imgBytes, err := io.ReadAll(file)
 	if err != nil {
