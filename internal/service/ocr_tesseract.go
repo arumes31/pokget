@@ -27,6 +27,7 @@ import (
 	"pokget/internal/models"
 	"github.com/anthonynsimon/bild/adjust"
 	"github.com/anthonynsimon/bild/effect"
+	"github.com/anthonynsimon/bild/transform"
 	"github.com/otiai10/gosseract/v2"
 	"image"
 	_ "image/gif"  // Register GIF format for image.Decode
@@ -55,8 +56,10 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 		return "", "", nil, err
 	}
 
-	// Apply enhanced filters: Grayscale -> Balanced Contrast -> Sharpness
-	res := effect.Grayscale(src)
+	// Apply enhanced filters: Resize (2x) -> Grayscale -> Balanced Contrast -> Sharpness
+	bounds := src.Bounds()
+	res := transform.Resize(src, bounds.Dx()*2, bounds.Dy()*2, transform.Lanczos)
+	res = effect.Grayscale(res)
 	res = adjust.Contrast(res, 0.3) // Tone down contrast to avoid blowout
 	res = adjust.Brightness(res, 0.05)
 	res = effect.Sharpen(res)

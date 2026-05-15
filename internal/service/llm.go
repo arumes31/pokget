@@ -171,6 +171,14 @@ Respond ONLY with the card name. If no match is found, respond with "Unknown Car
 	cleanedMatch := strings.TrimSpace(result.Response)
 	slog.Info("LLM Fallback Result", "raw", result.Response, "cleaned", cleanedMatch)
 
+	// Fallback for conversational models: check if the response contains any known card name
+	for _, c := range knownCards {
+		if strings.Contains(cleanedMatch, c.Name) {
+			slog.Info("LLM: Extracted card name from conversational response", "name", c.Name)
+			return c.Name, nil
+		}
+	}
+
 	return cleanedMatch, nil
 }
 func (s *LLMService) GenerateBinderName(cards []models.Card) (string, error) {
