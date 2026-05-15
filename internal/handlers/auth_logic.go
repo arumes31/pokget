@@ -186,8 +186,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	if remember {
 		session.Options.MaxAge = 86400 * 30 // 30 days
 	} else {
-		session.Options.MaxAge = 3600 // 1 hour (Security first)
+		session.Options.MaxAge = 0 // Session cookie (Expires when browser closes)
 	}
+	session.Options.SameSite = http.SameSiteLaxMode
+	session.Options.HttpOnly = true
 
 	if err := session.Save(r, w); err != nil {
 		slog.Error("Failed to save session", "error", err)
