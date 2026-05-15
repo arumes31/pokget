@@ -58,6 +58,10 @@
         async switchCamera() {
             await this.startCamera();
         },
+        // Helper to yield to the browser so Alpine can repaint between status changes
+        tick() {
+            return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        },
         async capture() {
             if (this.scanning) return;
             
@@ -70,6 +74,8 @@
             this.scanning = true;
             this.scanStep = 1;
             this.scanStatus = 'Capturing frame...';
+            await this.tick();
+
             try {
                 const canvas = document.createElement('canvas');
                 canvas.width = this.$refs.video.videoWidth;
@@ -83,15 +89,17 @@
 
                 this.scanStep = 2;
                 this.scanStatus = 'Uploading image...';
+                await this.tick();
+                await new Promise(r => setTimeout(r, 300));
+
                 const formData = new FormData();
                 formData.append('card_image', blob, 'capture.jpg');
                 formData.append('lang', this.lang);
 
-                // Small delay so user sees the upload status
-                await new Promise(r => setTimeout(r, 150));
-
                 this.scanStep = 3;
                 this.scanStatus = 'Processing image...';
+                await this.tick();
+
                 const res = await fetch('/api/scan', { 
                     method: 'POST', 
                     headers: { 'X-CSRF-Token': this.csrfToken },
@@ -106,11 +114,15 @@
 
                 this.scanStep = 4;
                 this.scanStatus = 'Matching card...';
+                await this.tick();
+
                 const data = await res.json();
+                await new Promise(r => setTimeout(r, 400));
 
                 this.scanStep = 5;
                 this.scanStatus = 'Indexing results...';
-                await new Promise(r => setTimeout(r, 200));
+                await this.tick();
+                await new Promise(r => setTimeout(r, 400));
 
                 this.result = data.text;
                 this.detectedCard = data.detected;
@@ -119,6 +131,7 @@
                 this.detectedImage = data.image_url;
                 
                 this.scanStatus = 'Complete!';
+                await this.tick();
 
                 // Auto-Snap logic
                 if (data.bounds) {
@@ -136,7 +149,7 @@
                 window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Scanner Error: please try again', type: 'error' } }));
             } finally {
                 this.scanning = false;
-                setTimeout(() => { this.scanStatus = ''; this.scanStep = 0; }, 1500);
+                setTimeout(() => { this.scanStatus = ''; this.scanStep = 0; }, 2000);
             }
         },
         async addToCollection() {
