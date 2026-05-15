@@ -45,7 +45,7 @@ var ocrMu sync.Mutex
 
 func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (string, string, []byte, error) {
 	if lang == "" {
-		lang = "eng"
+		lang = "eng+jpn+deu+fra"
 	}
 	slog.Info("OCR: Starting scan...", "lang", lang)
 
@@ -86,7 +86,7 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 		slog.Error("OCR: Tesseract execution failed", "error", err)
 		return "", "", buf.Bytes(), err
 	}
-	slog.Info("OCR: Tesseract complete", "text_len", len(text))
+	slog.Info("OCR: Tesseract complete", "text_len", len(text), "raw_text", text)
 
 	// 3. Perfect Detection Logic: Database-Driven Fuzzy Match
 	detectedCard := "Unknown Card"
@@ -97,10 +97,12 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 		normalizedText = strings.ReplaceAll(text, " ", "")
 		normalizedText = strings.ReplaceAll(normalizedText, "\n", "")
 	}
+	slog.Info("OCR: Normalized text", "normalized_text", normalizedText)
 
 	// SQL-based Trigram matching (High performance)
 	if db.DB != nil {
 		var name string
+		slog.Info("OCR: Attempting SQL Trigram match", "text", normalizedText)
 		err := db.DB.QueryRow(`
 			SELECT name FROM cards 
 			WHERE name % $1 
@@ -108,18 +110,26 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 			LIMIT 1`, normalizedText).Scan(&name)
 		
 		if err == nil {
+			slog.Info("OCR: SQL match found", "name", name)
 			detectedCard = name
+		} else {
+			slog.Info("OCR: SQL match failed or no match", "error", err)
 		}
 	}
 
 	// Stage 4: LLM Refinement if still unsure
 	if detectedCard == "Unknown Card" {
+		slog.Info("OCR: Falling back to LLM refinement")
 		llm := NewLLMService()
 		match, err := llm.FuzzyMatchCard(normalizedText, mockCards)
 		if err == nil && match != "Unknown Card" {
+			slog.Info("OCR: LLM match found", "match", match)
 			detectedCard = match
+		} else {
+			slog.Info("OCR: LLM match failed or returned unknown", "error", err, "match", match)
 		}
 	}
 
+	slog.Info("OCR: Final result", "detected", detectedCard)
 	return normalizedText, detectedCard, buf.Bytes(), nil
 }
