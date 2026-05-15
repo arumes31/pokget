@@ -198,11 +198,15 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	h.Audit.Log(u.ID, "USER_LOGIN", map[string]interface{}{"email": u.Email})
 
 	if r.Header.Get("HX-Request") == "true" {
+		// Replace /auth in browser history so back button doesn't return to login
 		w.Header().Set("HX-Redirect", "/")
+		w.Header().Set("HX-Replace-Url", "/")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	// For non-HTMX requests, replace the history entry with JS
+	w.Header().Set("Content-Type", "text/html")
+	_, _ = w.Write([]byte(`<script>window.location.replace("/")</script>`))
 }
 
 func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
