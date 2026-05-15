@@ -263,7 +263,7 @@ func TestProcessCardScan_Full(t *testing.T) {
 
 	t.Run("Match", func(t *testing.T) {
 		cards := []models.Card{{ID: "1", Name: "Charizard"}}
-		text, card, _, err := ProcessCardScan(buf.Bytes(), cards, "")
+		text, card, _, err := ProcessCardScan(buf.Bytes(), cards, "", nil)
 		if err != nil {
 			t.Errorf("ProcessCardScan failed: %v", err)
 		}

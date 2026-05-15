@@ -99,7 +99,7 @@ func TestProcessCardScan_Stub(t *testing.T) {
 	var buf bytes.Buffer
 	_ = png.Encode(&buf, img)
 
-	text, card, _, err := ProcessCardScan(buf.Bytes(), nil, "")
+	text, card, _, err := ProcessCardScan(buf.Bytes(), nil, "", nil)
 	if err != nil {
 		t.Errorf("ProcessCardScan failed: %v", err)
 	}

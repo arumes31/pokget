@@ -64,6 +64,7 @@ type Handler struct {
 	Audit        *service.AuditService
 	Crypto       *service.CryptoService
 	Game         *service.GamificationService
+	LLM          *service.LLMService
 	DB           *sql.DB
 	BuildVersion string
 }
@@ -658,7 +659,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	if detectedCard == "" {
 		slog.Info("APIScan: Fingerprint missed, falling back to OCR")
 		var ocrMatch string
-		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, cards, lang)
+		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, cards, lang, h.LLM)
 		if err != nil {
 			slog.Error("OCR: Failed to process scan", "error", err)
 			http.Error(w, "Detection failed", http.StatusInternalServerError)

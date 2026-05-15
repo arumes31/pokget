@@ -63,7 +63,7 @@ func main() {
 		// Run OCR Preprocessing (Stubbed matching logic will run)
 		// To simulate "Perfect Detection" in a stubbed environment, 
 		// we verify the vision pipeline is healthy.
-		text, detected, processed, err := service.ProcessCardScan(imgBytes, mockCards, "eng")
+		text, detected, processed, err := service.ProcessCardScan(imgBytes, mockCards, "eng", nil)
 		_ = text // Acknowledge OCR text even if stubbed
 		
 		if err != nil {

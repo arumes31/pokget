@@ -79,7 +79,7 @@ func main() {
 
 		// 2. Run OCR Detection
 		// We pass the specific language code to Tesseract/Matching logic
-		text, detected, processed, err := service.ProcessCardScan(imgBytes, mockDB, tc.Lang)
+		text, detected, processed, err := service.ProcessCardScan(imgBytes, mockDB, tc.Lang, nil)
 		if err != nil {
 			fmt.Printf("   ❌ OCR Error: %v\n", err)
 			continue
