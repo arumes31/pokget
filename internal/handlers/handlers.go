@@ -24,9 +24,9 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"time"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"image"
 	_ "image/gif"  // Register GIF decoder
@@ -36,6 +36,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"pokget/internal/auth"
 	"pokget/internal/models"
@@ -56,6 +58,7 @@ type Binder struct {
 type Handler struct {
 	Templates    *template.Template
 	MockCards    []models.Card
+	CardsMu      sync.RWMutex   // Protects concurrent access to MockCards
 	Fingerprint  *service.FingerprintService
 	Mailer       service.Mailer
 	Audit        *service.AuditService
@@ -530,8 +533,51 @@ func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, "trade.html", nil)
 }
 
+func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
+	slog.Info("Action: RefreshCache", "user", r.Context().Value(auth.UserContextKey{}))
+	
+	count, err := h.reloadCards()
+	if err != nil {
+		http.Error(w, "Failed to refresh cache: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(fmt.Sprintf("Successfully reloaded %d cards", count)))
+}
+
+func (h *Handler) reloadCards() (int, error) {
+	rows, err := h.DB.Query("SELECT id, name, set_name, price_usd, price_eur, image_url, variant, change_24h, phash FROM cards")
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var allCards []models.Card
+	for rows.Next() {
+		var c models.Card
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash); err != nil {
+			continue
+		}
+		allCards = append(allCards, c)
+	}
+
+	h.CardsMu.Lock()
+	h.MockCards = allCards
+	h.CardsMu.Unlock()
+	slog.Info("Database: Reloaded cards into cache", "count", len(allCards))
+	return len(allCards), nil
+}
+
 func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: APIScan", "method", r.Method, "url", r.URL.String())
+
+	// Snapshot MockCards under read lock to avoid races with reloadCards
+	h.CardsMu.RLock()
+	cards := make([]models.Card, len(h.MockCards))
+	copy(cards, h.MockCards)
+	h.CardsMu.RUnlock()
+
 	// Limit request body to 10MB to prevent memory exhaustion
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	err := r.ParseMultipartForm(10 << 20) // #nosec G120 - bounded by MaxBytesReader
@@ -540,12 +586,15 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, _, err := r.FormFile("card_image")
+	file, header, err := r.FormFile("card_image")
 	if err != nil {
-		http.Error(w, "Failed to get image from form", http.StatusBadRequest)
+		slog.Warn("APIScan: Failed to get image from form", "error", err)
+		http.Error(w, "Failed to get image from form: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
+
+	slog.Info("APIScan: Received image", "filename", header.Filename, "size", header.Size)
 
 	lang := r.FormValue("lang")
 	if lang == "" {
@@ -554,7 +603,14 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 
 	imgBytes, err := io.ReadAll(file)
 	if err != nil {
+		slog.Error("APIScan: Failed to read image", "error", err)
 		http.Error(w, "Failed to read image", http.StatusInternalServerError)
+		return
+	}
+
+	if len(imgBytes) == 0 {
+		slog.Warn("APIScan: Received empty image bytes")
+		http.Error(w, "Empty image received", http.StatusBadRequest)
 		return
 	}
 
@@ -581,7 +637,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			hash, err := h.Fingerprint.CalculateHash(img)
 			if err == nil {
-				match, distance, _ := h.Fingerprint.MatchFingerprint(hash, h.MockCards)
+				match, distance, _ := h.Fingerprint.MatchFingerprint(hash, cards)
 				if match != nil {
 					slog.Info("Fingerprint: Found match", "name", match.Name, "distance", distance)
 					detectedCard = match.Name
@@ -598,7 +654,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	var processedImg []byte
 	if detectedCard == "" {
 		var ocrMatch string
-		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, h.MockCards, lang)
+		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, cards, lang)
 		if err != nil {
 			slog.Error("OCR: Failed to process scan", "error", err)
 			http.Error(w, "Detection failed", http.StatusInternalServerError)
@@ -606,7 +662,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		}
 		if ocrMatch != "Unknown Card" {
 			detectedCard = ocrMatch
-			for _, c := range h.MockCards {
+			for _, c := range cards {
 				if c.Name == ocrMatch {
 					detectedID = c.ID
 					price, _ := c.PriceUSD.Float64()

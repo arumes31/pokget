@@ -22,6 +22,9 @@ package auth
 
 import (
 	"context"
+	"database/sql"
+	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"sync"
@@ -100,12 +103,40 @@ func getLimiter(ip string) *rate.Limiter {
 
 func RateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Normalize r.RemoteAddr to IP-only (strip port) for consistent rate limiting
 		ip := r.RemoteAddr
+		if host, _, err := net.SplitHostPort(ip); err == nil {
+			ip = host
+		}
 		limiter := getLimiter(ip)
 		if !limiter.Allow() {
+			slog.Warn("auth: rate limit exceeded", "ip", ip)
 			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// AdminMiddleware restricts access to users with is_admin=true in the database.
+func AdminMiddleware(database *sql.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID, ok := r.Context().Value(UserContextKey{}).(string)
+			if !ok || userID == "" {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+
+			var isAdmin bool
+			err := database.QueryRow("SELECT COALESCE(is_admin, FALSE) FROM users WHERE id = $1", userID).Scan(&isAdmin)
+			if err != nil || !isAdmin {
+				slog.Warn("auth: non-admin user attempted admin action", "user_id", userID)
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

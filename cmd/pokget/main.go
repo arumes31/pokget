@@ -164,7 +164,7 @@ func main() {
 	r.HandleFunc("/auth/confirm", h.ProcessConfirmEmail).Methods("POST")
 	r.HandleFunc("/auth/logout", h.Logout).Methods("GET", "POST")
 	r.HandleFunc("/api/scan", h.APIScan).Methods("POST")
-	r.HandleFunc("/vault/{user_id}", h.PublicVault).Methods("GET")
+	r.HandleFunc("/vault/{slug}", h.PublicVault).Methods("GET")
 	r.HandleFunc("/errors", h.ErrorDatabase).Methods("GET")
 
 	// Protected Routes (Require Authentication)
@@ -184,6 +184,12 @@ func main() {
 	protected.HandleFunc("/errors/submit", h.SubmitError).Methods("POST")
 	protected.HandleFunc("/api/gamification/heartbeat", h.Heartbeat).Methods("POST")
 	protected.HandleFunc("/api/portfolio/add", h.AddCardToPortfolio).Methods("POST")
+
+	// Admin Routes (Require Authentication + Admin Role)
+	admin := r.PathPrefix("/api/admin").Subrouter()
+	admin.Use(auth.Middleware)
+	admin.Use(auth.AdminMiddleware(db.DB))
+	admin.HandleFunc("/refresh-cache", h.RefreshCache).Methods("POST")
 
 	slog.Info("Server starting", "port", cfg.App.Port)
 	srv := &http.Server{

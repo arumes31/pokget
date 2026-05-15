@@ -33,37 +33,14 @@ import (
 	"image/jpeg"
 	_ "image/png"  // Register PNG format for image.Decode
 	"log/slog"
+	"pokget/internal/db"
 	"strings"
 	"sync"
 )
 
 var ocrMu sync.Mutex
 
-func levenshtein(s1, s2 string) int {
-	s1 = strings.ToLower(s1)
-	s2 = strings.ToLower(s2)
-	n, m := len(s1), len(s2)
-	if n == 0 { return m }
-	if m == 0 { return n }
-	d := make([][]int, n+1)
-	for i := range d {
-		d[i] = make([]int, m+1)
-		d[i][0] = i
-	}
-	for j := 0; j <= m; j++ {
-		d[0][j] = j
-	}
-	for i := 1; i <= n; i++ {
-		for j := 1; j <= m; j++ {
-			cost := 1
-			if s1[i-1] == s2[j-1] {
-				cost = 0
-			}
-			d[i][j] = min(d[i-1][j]+1, min(d[i][j-1]+1, d[i-1][j-1]+cost))
-		}
-	}
-	return d[n][m]
-}
+
 
 
 func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (string, string, []byte, error) {
@@ -111,9 +88,8 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 	}
 	slog.Info("OCR: Tesseract complete", "text_len", len(text))
 
-	// 3. Perfect Detection Logic: Multi-Stage Matching
+	// 3. Perfect Detection Logic: Database-Driven Fuzzy Match
 	detectedCard := "Unknown Card"
-	bestScore := 0.7 // Threshold for fuzzy match
 
 	// Special handling for Japanese/Chinese (CJK): remove spaces for better matching
 	normalizedText := text
@@ -122,39 +98,21 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 		normalizedText = strings.ReplaceAll(normalizedText, "\n", "")
 	}
 
-	// Optimization: Lowercase text once
-	lowerText := strings.ToLower(normalizedText)
-
-	for _, card := range mockCards {
-		cardNameLower := strings.ToLower(card.Name)
+	// SQL-based Trigram matching (High performance)
+	if db.DB != nil {
+		var name string
+		err := db.DB.QueryRow(`
+			SELECT name FROM cards 
+			WHERE name % $1 
+			ORDER BY similarity(name, $1) DESC 
+			LIMIT 1`, normalizedText).Scan(&name)
 		
-		// Stage 1: Fast exact substring check
-		if strings.Contains(lowerText, cardNameLower) {
-			detectedCard = card.Name
-			break
-		}
-
-		// Stage 2: Length-based pre-filter for Levenshtein (must be within 40% length)
-		lenDiff := len(normalizedText) - len(card.Name)
-		if lenDiff < 0 { lenDiff = -lenDiff }
-		if lenDiff > len(card.Name)/2 && len(card.Name) > 5 {
-			continue
-		}
-
-		// Stage 3: Levenshtein Fuzzy Match
-		dist := levenshtein(normalizedText, card.Name)
-		maxLen := len(normalizedText)
-		if len(card.Name) > maxLen { maxLen = len(card.Name) }
-		if maxLen == 0 { continue }
-		
-		score := 1.0 - float64(dist)/float64(maxLen)
-		if score > bestScore {
-			bestScore = score
-			detectedCard = card.Name
+		if err == nil {
+			detectedCard = name
 		}
 	}
 
-	// Stage 3: LLM Refinement if still unsure
+	// Stage 4: LLM Refinement if still unsure
 	if detectedCard == "Unknown Card" {
 		llm := NewLLMService()
 		match, err := llm.FuzzyMatchCard(normalizedText, mockCards)
