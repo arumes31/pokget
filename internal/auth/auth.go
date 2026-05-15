@@ -94,7 +94,7 @@ func getLimiter(ip string) *rate.Limiter {
 
 	limiter, exists := limiters[ip]
 	if !exists {
-		limiter = rate.NewLimiter(1, 5) // 1 request per second with a burst of 5
+		limiter = rate.NewLimiter(20, 100) // 20 requests per second with a burst of 100
 		limiters[ip] = limiter
 	}
 
