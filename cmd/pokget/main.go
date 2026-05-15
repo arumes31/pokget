@@ -135,6 +135,7 @@ func main() {
 		Audit:        auditSvc,
 		Crypto:       cryptoSvc,
 		Game:         service.NewGamificationService(db.DB),
+		LLM:          service.NewLLMService(),
 		DB:           db.DB,
 		BuildVersion: buildVersion,
 	}

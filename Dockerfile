@@ -32,6 +32,9 @@ RUN apk add --no-cache \
     tesseract-ocr-data-jpn \
     tesseract-ocr-data-deu \
     tesseract-ocr-data-fra \
+    tesseract-ocr-data-chi_sim \
+    tesseract-ocr-data-chi_tra \
+    tesseract-ocr-data-kor \
     chromium \
     nss \
     freetype \

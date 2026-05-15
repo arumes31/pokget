@@ -39,7 +39,7 @@ func main() {
 		_ = resp.Body.Close()
 
 		// Run OCR Preprocessing and Scan
-		text, detected, processed, err := service.ProcessCardScan(imgBytes, mockCards, "eng")
+		text, detected, processed, err := service.ProcessCardScan(imgBytes, mockCards, "eng", nil)
 		if err != nil {
 			fmt.Printf("OCR Logic Error: %v\n", err)
 			continue

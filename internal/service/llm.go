@@ -50,11 +50,76 @@ func NewLLMService() *LLMService {
 		host = "pokget_ollama"
 	}
 	url := fmt.Sprintf("http://%s:11434", host)
-	return &LLMService{
+	svc := &LLMService{
 		BaseURL:    url,
 		Model:      "tinyllama", // Extremely fast on CPU
 		HTTPClient: &http.Client{Timeout: 30 * time.Second},
 	}
+	go svc.AutoSetup()
+	return svc
+}
+
+func (s *LLMService) AutoSetup() {
+	slog.Info("LLM: Auto-setup started")
+
+	// 1. Check if model exists
+	resp, err := s.HTTPClient.Get(s.BaseURL + "/api/tags")
+	if err != nil {
+		slog.Error("LLM: Failed to check models", "error", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		slog.Error("LLM: API returned error on tags", "status", resp.StatusCode)
+		return
+	}
+
+	var tagsResp struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
+		slog.Error("LLM: Failed to decode tags response", "error", err)
+		return
+	}
+
+	exists := false
+	for _, m := range tagsResp.Models {
+		if strings.HasPrefix(m.Name, s.Model) {
+			exists = true
+			break
+		}
+	}
+
+	if exists {
+		slog.Info("LLM: Model already exists", "model", s.Model)
+		return
+	}
+
+	// 2. Pull model if not exists
+	slog.Info("LLM: Model not found, pulling...", "model", s.Model)
+	payload := map[string]interface{}{
+		"model":  s.Model,
+		"stream": false,
+	}
+	jsonData, _ := json.Marshal(payload)
+
+	resp, err = s.HTTPClient.Post(s.BaseURL+"/api/pull", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		slog.Error("LLM: Failed to pull model", "error", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Error("LLM: Pull API returned error", "status", resp.StatusCode, "body", string(body))
+		return
+	}
+
+	slog.Info("LLM: Model pulled successfully", "model", s.Model)
 }
 
 func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (string, error) {
@@ -86,6 +151,8 @@ Respond ONLY with the card name. If no match is found, respond with "Unknown Car
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Error("LLM API error", "status", resp.StatusCode, "body", string(body))
 		return "", fmt.Errorf("LLM API returned non-OK status: %d", resp.StatusCode)
 	}
 

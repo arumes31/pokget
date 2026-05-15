@@ -43,9 +43,9 @@ var ocrMu sync.Mutex
 
 
 
-func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (string, string, []byte, error) {
+func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm *LLMService) (string, string, []byte, error) {
 	if lang == "" {
-		lang = "eng+jpn+deu+fra"
+		lang = "eng+jpn+deu+fra+chi_sim+chi_tra+kor"
 	}
 	slog.Info("OCR: Starting scan...", "lang", lang)
 
@@ -118,9 +118,8 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (str
 	}
 
 	// Stage 4: LLM Refinement if still unsure
-	if detectedCard == "Unknown Card" {
+	if detectedCard == "Unknown Card" && llm != nil {
 		slog.Info("OCR: Falling back to LLM refinement")
-		llm := NewLLMService()
 		match, err := llm.FuzzyMatchCard(normalizedText, mockCards)
 		if err == nil && match != "Unknown Card" {
 			slog.Info("OCR: LLM match found", "match", match)
