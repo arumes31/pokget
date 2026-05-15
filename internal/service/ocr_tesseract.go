@@ -45,7 +45,7 @@ var ocrMu sync.Mutex
 
 func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string) (string, string, []byte, error) {
 	if lang == "" {
-		lang = "eng"
+		lang = "eng+jpn+deu+fra"
 	}
 	slog.Info("OCR: Starting scan...", "lang", lang)
 
