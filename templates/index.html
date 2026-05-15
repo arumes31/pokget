@@ -75,10 +75,41 @@
                     </div>
                 </div>
                 {{ end }}
-                <div class="w-10 h-10 rounded-full border border-primary/30 overflow-hidden active:scale-95 transition-transform cursor-pointer relative group">
-                    <img alt="User" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCj7r2jcjkIPzCnIWdl81c_zvMWsrTnfReN29OfZJcKY7QDJIcr0JZ8aWrfMIjGkOqlRU-8amurNTnS3V6ocE7r12mwNxFtrOfg2ePKMlTqMT9I-Y4TLNExFJ3IAG44E1SjN_Ycnf0W3z1kfG887hQg0a2VlNx-YvBM2QXnhAHbX_jqrOYwpoJjJvmkwLM5iTR4qri-j6evoNV5e0NYDrFjpcIg2U4ED4Ew7mrMzeZEljz5dEYwnL-QKRV19MuPodyLEI8bSDDP7wY">
-                    <div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <span class="material-symbols-outlined text-white text-xs">settings</span>
+                <div class="relative" x-data="{ open: false }">
+                    <div @click="open = !open" class="w-10 h-10 rounded-full border border-primary/30 overflow-hidden active:scale-95 transition-transform cursor-pointer relative group">
+                        <img alt="User" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCj7r2jcjkIPzCnIWdl81c_zvMWsrTnfReN29OfZJcKY7QDJIcr0JZ8aWrfMIjGkOqlRU-8amurNTnS3V6ocE7r12mwNxFtrOfg2ePKMlTqMT9I-Y4TLNExFJ3IAG44E1SjN_Ycnf0W3z1kfG887hQg0a2VlNx-YvBM2QXnhAHbX_jqrOYwpoJjJvmkwLM5iTR4qri-j6evoNV5e0NYDrFjpcIg2U4ED4Ew7mrMzeZEljz5dEYwnL-QKRV19MuPodyLEI8bSDDP7wY">
+                        <div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <span class="material-symbols-outlined text-white text-xs">settings</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Dropdown Menu -->
+                    <div x-show="open" 
+                         @click.away="open = false"
+                         x-transition:enter="transition ease-out duration-100"
+                         x-transition:enter-start="transform opacity-0 scale-95"
+                         x-transition:enter-end="transform opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-75"
+                         x-transition:leave-start="transform opacity-100 scale-100"
+                         x-transition:leave-end="transform opacity-0 scale-95"
+                         class="absolute right-0 mt-2 w-48 glass-card rounded-xl shadow-xl z-[60] border border-outline-variant/20 overflow-hidden"
+                         x-cloak>
+                        <div class="px-4 py-3 border-b border-outline-variant/10">
+                            <p class="text-[10px] font-bold text-primary/60 uppercase tracking-widest">{{ .UserRank }}</p>
+                            <p class="text-xs font-bold text-on-surface truncate">Account Node</p>
+                        </div>
+                        <div class="p-1">
+                            <button @click="open = false; $dispatch('notify', { msg: 'Account settings coming soon!', type: 'info' })" 
+                                    class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-on-surface-variant hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
+                                <span class="material-symbols-outlined text-sm">person</span>
+                                <span>Settings</span>
+                            </button>
+                            <button hx-get="/auth/logout" 
+                                    class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-on-surface-variant hover:text-red-400 hover:bg-red-500/5 rounded-lg transition-colors">
+                                <span class="material-symbols-outlined text-sm">logout</span>
+                                <span>Logout</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
