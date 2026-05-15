@@ -634,9 +634,13 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 
 	if h.Fingerprint != nil {
 		img, _, err := image.Decode(bytes.NewReader(imgBytes))
-		if err == nil {
+		if err != nil {
+			slog.Warn("Fingerprint: Failed to decode image", "error", err)
+		} else {
 			hash, err := h.Fingerprint.CalculateHash(img)
-			if err == nil {
+			if err != nil {
+				slog.Warn("Fingerprint: Failed to calculate hash", "error", err)
+			} else {
 				match, distance, _ := h.Fingerprint.MatchFingerprint(hash, cards)
 				if match != nil {
 					slog.Info("Fingerprint: Found match", "name", match.Name, "distance", distance)
@@ -645,6 +649,8 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 					price, _ := match.PriceUSD.Float64()
 					detectedPrice = price
 					detectedImage = match.ImageURL
+				} else {
+					slog.Info("Fingerprint: No match found")
 				}
 			}
 		}
@@ -653,6 +659,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	// 2. OCR Fallback (if visual matching fails)
 	var processedImg []byte
 	if detectedCard == "" {
+		slog.Info("APIScan: Fingerprint missed, falling back to OCR")
 		var ocrMatch string
 		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, cards, lang)
 		if err != nil {
@@ -661,6 +668,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if ocrMatch != "Unknown Card" {
+			slog.Info("OCR Fallback: Found match", "name", ocrMatch)
 			detectedCard = ocrMatch
 			for _, c := range cards {
 				if c.Name == ocrMatch {
@@ -671,6 +679,8 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+		} else {
+			slog.Info("OCR Fallback: No match found")
 		}
 	}
 
