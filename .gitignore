@@ -28,3 +28,7 @@ media__*.jpg
 ocr_tester_linux
 ocr_tester_linux_cgo
 static/img/debug/
+
+# User data and tests
+data/
+test/
