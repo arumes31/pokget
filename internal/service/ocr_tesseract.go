@@ -192,14 +192,14 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 				if idx != -1 {
 					beforeOk := true
 					if idx > 0 {
-						r := rune(normExtracted[idx-1])
+						r, _ := utf8.DecodeLastRuneInString(normExtracted[:idx])
 						if unicode.IsLetter(r) || unicode.IsDigit(r) {
 							beforeOk = false
 						}
 					}
 					afterOk := true
 					if idx+len(normID) < len(normExtracted) {
-						r := rune(normExtracted[idx+len(normID)])
+						r, _ := utf8.DecodeRuneInString(normExtracted[idx+len(normID):])
 						if unicode.IsLetter(r) || unicode.IsDigit(r) {
 							afterOk = false
 						}

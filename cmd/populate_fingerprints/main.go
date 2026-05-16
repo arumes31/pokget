@@ -35,12 +35,20 @@ func main() {
 		log.Fatalf("Failed to unmarshal metadata: %v", err)
 	}
 
-	// 2. Init DB
-	os.Setenv("DB_HOST", "localhost")
-	os.Setenv("DB_PORT", "5433") // We mapped 5433:5432 in docker-compose
-	os.Setenv("DB_USER", "pokget_user")
-	os.Setenv("DB_PASSWORD", "pokget_pass")
-	os.Setenv("DB_NAME", "pokget_db")
+	// 2. Validate DB Environment Variables
+	requiredEnvVars := []string{"DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME"}
+	var missing []string
+	for _, env := range requiredEnvVars {
+		if os.Getenv(env) == "" {
+			missing = append(missing, env)
+		}
+	}
+
+	if len(missing) > 0 {
+		log.Fatalf("Error: Missing required database environment variables: %v. Please set them before running this script (e.g. via export or .env).", missing)
+	}
+
+	// 3. Init DB
 	db.InitDB()
 
 	if db.DB == nil {

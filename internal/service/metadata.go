@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"pokget/internal/models"
 	"strings"
+	"time"
 
 	_ "golang.org/x/image/webp"
 )
@@ -110,11 +111,21 @@ func NewMetadataService(f *FingerprintService) *MetadataService {
 func (s *MetadataService) ProcessCard(ctx context.Context, card models.Card) (*models.Card, error) {
 	slog.Info("Metadata: Processing card", "id", card.ID, "name", card.Name)
 
-	resp, err := http.Get(card.ImageURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, card.ImageURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download image: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("failed to download image: status %d %s", resp.StatusCode, resp.Status)
+	}
 
 	img, _, err := image.Decode(resp.Body)
 	if err != nil {

@@ -62,7 +62,7 @@ func main() {
 
 			// 2. Download Image
 			imgURL := card.Image + "/high.png" // high res
-			imgResp, err := http.Get(imgURL)
+			imgResp, err := client.Get(imgURL)
 			if err != nil {
 				continue
 			}
@@ -112,6 +112,10 @@ func main() {
 
 	fmt.Println("\n--- FINAL RESULTS ---")
 	for lang, correct := range results {
+		fmt.Printf("%s: %d/%d\n", lang, correct, limit)
+	}
+}
+nge results {
 		fmt.Printf("%s: %d/%d\n", lang, correct, limit)
 	}
 }

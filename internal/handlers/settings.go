@@ -41,6 +41,10 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
+	
+	if currency == "" {
+		currency = "EUR"
+	}
 
 	data := map[string]interface{}{
 		"Email":    email,

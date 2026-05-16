@@ -64,8 +64,8 @@ func main() {
 	slog.SetDefault(logger)
 
 	// Initialize Services
-	fingerprintSvc := service.NewFingerprintService(db.DB)
-	auditSvc := service.NewAuditService(db.DB)
+	var fingerprintSvc *service.FingerprintService
+	var auditSvc *service.AuditService
 	
 	var dataWorker *worker.DataSyncWorker
 	// Apply Migrations
@@ -75,6 +75,9 @@ func main() {
 	}
 
 	if db.DB != nil {
+		fingerprintSvc = service.NewFingerprintService(db.DB)
+		auditSvc = service.NewAuditService(db.DB)
+
 		if err := db.SeedDatabase(db.DB); err != nil {
 			slog.Error("Database seeding failed", "error", err)
 		}

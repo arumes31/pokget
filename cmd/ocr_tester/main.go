@@ -97,17 +97,24 @@ func main() {
 
 		// Discard standard output/log to avoid cluttering the test results
 		origStdout := os.Stdout
-		r, w, _ := os.Pipe()
+		r, w, err := os.Pipe()
+		if err != nil {
+			fmt.Printf("Failed to create pipe: %v\n", err)
+			continue
+		}
 		os.Stdout = w
 
-		extractedText, _, _, err := service.ProcessCardScan(imgBytes, knownCards, lang, llm)
-		
-		w.Close()
-		os.Stdout = origStdout
-		io.ReadAll(r)
+		go func() {
+			io.Copy(io.Discard, r)
+		}()
 
-		if err != nil {
-			fmt.Printf("[FAIL] %s - Error: %v\n", f.Name(), err)
+		extractedText, _, _, processErr := service.ProcessCardScan(imgBytes, knownCards, lang, llm)
+		
+		os.Stdout = origStdout
+		w.Close()
+
+		if processErr != nil {
+			fmt.Printf("[FAIL] %s - Error: %v\n", f.Name(), processErr)
 			continue
 		}
 
@@ -154,5 +161,8 @@ func main() {
 	if totalCount > 0 {
 		accuracy := float64(successCount) / float64(totalCount) * 100
 		fmt.Printf("Accuracy: %.2f%%\n", accuracy)
+	}
+}
+
 	}
 }

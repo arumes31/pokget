@@ -89,9 +89,20 @@ func main() {
 		fmt.Println("Processing:", p.name)
 		processed := p.fn(src)
 		
-		out, err := os.Create(fmt.Sprintf("C:\\Users\\Daniel\\.gemini\\antigravity\\brain\\fedc3a99-0cfa-475a-ad23-c7a9250f467b\\pipeline_%d.jpg", i+1))
+		out, err := os.Create(filepath.Join(outDir, fmt.Sprintf("pipeline_%d.jpg", i+1)))
 		if err != nil {
 			fmt.Println("Error creating file:", err)
+			continue
+		}
+		
+		err = jpeg.Encode(out, processed, &jpeg.Options{Quality: 90})
+		out.Close()
+		if err != nil {
+			fmt.Println("Error encoding:", err)
+		}
+	}
+}
+t.Println("Error creating file:", err)
 			continue
 		}
 		
