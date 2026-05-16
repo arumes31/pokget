@@ -10,3 +10,21 @@ vendor/
 node_modules/
 package-lock.json
 test_cards/
+
+# Debug and coverage data
+all
+auth
+coverage
+test_results.txt
+test_ocr.go
+test.html
+test.json
+test.png
+test.webp
+test_cat.json
+test_ddg.html
+test_search.json
+media__*.jpg
+ocr_tester_linux
+ocr_tester_linux_cgo
+static/img/debug/
