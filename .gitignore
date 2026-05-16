@@ -9,3 +9,4 @@ vendor/
 *.out
 node_modules/
 package-lock.json
+test_cards/
