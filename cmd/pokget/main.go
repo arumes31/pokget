@@ -177,6 +177,7 @@ func main() {
 	protected.HandleFunc("/binders/create", h.CreateBinder).Methods("POST")
 	protected.HandleFunc("/binders/{id}", h.BinderDetail).Methods("GET")
 	protected.HandleFunc("/trade", h.Trade).Methods("GET")
+	protected.HandleFunc("/settings", h.Settings).Methods("GET", "POST")
 	protected.HandleFunc("/portfolio/add", h.AddCardToPortfolio).Methods("POST")
 	protected.HandleFunc("/portfolio/edit", h.EditPortfolioItem).Methods("POST")
 	protected.HandleFunc("/portfolio/toggle-visibility", h.ToggleVisibility).Methods("POST")

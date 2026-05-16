@@ -34,6 +34,7 @@ import (
 	_ "image/gif"  // Register GIF format for image.Decode
 	"image/jpeg"
 	_ "image/png"  // Register PNG format for image.Decode
+	_ "golang.org/x/image/webp" // Register WebP format for image.Decode
 	"log/slog"
 	"pokget/internal/db"
 	"strings"
@@ -156,5 +157,5 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	}
 
 	slog.Info("OCR: Final result", "detected", detectedCard)
-	return normalizedText, detectedCard, buf.Bytes(), nil
+	return normalizedText, detectedCard, buf1.Bytes(), nil
 }

@@ -41,7 +41,6 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gorilla/mux"
-	"github.com/shopspring/decimal"
 )
 
 func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
@@ -138,12 +137,35 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		rows := sqlmock.NewRows([]string{"set_name", "owned_cards", "total_cards"}).
+		// 1. Fetch Set Completion
+		rowsSet := sqlmock.NewRows([]string{"set_name", "owned_cards", "total_cards"}).
 			AddRow("151", 10, 165)
-		mock.ExpectQuery("SELECT").WithArgs("test-user").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT").WithArgs("test-user").WillReturnRows(rowsSet)
 
-		mock.ExpectQuery("SELECT COALESCE").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"val"}).AddRow(decimal.NewFromFloat(100.0)))
+		// 2. Fetch Portfolio
+		rowsPortfolio := sqlmock.NewRows([]string{"id", "cond", "price", "cid", "name", "set", "url", "p_usd", "p_eur", "game"}).
+			AddRow("p1", "NM", 0.0, "c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon")
+		mock.ExpectQuery("SELECT").WithArgs("test-user").WillReturnRows(rowsPortfolio)
+
+		// 3. Fetch multipliers and currency
+		mock.ExpectQuery("SELECT condition_multipliers").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"mult", "curr"}).AddRow(`{"NM": 1.0}`, "EUR"))
+
+		// 4. Fetch User XP and Rank
+		mock.ExpectQuery("SELECT xp, rank_title").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"xp", "rank"}).AddRow(100, "Novice"))
+
+		// 5. Fetch Binder Count
+		mock.ExpectQuery("SELECT COUNT").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+
+		// 6. Fetch 24h Change
+		mock.ExpectQuery("SELECT valuation").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"val"}).AddRow(90.0))
+
+		// 7. Render (via global user data fetch)
+		mock.ExpectQuery("SELECT xp, rank_title, currency").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"xp", "rank", "curr"}).AddRow(100, "Novice", "EUR"))
 
 		h.Dashboard(rr, req)
 
@@ -438,8 +460,11 @@ func TestHandlers(t *testing.T) {
 
 		h.Login(rr, req)
 
-		if rr.Code != http.StatusSeeOther {
-			t.Errorf("Expected status 303, got %d", rr.Code)
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), `window.location.replace("/")`) {
+			t.Errorf("Expected JS redirect, got %s", rr.Body.String())
 		}
 	})
 

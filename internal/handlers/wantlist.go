@@ -36,7 +36,7 @@ func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.DB.Query(`
-		SELECT w.id, w.card_id, w.target_price, w.notes, c.name, c.set_name, c.price_usd, c.image_url
+		SELECT w.id, w.card_id, w.target_price, w.notes, c.name, c.set_name, c.price_usd, c.price_eur, c.image_url
 		FROM wantlist w
 		JOIN cards c ON w.card_id = c.id
 		WHERE w.user_id = $1`, userID)
@@ -50,7 +50,7 @@ func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
 	var items []models.WantlistItem
 	for rows.Next() {
 		var i models.WantlistItem
-		if err := rows.Scan(&i.ID, &i.CardID, &i.TargetPrice, &i.Notes, &i.Card.Name, &i.Card.Set, &i.Card.PriceUSD, &i.Card.ImageURL); err == nil {
+		if err := rows.Scan(&i.ID, &i.CardID, &i.TargetPrice, &i.Notes, &i.Card.Name, &i.Card.Set, &i.Card.PriceUSD, &i.Card.PriceEUR, &i.Card.ImageURL); err == nil {
 			items = append(items, i)
 		}
 	}

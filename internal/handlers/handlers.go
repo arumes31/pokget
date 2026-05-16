@@ -80,8 +80,13 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 	if userID, ok := r.Context().Value(auth.UserContextKey{}).(string); ok {
 		var xp int
 		var rankTitle string
-		_ = h.DB.QueryRow("SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle)
+		var currency string
+		_ = h.DB.QueryRow("SELECT xp, rank_title, currency FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle, &currency)
 		
+		if currency == "" {
+			currency = "EUR"
+		}
+
 		rank := h.Game.GetUserRank(xp)
 		_, _, xpPercent := h.Game.GetProgressToNextRank(xp)
 
@@ -89,6 +94,11 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 		data["UserRank"] = rankTitle
 		data["UserXPPercent"] = xpPercent
 		data["UserRankIcon"] = rank.IconURL
+		data["UserCurrency"] = currency
+		data["CurrencySymbol"] = "€"
+		if currency == "USD" {
+			data["CurrencySymbol"] = "$"
+		}
 	}
 
 	if err := h.Templates.ExecuteTemplate(w, name, data); err != nil {
@@ -165,7 +175,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch Portfolio with multipliers
 	rowsPortfolio, _ := h.DB.Query(`
-		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.game
+		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.price_eur, c.game
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1`, userID)
@@ -175,7 +185,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		defer rowsPortfolio.Close()
 		for rowsPortfolio.Next() {
 			var p models.PortfolioItem
-			if err := rowsPortfolio.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.Game); err == nil {
+			if err := rowsPortfolio.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err == nil {
 				portfolio = append(portfolio, p)
 			}
 		}
@@ -185,15 +195,25 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	var totalValuation float64
 	var multipliers map[string]float64
 	var multStr string
-	_ = h.DB.QueryRow("SELECT condition_multipliers FROM users WHERE id = $1", userID).Scan(&multStr)
+	var userCurrency string
+	_ = h.DB.QueryRow("SELECT condition_multipliers, currency FROM users WHERE id = $1", userID).Scan(&multStr, &userCurrency)
 	_ = json.Unmarshal([]byte(multStr), &multipliers)
+
+	if userCurrency == "" {
+		userCurrency = "EUR"
+	}
 
 	priceService := &service.ScraperPriceClient{}
 	for _, item := range portfolio {
 		if item.CustomPrice > 0 {
 			totalValuation += item.CustomPrice
 		} else {
-			price, _ := item.Card.PriceUSD.Float64()
+			var price float64
+			if userCurrency == "EUR" {
+				price, _ = item.Card.PriceEUR.Float64()
+			} else {
+				price, _ = item.Card.PriceUSD.Float64()
+			}
 			totalValuation += priceService.ApplyMultiplier(price, item.Condition, multipliers)
 		}
 	}
@@ -214,10 +234,10 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	var change24h float64
 	var oldValuation float64
 	err = h.DB.QueryRow(`
-		SELECT total_valuation 
+		SELECT valuation 
 		FROM portfolio_history 
-		WHERE user_id = $1 AND created_at <= NOW() - INTERVAL '24 hours'
-		ORDER BY created_at DESC LIMIT 1`, userID).Scan(&oldValuation)
+		WHERE user_id = $1 AND recorded_at <= NOW() - INTERVAL '24 hours'
+		ORDER BY recorded_at DESC LIMIT 1`, userID).Scan(&oldValuation)
 	if err == nil && oldValuation > 0 {
 		change24h = ((totalValuation - oldValuation) / oldValuation) * 100
 	}
@@ -507,7 +527,7 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch cards in binder
 	rows, err := h.DB.Query(`
-		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.game
+		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.price_eur, c.game
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.binder_id = $1 AND p.user_id = $2`, binderID, userID)
@@ -517,7 +537,7 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			var p models.PortfolioItem
-			if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.Game); err == nil {
+			if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err == nil {
 				cards = append(cards, p)
 			}
 		}
@@ -620,6 +640,15 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	var detectedPrice float64
 	var detectedImage string
 
+	// Get user currency preference
+	var userCurrency string
+	if userID, ok := r.Context().Value(auth.UserContextKey{}).(string); ok {
+		_ = h.DB.QueryRow("SELECT currency FROM users WHERE id = $1", userID).Scan(&userCurrency)
+	}
+	if userCurrency == "" {
+		userCurrency = "EUR"
+	}
+
 	// Create a context with timeout for OCR
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -644,8 +673,12 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 					slog.Info("Fingerprint: Found match", "name", match.Name, "distance", distance)
 					detectedCard = match.Name
 					detectedID = match.ID
-					price, _ := match.PriceUSD.Float64()
-					detectedPrice = price
+					
+					if userCurrency == "EUR" {
+						detectedPrice, _ = match.PriceEUR.Float64()
+					} else {
+						detectedPrice, _ = match.PriceUSD.Float64()
+					}
 					detectedImage = match.ImageURL
 				} else {
 					slog.Info("Fingerprint: No match found")
@@ -671,8 +704,11 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 			for _, c := range cards {
 				if c.Name == ocrMatch {
 					detectedID = c.ID
-					price, _ := c.PriceUSD.Float64()
-					detectedPrice = price
+					if userCurrency == "EUR" {
+						detectedPrice, _ = c.PriceEUR.Float64()
+					} else {
+						detectedPrice, _ = c.PriceUSD.Float64()
+					}
 					detectedImage = c.ImageURL
 					break
 				}
