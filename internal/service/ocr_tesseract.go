@@ -39,13 +39,11 @@ import (
 	"pokget/internal/db"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 	"sync"
 )
 
 var ocrMu sync.Mutex
-
-
-
 
 func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm *LLMService) (string, string, []byte, error) {
 	if lang == "" {
@@ -130,7 +128,6 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	if db.DB != nil {
 		var name string
 		slog.Info("OCR: Attempting SQL Trigram match", "text", normalizedText)
-		// word_similarity finds the similarity of 'name' to the most similar substring of '$1' (the long OCR text)
 		err := db.DB.QueryRow(`
 			SELECT name FROM cards 
 			WHERE word_similarity(name, $1) > 0.4
@@ -158,20 +155,21 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 				slog.Info("OCR: Local match found by name", "name", c.Name)
 				break
 			}
-			// Avoid matching short IDs like "1" as substrings!
+			
+			// Match by ID with boundaries
 			if c.ID != "" && len(c.ID) >= 4 {
 				idx := strings.Index(textLower, idLower)
 				if idx != -1 {
 					beforeOk := true
 					if idx > 0 {
-						r := rune(textLower[idx-1])
+						r, _ := utf8.DecodeLastRuneInString(textLower[:idx])
 						if unicode.IsLetter(r) || unicode.IsDigit(r) {
 							beforeOk = false
 						}
 					}
 					afterOk := true
 					if idx+len(idLower) < len(textLower) {
-						r := rune(textLower[idx+len(idLower)])
+						r, _ := utf8.DecodeRuneInString(textLower[idx+len(idLower):])
 						if unicode.IsLetter(r) || unicode.IsDigit(r) {
 							afterOk = false
 						}

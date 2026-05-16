@@ -27,6 +27,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 
 	"github.com/gorilla/sessions"
@@ -39,7 +40,7 @@ var Store *sessions.CookieStore
 func init() {
 	key := os.Getenv("SESSION_KEY")
 	if key == "" {
-		key = "temporary-insecure-dev-key-32-chars-long" 
+		key = "temporary-insecure-dev-key-32-chars-long"
 	}
 	Store = InitStore(key)
 }
@@ -94,7 +95,21 @@ func getLimiter(ip string) *rate.Limiter {
 
 	limiter, exists := limiters[ip]
 	if !exists {
-		limiter = rate.NewLimiter(20, 100) // 20 requests per second with a burst of 100
+		rateLimit := 1.0
+		burstLimit := 5
+		
+		if val := os.Getenv("RATE_LIMIT"); val != "" {
+			if f, err := strconv.ParseFloat(val, 64); err == nil {
+				rateLimit = f
+			}
+		}
+		if val := os.Getenv("BURST_LIMIT"); val != "" {
+			if i, err := strconv.Atoi(val); err == nil {
+				burstLimit = i
+			}
+		}
+		
+		limiter = rate.NewLimiter(rate.Limit(rateLimit), burstLimit)
 		limiters[ip] = limiter
 	}
 

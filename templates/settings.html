@@ -42,7 +42,7 @@
     <div class="glass-card p-6 border-white/5">
         <h2 class="text-lg font-bold text-on-surface mb-2">Account Node</h2>
         <p class="text-xs text-on-surface-variant mb-4">Managed via encrypted session: {{ .Email }}</p>
-        <button class="text-xs font-bold text-red-400 hover:text-red-300 transition-colors" onclick="$dispatch('notify', { msg: 'Password reset coming soon!', type: 'info' })">
+        <button class="text-xs font-bold text-red-400 hover:text-red-300 transition-colors" @click="$dispatch('notify', { msg: 'Password reset coming soon!', type: 'info' })">
             Request Password Reset
         </button>
     </div>

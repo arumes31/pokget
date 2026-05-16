@@ -6,6 +6,7 @@ import (
 	"image/jpeg"
 	_ "image/png"
 	"os"
+	"path/filepath"
 
 	"github.com/anthonynsimon/bild/adjust"
 	"github.com/anthonynsimon/bild/channel"
@@ -15,10 +16,20 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run generate_crops.go <image_path>")
+		fmt.Println("Usage: go run generate_crops.go <image_path> [output_dir]")
 		return
 	}
 	imgPath := os.Args[1]
+
+	outDir := "."
+	if len(os.Args) > 2 {
+		outDir = os.Args[2]
+	}
+
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		fmt.Printf("Error creating output directory: %v\n", err)
+		return
+	}
 
 	imgFile, err := os.Open(imgPath)
 	if err != nil {
@@ -89,20 +100,10 @@ func main() {
 		fmt.Println("Processing:", p.name)
 		processed := p.fn(src)
 		
-		out, err := os.Create(filepath.Join(outDir, fmt.Sprintf("pipeline_%d.jpg", i+1)))
+		outPath := filepath.Join(outDir, fmt.Sprintf("pipeline_%d.jpg", i+1))
+		out, err := os.Create(outPath)
 		if err != nil {
-			fmt.Println("Error creating file:", err)
-			continue
-		}
-		
-		err = jpeg.Encode(out, processed, &jpeg.Options{Quality: 90})
-		out.Close()
-		if err != nil {
-			fmt.Println("Error encoding:", err)
-		}
-	}
-}
-t.Println("Error creating file:", err)
+			fmt.Printf("Error creating file %s: %v\n", outPath, err)
 			continue
 		}
 		

@@ -132,6 +132,11 @@ func (w *DataSyncWorker) Stop() {
 func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
 	slog.Info("Starting metadata synchronization cycle")
 	
+	if w.metadataService == nil {
+		slog.Error("Sync: metadataService is nil, skipping cycle")
+		return
+	}
+	
 	// Support Pokemon/English for POC
 	cards, err := w.metadataClient.FetchCards(ctx, "Pokemon", "en")
 	if err != nil {

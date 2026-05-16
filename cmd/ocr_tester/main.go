@@ -163,6 +163,3 @@ func main() {
 		fmt.Printf("Accuracy: %.2f%%\n", accuracy)
 	}
 }
-
-	}
-}
