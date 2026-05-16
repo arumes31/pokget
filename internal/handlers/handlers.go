@@ -702,7 +702,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 			slog.Info("OCR Fallback: Found match", "name", ocrMatch)
 			detectedCard = ocrMatch
 			for _, c := range cards {
-				if c.Name == ocrMatch {
+				if c.ID == ocrMatch || c.Name == ocrMatch {
 					detectedID = c.ID
 					if userCurrency == "EUR" {
 						detectedPrice, _ = c.PriceEUR.Float64()
@@ -710,6 +710,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 						detectedPrice, _ = c.PriceUSD.Float64()
 					}
 					detectedImage = c.ImageURL
+					detectedCard = c.Name // Ensure detectedCard is the name
 					break
 				}
 			}

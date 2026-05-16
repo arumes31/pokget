@@ -129,9 +129,9 @@ func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (s
 	}
 
 	prompt := fmt.Sprintf(`The following text was extracted from a trading card using OCR and might have typos: "%s".
-Which of these card names is the most likely match based on the text? Look carefully for card names or small card numbers (like 50/50, 19/122, or IDs like swsh45-19) that match the known cards.
+Which of these cards is the most likely match based on the text? Look carefully for card names or small card numbers (like 50/50, 19/122, or IDs like swsh45-19) that match the known cards.
 Known cards: %s.
-Respond ONLY with the exact card name from the known cards list (do not include the ID in your response). If no match is found, respond with "Unknown Card".`, ocrText, strings.Join(cardDetails, ", "))
+Respond ONLY with the exact ID/Number of the matching card from the known cards list (e.g., "swsh45-19"). Do not include the name in your response. If no match is found, respond with "Unknown Card".`, ocrText, strings.Join(cardDetails, ", "))
 
 	payload := map[string]interface{}{
 		"model":  s.Model,
@@ -171,11 +171,11 @@ Respond ONLY with the exact card name from the known cards list (do not include 
 	cleanedMatch := strings.TrimSpace(result.Response)
 	slog.Info("LLM Fallback Result", "raw", result.Response, "cleaned", cleanedMatch)
 
-	// Fallback for conversational models: check if the response contains any known card name
+	// Fallback for conversational models: check if the response contains any known card ID
 	for _, c := range knownCards {
-		if strings.Contains(cleanedMatch, c.Name) {
-			slog.Info("LLM: Extracted card name from conversational response", "name", c.Name)
-			return c.Name, nil
+		if strings.Contains(cleanedMatch, c.ID) {
+			slog.Info("LLM: Extracted card ID from conversational response", "id", c.ID)
+			return c.ID, nil
 		}
 	}
 
