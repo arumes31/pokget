@@ -16,7 +16,7 @@ all
 auth
 coverage
 test_results.txt
-test_ocr.go
+test_ocr.go*
 test.html
 test.json
 test.png
