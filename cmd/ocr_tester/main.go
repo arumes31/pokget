@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"pokget/internal/models"
 	"pokget/internal/service"
 )
 
@@ -32,6 +33,15 @@ func main() {
 		return
 	}
 
+	var knownCards []models.Card
+	for _, m := range metadata {
+		knownCards = append(knownCards, models.Card{
+			Name: m.Name,
+			ID:   m.Number,
+		})
+	}
+	llm := service.NewLLMService()
+
 	files, err := os.ReadDir("test_cards")
 	if err != nil {
 		fmt.Println("Error reading test_cards dir:", err)
@@ -45,7 +55,7 @@ func main() {
 	fmt.Println("==================================================")
 
 	for _, f := range files {
-		if f.IsDir() || !strings.HasSuffix(f.Name(), ".webp") && !strings.HasSuffix(f.Name(), ".png") {
+		if f.IsDir() || !strings.HasPrefix(f.Name(), "test_OP01-") {
 			continue
 		}
 		
@@ -74,7 +84,7 @@ func main() {
 		r, w, _ := os.Pipe()
 		os.Stdout = w
 
-		extractedText, _, _, err := service.ProcessCardScan(imgBytes, nil, lang, nil)
+		extractedText, _, _, err := service.ProcessCardScan(imgBytes, knownCards, lang, llm)
 		
 		w.Close()
 		os.Stdout = origStdout
@@ -109,7 +119,11 @@ func main() {
 			successCount++
 			fmt.Printf("[PASS] %s - Matched: Name=%t, Num=%t (CleanNum=%t)\n", f.Name(), matchedName, matchedNumber, matchedCleanNumber)
 		} else {
-			fmt.Printf("[FAIL] %s - Expected: %s | %s. Got snippet: %s\n", f.Name(), meta.Name, meta.Number, strings.ReplaceAll(extractedTextLower, "\n", " ")[:100])
+			snippet := strings.ReplaceAll(extractedTextLower, "\n", " ")
+			if len(snippet) > 100 {
+				snippet = snippet[:100]
+			}
+			fmt.Printf("[FAIL] %s - Expected: %s | %s. Got snippet: %s\n", f.Name(), meta.Name, meta.Number, snippet)
 		}
 	}
 
