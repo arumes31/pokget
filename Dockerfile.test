@@ -1,0 +1,4 @@
+FROM golang:1.26.3-alpine
+RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-dev gcc g++ musl-dev build-base
+WORKDIR /app
+CMD ["go", "run", "cmd/ocr_tester/main.go"]
