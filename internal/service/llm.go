@@ -53,7 +53,7 @@ func NewLLMService() *LLMService {
 	svc := &LLMService{
 		BaseURL:    url,
 		Model:      "tinyllama", // Extremely fast on CPU
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: &http.Client{Timeout: 5 * time.Minute},
 	}
 	go svc.AutoSetup()
 	return svc
@@ -106,7 +106,8 @@ func (s *LLMService) AutoSetup() {
 	}
 	jsonData, _ := json.Marshal(payload)
 
-	resp, err = s.HTTPClient.Post(s.BaseURL+"/api/pull", "application/json", bytes.NewBuffer(jsonData))
+	pullClient := &http.Client{Timeout: 15 * time.Minute} // Pulling models can take a long time
+	resp, err = pullClient.Post(s.BaseURL+"/api/pull", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		slog.Error("LLM: Failed to pull model", "error", err)
 		return
@@ -128,10 +129,22 @@ func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (s
 		cardDetails = append(cardDetails, fmt.Sprintf("%s (ID/Number: %s)", c.Name, c.ID))
 	}
 
-	prompt := fmt.Sprintf(`The following text was extracted from a trading card using OCR and might have typos: "%s".
-Which of these cards is the most likely match based on the text? Look carefully for card names or small card numbers (like 50/50, 19/122, or IDs like swsh45-19) that match the known cards.
-Known cards: %s.
-Respond ONLY with the exact ID/Number of the matching card from the known cards list (e.g., "swsh45-19"). Do not include the name in your response. If no match is found, respond with "Unknown Card".`, ocrText, strings.Join(cardDetails, ", "))
+	prompt := fmt.Sprintf(`Task: Match the extracted text to the most likely card from the list.
+Extracted text: "%s"
+Known cards: %s
+
+Examples:
+Extracted text: "Pikachu 19/122"
+Match: 19/122
+
+Extracted text: "Charizard swsh45-19"
+Match: swsh45-19
+
+Extracted text: "Garbage text with no match"
+Match: Unknown Card
+
+Respond ONLY with the exact ID/Number. Do not include any other text.
+Match:`, ocrText, strings.Join(cardDetails, ", "))
 
 	payload := map[string]interface{}{
 		"model":  s.Model,

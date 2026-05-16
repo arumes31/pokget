@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"pokget/internal/models"
 	"pokget/internal/service"
 )
@@ -41,6 +42,21 @@ func main() {
 		})
 	}
 	llm := service.NewLLMService()
+
+	fmt.Println("Waiting for LLM model to be ready...")
+	for i := 0; i < 60; i++ {
+		resp, err := llm.HTTPClient.Get(llm.BaseURL + "/api/tags")
+		if err == nil {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if strings.Contains(string(body), "tinyllama") {
+				fmt.Println("\nLLM model is ready!")
+				break
+			}
+		}
+		fmt.Print(".")
+		time.Sleep(10 * time.Second)
+	}
 
 	files, err := os.ReadDir("test_cards")
 	if err != nil {
@@ -113,11 +129,16 @@ func main() {
 		}
 		matchedCleanNumber := strings.Contains(extractedTextLower, strings.ToLower(cleanNumber))
 
-		success := matchedName || matchedNumber || matchedCleanNumber
+		// Check with O/0 normalization
+		normExtracted := strings.ReplaceAll(extractedTextLower, "0", "o")
+		normNumber := strings.ReplaceAll(strings.ToLower(number), "0", "o")
+		matchedNormNumber := strings.Contains(normExtracted, normNumber)
+
+		success := matchedName || matchedNumber || matchedCleanNumber || matchedNormNumber
 
 		if success {
 			successCount++
-			fmt.Printf("[PASS] %s - Matched: Name=%t, Num=%t (CleanNum=%t)\n", f.Name(), matchedName, matchedNumber, matchedCleanNumber)
+			fmt.Printf("[PASS] %s - Matched: Name=%t, Num=%t (NormNum=%t)\n", f.Name(), matchedName, matchedNumber, matchedNormNumber)
 		} else {
 			snippet := strings.ReplaceAll(extractedTextLower, "\n", " ")
 			if len(snippet) > 100 {

@@ -38,6 +38,7 @@ import (
 	"log/slog"
 	"pokget/internal/db"
 	"strings"
+	"unicode"
 	"sync"
 )
 
@@ -141,6 +142,75 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 			detectedCard = name
 		} else {
 			slog.Info("OCR: SQL match failed or no match", "error", err)
+		}
+	}
+
+	// Stage 3.5: Local matching with mockCards if provided (useful for tests)
+	if detectedCard == "Unknown Card" && len(mockCards) > 0 {
+		slog.Info("OCR: Attempting local match with mockCards", "count", len(mockCards))
+		for _, c := range mockCards {
+			nameLower := strings.ToLower(c.Name)
+			idLower := strings.ToLower(c.ID)
+			textLower := strings.ToLower(normalizedText)
+
+			if strings.Contains(textLower, nameLower) {
+				detectedCard = c.Name
+				slog.Info("OCR: Local match found by name", "name", c.Name)
+				break
+			}
+			// Avoid matching short IDs like "1" as substrings!
+			if c.ID != "" && len(c.ID) >= 4 {
+				idx := strings.Index(textLower, idLower)
+				if idx != -1 {
+					beforeOk := true
+					if idx > 0 {
+						r := rune(textLower[idx-1])
+						if unicode.IsLetter(r) || unicode.IsDigit(r) {
+							beforeOk = false
+						}
+					}
+					afterOk := true
+					if idx+len(idLower) < len(textLower) {
+						r := rune(textLower[idx+len(idLower)])
+						if unicode.IsLetter(r) || unicode.IsDigit(r) {
+							afterOk = false
+						}
+					}
+					if beforeOk && afterOk {
+						detectedCard = c.Name
+						slog.Info("OCR: Local match found by ID with boundaries", "name", c.Name, "id", c.ID)
+						break
+					}
+				}
+			}
+			
+			// Normalize O vs 0
+			normExtracted := strings.ReplaceAll(textLower, "0", "o")
+			normID := strings.ReplaceAll(idLower, "0", "o")
+			if c.ID != "" && len(c.ID) >= 4 {
+				idx := strings.Index(normExtracted, normID)
+				if idx != -1 {
+					beforeOk := true
+					if idx > 0 {
+						r := rune(normExtracted[idx-1])
+						if unicode.IsLetter(r) || unicode.IsDigit(r) {
+							beforeOk = false
+						}
+					}
+					afterOk := true
+					if idx+len(normID) < len(normExtracted) {
+						r := rune(normExtracted[idx+len(normID)])
+						if unicode.IsLetter(r) || unicode.IsDigit(r) {
+							afterOk = false
+						}
+					}
+					if beforeOk && afterOk {
+						detectedCard = c.Name
+						slog.Info("OCR: Local match found by normalized ID with boundaries", "name", c.Name, "id", c.ID)
+						break
+					}
+				}
+			}
 		}
 	}
 

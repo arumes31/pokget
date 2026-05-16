@@ -47,7 +47,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
-		worker := NewPriceSyncWorker(db, client, time.Hour)
+		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
 		worker.syncPrices()
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -61,7 +61,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 
 		mock.ExpectQuery("SELECT").WillReturnError(errors.New("db error"))
 
-		worker := NewPriceSyncWorker(db, &service.MockPriceClient{}, time.Hour)
+		worker := NewDataSyncWorker(db, &service.MockPriceClient{}, nil, nil, time.Hour)
 		worker.syncPrices()
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -79,7 +79,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
 
-		worker := NewPriceSyncWorker(db, &service.MockPriceClient{}, time.Hour)
+		worker := NewDataSyncWorker(db, &service.MockPriceClient{}, nil, nil, time.Hour)
 		worker.syncPrices()
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -97,7 +97,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
 
 		client := &service.MockPriceClient{Err: errors.New("fetch error")}
-		worker := NewPriceSyncWorker(db, client, time.Hour)
+		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
 		worker.syncPrices()
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -117,7 +117,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		client := &service.MockPriceClient{FixedUSD: 1.0, FixedEUR: 1.0}
-		worker := NewPriceSyncWorker(db, client, time.Hour)
+		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
 		worker.syncPrices()
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -137,7 +137,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		mock.ExpectExec("INSERT INTO price_history").WillReturnError(errors.New("hist error"))
 
 		client := &service.MockPriceClient{FixedUSD: 1.0, FixedEUR: 1.0}
-		worker := NewPriceSyncWorker(db, client, time.Hour)
+		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
 		worker.syncPrices()
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -163,7 +163,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			WillReturnRows(alertRows)
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
-		worker := NewPriceSyncWorker(db, client, time.Hour)
+		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
 		worker.syncPrices()
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -178,14 +178,14 @@ func TestWorkerLifecycle(t *testing.T) {
 	client := &service.MockPriceClient{}
 
 	t.Run("ContextCancel", func(_ *testing.T) {
-		worker := NewPriceSyncWorker(db, client, 50*time.Millisecond)
+		worker := NewDataSyncWorker(db, client, nil, nil, 50*time.Millisecond)
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 		defer cancel()
 		worker.Start(ctx)
 	})
 
 	t.Run("StopSignal", func(_ *testing.T) {
-		worker := NewPriceSyncWorker(db, client, 50*time.Millisecond)
+		worker := NewDataSyncWorker(db, client, nil, nil, 50*time.Millisecond)
 		ctx := context.Background()
 		go func() {
 			time.Sleep(20 * time.Millisecond)
@@ -200,7 +200,7 @@ func TestWorkerLifecycle(t *testing.T) {
 		
 		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}))
 
-		worker := NewPriceSyncWorker(db2, client, 10*time.Millisecond)
+		worker := NewDataSyncWorker(db2, client, nil, nil, 10*time.Millisecond)
 		ctx, cancel := context.WithCancel(context.Background())
 		go func() {
 			time.Sleep(25 * time.Millisecond)

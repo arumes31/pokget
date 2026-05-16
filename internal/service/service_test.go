@@ -42,7 +42,7 @@ import (
 	"github.com/go-redis/redismock/v9"
 )
 
-func createTestImage() image.Image {
+func createDefaultTestImage() image.Image {
 	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
 	draw.Draw(img, img.Bounds(), &image.Uniform{color.RGBA{255, 0, 0, 255}}, image.Point{}, draw.Src)
 	return img
@@ -58,7 +58,7 @@ func TestFingerprintService(t *testing.T) {
 	s := NewFingerprintService(db)
 
 	t.Run("CalculateHash", func(t *testing.T) {
-		img := createTestImage()
+		img := createDefaultTestImage()
 		hash, err := s.CalculateHash(img)
 		if err != nil {
 			t.Errorf("CalculateHash failed: %v", err)
@@ -77,7 +77,7 @@ func TestFingerprintService(t *testing.T) {
 	})
 
 	t.Run("MatchFingerprint", func(t *testing.T) {
-		img := createTestImage()
+		img := createDefaultTestImage()
 		hash, _ := s.CalculateHash(img)
 
 		cards := []models.Card{
@@ -207,19 +207,19 @@ func TestLLMService(t *testing.T) {
 	t.Run("FuzzyMatchCard_Success", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"response": "Charizard"}`))
+			_, _ = w.Write([]byte(`{"response": "id-123"}`))
 		}))
 		defer server.Close()
 
 		s.BaseURL = server.URL
 		s.HTTPClient = server.Client()
 
-		match, err := s.FuzzyMatchCard("Chrizard", []models.Card{{Name: "Charizard"}})
+		match, err := s.FuzzyMatchCard("Chrizard", []models.Card{{ID: "id-123", Name: "Charizard"}})
 		if err != nil {
 			t.Errorf("FuzzyMatchCard failed: %v", err)
 		}
-		if match != "Charizard" {
-			t.Errorf("Expected Charizard, got %s", match)
+		if match != "id-123" {
+			t.Errorf("Expected id-123, got %s", match)
 		}
 	})
 

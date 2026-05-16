@@ -31,46 +31,146 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-type PriceSyncWorker struct {
-	db          *sql.DB
-	priceClient service.PriceClient
-	interval    time.Duration
-	stop        chan struct{}
+type DataSyncWorker struct {
+	db              *sql.DB
+	priceClient     service.PriceClient
+	metadataClient  service.MetadataClient
+	metadataService *service.MetadataService
+	interval        time.Duration
+	stop            chan struct{}
 }
 
-func NewPriceSyncWorker(db *sql.DB, pc service.PriceClient, interval time.Duration) *PriceSyncWorker {
-	return &PriceSyncWorker{
-		db:          db,
-		priceClient: pc,
-		interval:    interval,
-		stop:        make(chan struct{}),
+func NewDataSyncWorker(db *sql.DB, pc service.PriceClient, mc service.MetadataClient, ms *service.MetadataService, interval time.Duration) *DataSyncWorker {
+	return &DataSyncWorker{
+		db:              db,
+		priceClient:     pc,
+		metadataClient:  mc,
+		metadataService: ms,
+		interval:        interval,
+		stop:            make(chan struct{}),
 	}
 }
 
-func (w *PriceSyncWorker) Start(ctx context.Context) {
-	slog.Info("Price Sync Worker starting", "interval", w.interval)
-	ticker := time.NewTicker(w.interval)
-	defer ticker.Stop()
+func (w *DataSyncWorker) Start(ctx context.Context) {
+	slog.Info("Data Sync Worker starting", "interval", w.interval)
+	priceTicker := time.NewTicker(w.interval)
+	metadataTicker := time.NewTicker(24 * time.Hour) // Sync metadata daily
+	repairTicker := time.NewTicker(1 * time.Hour)   // Check for missing fingerprints hourly
+	defer priceTicker.Stop()
+	defer metadataTicker.Stop()
+	defer repairTicker.Stop()
+
+	// Initial sync
+	if w.metadataClient != nil {
+		go w.syncMetadata(ctx)
+	}
+	if w.metadataService != nil {
+		go w.syncMissingFingerprints(ctx)
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("Price Sync Worker stopping (context cancelled)")
+			slog.Info("Data Sync Worker stopping (context cancelled)")
 			return
 		case <-w.stop:
-			slog.Info("Price Sync Worker stopping (stop signal)")
+			slog.Info("Data Sync Worker stopping (stop signal)")
 			return
-		case <-ticker.C:
+		case <-priceTicker.C:
 			w.syncPrices()
+		case <-metadataTicker.C:
+			if w.metadataClient != nil {
+				w.syncMetadata(ctx)
+			}
+		case <-repairTicker.C:
+			if w.metadataService != nil {
+				w.syncMissingFingerprints(ctx)
+			}
 		}
 	}
 }
 
-func (w *PriceSyncWorker) Stop() {
+func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
+	slog.Info("Starting missing fingerprints repair cycle")
+	
+	rows, err := w.db.Query("SELECT id, name, image_url, game, language FROM cards WHERE phash IS NULL LIMIT 100")
+	if err != nil {
+		slog.Error("Repair: Failed to query cards missing fingerprints", "error", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var c models.Card
+		if err := rows.Scan(&c.ID, &c.Name, &c.ImageURL, &c.Game, &c.Language); err != nil {
+			continue
+		}
+
+		processed, err := w.metadataService.ProcessCard(ctx, c)
+		if err != nil {
+			slog.Error("Repair: Failed to process card", "id", c.ID, "error", err)
+			continue
+		}
+
+		_, err = w.db.Exec("UPDATE cards SET phash = $1 WHERE id = $2", processed.Phash, processed.ID)
+		if err != nil {
+			slog.Error("Repair: Failed to update card fingerprint", "id", c.ID, "error", err)
+		} else {
+			slog.Info("Repair: Generated missing fingerprint", "id", c.ID, "name", c.Name)
+		}
+		
+		// Rate limit downloads during repair to be nice to APIs
+		time.Sleep(500 * time.Millisecond)
+	}
+	slog.Info("Missing fingerprints repair cycle completed")
+}
+
+func (w *DataSyncWorker) Stop() {
 	close(w.stop)
 }
 
-func (w *PriceSyncWorker) syncPrices() {
+func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
+	slog.Info("Starting metadata synchronization cycle")
+	
+	// Support Pokemon/English for POC
+	cards, err := w.metadataClient.FetchCards(ctx, "Pokemon", "en")
+	if err != nil {
+		slog.Error("Sync: Failed to fetch cards", "error", err)
+		return
+	}
+
+	for _, c := range cards {
+		var exists bool
+		err := w.db.QueryRow("SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1)", c.ID).Scan(&exists)
+		if err != nil {
+			continue
+		}
+		if exists {
+			continue
+		}
+
+		// New card found! Process and insert
+		processed, err := w.metadataService.ProcessCard(ctx, c)
+		if err != nil {
+			slog.Error("Sync: Failed to process card", "id", c.ID, "error", err)
+			continue
+		}
+
+		_, err = w.db.Exec(`
+			INSERT INTO cards (id, name, game, language, image_url, phash, price_usd, price_eur)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			processed.ID, processed.Name, processed.Game, processed.Language, processed.ImageURL, processed.Phash, 0, 0)
+		
+		if err != nil {
+			slog.Error("Sync: Failed to insert card", "id", c.ID, "error", err)
+		} else {
+			slog.Info("Sync: Added new card with fingerprint", "id", c.ID, "name", c.Name)
+		}
+	}
+	slog.Info("Metadata synchronization cycle completed")
+}
+
+func (w *DataSyncWorker) syncPrices() {
 	slog.Info("Starting price synchronization cycle")
 	rows, err := w.db.Query("SELECT id, name, set_name, price_usd, price_eur FROM cards")
 	if err != nil {
