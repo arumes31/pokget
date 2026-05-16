@@ -299,7 +299,7 @@
                 <div class="flex-1">
                     <p class="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Match Found</p>
                     <p class="text-sm font-black text-on-surface truncate" x-text="detectedCard"></p>
-                    <p class="text-xs font-black text-primary mt-1" x-text="detectedPrice ? '$' + parseFloat(detectedPrice).toFixed(2) : '--'"></p>
+                    <p class="text-xs font-black text-primary mt-1" x-text="detectedPrice ? '{{ .CurrencySymbol }}' + parseFloat(detectedPrice).toFixed(2) : '--'"></p>
                 </div>
                 <button @click="addToCollection()" 
                         x-show="detectedID"

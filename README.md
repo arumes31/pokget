@@ -39,6 +39,7 @@
 
 ### 📈 Economic Intelligence
 *   **Multi-Market Scraping**: Automated `colly` and `chromedp` (headless) scrapers for real-time price extraction from Cardmarket (EUR) and USD conversions.
+*   **Dynamic Currencies**: Users can toggle between **Euro (€)** and **US Dollar ($)** in their account settings, with real-time portfolio recalculation.
 *   **Price History**: Tracks historical valuations to provide 24h/7d change statistics and portfolio growth metrics.
 
 ### 🎮 The Collector's Journey (Gamification)

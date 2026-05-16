@@ -61,7 +61,7 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	// Fetch public portfolio items
 	rows, err := h.DB.Query(`
 		SELECT p.id, p.condition, p.format, p.grade, p.grading_company, p.notes, 
-		       c.name, c.set_name, c.price_usd, c.image_url, c.game
+		       c.name, c.set_name, c.price_usd, c.price_eur, c.image_url, c.game
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1 AND p.is_public = TRUE`, userID)
@@ -77,7 +77,7 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var p models.PortfolioItem
 		if err := rows.Scan(&p.ID, &p.Condition, &p.Format, &p.Grade, &p.GradingCompany, &p.Notes,
-			&p.Card.Name, &p.Card.Set, &p.Card.PriceUSD, &p.Card.ImageURL, &p.Card.Game); err == nil {
+			&p.Card.Name, &p.Card.Set, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.ImageURL, &p.Card.Game); err == nil {
 			portfolio = append(portfolio, p)
 		}
 	}

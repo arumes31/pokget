@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN currency VARCHAR(3) DEFAULT 'EUR' NOT NULL CHECK (currency IN ('EUR', 'USD'));

@@ -63,9 +63,11 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	// Initialize Database
-	db.InitDB()
-	var priceWorker *worker.PriceSyncWorker
+	// Initialize Services
+	var fingerprintSvc *service.FingerprintService
+	var auditSvc *service.AuditService
+	
+	var dataWorker *worker.DataSyncWorker
 	// Apply Migrations
 	if err := db.ApplyMigrations(db.DB, cfg.DB.MigrationsPath); err != nil {
 		slog.Error("Migration error", "error", err)
@@ -73,14 +75,20 @@ func main() {
 	}
 
 	if db.DB != nil {
+		fingerprintSvc = service.NewFingerprintService(db.DB)
+		auditSvc = service.NewAuditService(db.DB)
+
 		if err := db.SeedDatabase(db.DB); err != nil {
 			slog.Error("Database seeding failed", "error", err)
 		}
 
-		// Start Price Sync Worker after DB is ready
+		// Start Data Sync Worker after DB is ready
 		priceClient := &service.DefaultPriceClient{Scraper: &service.ScraperPriceClient{}}
-		priceWorker = worker.NewPriceSyncWorker(db.DB, priceClient, 1*time.Hour)
-		go priceWorker.Start(context.Background())
+		metadataClient := service.NewTCGDexClient()
+		metadataSvc := service.NewMetadataService(fingerprintSvc)
+		
+		dataWorker = worker.NewDataSyncWorker(db.DB, priceClient, metadataClient, metadataSvc, 1*time.Hour)
+		go dataWorker.Start(context.Background())
 	}
 
 	// Fetch all cards from DB for handlers (caching in memory for fast scanning)
@@ -114,7 +122,6 @@ func main() {
 	templates := template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
 
 	// Initialize Services
-	auditSvc := service.NewAuditService(db.DB)
 	cryptoSvc, err := service.NewCryptoService(cfg.Auth.SessionKey)
 	if err != nil {
 		slog.Error("Failed to initialize crypto service", "error", err)
@@ -150,26 +157,31 @@ func main() {
 		[]byte(cfg.Auth.SessionKey),
 		csrf.Secure(false), // Disable for local development without HTTPS
 	)
-	r.Use(csrfMiddleware)
 
-	// Static files
+	// Static files (Exempt from CSRF)
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
-	// Public Routes
-	r.HandleFunc("/", h.Index).Methods("GET")
-	r.HandleFunc("/auth", h.Auth).Methods("GET")
-	r.HandleFunc("/auth/register", h.Register).Methods("POST")
-	r.HandleFunc("/auth/login", h.Login).Methods("POST")
-	r.HandleFunc("/auth/resend", h.ResendVerification).Methods("POST")
-	r.HandleFunc("/auth/confirm", h.ConfirmEmail).Methods("GET")
-	r.HandleFunc("/auth/confirm", h.ProcessConfirmEmail).Methods("POST")
-	r.HandleFunc("/auth/logout", h.Logout).Methods("GET", "POST")
+	// API routes (Exempt from CSRF for testing/external use)
 	r.HandleFunc("/api/scan", h.APIScan).Methods("POST")
-	r.HandleFunc("/vault/{slug}", h.PublicVault).Methods("GET")
-	r.HandleFunc("/errors", h.ErrorDatabase).Methods("GET")
 
-	// Protected Routes (Require Authentication)
-	protected := r.PathPrefix("/").Subrouter()
+	// Web Routes (Protected by CSRF)
+	web := r.NewRoute().Subrouter()
+	web.Use(csrfMiddleware)
+
+	// Public Web Routes
+	web.HandleFunc("/", h.Index).Methods("GET")
+	web.HandleFunc("/auth", h.Auth).Methods("GET")
+	web.HandleFunc("/auth/register", h.Register).Methods("POST")
+	web.HandleFunc("/auth/login", h.Login).Methods("POST")
+	web.HandleFunc("/auth/resend", h.ResendVerification).Methods("POST")
+	web.HandleFunc("/auth/confirm", h.ConfirmEmail).Methods("GET")
+	web.HandleFunc("/auth/confirm", h.ProcessConfirmEmail).Methods("POST")
+	web.HandleFunc("/auth/logout", h.Logout).Methods("GET", "POST")
+	web.HandleFunc("/vault/{slug}", h.PublicVault).Methods("GET")
+	web.HandleFunc("/errors", h.ErrorDatabase).Methods("GET")
+
+	// Protected Routes (Require Authentication + CSRF)
+	protected := web.PathPrefix("/").Subrouter()
 	protected.Use(auth.Middleware)
 	protected.HandleFunc("/dashboard", h.Dashboard).Methods("GET")
 	protected.HandleFunc("/centering", h.Centering).Methods("GET")
@@ -177,6 +189,7 @@ func main() {
 	protected.HandleFunc("/binders/create", h.CreateBinder).Methods("POST")
 	protected.HandleFunc("/binders/{id}", h.BinderDetail).Methods("GET")
 	protected.HandleFunc("/trade", h.Trade).Methods("GET")
+	protected.HandleFunc("/settings", h.Settings).Methods("GET", "POST")
 	protected.HandleFunc("/portfolio/add", h.AddCardToPortfolio).Methods("POST")
 	protected.HandleFunc("/portfolio/edit", h.EditPortfolioItem).Methods("POST")
 	protected.HandleFunc("/portfolio/toggle-visibility", h.ToggleVisibility).Methods("POST")
@@ -186,9 +199,8 @@ func main() {
 	protected.HandleFunc("/api/gamification/heartbeat", h.Heartbeat).Methods("POST")
 	protected.HandleFunc("/api/portfolio/add", h.AddCardToPortfolio).Methods("POST")
 
-	// Admin Routes (Require Authentication + Admin Role)
-	admin := r.PathPrefix("/api/admin").Subrouter()
-	admin.Use(auth.Middleware)
+	// Admin Routes (Require Authentication + Admin Role + CSRF)
+	admin := protected.PathPrefix("/api/admin").Subrouter()
 	admin.Use(auth.AdminMiddleware(db.DB))
 	admin.HandleFunc("/refresh-cache", h.RefreshCache).Methods("POST")
 
@@ -216,8 +228,8 @@ func main() {
 	slog.Info("Shutting down server...")
 
 	// Stop workers
-	if priceWorker != nil {
-		priceWorker.Stop()
+	if dataWorker != nil {
+		dataWorker.Stop()
 	}
 
 	// Create a context with timeout for shutdown

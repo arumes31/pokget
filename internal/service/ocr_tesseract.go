@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"pokget/internal/models"
 	"github.com/anthonynsimon/bild/adjust"
+	"github.com/anthonynsimon/bild/channel"
 	"github.com/anthonynsimon/bild/effect"
 	"github.com/anthonynsimon/bild/transform"
 	"github.com/otiai10/gosseract/v2"
@@ -33,16 +34,16 @@ import (
 	_ "image/gif"  // Register GIF format for image.Decode
 	"image/jpeg"
 	_ "image/png"  // Register PNG format for image.Decode
+	_ "golang.org/x/image/webp" // Register WebP format for image.Decode
 	"log/slog"
 	"pokget/internal/db"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 	"sync"
 )
 
 var ocrMu sync.Mutex
-
-
-
 
 func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm *LLMService) (string, string, []byte, error) {
 	if lang == "" {
@@ -56,17 +57,27 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 		return "", "", nil, err
 	}
 
-	// Apply enhanced filters: Resize (2x) -> Grayscale -> Balanced Contrast -> Sharpness
 	bounds := src.Bounds()
-	res := transform.Resize(src, bounds.Dx()*2, bounds.Dy()*2, transform.Lanczos)
-	res = effect.Grayscale(res)
-	res = adjust.Contrast(res, 0.3) // Tone down contrast to avoid blowout
-	res = adjust.Brightness(res, 0.05)
-	res = effect.Sharpen(res)
 
-	// Encode back to bytes with high quality
-	buf := new(bytes.Buffer)
-	err = jpeg.Encode(buf, res, &jpeg.Options{Quality: 95})
+	// Pipeline 1: Grayscale (Good for general text)
+	res1 := transform.Resize(src, bounds.Dx()*2, bounds.Dy()*2, transform.Lanczos)
+	res1 = effect.Grayscale(res1)
+	res1 = adjust.Contrast(res1, 0.3) // Tone down contrast to avoid blowout
+	res1 = adjust.Brightness(res1, 0.05)
+	res1 = effect.Sharpen(res1)
+
+	buf1 := new(bytes.Buffer)
+	err = jpeg.Encode(buf1, res1, &jpeg.Options{Quality: 95})
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	// Pipeline 2: Blue Channel Extract + Sparse OCR (Good for black text on holographic/dark backgrounds)
+	res2 := transform.Resize(src, bounds.Dx()*2, bounds.Dy()*2, transform.Lanczos)
+	res2Channel := channel.Extract(res2, channel.Blue)
+
+	buf2 := new(bytes.Buffer)
+	err = jpeg.Encode(buf2, res2Channel, &jpeg.Options{Quality: 95})
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -76,20 +87,31 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	client := gosseract.NewClient()
 	defer client.Close()
 
-	slog.Info("OCR: Setting image data...")
 	_ = client.SetLanguage(lang)
-	_ = client.SetImageFromBytes(buf.Bytes())
-	
-	slog.Info("OCR: Executing Tesseract (Locking)...")
+
+	slog.Info("OCR: Executing Tesseract Pass 1 (Grayscale)...")
+	_ = client.SetImageFromBytes(buf1.Bytes())
 	ocrMu.Lock()
-	text, err := client.Text()
+	text1, err1 := client.Text()
 	ocrMu.Unlock()
-	slog.Info("OCR: Tesseract execution released")
-	if err != nil {
-		slog.Error("OCR: Tesseract execution failed", "error", err)
-		return "", "", buf.Bytes(), err
+	if err1 != nil {
+		slog.Error("OCR: Pass 1 failed", "error", err1)
 	}
-	slog.Info("OCR: Tesseract complete", "text_len", len(text), "raw_text", text)
+
+	slog.Info("OCR: Executing Tesseract Pass 2 (Blue Channel, Sparse)...")
+	client.SetVariable("tessedit_pageseg_mode", "11") // Sparse text
+	_ = client.SetImageFromBytes(buf2.Bytes())
+	ocrMu.Lock()
+	text2, err2 := client.Text()
+	ocrMu.Unlock()
+	if err2 != nil {
+		slog.Error("OCR: Pass 2 failed", "error", err2)
+	}
+
+	slog.Info("OCR: Tesseract execution complete")
+
+	text := text1 + "\n" + text2
+	slog.Info("OCR: Combined text complete", "text_len", len(text), "raw_text_1", text1, "raw_text_2", text2)
 
 	// 3. Perfect Detection Logic: Database-Driven Fuzzy Match
 	detectedCard := "Unknown Card"
@@ -108,8 +130,8 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 		slog.Info("OCR: Attempting SQL Trigram match", "text", normalizedText)
 		err := db.DB.QueryRow(`
 			SELECT name FROM cards 
-			WHERE name % $1 
-			ORDER BY similarity(name, $1) DESC 
+			WHERE word_similarity(name, $1) > 0.4
+			ORDER BY word_similarity(name, $1) DESC 
 			LIMIT 1`, normalizedText).Scan(&name)
 		
 		if err == nil {
@@ -117,6 +139,76 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 			detectedCard = name
 		} else {
 			slog.Info("OCR: SQL match failed or no match", "error", err)
+		}
+	}
+
+	// Stage 3.5: Local matching with mockCards if provided (useful for tests)
+	if detectedCard == "Unknown Card" && len(mockCards) > 0 {
+		slog.Info("OCR: Attempting local match with mockCards", "count", len(mockCards))
+		for _, c := range mockCards {
+			nameLower := strings.ToLower(c.Name)
+			idLower := strings.ToLower(c.ID)
+			textLower := strings.ToLower(normalizedText)
+
+			if strings.Contains(textLower, nameLower) {
+				detectedCard = c.Name
+				slog.Info("OCR: Local match found by name", "name", c.Name)
+				break
+			}
+			
+			// Match by ID with boundaries
+			if c.ID != "" && len(c.ID) >= 4 {
+				idx := strings.Index(textLower, idLower)
+				if idx != -1 {
+					beforeOk := true
+					if idx > 0 {
+						r, _ := utf8.DecodeLastRuneInString(textLower[:idx])
+						if unicode.IsLetter(r) || unicode.IsDigit(r) {
+							beforeOk = false
+						}
+					}
+					afterOk := true
+					if idx+len(idLower) < len(textLower) {
+						r, _ := utf8.DecodeRuneInString(textLower[idx+len(idLower):])
+						if unicode.IsLetter(r) || unicode.IsDigit(r) {
+							afterOk = false
+						}
+					}
+					if beforeOk && afterOk {
+						detectedCard = c.Name
+						slog.Info("OCR: Local match found by ID with boundaries", "name", c.Name, "id", c.ID)
+						break
+					}
+				}
+			}
+			
+			// Normalize O vs 0
+			normExtracted := strings.ReplaceAll(textLower, "0", "o")
+			normID := strings.ReplaceAll(idLower, "0", "o")
+			if c.ID != "" && len(c.ID) >= 4 {
+				idx := strings.Index(normExtracted, normID)
+				if idx != -1 {
+					beforeOk := true
+					if idx > 0 {
+						r, _ := utf8.DecodeLastRuneInString(normExtracted[:idx])
+						if unicode.IsLetter(r) || unicode.IsDigit(r) {
+							beforeOk = false
+						}
+					}
+					afterOk := true
+					if idx+len(normID) < len(normExtracted) {
+						r, _ := utf8.DecodeRuneInString(normExtracted[idx+len(normID):])
+						if unicode.IsLetter(r) || unicode.IsDigit(r) {
+							afterOk = false
+						}
+					}
+					if beforeOk && afterOk {
+						detectedCard = c.Name
+						slog.Info("OCR: Local match found by normalized ID with boundaries", "name", c.Name, "id", c.ID)
+						break
+					}
+				}
+			}
 		}
 	}
 
@@ -133,5 +225,5 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	}
 
 	slog.Info("OCR: Final result", "detected", detectedCard)
-	return normalizedText, detectedCard, buf.Bytes(), nil
+	return normalizedText, detectedCard, buf1.Bytes(), nil
 }

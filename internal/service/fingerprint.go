@@ -70,8 +70,8 @@ func (s *FingerprintService) MatchFingerprint(hashVal int64, cards []models.Card
 		}
 	}
 
-	// Threshold for a "good" match (usually < 10 for pHash)
-	if minDistance > 10 {
+	// Threshold for a "good" match (usually < 10 for pHash, but 5 is safer for distinct cards)
+	if minDistance > 5 {
 		return nil, minDistance, nil
 	}
 

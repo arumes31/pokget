@@ -53,7 +53,7 @@ func NewLLMService() *LLMService {
 	svc := &LLMService{
 		BaseURL:    url,
 		Model:      "tinyllama", // Extremely fast on CPU
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: &http.Client{Timeout: 5 * time.Minute},
 	}
 	go svc.AutoSetup()
 	return svc
@@ -106,7 +106,8 @@ func (s *LLMService) AutoSetup() {
 	}
 	jsonData, _ := json.Marshal(payload)
 
-	resp, err = s.HTTPClient.Post(s.BaseURL+"/api/pull", "application/json", bytes.NewBuffer(jsonData))
+	pullClient := &http.Client{Timeout: 15 * time.Minute} // Pulling models can take a long time
+	resp, err = pullClient.Post(s.BaseURL+"/api/pull", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		slog.Error("LLM: Failed to pull model", "error", err)
 		return
@@ -123,15 +124,27 @@ func (s *LLMService) AutoSetup() {
 }
 
 func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (string, error) {
-	cardNames := []string{}
+	cardDetails := []string{}
 	for _, c := range knownCards {
-		cardNames = append(cardNames, c.Name)
+		cardDetails = append(cardDetails, fmt.Sprintf("%s (ID/Number: %s)", c.Name, c.ID))
 	}
 
-	prompt := fmt.Sprintf(`The following text was extracted from a trading card using OCR and might have typos: "%s".
-Which of these card names is the most likely match?
-Known cards: %s.
-Respond ONLY with the card name. If no match is found, respond with "Unknown Card".`, ocrText, strings.Join(cardNames, ", "))
+	prompt := fmt.Sprintf(`Task: Match the extracted text to the most likely card from the list.
+Extracted text: "%s"
+Known cards: %s
+
+Examples:
+Extracted text: "Pikachu 19/122"
+Match: 19/122
+
+Extracted text: "Charizard swsh45-19"
+Match: swsh45-19
+
+Extracted text: "Garbage text with no match"
+Match: Unknown Card
+
+Respond ONLY with the exact ID/Number. Do not include any other text.
+Match:`, ocrText, strings.Join(cardDetails, ", "))
 
 	payload := map[string]interface{}{
 		"model":  s.Model,
@@ -171,11 +184,11 @@ Respond ONLY with the card name. If no match is found, respond with "Unknown Car
 	cleanedMatch := strings.TrimSpace(result.Response)
 	slog.Info("LLM Fallback Result", "raw", result.Response, "cleaned", cleanedMatch)
 
-	// Fallback for conversational models: check if the response contains any known card name
+	// Fallback for conversational models: check if the response contains any known card ID
 	for _, c := range knownCards {
-		if strings.Contains(cleanedMatch, c.Name) {
-			slog.Info("LLM: Extracted card name from conversational response", "name", c.Name)
-			return c.Name, nil
+		if strings.Contains(cleanedMatch, c.ID) {
+			slog.Info("LLM: Extracted card ID from conversational response", "id", c.ID)
+			return c.ID, nil
 		}
 	}
 

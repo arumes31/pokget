@@ -1,0 +1,15 @@
+FROM golang:1.23-alpine
+RUN apk add --no-cache \
+    tesseract-ocr \
+    tesseract-ocr-data-eng \
+    tesseract-ocr-data-fra \
+    tesseract-ocr-data-deu \
+    tesseract-ocr-data-jpn \
+    tesseract-ocr-data-kor \
+    tesseract-ocr-data-chi-sim \
+    tesseract-ocr-data-chi-tra \
+    tesseract-ocr-dev \
+    gcc g++ musl-dev build-base
+WORKDIR /app
+COPY . .
+CMD ["go", "run", "cmd/ocr_tester/main.go"]

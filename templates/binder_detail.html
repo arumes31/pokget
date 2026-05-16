@@ -21,10 +21,14 @@
                 <p class="font-label-sm text-xs text-on-surface-variant truncate">{{ .Card.Name }}</p>
                 <div class="flex justify-between items-center mt-1">
                     <span class="font-bold text-lg text-on-surface">
-                        {{ if .CustomPrice }}
-                            ${{ .CustomPrice }}
+                        {{ $.CurrencySymbol }}{{ if .CustomPrice }}
+                            {{ .CustomPrice }}
                         {{ else }}
-                            ${{ .Card.PriceUSD }}
+                            {{ if eq $.UserCurrency "EUR" }}
+                                {{ .Card.PriceEUR }}
+                            {{ else }}
+                                {{ .Card.PriceUSD }}
+                            {{ end }}
                         {{ end }}
                     </span>
                     <span class="text-[10px] font-bold text-white/40 uppercase">{{ .Condition }}</span>
