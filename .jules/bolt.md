@@ -1,0 +1,3 @@
+## 2026-05-31 - [Levenshtein Distance Space Optimization]
+**Learning:** The Levenshtein distance algorithm used an unoptimized O(N*M) space complexity by allocating an (N+1)x(M+1) matrix for dynamic programming.
+**Action:** When working with 2D DP problems where the current state only depends on the previous row or column, optimize the space complexity to O(min(N, M)) by allocating only two 1D slices representing the previous and current rows. Additionally, instead of using `copy(v0, v1)` inside the loop, swap the slice pointers directly (`v0, v1 = v1, v0`) to avoid O(N) copy operations per iteration.
