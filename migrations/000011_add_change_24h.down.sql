@@ -1,1 +1,0 @@
-ALTER TABLE cards DROP COLUMN IF EXISTS change_24h;
