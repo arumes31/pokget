@@ -274,7 +274,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 	t.Run("RateLimited", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
 		req.RemoteAddr = "1.2.3.4"
-		
+
 		// Fill the bucket (limit is 5 requests per second per IP)
 		for i := 0; i < 5; i++ {
 			rr := httptest.NewRecorder()

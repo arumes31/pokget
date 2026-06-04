@@ -24,11 +24,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"pokget/internal/models"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"pokget/internal/models"
 	"strings"
 	"time"
 )
@@ -122,17 +122,7 @@ func (s *LLMService) AutoSetup() {
 	slog.Info("LLM: Model pulled successfully", "model", s.Model)
 }
 
-func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (string, error) {
-	cardNames := []string{}
-	for _, c := range knownCards {
-		cardNames = append(cardNames, c.Name)
-	}
-
-	prompt := fmt.Sprintf(`The following text was extracted from a trading card using OCR and might have typos: "%s".
-Which of these card names is the most likely match?
-Known cards: %s.
-Respond ONLY with the card name. If no match is found, respond with "Unknown Card".`, ocrText, strings.Join(cardNames, ", "))
-
+func (s *LLMService) generate(prompt string) (string, error) {
 	payload := map[string]interface{}{
 		"model":  s.Model,
 		"prompt": prompt,
@@ -168,8 +158,27 @@ Respond ONLY with the card name. If no match is found, respond with "Unknown Car
 		return "", fmt.Errorf("failed to unmarshal LLM response: %w", err)
 	}
 
-	cleanedMatch := strings.TrimSpace(result.Response)
-	slog.Info("LLM Fallback Result", "raw", result.Response, "cleaned", cleanedMatch)
+	return result.Response, nil
+}
+
+func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (string, error) {
+	cardNames := []string{}
+	for _, c := range knownCards {
+		cardNames = append(cardNames, c.Name)
+	}
+
+	prompt := fmt.Sprintf(`The following text was extracted from a trading card using OCR and might have typos: "%s".
+Which of these card names is the most likely match?
+Known cards: %s.
+Respond ONLY with the card name. If no match is found, respond with "Unknown Card".`, ocrText, strings.Join(cardNames, ", "))
+
+	response, err := s.generate(prompt)
+	if err != nil {
+		return "", err
+	}
+
+	cleanedMatch := strings.TrimSpace(response)
+	slog.Info("LLM Fallback Result", "raw", response, "cleaned", cleanedMatch)
 
 	// Fallback for conversational models: check if the response contains any known card name
 	for _, c := range knownCards {
@@ -181,6 +190,7 @@ Respond ONLY with the card name. If no match is found, respond with "Unknown Car
 
 	return cleanedMatch, nil
 }
+
 func (s *LLMService) GenerateBinderName(cards []models.Card) (string, error) {
 	if len(cards) == 0 {
 		return "New Empty Binder", nil
@@ -197,33 +207,10 @@ func (s *LLMService) GenerateBinderName(cards []models.Card) (string, error) {
 	prompt := fmt.Sprintf(`Based on the following cards in a binder, suggest a single, creative, and premium-sounding name for the binder: %s.
 Respond ONLY with the name, no quotes or explanations.`, strings.Join(cardNames, ", "))
 
-	payload := map[string]interface{}{
-		"model":  s.Model,
-		"prompt": prompt,
-		"stream": false,
-	}
-
-	jsonData, err := json.Marshal(payload)
+	response, err := s.generate(prompt)
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := s.HTTPClient.Post(s.BaseURL+"/api/generate", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Response string `json:"response"`
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(result.Response), nil
+	return strings.TrimSpace(response), nil
 }

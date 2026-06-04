@@ -1,0 +1,7 @@
+🎯 **What:** Extracted repetitive HTTP logic into a private `generate` method inside `internal/service/llm.go`.
+
+💡 **Why:** `FuzzyMatchCard` and `GenerateBinderName` previously duplicated the boilerplate HTTP setup, request making, error handling, and JSON parsing to invoke the Ollama API. By extracting this into a single helper method, the code health, readability, and maintainability are substantially improved.
+
+✅ **Verification:** Ran `go test ./internal/service/ -run TestLLM` confirming that the LLM service unit tests continue to pass correctly, successfully interacting with the API in the same expected way.
+
+✨ **Result:** Improved code health, reduced duplicated boilerplate logic, and streamlined method sizes.

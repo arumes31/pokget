@@ -197,7 +197,7 @@ func TestWorkerLifecycle(t *testing.T) {
 	t.Run("TickerExecution", func(t *testing.T) {
 		db2, mock, _ := sqlmock.New()
 		defer db2.Close()
-		
+
 		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}))
 
 		worker := NewPriceSyncWorker(db2, client, 10*time.Millisecond)
