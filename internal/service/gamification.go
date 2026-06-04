@@ -25,9 +25,9 @@ import (
 )
 
 type Rank struct {
-	Title    string
-	MinXP    int
-	IconURL  string
+	Title   string
+	MinXP   int
+	IconURL string
 }
 
 var Ranks = []Rank{
@@ -94,7 +94,7 @@ func (s *GamificationService) CheckForBadges(userID string) {
 		FROM portfolio p 
 		JOIN cards c ON p.card_id = c.id 
 		WHERE p.user_id = $1`, userID).Scan(&totalValue)
-	
+
 	if totalValue >= 10000 {
 		s.AwardBadge(userID, "High Roller")
 	}

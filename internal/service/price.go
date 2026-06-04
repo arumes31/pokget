@@ -21,7 +21,6 @@
 package service
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -31,7 +30,6 @@ import (
 
 	"pokget/internal/models"
 
-	"github.com/chromedp/chromedp"
 	"github.com/gocolly/colly/v2"
 )
 
@@ -77,12 +75,14 @@ func (m *MockLLMClient) FuzzyMatchCard(_ string, _ []models.Card) (string, error
 
 // ScraperPriceClient fetches prices via Web Scraping (No API key needed)
 type ScraperPriceClient struct {
-	BaseURL string
+	BaseURL   string
+	TCGPlayer *TCGPlayerScraper
 }
 
 func NewScraperPriceClient() *ScraperPriceClient {
 	return &ScraperPriceClient{
-		BaseURL: "https://www.cardmarket.com",
+		BaseURL:   "https://www.cardmarket.com",
+		TCGPlayer: NewTCGPlayerScraper(),
 	}
 }
 
@@ -159,64 +159,27 @@ func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, err
 
 	// --- 2. Headless Fallback for TCGPlayer (USD) ---
 	if usd == 0 {
-		headlessPrice, err := s.fetchPriceHeadless(card)
-		if err == nil {
-			usd = headlessPrice
-		} else {
-			slog.Warn("Scraper: Headless fallback failed", "card", card.Name, "error", err)
+		if s.TCGPlayer != nil {
+			headlessPrice, err := s.TCGPlayer.FetchPrice(card)
+			if err == nil {
+				usd = headlessPrice
+			} else {
+				slog.Warn("Scraper: Headless fallback failed", "card", card.Name, "error", err)
+			}
 		}
 	}
 
 	return usd, eur, scrapeErr
 }
 
-func (s *ScraperPriceClient) fetchPriceHeadless(card models.Card) (float64, error) {
-	ctx, cancel := chromedp.NewContext(context.Background())
-	defer cancel()
-
-	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	var priceStr string
-	var targetURL string
-	
-	switch strings.ToLower(card.Game) {
-	case "pokemon":
-		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/pokemon/product?q=%s", url.QueryEscape(card.Name))
-	case "one piece":
-		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/one-piece-card-game/product?q=%s", url.QueryEscape(card.Name))
-	case "lorcana":
-		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/lorcana/product?q=%s", url.QueryEscape(card.Name))
-	case "weiss schwarz":
-		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/weiss-schwarz/product?q=%s", url.QueryEscape(card.Name))
-	case "magic", "mtg":
-		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/magic/product?q=%s", url.QueryEscape(card.Name))
-	default:
-		return 0, fmt.Errorf("unsupported game for headless scrape: %s", card.Game)
-	}
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(targetURL),
-		chromedp.WaitVisible(`.search-result__market-price--value`, chromedp.ByQuery),
-		chromedp.Text(`.search-result__market-price--value`, &priceStr, chromedp.ByQuery),
-	)
-
-	if err != nil {
-		return 0, err
-	}
-
-	priceStr = strings.TrimPrefix(priceStr, "$")
-	return strconv.ParseFloat(priceStr, 64)
-}
-
 func (s *ScraperPriceClient) ApplyMultiplier(price float64, condition string, multipliers map[string]float64) float64 {
 	if multipliers == nil {
 		// Default multipliers
 		multipliers = map[string]float64{
-			"NM": 1.0,
-			"LP": 0.9,
-			"MP": 0.7,
-			"HP": 0.5,
+			"NM":  1.0,
+			"LP":  0.9,
+			"MP":  0.7,
+			"HP":  0.5,
 			"DMG": 0.3,
 		}
 	}

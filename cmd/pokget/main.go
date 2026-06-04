@@ -78,7 +78,7 @@ func main() {
 		}
 
 		// Start Price Sync Worker after DB is ready
-		priceClient := &service.DefaultPriceClient{Scraper: &service.ScraperPriceClient{}}
+		priceClient := &service.DefaultPriceClient{Scraper: service.NewScraperPriceClient()}
 		priceWorker = worker.NewPriceSyncWorker(db.DB, priceClient, 1*time.Hour)
 		go priceWorker.Start(context.Background())
 	}
@@ -144,7 +144,7 @@ func main() {
 	r.Use(middleware.LoggingMiddleware)
 	r.Use(auth.RateLimitMiddleware)
 	r.Use(auth.ProxyMiddleware)
-	
+
 	// CSRF Protection
 	csrfMiddleware := csrf.Protect(
 		[]byte(cfg.Auth.SessionKey),

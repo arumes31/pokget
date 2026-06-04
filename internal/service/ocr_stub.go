@@ -34,8 +34,6 @@ import (
 	"github.com/anthonynsimon/bild/effect"
 )
 
-
-
 func ProcessCardScan(imgBytes []byte, _ []models.Card, _ string, _ *LLMService) (string, string, []byte, error) {
 	slog.Warn("OCR: Tesseract is not available on this platform. Preprocessing ONLY.")
 
@@ -65,7 +63,7 @@ func ProcessCardScan(imgBytes []byte, _ []models.Card, _ string, _ *LLMService) 
 			WHERE name % $1 
 			ORDER BY similarity(name, $1) DESC 
 			LIMIT 1`, text).Scan(&name)
-		
+
 		if err == nil {
 			detectedCard = name
 		}

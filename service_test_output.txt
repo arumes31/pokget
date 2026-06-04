@@ -1,0 +1,164 @@
+=== RUN   TestOCRMatchingLogic
+=== RUN   TestOCRMatchingLogic/Exact_match
+=== RUN   TestOCRMatchingLogic/Case_insensitive
+=== RUN   TestOCRMatchingLogic/Partial_sentence
+=== RUN   TestOCRMatchingLogic/Word_boundary_-_Mewtwo_not_Mew
+=== RUN   TestOCRMatchingLogic/No_match
+--- PASS: TestOCRMatchingLogic (0.00s)
+    --- PASS: TestOCRMatchingLogic/Exact_match (0.00s)
+    --- PASS: TestOCRMatchingLogic/Case_insensitive (0.00s)
+    --- PASS: TestOCRMatchingLogic/Partial_sentence (0.00s)
+    --- PASS: TestOCRMatchingLogic/Word_boundary_-_Mewtwo_not_Mew (0.00s)
+    --- PASS: TestOCRMatchingLogic/No_match (0.00s)
+=== RUN   TestVision_DetectCardEdges
+--- PASS: TestVision_DetectCardEdges (0.00s)
+=== RUN   TestProcessCardScan_Stub
+2026/06/04 06:59:10 INFO OCR: Starting scan... lang=eng+jpn+deu+fra+chi_sim+chi_tra+kor
+2026/06/04 06:59:10 INFO OCR: Initializing Tesseract client...
+2026/06/04 06:59:10 INFO OCR: Setting image data...
+2026/06/04 06:59:10 INFO OCR: Executing Tesseract (Locking)...
+2026/06/04 06:59:11 INFO OCR: Tesseract execution released
+2026/06/04 06:59:11 INFO OCR: Tesseract complete text_len=0 raw_text=""
+2026/06/04 06:59:11 INFO OCR: Normalized text normalized_text=""
+2026/06/04 06:59:11 INFO OCR: Final result detected="Unknown Card"
+    ocr_test.go:107: Unexpected stub results: text=, card=Unknown Card
+--- FAIL: TestProcessCardScan_Stub (0.88s)
+=== RUN   TestFingerprintService
+=== RUN   TestFingerprintService/CalculateHash
+=== RUN   TestFingerprintService/CalculateHash_Error
+=== RUN   TestFingerprintService/MatchFingerprint
+=== RUN   TestFingerprintService/MatchFingerprint_NoMatch
+--- PASS: TestFingerprintService (0.00s)
+    --- PASS: TestFingerprintService/CalculateHash (0.00s)
+    --- PASS: TestFingerprintService/CalculateHash_Error (0.00s)
+    --- PASS: TestFingerprintService/MatchFingerprint (0.00s)
+    --- PASS: TestFingerprintService/MatchFingerprint_NoMatch (0.00s)
+=== RUN   TestImageCacheService_Error
+=== RUN   TestImageCacheService_Error/InvalidDir
+--- PASS: TestImageCacheService_Error (0.00s)
+    --- PASS: TestImageCacheService_Error/InvalidDir (0.00s)
+=== RUN   TestImageCacheService
+=== RUN   TestImageCacheService/DownloadAndCache
+2026/06/04 06:59:11 INFO ImageCache: Downloading card image id=test-card url=http://127.0.0.1:46581
+=== RUN   TestImageCacheService/HTTPError
+2026/06/04 06:59:11 INFO ImageCache: Downloading card image id=not-found url=http://127.0.0.1:39773
+--- PASS: TestImageCacheService (0.00s)
+    --- PASS: TestImageCacheService/DownloadAndCache (0.00s)
+    --- PASS: TestImageCacheService/HTTPError (0.00s)
+=== RUN   TestMailService
+=== RUN   TestMailService/SendConfirmationEmail
+
+[MAIL] Confirmation link for test@example.com: http://localhost:8080/auth/confirm?token=fake-token
+
+=== RUN   TestMailService/SendConfirmationEmail_Error
+
+[MAIL] Confirmation link for test@example.com: http://localhost:8080/auth/confirm?token=token123
+
+--- PASS: TestMailService (0.00s)
+    --- PASS: TestMailService/SendConfirmationEmail (0.00s)
+    --- PASS: TestMailService/SendConfirmationEmail_Error (0.00s)
+=== RUN   TestLLMService
+=== RUN   TestLLMService/FuzzyMatchCard_Success
+2026/06/04 06:59:11 INFO LLM: Auto-setup started
+2026/06/04 06:59:11 INFO LLM: Model not found, pulling... model=tinyllama
+2026/06/04 06:59:11 INFO LLM Fallback Result raw=Charizard cleaned=Charizard
+2026/06/04 06:59:11 INFO LLM: Extracted card name from conversational response name=Charizard
+=== RUN   TestLLMService/FuzzyMatchCard_HTTPError
+2026/06/04 06:59:11 ERROR LLM: Failed to pull model error="Post \"http://127.0.0.1:44669/api/pull\": EOF"
+2026/06/04 06:59:11 ERROR LLM API error status=500 body=""
+=== RUN   TestLLMService/FuzzyMatchCard_MalformedJSON
+--- PASS: TestLLMService (0.00s)
+    --- PASS: TestLLMService/FuzzyMatchCard_Success (0.00s)
+    --- PASS: TestLLMService/FuzzyMatchCard_HTTPError (0.00s)
+    --- PASS: TestLLMService/FuzzyMatchCard_MalformedJSON (0.00s)
+=== RUN   TestProcessCardScan_Full
+=== RUN   TestProcessCardScan_Full/Match
+2026/06/04 06:59:11 INFO OCR: Starting scan... lang=eng+jpn+deu+fra+chi_sim+chi_tra+kor
+2026/06/04 06:59:11 INFO OCR: Initializing Tesseract client...
+2026/06/04 06:59:11 INFO OCR: Setting image data...
+2026/06/04 06:59:11 INFO OCR: Executing Tesseract (Locking)...
+2026/06/04 06:59:12 INFO OCR: Tesseract execution released
+2026/06/04 06:59:12 INFO OCR: Tesseract complete text_len=0 raw_text=""
+2026/06/04 06:59:12 INFO OCR: Normalized text normalized_text=""
+2026/06/04 06:59:12 INFO OCR: Final result detected="Unknown Card"
+    service_test.go:274: Expected stub text, got
+--- FAIL: TestProcessCardScan_Full (0.89s)
+    --- FAIL: TestProcessCardScan_Full/Match (0.89s)
+=== RUN   TestScraperPriceClient
+=== RUN   TestScraperPriceClient/DefaultClient_Nil
+=== RUN   TestScraperPriceClient/ScrapeError
+2026/06/04 06:59:12 INFO Worker: Scraping Cardmarket url=/en/Pokemon/Products/Singles/Glitch/MissingNo
+2026/06/04 06:59:12 ERROR Scraper: Failed to visit URL url=/en/Pokemon/Products/Singles/Glitch/MissingNo error="Error: The input is missing a scheme, because it does not begin with an ASCII alpha, and either no base URL was provided or the base URL cannot be used as a base URL because it has an opaque path. Url: '/en/Pokemon/Products/Singles/Glitch/MissingNo'"
+2026/06/04 06:59:12 WARN Scraper: Headless fallback failed card=MissingNo error="unsupported game for headless scrape: "
+=== RUN   TestScraperPriceClient/FetchPriceHeadless_Unsupported
+=== RUN   TestScraperPriceClient/FetchPrice_ScrapeSuccess
+2026/06/04 06:59:42 INFO Worker: Scraping Cardmarket url=http://127.0.0.1:40791/en/Pokemon/Products/Singles/Base/Charizard
+2026/06/04 07:00:14 WARN Scraper: Headless fallback failed card=Charizard error="context deadline exceeded"
+=== RUN   TestScraperPriceClient/FetchPrice_ParseError
+2026/06/04 07:00:14 INFO Worker: Scraping Cardmarket url=http://127.0.0.1:33391/en/Pokemon/Products/Singles/Base/Charizard
+2026/06/04 07:00:16 ERROR Scraper: Failed to parse price val=invalid error="strconv.ParseFloat: parsing \"invalid\": invalid syntax"
+2026/06/04 07:00:16 WARN Scraper: Headless fallback failed card=Charizard error="unsupported game for headless scrape: "
+=== RUN   TestScraperPriceClient/FetchPrice_GameBranches
+2026/06/04 07:00:16 INFO Worker: Scraping Cardmarket url=http://127.0.0.1:42175/en/One-Piece-Card-Game/Products/Singles/S/N
+2026/06/04 07:00:48 WARN Scraper: Headless fallback failed card=N error="context deadline exceeded"
+2026/06/04 07:00:48 INFO Worker: Scraping Cardmarket url=http://127.0.0.1:42175/en/Lorcana/Products/Singles/S/N
+2026/06/04 07:01:20 WARN Scraper: Headless fallback failed card=N error="context deadline exceeded"
+2026/06/04 07:01:20 INFO Worker: Scraping Cardmarket url=http://127.0.0.1:42175/en/Weiss-Schwarz/Products/Singles/S/N
+2026/06/04 07:01:52 WARN Scraper: Headless fallback failed card=N error="context deadline exceeded"
+2026/06/04 07:01:52 INFO Worker: Scraping Cardmarket url=http://127.0.0.1:42175/en/Magic-The-Gathering/Products/Singles/S/N
+2026/06/04 07:02:24 WARN Scraper: Headless fallback failed card=N error="context deadline exceeded"
+2026/06/04 07:02:24 INFO Worker: Scraping Cardmarket url=http://127.0.0.1:42175/en/Magic-The-Gathering/Products/Singles/S/N
+2026/06/04 07:02:56 WARN Scraper: Headless fallback failed card=N error="context deadline exceeded"
+--- PASS: TestScraperPriceClient (224.44s)
+    --- PASS: TestScraperPriceClient/DefaultClient_Nil (0.00s)
+    --- PASS: TestScraperPriceClient/ScrapeError (0.00s)
+    --- PASS: TestScraperPriceClient/FetchPriceHeadless_Unsupported (30.06s)
+    --- PASS: TestScraperPriceClient/FetchPrice_ScrapeSuccess (32.06s)
+    --- PASS: TestScraperPriceClient/FetchPrice_ParseError (2.00s)
+    --- PASS: TestScraperPriceClient/FetchPrice_GameBranches (160.31s)
+=== RUN   TestAuditService
+=== RUN   TestAuditService/Log_Success
+=== RUN   TestAuditService/Log_Error
+2026/06/04 07:02:56 ERROR Audit: Failed to insert log error="sql: connection is already closed"
+--- PASS: TestAuditService (0.00s)
+    --- PASS: TestAuditService/Log_Success (0.00s)
+    --- PASS: TestAuditService/Log_Error (0.00s)
+=== RUN   TestCryptoService
+=== RUN   TestCryptoService/New_Error
+=== RUN   TestCryptoService/Encrypt_Error
+=== RUN   TestCryptoService/EncryptDecrypt
+=== RUN   TestCryptoService/Decrypt_Invalid
+--- PASS: TestCryptoService (0.00s)
+    --- PASS: TestCryptoService/New_Error (0.00s)
+    --- PASS: TestCryptoService/Encrypt_Error (0.00s)
+    --- PASS: TestCryptoService/EncryptDecrypt (0.00s)
+    --- PASS: TestCryptoService/Decrypt_Invalid (0.00s)
+=== RUN   TestGamificationService
+=== RUN   TestGamificationService/AddXP_Success
+=== RUN   TestGamificationService/AddXP_QueryError
+=== RUN   TestGamificationService/GetUserRank
+=== RUN   TestGamificationService/GetProgressToNextRank
+=== RUN   TestGamificationService/GetProgressToNextRank_MaxRank
+--- PASS: TestGamificationService (0.00s)
+    --- PASS: TestGamificationService/AddXP_Success (0.00s)
+    --- PASS: TestGamificationService/AddXP_QueryError (0.00s)
+    --- PASS: TestGamificationService/GetUserRank (0.00s)
+    --- PASS: TestGamificationService/GetProgressToNextRank (0.00s)
+    --- PASS: TestGamificationService/GetProgressToNextRank_MaxRank (0.00s)
+=== RUN   TestCacheService
+=== RUN   TestCacheService/SetGet
+=== RUN   TestCacheService/Delete
+=== RUN   TestCacheService/NewCacheService
+--- PASS: TestCacheService (0.00s)
+    --- PASS: TestCacheService/SetGet (0.00s)
+    --- PASS: TestCacheService/Delete (0.00s)
+    --- PASS: TestCacheService/NewCacheService (0.00s)
+=== RUN   TestLevenshtein
+--- PASS: TestLevenshtein (0.00s)
+=== RUN   TestEventBus
+=== RUN   TestEventBus/SubscribePublish
+--- PASS: TestEventBus (0.00s)
+    --- PASS: TestEventBus/SubscribePublish (0.00s)
+FAIL
+FAIL	pokget/internal/service	226.273s
+FAIL
