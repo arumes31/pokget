@@ -1,0 +1,15 @@
+⚡ Bolt: [performance improvement] Decouple DB rows from worker sleep and use ticker
+
+💡 What:
+1. Buffers all DB rows into a slice `[]models.Card` and closes `*sql.Rows` early.
+2. Replaces the synchronous `time.Sleep(2 * time.Second)` with `time.Ticker` initialized outside the loop.
+
+🎯 Why:
+1. Previously, the open DB connection was held hostage while the worker performed slow synchronous operations (external `FetchPrice` HTTP call and explicit `time.Sleep`). This drastically degrades DB connection pooling performance over many cards.
+2. The explicit `time.Sleep` caused artificial compounding delays. If `FetchPrice` took 1 second, it would then wait 2 additional seconds (Total: 3s/card). By decoupling the 2-second rate limit using a `time.Ticker`, we ensure that time spent fetching counts toward the delay, speeding up the overall batch while respecting external API limits.
+
+📊 Measured Improvement:
+For 3 items processing sequentially with a simulated network delay of 1s:
+- Baseline (Sleep-based): ~9.00s per op (3 * (1s fetch + 2s sleep))
+- Optimized (Ticker-based): ~6.00s per op (3 * max(1s fetch, 2s tick))
+Performance Improvement: 33% reduction in overall processing time and drastically reduced DB lock retention (nanoseconds instead of seconds).
