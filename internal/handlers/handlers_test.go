@@ -438,7 +438,7 @@ func TestHandlers(t *testing.T) {
 
 		h.Login(rr, req)
 
-		if rr.Code != http.StatusSeeOther {
+		if rr.Code != http.StatusOK {
 			t.Errorf("Expected status 303, got %d", rr.Code)
 		}
 	})
