@@ -438,7 +438,7 @@ func (h *Handler) Binders(w http.ResponseWriter, r *http.Request) {
 		GROUP BY b.id, b.name, b.description, b.created_at
 		ORDER BY b.created_at DESC`, userID)
 	
-	var binders []Binder
+	binders := make([]Binder, 0, 8)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {

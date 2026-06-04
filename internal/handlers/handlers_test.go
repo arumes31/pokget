@@ -1014,3 +1014,92 @@ func TestGenerateToken_Panic(t *testing.T) {
 	}()
 	generateToken()
 }
+
+func TestCreateBinder(t *testing.T) {
+	t.Run("CreateBinder_MethodNotAllowed", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/binders/create", nil)
+		rr := httptest.NewRecorder()
+
+		h.CreateBinder(rr, req)
+
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Errorf("Expected status 405, got %d", rr.Code)
+		}
+	})
+
+	t.Run("CreateBinder_Unauthorized", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/binders/create", nil)
+		rr := httptest.NewRecorder()
+
+		h.CreateBinder(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status 401, got %d", rr.Code)
+		}
+	})
+
+	t.Run("CreateBinder_NameRequired", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/binders/create", strings.NewReader("description=test"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		h.CreateBinder(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", rr.Code)
+		}
+	})
+
+	t.Run("CreateBinder_DBError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/binders/create", strings.NewReader("name=MyBinder&description=test"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		mock.ExpectExec("INSERT INTO binders").WithArgs("test-user", "MyBinder", "test").WillReturnError(sql.ErrConnDone)
+
+		h.CreateBinder(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+	})
+
+	t.Run("CreateBinder_Success", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/binders/create", strings.NewReader("name=MyBinder&description=test"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		// Expect the INSERT
+		mock.ExpectExec("INSERT INTO binders").WithArgs("test-user", "MyBinder", "test").WillReturnResult(sqlmock.NewResult(1, 1))
+
+		// Expect the SELECT from Binders call
+		mock.ExpectQuery(`SELECT b.id, b.name, b.description, b.created_at, COUNT\(p.id\) as card_count FROM binders b LEFT JOIN portfolio p ON b.id = p.binder_id WHERE b.user_id = \$1 GROUP BY b.id, b.name, b.description, b.created_at ORDER BY b.created_at DESC`).WithArgs("test-user").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "created_at", "card_count"}).AddRow("1", "MyBinder", "test", "2023-01-01", 0))
+
+		h.CreateBinder(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+	})
+}
