@@ -23,8 +23,8 @@ package service
 import (
 	"bytes"
 	"fmt"
-	"html/template"
 	"log/slog"
+	"html/template"
 	"net/smtp"
 	"os"
 	"strings"
