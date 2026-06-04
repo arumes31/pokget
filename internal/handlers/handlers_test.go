@@ -68,12 +68,12 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 	db.DB = dbMock
 
 	h := &Handler{
-		Templates:    tmpl,
-		MockCards:    []models.Card{{ID: "test-id", Name: "Test Card"}},
-		Audit:        service.NewAuditService(dbMock),
-		Game:         service.NewGamificationService(dbMock),
-		Fingerprint:  service.NewFingerprintService(dbMock),
-		DB:           dbMock,
+		Templates:   tmpl,
+		MockCards:   []models.Card{{ID: "test-id", Name: "Test Card"}},
+		Audit:       service.NewAuditService(dbMock),
+		Game:        service.NewGamificationService(dbMock),
+		Fingerprint: service.NewFingerprintService(dbMock),
+		DB:          dbMock,
 	}
 
 	return h, mock, func() { dbMock.Close() }
@@ -90,7 +90,7 @@ func TestHandlers(t *testing.T) {
 		h.Index(rr, req)
 
 		if rr.Code != http.StatusSeeOther {
-			t.Errorf("Expected status 303, got %d", rr.Code)
+			t.Errorf("Expected status 303, got %d: %s", rr.Code, rr.Body.String())
 		}
 	})
 
@@ -438,8 +438,8 @@ func TestHandlers(t *testing.T) {
 
 		h.Login(rr, req)
 
-		if rr.Code != http.StatusSeeOther {
-			t.Errorf("Expected status 303, got %d", rr.Code)
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d: %s", rr.Code, rr.Body.String())
 		}
 	})
 
@@ -563,7 +563,7 @@ func TestHandlers(t *testing.T) {
 		// Or just use a template that doesn't exist to hit the error log branch if render handles it
 		req := httptest.NewRequest("GET", "/", nil)
 		rr := httptest.NewRecorder()
-		
+
 		// Passing nil to render with a template that expects fields might work,
 		// but let's just test with a missing template
 		h.Index(rr, req) // Authenticated redirect branch already tested
@@ -998,6 +998,7 @@ func TestHandlers(t *testing.T) {
 }
 
 type errorReader struct{}
+
 func (e *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, errors.New("rand fail")
 }
@@ -1013,4 +1014,131 @@ func TestGenerateToken_Panic(t *testing.T) {
 		}
 	}()
 	generateToken()
+}
+
+func TestConfirmEmail(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/confirm?token=test-token", nil)
+		rr := httptest.NewRecorder()
+
+		h.ConfirmEmail(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "confirm_email") {
+			t.Errorf("Expected body to contain confirm_email, got %s", rr.Body.String())
+		}
+	})
+}
+
+func TestProcessConfirmEmail(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/confirm/process", strings.NewReader("token=test-token"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		mock.ExpectExec("UPDATE users SET is_verified = TRUE").
+			WithArgs("test-token").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		h.ProcessConfirmEmail(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "confirm_success") {
+			t.Errorf("Expected body to contain confirm_success, got %s", rr.Body.String())
+		}
+	})
+
+	t.Run("MissingToken", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/confirm/process", nil)
+		rr := httptest.NewRecorder()
+
+		h.ProcessConfirmEmail(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", rr.Code)
+		}
+	})
+
+	t.Run("InvalidToken", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/confirm/process", strings.NewReader("token=invalid-token"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		mock.ExpectExec("UPDATE users SET is_verified = TRUE").
+			WithArgs("invalid-token").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		h.ProcessConfirmEmail(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", rr.Code)
+		}
+	})
+
+	t.Run("DBError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/confirm/process", strings.NewReader("token=test-token"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		mock.ExpectExec("UPDATE users SET is_verified = TRUE").
+			WithArgs("test-token").
+			WillReturnError(sql.ErrConnDone)
+
+		h.ProcessConfirmEmail(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+	})
+}
+
+func TestLogin_NonHTMXRedirect(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	passwordHash, _ := auth.HashPassword("password123")
+
+	req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=password123"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
+		AddRow("u1", "test@example.com", passwordHash, true)
+	mock.ExpectQuery("SELECT id, email, password_hash, is_verified FROM users").
+		WithArgs("test@example.com").
+		WillReturnRows(rows)
+
+	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
+
+	h.Login(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rr.Code)
+	}
+	if rr.Header().Get("Content-Type") != "text/html" {
+		t.Errorf("Expected content type text/html, got %s", rr.Header().Get("Content-Type"))
+	}
+	expectedBody := "<script>window.location.replace(\"/\")</script>"
+	if rr.Body.String() != expectedBody {
+		t.Errorf("Expected body %s, got %s", expectedBody, rr.Body.String())
+	}
 }

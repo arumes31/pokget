@@ -58,7 +58,7 @@ type Binder struct {
 type Handler struct {
 	Templates    *template.Template
 	MockCards    []models.Card
-	CardsMu      sync.RWMutex   // Protects concurrent access to MockCards
+	CardsMu      sync.RWMutex // Protects concurrent access to MockCards
 	Fingerprint  *service.FingerprintService
 	Mailer       service.Mailer
 	Audit        *service.AuditService
@@ -80,8 +80,13 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 	if userID, ok := r.Context().Value(auth.UserContextKey{}).(string); ok {
 		var xp int
 		var rankTitle string
-		_ = h.DB.QueryRow("SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle)
-		
+		if u, ok := r.Context().Value("user_data").(map[string]interface{}); ok {
+			xp = u["xp"].(int)
+			rankTitle = u["rank_title"].(string)
+		} else {
+			_ = h.DB.QueryRowContext(r.Context(), "SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle) // BOLT: Optimized with QueryRowContext to respect cancellation and added context-based caching support for user data to minimize DB roundtrips in complex render chains.
+		}
+
 		rank := h.Game.GetUserRank(xp)
 		_, _, xpPercent := h.Game.GetProgressToNextRank(xp)
 
@@ -131,8 +136,8 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		OwnedCards int
 		Percent    int
 	}
-	
-	rows, err := h.DB.Query(`
+
+	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT 
 			c.set_name, 
 			COUNT(DISTINCT c.id) FILTER (WHERE p.id IS NOT NULL AND p.user_id = $1) as owned_cards,
@@ -140,7 +145,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		FROM cards c
 		LEFT JOIN portfolio p ON c.id = p.card_id
 		GROUP BY c.set_name`, userID)
-	
+
 	var setCompletion []SetProgress
 	if err == nil {
 		defer rows.Close()
@@ -154,7 +159,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	// Fallback to mock if DB is empty for demo purposes
 	if len(setCompletion) == 0 {
 		setCompletion = []SetProgress{
@@ -164,12 +169,12 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch Portfolio with multipliers
-	rowsPortfolio, _ := h.DB.Query(`
+	rowsPortfolio, _ := h.DB.QueryContext(r.Context(), `
 		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.game
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1`, userID)
-	
+
 	var portfolio []models.PortfolioItem
 	if rowsPortfolio != nil {
 		defer rowsPortfolio.Close()
@@ -185,7 +190,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	var totalValuation float64
 	var multipliers map[string]float64
 	var multStr string
-	_ = h.DB.QueryRow("SELECT condition_multipliers FROM users WHERE id = $1", userID).Scan(&multStr)
+	_ = h.DB.QueryRowContext(r.Context(), "SELECT condition_multipliers FROM users WHERE id = $1", userID).Scan(&multStr)
 	_ = json.Unmarshal([]byte(multStr), &multipliers)
 
 	priceService := &service.ScraperPriceClient{}
@@ -197,23 +202,28 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 			totalValuation += priceService.ApplyMultiplier(price, item.Condition, multipliers)
 		}
 	}
-	
+
 	// Fetch User XP and Rank
 	var xp int
 	var rankTitle string
-	_ = h.DB.QueryRow("SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle)
-	
+	if u, ok := r.Context().Value("user_data").(map[string]interface{}); ok {
+		xp = u["xp"].(int)
+		rankTitle = u["rank_title"].(string)
+	} else {
+		_ = h.DB.QueryRowContext(r.Context(), "SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle) // BOLT: Optimized with QueryRowContext to respect cancellation and added context-based caching support for user data to minimize DB roundtrips in complex render chains.
+	}
+
 	rank := h.Game.GetUserRank(xp)
 	_, _, xpPercent := h.Game.GetProgressToNextRank(xp)
-	
+
 	// Fetch Binder Count
 	var binderCount int
-	_ = h.DB.QueryRow("SELECT COUNT(*) FROM binders WHERE user_id = $1", userID).Scan(&binderCount)
+	_ = h.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM binders WHERE user_id = $1", userID).Scan(&binderCount)
 
 	// Fetch 24h Change
 	var change24h float64
 	var oldValuation float64
-	err = h.DB.QueryRow(`
+	err = h.DB.QueryRowContext(r.Context(), `
 		SELECT total_valuation 
 		FROM portfolio_history 
 		WHERE user_id = $1 AND created_at <= NOW() - INTERVAL '24 hours'
@@ -260,18 +270,18 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 
 	// If binderID is empty, try to find the default binder
 	if binderID == "" {
-		err := h.DB.QueryRow("SELECT id FROM binders WHERE user_id = $1 AND is_default = TRUE", userID).Scan(&binderID)
+		err := h.DB.QueryRowContext(r.Context(), "SELECT id FROM binders WHERE user_id = $1 AND is_default = TRUE", userID).Scan(&binderID)
 		if err != nil {
 			slog.Warn("No default binder found for user, using NULL", "user_id", userID)
 			binderID = "" // This will result in a NULL binder_id in the DB
 		}
 	}
 
-	_, err := h.DB.Exec(`
+	_, err := h.DB.ExecContext(r.Context(), `
 		INSERT INTO portfolio (user_id, card_id, binder_id, notes, custom_price, condition, format)
 		VALUES ($1, $2, NULLIF($3, '')::UUID, $4, $5, $6, $7)`,
 		userID, cardID, binderID, notes, customPrice, "Near Mint", "Raw")
-	
+
 	if err != nil {
 		slog.Error("Failed to add card to portfolio", "error", err)
 		http.Error(w, "Failed to add card", http.StatusInternalServerError)
@@ -331,7 +341,7 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 	customPrice := r.FormValue("custom_price")
 	isPublic := r.FormValue("is_public") == "true"
 
-	_, err := h.DB.Exec(`
+	_, err := h.DB.ExecContext(r.Context(), `
 		UPDATE portfolio 
 		SET notes = $1, grade = $2, custom_price = $3, is_public = $4
 		WHERE id = $5 AND user_id = $6`,
@@ -356,7 +366,6 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("Item updated successfully!"))
 }
 
-
 func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: AutoNameBinder", "method", r.Method)
 	if r.Method != http.MethodPost {
@@ -368,12 +377,12 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 	binderID := r.FormValue("binder_id")
 
 	// Fetch cards in binder
-	rows, err := h.DB.Query(`
+	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT c.name
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.binder_id = $1 AND p.user_id = $2`, binderID, userID)
-	
+
 	if err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
@@ -396,7 +405,7 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.DB.Exec("UPDATE binders SET name = $1 WHERE id = $2 AND user_id = $3", newName, binderID, userID)
+	_, err = h.DB.ExecContext(r.Context(), "UPDATE binders SET name = $1 WHERE id = $2 AND user_id = $3", newName, binderID, userID)
 	if err != nil {
 		http.Error(w, "Failed to update binder", http.StatusInternalServerError)
 		return
@@ -423,21 +432,21 @@ func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Binders(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Binders", "method", r.Method, "url", r.URL.String())
-	
+
 	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	rows, err := h.DB.Query(`
+	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT b.id, b.name, b.description, b.created_at, COUNT(p.id) as card_count
 		FROM binders b
 		LEFT JOIN portfolio p ON b.id = p.binder_id
 		WHERE b.user_id = $1
 		GROUP BY b.id, b.name, b.description, b.created_at
 		ORDER BY b.created_at DESC`, userID)
-	
+
 	var binders []Binder
 	if err == nil {
 		defer rows.Close()
@@ -475,7 +484,7 @@ func (h *Handler) CreateBinder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.DB.Exec("INSERT INTO binders (user_id, name, description) VALUES ($1, $2, $3)", userID, name, description)
+	_, err := h.DB.ExecContext(r.Context(), "INSERT INTO binders (user_id, name, description) VALUES ($1, $2, $3)", userID, name, description)
 	if err != nil {
 		slog.Error("Failed to create binder", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -487,10 +496,10 @@ func (h *Handler) CreateBinder(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: BinderDetail", "method", r.Method, "url", r.URL.String())
-	
+
 	vars := mux.Vars(r)
 	binderID := vars["id"]
-	
+
 	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -499,19 +508,19 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch binder info
 	var binder Binder
-	err := h.DB.QueryRow("SELECT id, name, description FROM binders WHERE id = $1 AND user_id = $2", binderID, userID).Scan(&binder.ID, &binder.Name, &binder.Description)
+	err := h.DB.QueryRowContext(r.Context(), "SELECT id, name, description FROM binders WHERE id = $1 AND user_id = $2", binderID, userID).Scan(&binder.ID, &binder.Name, &binder.Description)
 	if err != nil {
 		http.Error(w, "Binder not found", http.StatusNotFound)
 		return
 	}
 
 	// Fetch cards in binder
-	rows, err := h.DB.Query(`
+	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.game
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.binder_id = $1 AND p.user_id = $2`, binderID, userID)
-	
+
 	var cards []models.PortfolioItem
 	if err == nil {
 		defer rows.Close()
@@ -536,7 +545,7 @@ func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Action: RefreshCache", "user", r.Context().Value(auth.UserContextKey{}))
-	
+
 	count, err := h.reloadCards()
 	if err != nil {
 		http.Error(w, "Failed to refresh cache: "+err.Error(), http.StatusInternalServerError)

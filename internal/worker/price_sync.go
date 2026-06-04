@@ -23,9 +23,9 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"pokget/internal/models"
 	"pokget/internal/service"
-	"log/slog"
 	"time"
 
 	"github.com/shopspring/decimal"

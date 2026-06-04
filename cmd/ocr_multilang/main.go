@@ -21,7 +21,7 @@ func downloadImage(url string) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func main() {
 
 	for _, tc := range testCards {
 		fmt.Printf("🧪 Testing: %s [%s]\n", tc.DisplayName, tc.Lang)
-		
+
 		// 1. Download image
 		imgBytes, err := downloadImage(tc.ImageURL)
 		if err != nil {

@@ -27,7 +27,7 @@ func main() {
 
 	for name, url := range cardURLs {
 		fmt.Printf("--- Testing OCR for: %s ---\n", name)
-		
+
 		// Download image
 		// #nosec G107
 		resp, err := http.Get(url)

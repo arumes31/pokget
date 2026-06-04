@@ -41,13 +41,13 @@ type ErrorCard struct {
 func (h *Handler) ErrorDatabase(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: ErrorDatabase", "method", r.Method)
 
-	rows, err := h.DB.Query(`
+	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT e.id, e.card_id, e.error_type, e.description, e.estimated_value_multiplier, 
 		       c.name, c.set_name, c.image_url, c.game
 		FROM error_cards e
 		JOIN cards c ON e.card_id = c.id
 		ORDER BY e.created_at DESC`)
-	
+
 	if err != nil {
 		slog.Error("Failed to fetch error database", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -86,7 +86,7 @@ func (h *Handler) SubmitError(w http.ResponseWriter, r *http.Request) {
 	description := r.FormValue("description")
 	multiplier := r.FormValue("multiplier")
 
-	_, err := h.DB.Exec(`
+	_, err := h.DB.ExecContext(r.Context(), `
 		INSERT INTO error_cards (card_id, error_type, description, estimated_value_multiplier, submitted_by)
 		VALUES ($1, $2, $3, $4, $5)`,
 		cardID, errorType, description, multiplier, userID)

@@ -75,11 +75,11 @@ func TestUserInstantiation(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to marshal user: %v", err)
 	}
-	
+
 	// PasswordHash and VerificationToken should be ignored in JSON
 	var unmarshaled map[string]interface{}
 	_ = json.Unmarshal(data, &unmarshaled)
-	
+
 	if _, ok := unmarshaled["PasswordHash"]; ok {
 		t.Error("PasswordHash should not be serialized")
 	}

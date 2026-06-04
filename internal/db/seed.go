@@ -22,8 +22,8 @@ package db
 
 import (
 	"database/sql"
-	"pokget/internal/models"
 	"log/slog"
+	"pokget/internal/models"
 
 	"github.com/shopspring/decimal"
 )

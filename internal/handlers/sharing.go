@@ -40,13 +40,13 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	var email string
 	var rank string
 	var xp int
-	
-	err := h.DB.QueryRow(`
+
+	err := h.DB.QueryRowContext(r.Context(), `
 		SELECT id, email, rank_title, xp 
 		FROM users 
-		WHERE public_slug = $1 AND is_public_profile = TRUE`, 
+		WHERE public_slug = $1 AND is_public_profile = TRUE`,
 		slug).Scan(&userID, &email, &rank, &xp)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			slog.Warn("PublicVault: Vault not found", "slug", slug)
@@ -59,13 +59,13 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch public portfolio items
-	rows, err := h.DB.Query(`
+	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT p.id, p.condition, p.format, p.grade, p.grading_company, p.notes, 
 		       c.name, c.set_name, c.price_usd, c.image_url, c.game
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1 AND p.is_public = TRUE`, userID)
-	
+
 	if err != nil {
 		slog.Error("Failed to fetch public vault", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -106,7 +106,7 @@ func (h *Handler) ToggleVisibility(w http.ResponseWriter, r *http.Request) {
 	itemID := r.FormValue("item_id")
 	isPublic := r.FormValue("is_public") == "true"
 
-	_, err := h.DB.Exec("UPDATE portfolio SET is_public = $1 WHERE id = $2 AND user_id = $3", isPublic, itemID, userID)
+	_, err := h.DB.ExecContext(r.Context(), "UPDATE portfolio SET is_public = $1 WHERE id = $2 AND user_id = $3", isPublic, itemID, userID)
 	if err != nil {
 		http.Error(w, "Failed to update visibility", http.StatusInternalServerError)
 		return
