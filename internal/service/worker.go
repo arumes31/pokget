@@ -50,18 +50,27 @@ func (s *WorkerService) refreshAllPrices() {
 		slog.Error("Worker: Failed to fetch cards for refresh", "error", err)
 		return
 	}
-	defer rows.Close()
 
+	var cards []models.Card
 	for rows.Next() {
 		var card models.Card
 		if err := rows.Scan(&card.ID, &card.Name, &card.Set, &card.Game); err != nil {
 			slog.Error("Worker: Failed to scan card row", "error", err)
 			continue
 		}
+		cards = append(cards, card)
+	}
+	// Early release of database connection
+	rows.Close()
 
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for _, card := range cards {
 		usd, eur, err := s.PriceClient.FetchPrice(card)
 		if err != nil {
 			slog.Warn("Worker: Failed to fetch price for card", "card", card.Name, "error", err)
+			<-ticker.C
 			continue
 		}
 
@@ -70,14 +79,14 @@ func (s *WorkerService) refreshAllPrices() {
 			SET price_usd = $1, price_eur = $2, last_updated = CURRENT_TIMESTAMP 
 			WHERE id = $3`,
 			usd, eur, card.ID)
-		
+
 		if err != nil {
 			slog.Error("Worker: Failed to update card price", "card", card.Name, "error", err)
 		} else {
 			slog.Info("Worker: Updated card price", "card", card.Name, "usd", usd, "eur", eur)
 		}
 
-		// Avoid being blocked by scrapers
-		time.Sleep(2 * time.Second)
+		// Use ticker to decouple fetching from DB updates and network delay
+		<-ticker.C
 	}
 }
