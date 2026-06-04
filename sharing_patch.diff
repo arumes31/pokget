@@ -1,0 +1,14 @@
+<<<<<<< SEARCH
+	h.render(w, r, "public_vault.html", map[string]interface{}{
+		"Username":  func() string { if i := strings.IndexByte(email, '@'); i != -1 { return email[:i] }; return email }(),
+		"Portfolio": portfolio,
+=======
+	username := email
+	if i := strings.IndexByte(email, '@'); i != -1 {
+		username = email[:i]
+	}
+
+	h.render(w, r, "public_vault.html", map[string]interface{}{
+		"Username":  username,
+		"Portfolio": portfolio,
+>>>>>>> REPLACE

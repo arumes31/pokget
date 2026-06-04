@@ -1,0 +1,14 @@
+<<<<<<< SEARCH
+	username := email
+	if i := strings.IndexByte(email, '@'); i != -1 {
+		username = email[:i]
+	}
+=======
+	// Performance Optimization (Bolt): Using IndexByte + slicing instead of strings.Split
+	// to avoid allocating a slice of strings.
+	// Expected Impact: Reduces memory allocations per request by 1.
+	username := email
+	if i := strings.IndexByte(email, '@'); i != -1 {
+		username = email[:i]
+	}
+>>>>>>> REPLACE

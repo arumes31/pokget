@@ -1,0 +1,81 @@
+<<<<<<< SEARCH
+	t.Run("PublicVault_DBError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/vault/test-user", nil)
+		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
+		rr := httptest.NewRecorder()
+
+		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
+			WillReturnError(errors.New("db error"))
+
+		h.PublicVault(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+	})
+=======
+	t.Run("PublicVault_DBError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/vault/test-user", nil)
+		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
+		rr := httptest.NewRecorder()
+
+		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
+			WillReturnError(errors.New("db error"))
+
+		h.PublicVault(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+	})
+
+	t.Run("PublicVault_PortfolioError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/vault/test-user", nil)
+		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
+		rr := httptest.NewRecorder()
+
+		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "email", "rank_title", "xp"}).
+				AddRow("test-user-id", "test@example.com", "Hobbyist", 100))
+
+		mock.ExpectQuery("SELECT p.id").WithArgs("test-user-id").
+			WillReturnError(errors.New("portfolio db error"))
+
+		h.PublicVault(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+	})
+
+	t.Run("PublicVault_EmptyPortfolio", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/vault/test-user", nil)
+		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
+		rr := httptest.NewRecorder()
+
+		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "email", "rank_title", "xp"}).
+				AddRow("test-user-id", "test@example.com", "Hobbyist", 100))
+
+		mock.ExpectQuery("SELECT p.id").WithArgs("test-user-id").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "fmt", "gr", "comp", "notes", "name", "set", "price", "url", "game"}))
+
+		h.PublicVault(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+	})
+>>>>>>> REPLACE

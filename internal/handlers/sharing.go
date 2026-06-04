@@ -82,8 +82,18 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+
+
+	// Performance Optimization (Bolt): Using IndexByte + slicing instead of strings.Split
+	// to avoid allocating a slice of strings.
+	// Expected Impact: Reduces memory allocations per request by 1.
+	username := email
+	if i := strings.IndexByte(email, '@'); i != -1 {
+		username = email[:i]
+	}
+
 	h.render(w, r, "public_vault.html", map[string]interface{}{
-		"Username":  strings.Split(email, "@")[0],
+		"Username":  username,
 		"Portfolio": portfolio,
 		"Rank":      rank,
 		"XP":        xp,
