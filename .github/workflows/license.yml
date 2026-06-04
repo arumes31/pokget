@@ -1,5 +1,4 @@
 name: License Check
-
 on:
   push:
     branches: [ main ]
@@ -11,15 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - name: Check dependencies licenses
+        uses: wntrblm/nox@2024.03.02
         with:
-          go-version: '1.26.3'
-
-      - name: Install addlicense
-        run: go install github.com/google/addlicense@latest
-
-      - name: Check License Headers
+          python-versions: "3.12"
+      - name: Run reuse lint
         run: |
-          addlicense -check -l mit -c "arumes31" **/*.go
+          pip install reuse
+          reuse lint
