@@ -23,8 +23,9 @@ package service
 import (
 	"database/sql"
 	"fmt"
-	"pokget/internal/models"
 	"image"
+	"math/bits"
+	"pokget/internal/models"
 
 	"github.com/corona10/goimagehash"
 )
@@ -51,22 +52,22 @@ func (s *FingerprintService) MatchFingerprint(hashVal int64, cards []models.Card
 	var bestMatch *models.Card
 	minDistance := 64 // Max bits in pHash
 
-	targetHash := goimagehash.NewImageHash(uint64(hashVal), goimagehash.PHash) // #nosec G115
+	// Bolt Optimization: Directly use bits.OnesCount64 to calculate Hamming distance.
+	// This eliminates O(N) heap allocations by avoiding goimagehash.NewImageHash inside the loop.
+	h1 := uint64(hashVal)
 
-	for _, c := range cards {
+	for i := range cards {
+		c := &cards[i]
 		if c.Phash == nil {
 			continue
 		}
 
-		storedHash := goimagehash.NewImageHash(uint64(*c.Phash), goimagehash.PHash) // #nosec G115
-		distance, err := targetHash.Distance(storedHash)
-		if err != nil {
-			continue
-		}
+		// Calculate Hamming distance between target hash and stored hash
+		distance := bits.OnesCount64(h1 ^ uint64(*c.Phash))
 
 		if distance < minDistance {
 			minDistance = distance
-			bestMatch = &c
+			bestMatch = c
 		}
 	}
 

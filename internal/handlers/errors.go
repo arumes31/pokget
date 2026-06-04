@@ -47,7 +47,7 @@ func (h *Handler) ErrorDatabase(w http.ResponseWriter, r *http.Request) {
 		FROM error_cards e
 		JOIN cards c ON e.card_id = c.id
 		ORDER BY e.created_at DESC`)
-	
+
 	if err != nil {
 		slog.Error("Failed to fetch error database", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
