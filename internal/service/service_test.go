@@ -299,7 +299,7 @@ func TestScraperPriceClient(t *testing.T) {
 	t.Run("FetchPriceHeadless_Unsupported", func(t *testing.T) {
 		scraper := &ScraperPriceClient{}
 		card := models.Card{Name: "Pikachu", Game: "Pokemon"} // Headless only supports Magic/YuGiOh
-		_, err := scraper.fetchPriceHeadless(card)
+		_, err := scraper.TCGPlayer.Scrape(card)
 		if err == nil {
 			t.Error("Expected error for unsupported game")
 		}
@@ -314,7 +314,7 @@ func TestScraperPriceClient(t *testing.T) {
 		defer server.Close()
 
 		scraper := NewScraperPriceClient()
-		scraper.BaseURL = server.URL
+		scraper.Cardmarket.BaseURL = server.URL
 		
 		card := models.Card{Name: "Charizard", Set: "Base", Game: "Pokemon"}
 		_, eur, err := scraper.FetchPrice(card)
@@ -334,7 +334,7 @@ func TestScraperPriceClient(t *testing.T) {
 		defer server.Close()
 
 		scraper := NewScraperPriceClient()
-		scraper.BaseURL = server.URL
+		scraper.Cardmarket.BaseURL = server.URL
 		
 		card := models.Card{Name: "Charizard", Set: "Base"}
 		_, _, err := scraper.FetchPrice(card)
@@ -352,7 +352,7 @@ func TestScraperPriceClient(t *testing.T) {
 		defer server.Close()
 
 		scraper := NewScraperPriceClient()
-		scraper.BaseURL = server.URL
+		scraper.Cardmarket.BaseURL = server.URL
 
 		for _, game := range games {
 			card := models.Card{Name: "N", Set: "S", Game: game}

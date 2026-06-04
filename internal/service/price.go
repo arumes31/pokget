@@ -75,27 +75,21 @@ func (m *MockLLMClient) FuzzyMatchCard(_ string, _ []models.Card) (string, error
 	return m.Response, m.Err
 }
 
-// ScraperPriceClient fetches prices via Web Scraping (No API key needed)
-type ScraperPriceClient struct {
+var scraperUserAgents = []string{
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+}
+
+// CardmarketScraper handles scraping logic for Cardmarket.com
+type CardmarketScraper struct {
 	BaseURL string
 }
 
-func NewScraperPriceClient() *ScraperPriceClient {
-	return &ScraperPriceClient{
-		BaseURL: "https://www.cardmarket.com",
-	}
-}
-
-func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, error) {
-	var usd, eur float64
+// Scrape fetches the current price from Cardmarket
+func (s *CardmarketScraper) Scrape(card models.Card) (float64, error) {
+	var eur float64
 	var scrapeErr error
-
-	// User Agent Rotation for Resilience
-	userAgents := []string{
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-		"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1",
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
-	}
 
 	c := colly.NewCollector()
 	c.SetRequestTimeout(15 * time.Second)
@@ -104,11 +98,11 @@ func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, err
 		Parallelism: 2,
 		Delay:       2 * time.Second,
 	}); err != nil {
-		slog.Error("Scraper: Failed to set limit rule", "error", err)
+		slog.Error("CardmarketScraper: Failed to set limit rule", "error", err)
 	}
-	c.UserAgent = userAgents[time.Now().UnixNano()%int64(len(userAgents))]
+	// ⚡ Bolt: Use package-level scraperUserAgents to avoid slice allocation on every call.
+	c.UserAgent = scraperUserAgents[time.Now().UnixNano()%int64(len(scraperUserAgents))]
 
-	// --- 1. Scrape Cardmarket (EUR) ---
 	var gameSegment string
 	switch strings.ToLower(card.Game) {
 	case "one piece":
@@ -129,14 +123,14 @@ func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, err
 		url.PathEscape(strings.ReplaceAll(card.Set, " ", "-")),
 		url.PathEscape(strings.ReplaceAll(card.Name, " ", "-")))
 
-	slog.Info("Worker: Scraping Cardmarket", "url", cmURL)
+	slog.Info("CardmarketScraper: Scraping", "url", cmURL)
 
 	c.OnHTML(".price-container .color-primary", func(e *colly.HTMLElement) {
 		val := strings.Trim(e.Text, " €")
 		val = strings.Replace(val, ",", ".", -1)
 		parsed, err := strconv.ParseFloat(val, 64)
 		if err != nil {
-			slog.Error("Scraper: Failed to parse price", "val", val, "error", err)
+			slog.Error("CardmarketScraper: Failed to parse price", "val", val, "error", err)
 			scrapeErr = err
 			return
 		}
@@ -145,32 +139,26 @@ func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, err
 
 	c.OnError(func(r *colly.Response, err error) {
 		if r != nil && r.Request != nil {
-			slog.Error("Scraper: Request failed", "url", r.Request.URL, "status", r.StatusCode, "error", err)
+			slog.Error("CardmarketScraper: Request failed", "url", r.Request.URL, "status", r.StatusCode, "error", err)
 		} else {
-			slog.Error("Scraper: Request failed", "error", err)
+			slog.Error("CardmarketScraper: Request failed", "error", err)
 		}
 		scrapeErr = err
 	})
 
 	if err := c.Visit(cmURL); err != nil {
-		slog.Error("Scraper: Failed to visit URL", "url", cmURL, "error", err)
+		slog.Error("CardmarketScraper: Failed to visit URL", "url", cmURL, "error", err)
 		scrapeErr = err
 	}
 
-	// --- 2. Headless Fallback for TCGPlayer (USD) ---
-	if usd == 0 {
-		headlessPrice, err := s.fetchPriceHeadless(card)
-		if err == nil {
-			usd = headlessPrice
-		} else {
-			slog.Warn("Scraper: Headless fallback failed", "card", card.Name, "error", err)
-		}
-	}
-
-	return usd, eur, scrapeErr
+	return eur, scrapeErr
 }
 
-func (s *ScraperPriceClient) fetchPriceHeadless(card models.Card) (float64, error) {
+// TCGPlayerScraper handles headless scraping for TCGPlayer.com
+type TCGPlayerScraper struct{}
+
+// Scrape fetches the current price from TCGPlayer using headless browser
+func (s *TCGPlayerScraper) Scrape(card models.Card) (float64, error) {
 	ctx, cancel := chromedp.NewContext(context.Background())
 	defer cancel()
 
@@ -179,7 +167,7 @@ func (s *ScraperPriceClient) fetchPriceHeadless(card models.Card) (float64, erro
 
 	var priceStr string
 	var targetURL string
-	
+
 	switch strings.ToLower(card.Game) {
 	case "pokemon":
 		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/pokemon/product?q=%s", url.QueryEscape(card.Name))
@@ -209,14 +197,49 @@ func (s *ScraperPriceClient) fetchPriceHeadless(card models.Card) (float64, erro
 	return strconv.ParseFloat(priceStr, 64)
 }
 
+// ScraperPriceClient fetches prices via Web Scraping (No API key needed)
+// It uses specialized scrapers for different markets.
+type ScraperPriceClient struct {
+	Cardmarket *CardmarketScraper
+	TCGPlayer  *TCGPlayerScraper
+}
+
+// NewScraperPriceClient initializes a new ScraperPriceClient with its sub-scrapers.
+func NewScraperPriceClient() *ScraperPriceClient {
+	return &ScraperPriceClient{
+		Cardmarket: &CardmarketScraper{
+			BaseURL: "https://www.cardmarket.com",
+		},
+		TCGPlayer: &TCGPlayerScraper{},
+	}
+}
+
+// FetchPrice fetches prices from multiple sources and returns them.
+func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, error) {
+	if s.Cardmarket == nil || s.TCGPlayer == nil {
+		return 0, 0, fmt.Errorf("scraper client not properly initialized")
+	}
+
+	eur, scrapeErr := s.Cardmarket.Scrape(card)
+
+	var usd float64
+	// TCGPlayer Scrape (USD)
+	usd, err := s.TCGPlayer.Scrape(card)
+	if err != nil {
+		slog.Warn("Scraper: TCGPlayer scrape failed", "card", card.Name, "error", err)
+	}
+
+	return usd, eur, scrapeErr
+}
+
 func (s *ScraperPriceClient) ApplyMultiplier(price float64, condition string, multipliers map[string]float64) float64 {
 	if multipliers == nil {
 		// Default multipliers
 		multipliers = map[string]float64{
-			"NM": 1.0,
-			"LP": 0.9,
-			"MP": 0.7,
-			"HP": 0.5,
+			"NM":  1.0,
+			"LP":  0.9,
+			"MP":  0.7,
+			"HP":  0.5,
 			"DMG": 0.3,
 		}
 	}
