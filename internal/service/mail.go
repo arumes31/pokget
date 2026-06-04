@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/smtp"
 	"os"
 	"strings"
@@ -81,7 +82,7 @@ func (s *MailService) SendConfirmationEmail(to, token string) error {
 	}
 
 	// Log the confirmation URL for easier development/testing if SMTP fails
-	fmt.Printf("\n[MAIL] Confirmation link for %s: %s\n\n", to, confirmURL)
+	slog.Info("Sending confirmation email", "to", to)
 
 	return s.sendMail(to, subject, body.String())
 }

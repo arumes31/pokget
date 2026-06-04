@@ -190,6 +190,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	session.Options.SameSite = http.SameSiteLaxMode
 	session.Options.HttpOnly = true
+	session.Options.Secure = true // Ensure cookie is only sent over HTTPS
 
 	if err := session.Save(r, w); err != nil {
 		slog.Error("Failed to save session", "error", err)

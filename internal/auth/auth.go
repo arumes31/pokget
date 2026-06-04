@@ -22,7 +22,9 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"log/slog"
 	"net"
 	"net/http"
@@ -39,7 +41,12 @@ var Store *sessions.CookieStore
 func init() {
 	key := os.Getenv("SESSION_KEY")
 	if key == "" {
-		key = "temporary-insecure-dev-key-32-chars-long" 
+		slog.Warn("SESSION_KEY not set, generating a random 32-byte key for this session. Sessions will be invalidated on restart!")
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			panic("Failed to generate secure session key: " + err.Error())
+		}
+		key = hex.EncodeToString(b)
 	}
 	Store = InitStore(key)
 }
