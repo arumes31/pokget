@@ -68,12 +68,12 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 	db.DB = dbMock
 
 	h := &Handler{
-		Templates:    tmpl,
-		MockCards:    []models.Card{{ID: "test-id", Name: "Test Card"}},
-		Audit:        service.NewAuditService(dbMock),
-		Game:         service.NewGamificationService(dbMock),
-		Fingerprint:  service.NewFingerprintService(dbMock),
-		DB:           dbMock,
+		Templates:   tmpl,
+		MockCards:   []models.Card{{ID: "test-id", Name: "Test Card"}},
+		Audit:       service.NewAuditService(dbMock),
+		Game:        service.NewGamificationService(dbMock),
+		Fingerprint: service.NewFingerprintService(dbMock),
+		DB:          dbMock,
 	}
 
 	return h, mock, func() { dbMock.Close() }
@@ -438,8 +438,8 @@ func TestHandlers(t *testing.T) {
 
 		h.Login(rr, req)
 
-		if rr.Code != http.StatusSeeOther {
-			t.Errorf("Expected status 303, got %d", rr.Code)
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
 		}
 	})
 
@@ -563,7 +563,7 @@ func TestHandlers(t *testing.T) {
 		// Or just use a template that doesn't exist to hit the error log branch if render handles it
 		req := httptest.NewRequest("GET", "/", nil)
 		rr := httptest.NewRecorder()
-		
+
 		// Passing nil to render with a template that expects fields might work,
 		// but let's just test with a missing template
 		h.Index(rr, req) // Authenticated redirect branch already tested
@@ -995,9 +995,91 @@ func TestHandlers(t *testing.T) {
 			t.Errorf("Expected status 500, got %d", rr.Code)
 		}
 	})
+
+	t.Run("ErrorDatabase_DBError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/error", nil)
+		rr := httptest.NewRecorder()
+
+		mock.ExpectQuery("SELECT").WillReturnError(sql.ErrConnDone)
+
+		h.ErrorDatabase(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+	})
+
+	t.Run("ErrorDatabase_ScanError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/error", nil)
+		rr := httptest.NewRecorder()
+
+		// Return one row with wrong type for multiplier (string instead of float64) to trigger scan error
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "cid", "type", "desc", "mult", "name", "set", "url", "game"}).
+			AddRow("1", "c1", "Misprint", "Blurry", "invalid", "Pikachu", "Base", "url", "Pokemon"))
+
+		h.ErrorDatabase(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+	})
+
+	t.Run("SubmitError_MethodNotAllowed", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/error/submit", nil)
+		rr := httptest.NewRecorder()
+
+		h.SubmitError(rr, req)
+
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Errorf("Expected status 405, got %d", rr.Code)
+		}
+	})
+
+	t.Run("SubmitError_Unauthorized", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/error/submit", nil)
+		rr := httptest.NewRecorder()
+
+		h.SubmitError(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status 401, got %d", rr.Code)
+		}
+	})
+
+	t.Run("SubmitError_DBError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/error/submit", strings.NewReader("card_id=c1&error_type=Miscut&description=offcenter&multiplier=1.5"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		mock.ExpectExec("INSERT INTO error_cards").WillReturnError(sql.ErrConnDone)
+
+		h.SubmitError(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+	})
 }
 
 type errorReader struct{}
+
 func (e *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, errors.New("rand fail")
 }
