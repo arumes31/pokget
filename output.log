@@ -1,0 +1,3 @@
+2026/06/04 07:04:49 WARN auth: SESSION_KEY not set, using generated random key for development
+2026/06/04 07:04:49 ERROR Failed to load configuration error="config error: field \"Host\" is required but the value is not provided"
+exit status 1

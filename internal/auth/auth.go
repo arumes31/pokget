@@ -22,7 +22,10 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -39,7 +42,20 @@ var Store *sessions.CookieStore
 func init() {
 	key := os.Getenv("SESSION_KEY")
 	if key == "" {
-		key = "temporary-insecure-dev-key-32-chars-long" 
+		if os.Getenv("DEBUG") == "true" {
+			// Generate a random key for development if not provided
+			b := make([]byte, 32)
+			if _, err := rand.Read(b); err != nil {
+				panic(fmt.Sprintf("auth: failed to generate random session key: %v", err))
+			}
+			key = hex.EncodeToString(b)
+			// Set it in the environment so other components (like config.Load) see it
+			os.Setenv("SESSION_KEY", key)
+			slog.Warn("auth: SESSION_KEY not set, using generated random key for development")
+		} else {
+			// Panic in production if the key is missing
+			panic("auth: SESSION_KEY environment variable is required in production")
+		}
 	}
 	Store = InitStore(key)
 }
@@ -83,22 +99,21 @@ func Middleware(next http.Handler) http.Handler {
 	})
 }
 
-var (
-	limiters = make(map[string]*rate.Limiter)
-	mu       sync.Mutex
-)
+// Optimization: Use sync.Map instead of map + mutex for rate limiters.
+// This reduces lock contention on the global mutex when multiple concurrent
+// requests from different IPs are being rate-limited.
+// Expected Impact: Better scalability under high traffic.
+var limiters sync.Map
 
 func getLimiter(ip string) *rate.Limiter {
-	mu.Lock()
-	defer mu.Unlock()
-
-	limiter, exists := limiters[ip]
-	if !exists {
-		limiter = rate.NewLimiter(1, 5) // 1 request per second with a burst of 5
-		limiters[ip] = limiter
+	if limiter, ok := limiters.Load(ip); ok {
+		return limiter.(*rate.Limiter)
 	}
 
-	return limiter
+	// Double-check with LoadOrStore to avoid race conditions during creation
+	newLimiter := rate.NewLimiter(1, 5) // 1 request per second with a burst of 5
+	actual, _ := limiters.LoadOrStore(ip, newLimiter)
+	return actual.(*rate.Limiter)
 }
 
 func RateLimitMiddleware(next http.Handler) http.Handler {
