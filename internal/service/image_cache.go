@@ -21,9 +21,11 @@
 package service
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 )
@@ -49,6 +51,25 @@ func (s *ImageCacheService) GetImagePath(cardID string, remoteURL string) (strin
 	// Check if already exists
 	if _, err := os.Stat(localPath); err == nil {
 		return localPath, nil
+	}
+
+	// Validate URL before downloading to prevent SSRF
+	parsedURL, err := url.Parse(remoteURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid URL: %w", err)
+	}
+
+	if parsedURL.Scheme != "https" {
+		return "", fmt.Errorf("insecure protocol: %s", parsedURL.Scheme)
+	}
+
+	allowedHosts := map[string]bool{
+		"images.pokemontcg.io": true,
+		"example.com":          true, // For seed data and testing
+	}
+
+	if !allowedHosts[parsedURL.Host] {
+		return "", fmt.Errorf("untrusted host: %s", parsedURL.Host)
 	}
 
 	// Download for free from remote source
