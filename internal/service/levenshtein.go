@@ -4,28 +4,40 @@ import (
 	"strings"
 )
 
+// levenshtein calculates the Levenshtein distance between two strings.
+// Optimized to use O(min(N, M)) memory space and to decrease execution
+// time. The original implementation used an O(N * M) matrix.
+// This reduces heap allocations and garbage collector pressure.
 func levenshtein(s1, s2 string) int {
 	s1 = strings.ToLower(s1)
 	s2 = strings.ToLower(s2)
 	n, m := len(s1), len(s2)
 	if n == 0 { return m }
 	if m == 0 { return n }
-	d := make([][]int, n+1)
-	for i := range d {
-		d[i] = make([]int, m+1)
-		d[i][0] = i
+
+	if n < m {
+		n, m = m, n
+		s1, s2 = s2, s1
 	}
-	for j := 0; j <= m; j++ {
-		d[0][j] = j
+
+	v0 := make([]int, m+1)
+	v1 := make([]int, m+1)
+
+	for i := 0; i <= m; i++ {
+		v0[i] = i
 	}
-	for i := 1; i <= n; i++ {
-		for j := 1; j <= m; j++ {
+
+	for i := 0; i < n; i++ {
+		v1[0] = i + 1
+		for j := 0; j < m; j++ {
 			cost := 1
-			if s1[i-1] == s2[j-1] {
+			if s1[i] == s2[j] {
 				cost = 0
 			}
-			d[i][j] = min(d[i-1][j]+1, min(d[i][j-1]+1, d[i-1][j-1]+cost))
+			v1[j+1] = min(v1[j]+1, min(v0[j+1]+1, v0[j]+cost))
 		}
+		v0, v1 = v1, v0
 	}
-	return d[n][m]
+
+	return v0[m]
 }
