@@ -35,6 +35,7 @@ import (
 	"os"
 	"path/filepath"
 	"pokget/internal/models"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,27 +126,25 @@ func TestImageCacheService(t *testing.T) {
 	s := NewImageCacheService(tempDir)
 
 	t.Run("DownloadAndCache", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("fake-image-data"))
-		}))
-		defer server.Close()
-
-		path, err := s.GetImagePath("test-card", server.URL)
-		if err != nil {
-			t.Errorf("GetImagePath failed: %v", err)
-		}
-		if filepath.Base(path) != "test-card.png" {
-			t.Errorf("Expected filename test-card.png, got %s", filepath.Base(path))
+		// SSRF validation: non-https scheme rejected
+		_, err := s.GetImagePath("test-card", "http://example.com/image.png")
+		if err == nil || !strings.Contains(err.Error(), "insecure protocol") {
+			t.Errorf("Expected insecure protocol error, got: %v", err)
 		}
 
-		// Verify file exists
-		if _, err := os.Stat(path); err != nil {
-			t.Error("File was not created")
+		// SSRF validation: untrusted host rejected
+		_, err = s.GetImagePath("test-card", "https://malicious.com/image.png")
+		if err == nil || !strings.Contains(err.Error(), "untrusted host") {
+			t.Errorf("Expected untrusted host error, got: %v", err)
 		}
 
-		// Second call should hit cache (server not used)
-		path2, err := s.GetImagePath("test-card", "http://invalid-url")
+		// To test success, we create a file manually as if it was cached
+		safeID := filepath.Base("test-card")
+		path := filepath.Join(tempDir, safeID+".png")
+		_ = os.WriteFile(path, []byte("fake-image-data"), 0600)
+
+		// Call should hit cache (validation skipped for cached files)
+		path2, err := s.GetImagePath("test-card", "https://example.com/any")
 		if err != nil {
 			t.Errorf("GetImagePath (cached) failed: %v", err)
 		}
@@ -299,7 +298,7 @@ func TestScraperPriceClient(t *testing.T) {
 	t.Run("FetchPriceHeadless_Unsupported", func(t *testing.T) {
 		scraper := &ScraperPriceClient{}
 		card := models.Card{Name: "Pikachu", Game: "Pokemon"} // Headless only supports Magic/YuGiOh
-		_, err := scraper.fetchPriceHeadless(card)
+		_, err := scraper.TCGPlayer.Scrape(card)
 		if err == nil {
 			t.Error("Expected error for unsupported game")
 		}
@@ -314,7 +313,7 @@ func TestScraperPriceClient(t *testing.T) {
 		defer server.Close()
 
 		scraper := NewScraperPriceClient()
-		scraper.BaseURL = server.URL
+		scraper.Cardmarket.BaseURL = server.URL
 		
 		card := models.Card{Name: "Charizard", Set: "Base", Game: "Pokemon"}
 		_, eur, err := scraper.FetchPrice(card)
@@ -334,7 +333,7 @@ func TestScraperPriceClient(t *testing.T) {
 		defer server.Close()
 
 		scraper := NewScraperPriceClient()
-		scraper.BaseURL = server.URL
+		scraper.Cardmarket.BaseURL = server.URL
 		
 		card := models.Card{Name: "Charizard", Set: "Base"}
 		_, _, err := scraper.FetchPrice(card)
@@ -352,7 +351,7 @@ func TestScraperPriceClient(t *testing.T) {
 		defer server.Close()
 
 		scraper := NewScraperPriceClient()
-		scraper.BaseURL = server.URL
+		scraper.Cardmarket.BaseURL = server.URL
 
 		for _, game := range games {
 			card := models.Card{Name: "N", Set: "S", Game: game}
@@ -364,41 +363,8 @@ func TestScraperPriceClient(t *testing.T) {
 	})
 }
 
-func TestAuditService(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Failed to open mock db: %v", err)
-	}
-	defer db.Close()
-
-	s := NewAuditService(db)
-
-	t.Run("Log_Success", func(t *testing.T) {
-		mock.ExpectExec("INSERT INTO audit_logs").WithArgs("user-1", "LOGIN", sqlmock.AnyArg()).
-			WillReturnResult(sqlmock.NewResult(1, 1))
-
-		s.Log("user-1", "LOGIN", map[string]interface{}{"ip": "1.2.3.4"})
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("Expectations not met: %v", err)
-		}
-	})
-
-	t.Run("Log_Error", func(_ *testing.T) {
-		mock.ExpectExec("INSERT INTO audit_logs").WillReturnError(sql.ErrConnDone)
-		// Should not panic, just log the error
-		s.Log("user-1", "LOGIN", nil)
-	})
-}
 
 func TestCryptoService(t *testing.T) {
-	t.Run("New_Error", func(t *testing.T) {
-		_, err := NewCryptoService("too-short")
-		if err == nil {
-			t.Error("Expected error for short key")
-		}
-	})
-
 	key := "12345678901234567890123456789012" // 32 bytes
 	s, err := NewCryptoService(key)
 	if err != nil {

@@ -67,11 +67,17 @@ func TestSeedDatabase(t *testing.T) {
 	}
 	defer db.Close()
 
+	// Mock safety check
+	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+	// Mock transaction
+	mock.ExpectBegin()
 	// SeedDatabase has 4 cards in mockCards
-	mock.ExpectExec("INSERT INTO cards").WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec("INSERT INTO cards").WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec("INSERT INTO cards").WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec("INSERT INTO cards").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO cards").WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO cards").WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO cards").WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO cards").WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
 
 	err = SeedDatabase(db)
 	if err != nil {
@@ -90,7 +96,11 @@ func TestSeedDatabase_Error(t *testing.T) {
 	}
 	defer db.Close()
 
+	// Mock safety check to return true
+	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO cards").WillReturnError(sql.ErrConnDone)
+	mock.ExpectRollback()
 
 	err = SeedDatabase(db)
 	if err == nil {
@@ -217,6 +227,10 @@ func TestRunMigrations_Success(t *testing.T) {
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
 
+	// Create temporary migrations directory
+	os.Mkdir("migrations", 0755)
+	defer os.RemoveAll("migrations")
+
 	err := RunMigrations()
 	if err != nil {
 		t.Errorf("RunMigrations failed: %v", err)
@@ -224,9 +238,10 @@ func TestRunMigrations_Success(t *testing.T) {
 }
 
 func TestConnect_Success(t *testing.T) {
-	dbMock, _, _ := sqlmock.New(sqlmock.MonitorPingsOption(true))
+	dbMock, mock, _ := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	defer dbMock.Close()
 
+	mock.ExpectPing()
 	oldSQLOpen := sqlOpen
 	sqlOpen = func(_, _ string) (*sql.DB, error) {
 		return dbMock, nil
@@ -268,10 +283,11 @@ func TestConnect_OpenError(t *testing.T) {
 }
 
 func TestInitDB(t *testing.T) {
-	dbMock, _, _ := sqlmock.New()
+	dbMock, mock, _ := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	defer dbMock.Close()
 
 	t.Run("Success", func(t *testing.T) {
+		mock.ExpectPing()
 		oldSQLOpen := sqlOpen
 		sqlOpen = func(_, _ string) (*sql.DB, error) {
 			return dbMock, nil
@@ -280,13 +296,17 @@ func TestInitDB(t *testing.T) {
 
 		oldNewMigrator := NewMigrator
 		NewMigrator = func(_ *sql.DB, _ string) (interface {
-		Up() error
-		Force(int) error
-		Version() (uint, bool, error)
-	}, error) {
+			Up() error
+			Force(int) error
+			Version() (uint, bool, error)
+		}, error) {
 			return &mockMigrator{err: nil}, nil
 		}
 		defer func() { NewMigrator = oldNewMigrator }()
+
+		// Create temporary migrations directory
+		os.Mkdir("migrations", 0755)
+		defer os.RemoveAll("migrations")
 
 		os.Setenv("DB_HOST", "localhost")
 		os.Setenv("DB_PORT", "5432")
@@ -305,4 +325,44 @@ func TestInitDB(t *testing.T) {
 		InitDB()
 		// Should just log and return
 	})
+}
+
+func TestSeedDatabase_ColumnNotFound(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to open mock db: %v", err)
+	}
+	defer db.Close()
+
+	// Mock safety check to return false
+	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+	err = SeedDatabase(db)
+	if err != nil {
+		t.Errorf("SeedDatabase failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Expectations not met: %v", err)
+	}
+}
+
+func TestSeedDatabase_SafetyCheckError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to open mock db: %v", err)
+	}
+	defer db.Close()
+
+	// Mock safety check to return error
+	mock.ExpectQuery("SELECT EXISTS").WillReturnError(fmt.Errorf("query fail"))
+
+	err = SeedDatabase(db)
+	if err != nil {
+		t.Errorf("SeedDatabase failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Expectations not met: %v", err)
+	}
 }
