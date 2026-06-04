@@ -86,10 +86,38 @@ type CardmarketScraper struct {
 	BaseURL string
 }
 
+// parseCardmarketPrice parses a Cardmarket price string written in the German
+// locale (e.g. "0,30 €" or "1.234,56 €") into a float64. The '.' character is a
+// thousands separator and ',' is the decimal separator, so a naive comma->dot
+// replacement corrupts any price >= 1000. This strips the currency symbol and
+// any grouping dots before parsing.
+func parseCardmarketPrice(text string) (float64, error) {
+	cleaned := strings.Map(func(r rune) rune {
+		switch {
+		case r >= '0' && r <= '9', r == '.', r == ',':
+			return r
+		default:
+			return -1
+		}
+	}, text)
+
+	if strings.Contains(cleaned, ",") {
+		// German locale: '.' groups thousands, ',' is the decimal separator.
+		cleaned = strings.ReplaceAll(cleaned, ".", "")
+		cleaned = strings.ReplaceAll(cleaned, ",", ".")
+	}
+
+	if cleaned == "" {
+		return 0, fmt.Errorf("no numeric price found in %q", text)
+	}
+	return strconv.ParseFloat(cleaned, 64)
+}
+
 // Scrape fetches the current price from Cardmarket
 func (s *CardmarketScraper) Scrape(card models.Card) (float64, error) {
 	var eur float64
 	var scrapeErr error
+	var found bool
 
 	c := colly.NewCollector()
 	c.SetRequestTimeout(15 * time.Second)
@@ -126,15 +154,14 @@ func (s *CardmarketScraper) Scrape(card models.Card) (float64, error) {
 	slog.Info("CardmarketScraper: Scraping", "url", cmURL)
 
 	c.OnHTML(".price-container .color-primary", func(e *colly.HTMLElement) {
-		val := strings.Trim(e.Text, " €")
-		val = strings.Replace(val, ",", ".", -1)
-		parsed, err := strconv.ParseFloat(val, 64)
+		parsed, err := parseCardmarketPrice(e.Text)
 		if err != nil {
-			slog.Error("CardmarketScraper: Failed to parse price", "val", val, "error", err)
+			slog.Error("CardmarketScraper: Failed to parse price", "text", e.Text, "error", err)
 			scrapeErr = err
 			return
 		}
 		eur = parsed
+		found = true
 	})
 
 	c.OnError(func(r *colly.Response, err error) {
@@ -149,6 +176,13 @@ func (s *CardmarketScraper) Scrape(card models.Card) (float64, error) {
 	if err := c.Visit(cmURL); err != nil {
 		slog.Error("CardmarketScraper: Failed to visit URL", "url", cmURL, "error", err)
 		scrapeErr = err
+	}
+
+	// If the request succeeded but no price element matched, surface an error
+	// instead of silently returning 0 (which would otherwise overwrite a valid
+	// stored price with zero downstream).
+	if scrapeErr == nil && !found {
+		scrapeErr = fmt.Errorf("price element not found for %q", card.Name)
 	}
 
 	return eur, scrapeErr
