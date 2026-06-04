@@ -35,6 +35,7 @@ import (
 	"os"
 	"path/filepath"
 	"pokget/internal/models"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,27 +126,25 @@ func TestImageCacheService(t *testing.T) {
 	s := NewImageCacheService(tempDir)
 
 	t.Run("DownloadAndCache", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("fake-image-data"))
-		}))
-		defer server.Close()
-
-		path, err := s.GetImagePath("test-card", server.URL)
-		if err != nil {
-			t.Errorf("GetImagePath failed: %v", err)
-		}
-		if filepath.Base(path) != "test-card.png" {
-			t.Errorf("Expected filename test-card.png, got %s", filepath.Base(path))
+		// SSRF validation: non-https scheme rejected
+		_, err := s.GetImagePath("test-card", "http://example.com/image.png")
+		if err == nil || !strings.Contains(err.Error(), "insecure protocol") {
+			t.Errorf("Expected insecure protocol error, got: %v", err)
 		}
 
-		// Verify file exists
-		if _, err := os.Stat(path); err != nil {
-			t.Error("File was not created")
+		// SSRF validation: untrusted host rejected
+		_, err = s.GetImagePath("test-card", "https://malicious.com/image.png")
+		if err == nil || !strings.Contains(err.Error(), "untrusted host") {
+			t.Errorf("Expected untrusted host error, got: %v", err)
 		}
 
-		// Second call should hit cache (server not used)
-		path2, err := s.GetImagePath("test-card", "http://invalid-url")
+		// To test success, we create a file manually as if it was cached
+		safeID := filepath.Base("test-card")
+		path := filepath.Join(tempDir, safeID+".png")
+		_ = os.WriteFile(path, []byte("fake-image-data"), 0600)
+
+		// Call should hit cache (validation skipped for cached files)
+		path2, err := s.GetImagePath("test-card", "https://example.com/any")
 		if err != nil {
 			t.Errorf("GetImagePath (cached) failed: %v", err)
 		}
