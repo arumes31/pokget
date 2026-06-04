@@ -22,12 +22,13 @@ package service
 
 import (
 	"database/sql"
+	"sort"
 )
 
 type Rank struct {
-	Title    string
-	MinXP    int
-	IconURL  string
+	Title   string
+	MinXP   int
+	IconURL string
 }
 
 var Ranks = []Rank{
@@ -94,7 +95,7 @@ func (s *GamificationService) CheckForBadges(userID string) {
 		FROM portfolio p 
 		JOIN cards c ON p.card_id = c.id 
 		WHERE p.user_id = $1`, userID).Scan(&totalValue)
-	
+
 	if totalValue >= 10000 {
 		s.AwardBadge(userID, "High Roller")
 	}
@@ -135,26 +136,22 @@ func (s *GamificationService) GetUserRank(xp int) Rank {
 }
 
 func (s *GamificationService) GetProgressToNextRank(xp int) (int, int, float64) {
-	var currentRank Rank
-	var nextRank Rank
-	found := false
-	for i, r := range Ranks {
-		if xp >= r.MinXP {
-			currentRank = r
-			if i+1 < len(Ranks) {
-				nextRank = Ranks[i+1]
-				found = true
-			} else {
-				found = false // We are at the max rank
-			}
-		} else {
-			break
-		}
-	}
+	i := sort.Search(len(Ranks), func(i int) bool {
+		return Ranks[i].MinXP > xp
+	})
 
-	if !found {
+	if i == len(Ranks) {
+		// xp is >= the max rank's MinXP
 		return xp, xp, 100.0 // Max rank behavior
 	}
+
+	if i == 0 {
+		nextRank := Ranks[1]
+		return xp, nextRank.MinXP, (float64(xp) / float64(nextRank.MinXP)) * 100
+	}
+
+	currentRank := Ranks[i-1]
+	nextRank := Ranks[i]
 
 	relativeXP := xp - currentRank.MinXP
 	requiredXP := nextRank.MinXP - currentRank.MinXP
