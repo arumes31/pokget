@@ -68,12 +68,12 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 	db.DB = dbMock
 
 	h := &Handler{
-		Templates:    tmpl,
-		MockCards:    []models.Card{{ID: "test-id", Name: "Test Card"}},
-		Audit:        service.NewAuditService(dbMock),
-		Game:         service.NewGamificationService(dbMock),
-		Fingerprint:  service.NewFingerprintService(dbMock),
-		DB:           dbMock,
+		Templates:   tmpl,
+		MockCards:   []models.Card{{ID: "test-id", Name: "Test Card"}},
+		Audit:       service.NewAuditService(dbMock),
+		Game:        service.NewGamificationService(dbMock),
+		Fingerprint: service.NewFingerprintService(dbMock),
+		DB:          dbMock,
 	}
 
 	return h, mock, func() { dbMock.Close() }
@@ -563,7 +563,7 @@ func TestHandlers(t *testing.T) {
 		// Or just use a template that doesn't exist to hit the error log branch if render handles it
 		req := httptest.NewRequest("GET", "/", nil)
 		rr := httptest.NewRecorder()
-		
+
 		// Passing nil to render with a template that expects fields might work,
 		// but let's just test with a missing template
 		h.Index(rr, req) // Authenticated redirect branch already tested
@@ -995,9 +995,55 @@ func TestHandlers(t *testing.T) {
 			t.Errorf("Expected status 500, got %d", rr.Code)
 		}
 	})
+
+	t.Run("RefreshCache_Success", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/refresh", nil)
+		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "admin")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur", "image_url", "variant", "change_24h", "phash"}).
+			AddRow("c1", "Charizard", "Base", "100.0", "90.0", "url", "Holo", 0.5, 12345)
+
+		mock.ExpectQuery("SELECT id, name, set_name, price_usd, price_eur, image_url, variant, change_24h, phash FROM cards").
+			WillReturnRows(rows)
+
+		h.RefreshCache(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+		expected := "Successfully reloaded 1 cards"
+		if rr.Body.String() != expected {
+			t.Errorf("Expected body %q, got %q", expected, rr.Body.String())
+		}
+	})
+
+	t.Run("RefreshCache_DBError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/refresh", nil)
+		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "admin")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		mock.ExpectQuery("SELECT id, name, set_name, price_usd, price_eur, image_url, variant, change_24h, phash FROM cards").
+			WillReturnError(sql.ErrConnDone)
+
+		h.RefreshCache(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+	})
 }
 
 type errorReader struct{}
+
 func (e *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, errors.New("rand fail")
 }
