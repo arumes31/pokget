@@ -7,6 +7,7 @@ require (
 	github.com/anthonynsimon/bild v0.15.0
 	github.com/chromedp/chromedp v0.15.1
 	github.com/corona10/goimagehash v1.1.0
+	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/gocolly/colly/v2 v2.3.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/gorilla/csrf v1.7.3
@@ -33,7 +34,6 @@ require (
 	github.com/chromedp/cdproto v0.0.0-20260427013145-5737772c319b // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260505212615-e40f80bf6836 // indirect
-	github.com/go-redis/redismock/v9 v9.2.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
