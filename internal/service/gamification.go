@@ -22,12 +22,13 @@ package service
 
 import (
 	"database/sql"
+	"sort"
 )
 
 type Rank struct {
-	Title    string
-	MinXP    int
-	IconURL  string
+	Title   string
+	MinXP   int
+	IconURL string
 }
 
 var Ranks = []Rank{
@@ -60,16 +61,7 @@ func (s *GamificationService) AddXP(userID string, amount int) (int, string, err
 	}
 
 	newXP := currentXP + amount
-	newRank := currentRank
-
-	// Calculate new rank
-	for _, r := range Ranks {
-		if newXP >= r.MinXP {
-			newRank = r.Title
-		} else {
-			break
-		}
-	}
+	newRank := s.GetUserRank(newXP).Title
 
 	_, err = s.DB.Exec("UPDATE users SET xp = $1, rank_title = $2 WHERE id = $3", newXP, newRank, userID)
 	if err == nil {
@@ -94,7 +86,7 @@ func (s *GamificationService) CheckForBadges(userID string) {
 		FROM portfolio p 
 		JOIN cards c ON p.card_id = c.id 
 		WHERE p.user_id = $1`, userID).Scan(&totalValue)
-	
+
 	if totalValue >= 10000 {
 		s.AwardBadge(userID, "High Roller")
 	}
@@ -123,38 +115,42 @@ func (s *GamificationService) AwardBadge(userID, badgeName string) {
 }
 
 func (s *GamificationService) GetUserRank(xp int) Rank {
-	var lastRank Rank
-	for _, r := range Ranks {
-		if xp >= r.MinXP {
-			lastRank = r
-		} else {
-			break
-		}
+	// Use binary search to find the highest rank with MinXP <= xp
+	// sort.Search returns the first index i where f(i) is true.
+	// We want the last index where Ranks[i].MinXP <= xp.
+	// Searching for the first index where Ranks[i].MinXP > xp, then subtracting 1.
+	i := sort.Search(len(Ranks), func(i int) bool {
+		return Ranks[i].MinXP > xp
+	})
+
+	if i > 0 {
+		return Ranks[i-1]
 	}
-	return lastRank
+	return Ranks[0]
 }
 
 func (s *GamificationService) GetProgressToNextRank(xp int) (int, int, float64) {
-	var currentRank Rank
-	var nextRank Rank
-	found := false
-	for i, r := range Ranks {
-		if xp >= r.MinXP {
-			currentRank = r
-			if i+1 < len(Ranks) {
-				nextRank = Ranks[i+1]
-				found = true
-			} else {
-				found = false // We are at the max rank
-			}
-		} else {
-			break
-		}
-	}
+	// Find the first index where Ranks[i].MinXP > xp
+	i := sort.Search(len(Ranks), func(i int) bool {
+		return Ranks[i].MinXP > xp
+	})
 
-	if !found {
+	// If i == len(Ranks), we are at the highest rank (xp >= Ranks[len-1].MinXP)
+	if i >= len(Ranks) {
 		return xp, xp, 100.0 // Max rank behavior
 	}
+
+	// currentRank is Ranks[i-1] (highest rank with MinXP <= xp)
+	// nextRank is Ranks[i] (first rank with MinXP > xp)
+	// If i == 0, it means xp < Ranks[0].MinXP, which shouldnt happen as Ranks[0].MinXP is 0
+	// but we handle it just in case.
+	currIdx := i - 1
+	if i == 0 {
+		currIdx = 0
+	}
+
+	currentRank := Ranks[currIdx]
+	nextRank := Ranks[i]
 
 	relativeXP := xp - currentRank.MinXP
 	requiredXP := nextRank.MinXP - currentRank.MinXP
