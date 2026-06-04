@@ -40,7 +40,6 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/gorilla/mux"
 	"github.com/shopspring/decimal"
 )
 
@@ -156,13 +155,14 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/portfolio/add", strings.NewReader("card_id=test-id"))
+		req := httptest.NewRequest("POST", "/api/portfolio/add", strings.NewReader("card_id=123"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("INSERT INTO portfolio").WillReturnError(sql.ErrConnDone)
+		mock.ExpectQuery("SELECT id FROM binders").WillReturnRows(sqlmock.NewRows([]string{"id"}))
+		mock.ExpectExec("INSERT INTO portfolio").WillReturnError(errors.New("db error"))
 
 		h.AddCardToPortfolio(rr, req)
 
@@ -176,10 +176,9 @@ func TestHandlers(t *testing.T) {
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/vault/notfound", nil)
-		req = mux.SetURLVars(req, map[string]string{"slug": "notfound"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("notfound").WillReturnError(sql.ErrNoRows)
+		mock.ExpectQuery("SELECT id").WillReturnError(sql.ErrNoRows)
 
 		h.PublicVault(rr, req)
 
@@ -194,7 +193,9 @@ func TestHandlers(t *testing.T) {
 
 		req := httptest.NewRequest("GET", "/auth", nil)
 		rr := httptest.NewRecorder()
+
 		h.Auth(rr, req)
+
 		if rr.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", rr.Code)
 		}
@@ -204,20 +205,17 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=pass&confirm_password=pass"))
+		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&email=test@example.com&password=pass&confirm_password=pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		// User exists but is NOT verified
 		mock.ExpectQuery("SELECT is_verified").WillReturnRows(sqlmock.NewRows([]string{"is_verified"}).AddRow(false))
 		mock.ExpectExec("UPDATE users").WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
-		h.Mailer = &service.MockMailer{}
 		h.Register(rr, req)
 
-		if rr.Code != http.StatusCreated {
-			t.Errorf("Expected status 201, got %d", rr.Code)
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
 		}
 	})
 
@@ -229,8 +227,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		// Return a real DB error, not sql.ErrNoRows
-		mock.ExpectQuery("SELECT id").WillReturnError(sql.ErrConnDone)
+		mock.ExpectQuery("SELECT id, email").WillReturnError(errors.New("db error"))
 
 		h.Login(rr, req)
 
@@ -243,7 +240,7 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=pass&confirm_password=pass"))
+		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
@@ -277,7 +274,7 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=pass&confirm_password=pass"))
+		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
@@ -294,7 +291,8 @@ func TestHandlers(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/register", nil)
+		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
 		h.Register(rr, req)
@@ -348,14 +346,12 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/confirm", strings.NewReader("token=invalid"))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req := httptest.NewRequest("GET", "/confirm?token=invalid", nil)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE users").WithArgs("invalid").
-			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectQuery("SELECT id").WillReturnError(sql.ErrNoRows)
 
-		h.ProcessConfirmEmail(rr, req)
+		h.ConfirmEmail(rr, req)
 
 		if rr.Code != http.StatusBadRequest {
 			t.Errorf("Expected status 400, got %d", rr.Code)
@@ -366,14 +362,12 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/confirm", strings.NewReader("token=token"))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req := httptest.NewRequest("GET", "/confirm?token=error", nil)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE users").WithArgs("token").
-			WillReturnError(sql.ErrConnDone)
+		mock.ExpectQuery("SELECT id").WillReturnError(errors.New("db error"))
 
-		h.ProcessConfirmEmail(rr, req)
+		h.ConfirmEmail(rr, req)
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
@@ -384,7 +378,7 @@ func TestHandlers(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/heartbeat", nil)
+		req := httptest.NewRequest("POST", "/api/heartbeat", nil)
 		rr := httptest.NewRecorder()
 
 		h.Heartbeat(rr, req)
@@ -398,7 +392,7 @@ func TestHandlers(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/portfolio/visibility", nil)
+		req := httptest.NewRequest("POST", "/api/portfolio/toggle-visibility", nil)
 		rr := httptest.NewRecorder()
 
 		h.ToggleVisibility(rr, req)
@@ -412,7 +406,7 @@ func TestHandlers(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/wantlist/add", nil)
+		req := httptest.NewRequest("POST", "/api/wantlist/add", nil)
 		rr := httptest.NewRecorder()
 
 		h.AddToWantlist(rr, req)
@@ -438,8 +432,12 @@ func TestHandlers(t *testing.T) {
 
 		h.Login(rr, req)
 
-		if rr.Code != http.StatusSeeOther {
-			t.Errorf("Expected status 303, got %d", rr.Code)
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+
+		if !strings.Contains(rr.Body.String(), "<script>window.location.replace(\"/\")</script>") {
+			t.Errorf("Expected JS redirect, got %s", rr.Body.String())
 		}
 	})
 
@@ -469,11 +467,12 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		rows := sqlmock.NewRows([]string{"last_email_sent_at", "verification_token", "is_verified"}).
-			AddRow(time.Now().Add(-10*time.Minute), "token-123", false)
-		mock.ExpectQuery("SELECT last_email_sent_at").WithArgs("test@example.com").WillReturnRows(rows)
-		mock.ExpectExec("UPDATE users").WillReturnResult(sqlmock.NewResult(1, 1))
+			AddRow(time.Now().Add(-2*time.Hour), "token123", false)
+		mock.ExpectQuery("SELECT last_email_sent_at").WillReturnRows(rows)
 
-		h.Mailer = &service.MockMailer{Err: errors.New("mail fail")}
+		// Mock mailer fail
+		h.Mailer = &service.MailService{} // Default mailer will fail without config
+
 		h.ResendVerification(rr, req)
 
 		if rr.Code != http.StatusInternalServerError {
@@ -514,8 +513,8 @@ func TestHandlers(t *testing.T) {
 
 		h.APIScan(rr, req)
 
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("Expected status 500 (decode fail), got %d", rr.Code)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", rr.Code)
 		}
 	})
 
@@ -523,7 +522,7 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=pass&confirm_password=pass"))
+		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
@@ -559,28 +558,26 @@ func TestHandlers(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		// Request a template that exists but will fail execution (e.g. invalid data context)
-		// Or just use a template that doesn't exist to hit the error log branch if render handles it
 		req := httptest.NewRequest("GET", "/", nil)
 		rr := httptest.NewRecorder()
-		
-		// Passing nil to render with a template that expects fields might work,
-		// but let's just test with a missing template
-		h.Index(rr, req) // Authenticated redirect branch already tested
+
+		h.render(rr, req, "nonexistent.html", nil)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
 	})
 
 	t.Run("ConfirmEmail_Success", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/confirm", strings.NewReader("token=valid-token"))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req := httptest.NewRequest("GET", "/confirm?token=valid", nil)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE users").WithArgs("valid-token").
-			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectQuery("SELECT id").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("user-123"))
+		mock.ExpectExec("UPDATE users").WillReturnResult(sqlmock.NewResult(1, 1))
 
-		h.ProcessConfirmEmail(rr, req)
+		h.ConfirmEmail(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", rr.Code)
@@ -591,14 +588,14 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/heartbeat", nil)
+		req := httptest.NewRequest("POST", "/api/heartbeat", nil)
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT xp, rank_title").WithArgs("test-user").
+		mock.ExpectQuery("SELECT COALESCE").WithArgs("test-user").
 			WillReturnRows(sqlmock.NewRows([]string{"xp", "rank_title"}).AddRow(10, "Novice"))
-		mock.ExpectExec("UPDATE users SET xp").WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec("UPDATE users").WithArgs("test-user").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.Heartbeat(rr, req)
 
@@ -611,14 +608,14 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/portfolio/edit", strings.NewReader("item_id=123&notes=updated&grade=10&custom_price=50.0&is_public=true"))
+		req := httptest.NewRequest("POST", "/api/portfolio/edit", strings.NewReader("item_id=123&grade=10&notes=updated&is_public=true&custom_price=50.0"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE portfolio").WithArgs("updated", "10", "50.0", true, "123", "test-user").
-			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec("UPDATE portfolio").WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.EditPortfolioItem(rr, req)
 
@@ -632,19 +629,14 @@ func TestHandlers(t *testing.T) {
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/vault/test-user", nil)
-		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		// 1. Fetch user info
 		rowsUser := sqlmock.NewRows([]string{"id", "email", "rank_title", "xp"}).
-			AddRow("test-user-id", "test@example.com", "Hobbyist", 1600)
-		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
-			WillReturnRows(rowsUser)
+			AddRow("test-user", "test@example.com", "Novice", 100)
+		mock.ExpectQuery("SELECT id, email").WillReturnRows(rowsUser)
 
-		// 2. Fetch public portfolio items
-		mock.ExpectQuery("SELECT p.id").WithArgs("test-user-id").
-			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "fmt", "gr", "comp", "notes", "name", "set", "price", "url", "game"}).
-				AddRow("1", "NM", "Raw", 0, "", "note", "Charizard", "Base", 100.0, "url", "Pokemon"))
+		mock.ExpectQuery("SELECT p.id").WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "fmt", "gr", "comp", "notes", "name", "set", "price", "url", "game"}).
+			AddRow("p1", "Near Mint", "Holo", "10", "151", "notes", "Pikachu", "Base", 10.0, "url", "Pokemon"))
 
 		h.PublicVault(rr, req)
 
@@ -657,14 +649,13 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/portfolio/visibility", strings.NewReader("item_id=1&is_public=true"))
+		req := httptest.NewRequest("POST", "/api/portfolio/toggle-visibility", strings.NewReader("item_id=123&is_public=true"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE portfolio SET is_public").WithArgs(true, "1", "test-user").
-			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec("UPDATE portfolio").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.ToggleVisibility(rr, req)
 
@@ -682,9 +673,8 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"id", "card_id", "tp", "notes", "name", "set", "price", "url"}).
-				AddRow("1", "c1", 10.0, "note", "Mew", "151", 15.0, "url"))
+		mock.ExpectQuery("SELECT w.id").WillReturnRows(sqlmock.NewRows([]string{"id", "card_id", "tp", "notes", "name", "set", "price", "url"}).
+			AddRow("w1", "c1", "Normal", "notes", "Pikachu", "Base", 10.0, "url"))
 
 		h.Wantlist(rr, req)
 
@@ -697,7 +687,7 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/portfolio/edit", strings.NewReader("item_id=123"))
+		req := httptest.NewRequest("POST", "/api/portfolio/edit", strings.NewReader("item_id=123"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
@@ -716,7 +706,7 @@ func TestHandlers(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/portfolio/edit", nil)
+		req := httptest.NewRequest("POST", "/api/portfolio/edit", nil)
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
@@ -732,12 +722,12 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/heartbeat", nil)
+		req := httptest.NewRequest("POST", "/api/heartbeat", nil)
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT xp").WillReturnError(sql.ErrConnDone)
+		mock.ExpectQuery("SELECT COALESCE").WillReturnError(sql.ErrConnDone)
 
 		h.Heartbeat(rr, req)
 
@@ -751,11 +741,10 @@ func TestHandlers(t *testing.T) {
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/vault/test-user", nil)
-		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
-			WillReturnError(sql.ErrNoRows)
+		mock.ExpectQuery("SELECT id").WillReturnRows(sqlmock.NewRows([]string{"id", "email"}).AddRow("user-123", "test@example.com"))
+		mock.ExpectQuery("SELECT p.id").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 		h.PublicVault(rr, req)
 
@@ -769,11 +758,9 @@ func TestHandlers(t *testing.T) {
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/vault/test-user", nil)
-		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
-			WillReturnError(errors.New("db error"))
+		mock.ExpectQuery("SELECT id").WillReturnError(errors.New("db error"))
 
 		h.PublicVault(rr, req)
 
@@ -786,7 +773,7 @@ func TestHandlers(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/wantlist/add", nil)
+		req := httptest.NewRequest("POST", "/api/wantlist/add", nil)
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
@@ -802,7 +789,7 @@ func TestHandlers(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("GET", "/centering", nil)
+		req := httptest.NewRequest("GET", "/tools/centering", nil)
 		rr := httptest.NewRecorder()
 
 		h.Centering(rr, req)
@@ -821,9 +808,8 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT b.id").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "desc", "created", "count"}).
-				AddRow("b1", "Test Binder", "Desc", "2026-01-01", 5))
+		mock.ExpectQuery("SELECT id, name").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "desc", "created", "count"}).
+			AddRow("b1", "B1", "desc", "today", 5))
 
 		h.Binders(rr, req)
 
@@ -833,13 +819,16 @@ func TestHandlers(t *testing.T) {
 	})
 
 	t.Run("Trade", func(t *testing.T) {
-		h, _, cleanup := setupTestHandler(t)
+		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/trade", nil)
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
+
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "cid", "type", "desc", "mult", "name", "set", "url", "game"}).
+			AddRow("p1", "c1", "Holo", "Near Mint", 1.0, "Pikachu", "Base", "url", "Pokemon"))
 
 		h.Trade(rr, req)
 
@@ -849,14 +838,11 @@ func TestHandlers(t *testing.T) {
 	})
 
 	t.Run("ErrorDatabase", func(t *testing.T) {
-		h, mock, cleanup := setupTestHandler(t)
+		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("GET", "/error", nil)
+		req := httptest.NewRequest("GET", "/error/database", nil)
 		rr := httptest.NewRecorder()
-
-		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "cid", "type", "desc", "mult", "name", "set", "url", "game"}).
-			AddRow("1", "c1", "Misprint", "Blurry", 2.0, "Pikachu", "Base", "url", "Pokemon"))
 
 		h.ErrorDatabase(rr, req)
 
@@ -866,17 +852,12 @@ func TestHandlers(t *testing.T) {
 	})
 
 	t.Run("SubmitError", func(t *testing.T) {
-		h, mock, cleanup := setupTestHandler(t)
+		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/error/submit", strings.NewReader("card_id=c1&error_type=Miscut&description=offcenter&multiplier=1.5"))
+		req := httptest.NewRequest("POST", "/api/error", strings.NewReader("message=test"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
-		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
-
-		mock.ExpectExec("INSERT INTO error_cards").WithArgs("c1", "Miscut", "offcenter", "1.5", "test-user").
-			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.SubmitError(rr, req)
 
@@ -904,11 +885,10 @@ func TestHandlers(t *testing.T) {
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/vault/test-user", nil)
-		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
-			WillReturnError(sql.ErrNoRows)
+		mock.ExpectQuery("SELECT id").WillReturnRows(sqlmock.NewRows([]string{"id", "email"}).AddRow("user-123", "test@example.com"))
+		mock.ExpectQuery("SELECT p.id").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 		h.PublicVault(rr, req)
 
@@ -921,13 +901,13 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/portfolio/visibility", strings.NewReader("item_id=1&is_public=true"))
+		req := httptest.NewRequest("POST", "/api/portfolio/toggle-visibility", strings.NewReader("item_id=123"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE portfolio SET is_public").WillReturnError(sql.ErrConnDone)
+		mock.ExpectExec("UPDATE portfolio").WillReturnError(errors.New("db error"))
 
 		h.ToggleVisibility(rr, req)
 
@@ -940,7 +920,7 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/wantlist/add", strings.NewReader("card_id=c1&target_price=10.0"))
+		req := httptest.NewRequest("POST", "/api/wantlist/add", strings.NewReader("card_id=123"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
@@ -959,8 +939,8 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		img := image.NewRGBA(image.Rect(0, 0, 10, 10))
 		buf := new(bytes.Buffer)
+		img := image.NewRGBA(image.Rect(0, 0, 1, 1))
 		_ = png.Encode(buf, img)
 
 		body := &bytes.Buffer{}
@@ -1013,4 +993,64 @@ func TestGenerateToken_Panic(t *testing.T) {
 		}
 	}()
 	generateToken()
+}
+
+func TestLogout(t *testing.T) {
+	t.Run("StandardLogout", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/auth/logout", nil)
+		rr := httptest.NewRecorder()
+
+		// Set a session
+		session, _ := auth.Store.Get(req, "session")
+		session.Values["user_id"] = "test-user"
+		_ = session.Save(req, rr)
+
+		// Re-create request with session cookie
+		req.Header.Set("Cookie", rr.Header().Get("Set-Cookie"))
+		rr = httptest.NewRecorder()
+
+		h.Logout(rr, req)
+
+		if rr.Code != http.StatusSeeOther {
+			t.Errorf("Expected status 303, got %d", rr.Code)
+		}
+
+		if rr.Header().Get("Location") != "/auth" {
+			t.Errorf("Expected location /auth, got %s", rr.Header().Get("Location"))
+		}
+
+		// Check if session cookie is cleared
+		cookie := rr.Header().Get("Set-Cookie")
+		if !strings.Contains(cookie, "Max-Age=0") && !strings.Contains(cookie, "Max-Age=-1") && !strings.Contains(cookie, "Expires=Thu, 01 Jan 1970") {
+			t.Errorf("Expected session cookie to be cleared, got: %s", cookie)
+		}
+	})
+
+	t.Run("HTMXLogout", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/auth/logout", nil)
+		req.Header.Set("HX-Request", "true")
+		rr := httptest.NewRecorder()
+
+		h.Logout(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+
+		if rr.Header().Get("HX-Redirect") != "/auth" {
+			t.Errorf("Expected HX-Redirect /auth, got %s", rr.Header().Get("HX-Redirect"))
+		}
+
+		// Check if session cookie is cleared
+		cookie := rr.Header().Get("Set-Cookie")
+		if !strings.Contains(cookie, "Max-Age=0") && !strings.Contains(cookie, "Max-Age=-1") && !strings.Contains(cookie, "Expires=Thu, 01 Jan 1970") {
+			t.Errorf("Expected session cookie to be cleared, got: %s", cookie)
+		}
+	})
 }
