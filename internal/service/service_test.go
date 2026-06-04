@@ -35,6 +35,7 @@ import (
 	"os"
 	"path/filepath"
 	"pokget/internal/models"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,27 +126,24 @@ func TestImageCacheService(t *testing.T) {
 	s := NewImageCacheService(tempDir)
 
 	t.Run("DownloadAndCache", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("fake-image-data"))
-		}))
-		defer server.Close()
-
-		path, err := s.GetImagePath("test-card", server.URL)
-		if err != nil {
-			t.Errorf("GetImagePath failed: %v", err)
-		}
-		if filepath.Base(path) != "test-card.png" {
-			t.Errorf("Expected filename test-card.png, got %s", filepath.Base(path))
+		// Test validation errors
+		_, err := s.GetImagePath("test-card", "http://example.com/image.png")
+		if err == nil || !strings.Contains(err.Error(), "insecure protocol") {
+			t.Errorf("Expected insecure protocol error, got: %v", err)
 		}
 
-		// Verify file exists
-		if _, err := os.Stat(path); err != nil {
-			t.Error("File was not created")
+		_, err = s.GetImagePath("test-card", "https://malicious.com/image.png")
+		if err == nil || !strings.Contains(err.Error(), "untrusted host") {
+			t.Errorf("Expected untrusted host error, got: %v", err)
 		}
 
-		// Second call should hit cache (server not used)
-		path2, err := s.GetImagePath("test-card", "http://invalid-url")
+		// To test success, we create a file manually as if it was cached
+		safeID := filepath.Base("test-card")
+		path := filepath.Join(tempDir, safeID+".png")
+		_ = os.WriteFile(path, []byte("fake-image-data"), 0600)
+
+		// Call should hit cache (validation skipped for cached files)
+		path2, err := s.GetImagePath("test-card", "https://example.com/any")
 		if err != nil {
 			t.Errorf("GetImagePath (cached) failed: %v", err)
 		}
@@ -169,7 +167,7 @@ func TestImageCacheService(t *testing.T) {
 
 func TestMailService(t *testing.T) {
 	s := NewMailService()
-	
+
 	t.Run("SendConfirmationEmail", func(t *testing.T) {
 		s.sendMailFunc = func(_ string, _ smtp.Auth, _ string, to []string, _ []byte) error {
 			if to[0] != "test@example.com" {
@@ -284,10 +282,10 @@ func TestScraperPriceClient(t *testing.T) {
 			t.Error("Expected error for nil scraper")
 		}
 	})
-	
+
 	t.Run("ScrapeError", func(t *testing.T) {
 		scraper := &ScraperPriceClient{}
-		
+
 		card := models.Card{Name: "MissingNo", Set: "Glitch"}
 		_, _, err := scraper.FetchPrice(card)
 		// Should return an error because it fails to connect/find the actual URL or parse
@@ -315,7 +313,7 @@ func TestScraperPriceClient(t *testing.T) {
 
 		scraper := NewScraperPriceClient()
 		scraper.BaseURL = server.URL
-		
+
 		card := models.Card{Name: "Charizard", Set: "Base", Game: "Pokemon"}
 		_, eur, err := scraper.FetchPrice(card)
 		if err != nil {
@@ -335,7 +333,7 @@ func TestScraperPriceClient(t *testing.T) {
 
 		scraper := NewScraperPriceClient()
 		scraper.BaseURL = server.URL
-		
+
 		card := models.Card{Name: "Charizard", Set: "Base"}
 		_, _, err := scraper.FetchPrice(card)
 		if err == nil {
@@ -503,7 +501,7 @@ func TestGamificationService(t *testing.T) {
 			t.Errorf("Expected 10.0 pct, got %f", pct)
 		}
 	})
-	
+
 	t.Run("GetProgressToNextRank_MaxRank", func(t *testing.T) {
 		relXP, reqXP, pct := s.GetProgressToNextRank(300000)
 		if relXP != 300000 || reqXP != 300000 || pct != 100.0 {
@@ -521,7 +519,7 @@ func TestCacheService(t *testing.T) {
 	t.Run("SetGet", func(t *testing.T) {
 		val := map[string]string{"foo": "bar"}
 		data, _ := json.Marshal(val)
-		
+
 		mock.ExpectSet("test-key", data, 0).SetVal("OK")
 		err := s.Set(ctx, "test-key", val, 0)
 		if err != nil {
@@ -561,8 +559,6 @@ func TestCacheService(t *testing.T) {
 	})
 }
 
-
-
 func TestLevenshtein(t *testing.T) {
 	tests := []struct {
 		s1, s2 string
@@ -588,7 +584,7 @@ func TestEventBus(t *testing.T) {
 
 	t.Run("SubscribePublish", func(t *testing.T) {
 		ch := bus.Subscribe("test-event")
-		
+
 		bus.Publish(Event{Type: "test-event", Payload: "hello"})
 
 		select {
