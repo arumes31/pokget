@@ -35,7 +35,8 @@ func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := h.DB.Query(`
+	// Optimization: Use QueryContext to respect request cancellation and prevent resource leaks.
+	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT w.id, w.card_id, w.target_price, w.notes, c.name, c.set_name, c.price_usd, c.image_url
 		FROM wantlist w
 		JOIN cards c ON w.card_id = c.id
@@ -81,7 +82,8 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 	targetPrice := r.FormValue("target_price")
 	notes := r.FormValue("notes")
 
-	_, err := h.DB.Exec(`
+	// Optimization: Use ExecContext to ensure the operation is canceled if the client disconnects.
+	_, err := h.DB.ExecContext(r.Context(), `
 		INSERT INTO wantlist (user_id, card_id, target_price, notes)
 		VALUES ($1, $2, $3, $4)`,
 		userID, cardID, targetPrice, notes)
