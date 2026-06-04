@@ -180,18 +180,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	remember := r.FormValue("remember") == "on"
-	session, _ := auth.Store.Get(r, "session")
-	session.Values["user_id"] = u.ID
-	
-	if remember {
-		session.Options.MaxAge = 86400 * 30 // 30 days
-	} else {
-		session.Options.MaxAge = 0 // Session cookie (Expires when browser closes)
-	}
-	session.Options.SameSite = http.SameSiteLaxMode
-	session.Options.HttpOnly = true
-
-	if err := session.Save(r, w); err != nil {
+	if err := auth.CreateSession(w, r, u.ID, remember); err != nil {
 		slog.Error("Failed to save session", "error", err)
 		http.Error(w, "Failed to save session", http.StatusInternalServerError)
 		return
@@ -262,10 +251,7 @@ func generateToken() string {
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	session, _ := auth.Store.Get(r, "session")
-	session.Values["user_id"] = ""
-	session.Options.MaxAge = -1
-	_ = session.Save(r, w)
+	_ = auth.ClearSession(w, r)
 
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Redirect", "/auth")

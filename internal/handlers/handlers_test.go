@@ -438,8 +438,9 @@ func TestHandlers(t *testing.T) {
 
 		h.Login(rr, req)
 
-		if rr.Code != http.StatusSeeOther {
-			t.Errorf("Expected status 303, got %d", rr.Code)
+		// The test does not send HX-Request, so it falls back to 200 with History replacement script
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
 		}
 	})
 

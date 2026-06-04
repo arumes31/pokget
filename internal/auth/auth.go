@@ -61,6 +61,28 @@ func CheckPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
+func CreateSession(w http.ResponseWriter, r *http.Request, userID string, remember bool) error {
+	session, _ := Store.Get(r, "session")
+	session.Values["user_id"] = userID
+
+	if remember {
+		session.Options.MaxAge = 86400 * 30 // 30 days
+	} else {
+		session.Options.MaxAge = 0 // Session cookie (Expires when browser closes)
+	}
+	session.Options.SameSite = http.SameSiteLaxMode
+	session.Options.HttpOnly = true
+
+	return session.Save(r, w)
+}
+
+func ClearSession(w http.ResponseWriter, r *http.Request) error {
+	session, _ := Store.Get(r, "session")
+	session.Values["user_id"] = ""
+	session.Options.MaxAge = -1
+	return session.Save(r, w)
+}
+
 // UserContextKey is the key for the user ID in the context
 type UserContextKey struct{}
 
