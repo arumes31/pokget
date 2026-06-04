@@ -25,11 +25,11 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"github.com/gorilla/csrf"
+	"log/slog"
+	"net/http"
 	"pokget/internal/auth"
 	"pokget/internal/models"
 	"pokget/internal/service"
-	"log/slog"
-	"net/http"
 	"time"
 )
 
@@ -56,7 +56,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := generateToken()
-	
+
 	// Check if user exists and is verified
 	var existingVerified bool
 	err = h.DB.QueryRow("SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
@@ -180,18 +180,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	remember := r.FormValue("remember") == "on"
-	session, _ := auth.Store.Get(r, "session")
-	session.Values["user_id"] = u.ID
-	
-	if remember {
-		session.Options.MaxAge = 86400 * 30 // 30 days
-	} else {
-		session.Options.MaxAge = 0 // Session cookie (Expires when browser closes)
-	}
-	session.Options.SameSite = http.SameSiteLaxMode
-	session.Options.HttpOnly = true
-
-	if err := session.Save(r, w); err != nil {
+	if err := auth.SetUserSession(w, r, u.ID, remember); err != nil {
 		slog.Error("Failed to save session", "error", err)
 		http.Error(w, "Failed to save session", http.StatusInternalServerError)
 		return
@@ -262,10 +251,9 @@ func generateToken() string {
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	session, _ := auth.Store.Get(r, "session")
-	session.Values["user_id"] = ""
-	session.Options.MaxAge = -1
-	_ = session.Save(r, w)
+	if err := auth.ClearUserSession(w, r); err != nil {
+		slog.Error("Logout: failed to clear session", "error", err)
+	}
 
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Redirect", "/auth")

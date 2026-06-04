@@ -39,7 +39,7 @@ var Store *sessions.CookieStore
 func init() {
 	key := os.Getenv("SESSION_KEY")
 	if key == "" {
-		key = "temporary-insecure-dev-key-32-chars-long" 
+		key = "temporary-insecure-dev-key-32-chars-long"
 	}
 	Store = InitStore(key)
 }
@@ -83,22 +83,45 @@ func Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// SetUserSession initializes a secure session for a user.
+func SetUserSession(w http.ResponseWriter, r *http.Request, userID string, remember bool) error {
+	session, _ := Store.Get(r, "session")
+	session.Values["user_id"] = userID
+
+	if remember {
+		session.Options.MaxAge = 86400 * 30 // 30 days
+	} else {
+		session.Options.MaxAge = 0 // Session cookie (Expires when browser closes)
+	}
+	session.Options.SameSite = http.SameSiteLaxMode
+	session.Options.HttpOnly = true
+
+	return session.Save(r, w)
+}
+
+// ClearUserSession invalidates the current user session.
+func ClearUserSession(w http.ResponseWriter, r *http.Request) error {
+	session, _ := Store.Get(r, "session")
+	session.Values["user_id"] = ""
+	session.Options.MaxAge = -1
+	return session.Save(r, w)
+}
+
 var (
-	limiters = make(map[string]*rate.Limiter)
-	mu       sync.Mutex
+	// limiters uses sync.Map to reduce lock contention on high-concurrency auth endpoints.
+	// Optimization: sync.Map is better for read-heavy workloads where keys are mostly stable.
+	// Impact: Improved scalability for the RateLimitMiddleware under load.
+	limiters sync.Map
 )
 
 func getLimiter(ip string) *rate.Limiter {
-	mu.Lock()
-	defer mu.Unlock()
-
-	limiter, exists := limiters[ip]
-	if !exists {
-		limiter = rate.NewLimiter(1, 5) // 1 request per second with a burst of 5
-		limiters[ip] = limiter
+	if l, ok := limiters.Load(ip); ok {
+		return l.(*rate.Limiter)
 	}
 
-	return limiter
+	// LoadOrStore ensures we don't overwrite if another goroutine just created it
+	l, _ := limiters.LoadOrStore(ip, rate.NewLimiter(1, 5))
+	return l.(*rate.Limiter)
 }
 
 func RateLimitMiddleware(next http.Handler) http.Handler {

@@ -92,7 +92,7 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("HX-Trigger", `{"notify": {"msg": "Identify Success: Grail added to Hunt", "type": "success"}}`)
-	
+
 	// Re-fetch and render the updated wantlist
 	h.Wantlist(w, r)
 }
