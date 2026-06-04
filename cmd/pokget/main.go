@@ -129,6 +129,7 @@ func main() {
 
 	// Initialize Handlers
 	h := &handlers.Handler{
+		Binder:       service.NewBinderService(db.DB),
 		Templates:    templates,
 		MockCards:    allCards,
 		Fingerprint:  service.NewFingerprintService(db.DB),

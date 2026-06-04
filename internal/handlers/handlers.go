@@ -47,15 +47,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type Binder struct {
-	ID          string
-	Name        string
-	Description string
-	CardCount   int
-	UpdatedAt   string
-}
-
 type Handler struct {
+	Binder       *service.BinderService
 	Templates    *template.Template
 	MockCards    []models.Card
 	CardsMu      sync.RWMutex   // Protects concurrent access to MockCards
@@ -430,25 +423,10 @@ func (h *Handler) Binders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := h.DB.Query(`
-		SELECT b.id, b.name, b.description, b.created_at, COUNT(p.id) as card_count
-		FROM binders b
-		LEFT JOIN portfolio p ON b.id = p.binder_id
-		WHERE b.user_id = $1
-		GROUP BY b.id, b.name, b.description, b.created_at
-		ORDER BY b.created_at DESC`, userID)
-	
-	var binders []Binder
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var b Binder
-			var createdAt string
-			if err := rows.Scan(&b.ID, &b.Name, &b.Description, &createdAt, &b.CardCount); err == nil {
-				b.UpdatedAt = createdAt // Simple assignment for now
-				binders = append(binders, b)
-			}
-		}
+	binders, err := h.Binder.GetBindersByUserID(r.Context(), userID)
+	if err != nil {
+		slog.Error("Failed to fetch binders", "error", err)
+		// We still render with empty binders instead of hard error for UX
 	}
 
 	h.render(w, r, "binders.html", map[string]interface{}{
@@ -475,7 +453,7 @@ func (h *Handler) CreateBinder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.DB.Exec("INSERT INTO binders (user_id, name, description) VALUES ($1, $2, $3)", userID, name, description)
+	err := h.Binder.CreateBinder(r.Context(), userID, name, description)
 	if err != nil {
 		slog.Error("Failed to create binder", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -498,8 +476,7 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch binder info
-	var binder Binder
-	err := h.DB.QueryRow("SELECT id, name, description FROM binders WHERE id = $1 AND user_id = $2", binderID, userID).Scan(&binder.ID, &binder.Name, &binder.Description)
+	binder, err := h.Binder.GetBinderByID(r.Context(), binderID, userID)
 	if err != nil {
 		http.Error(w, "Binder not found", http.StatusNotFound)
 		return
