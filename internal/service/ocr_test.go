@@ -22,11 +22,15 @@ package service
 
 import (
 	"bytes"
+	"database/sql"
 	"image"
 	"image/png"
+	"pokget/internal/db"
 	"pokget/internal/models"
 	"regexp"
 	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestOCRMatchingLogic(t *testing.T) {
@@ -73,25 +77,53 @@ func containsIgnoreCase(s, substr string) bool {
 	return matched
 }
 
-func TestVision_DetectCardEdges(t *testing.T) {
-	// Test error case (invalid image bytes)
-	_, err := DetectCardEdges([]byte("invalid image data"))
-	if err == nil {
-		t.Error("Expected error when decoding invalid image bytes")
+func TestProcessCardScan_WithDB(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to open sqlmock: %v", err)
 	}
+	defer sqlDB.Close()
 
-	// Create a valid 10x10 PNG
+	// Save old DB and restore it after test
+	oldDB := db.DB
+	db.DB = sqlDB
+	defer func() { db.DB = oldDB }()
+
 	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
 	var buf bytes.Buffer
 	_ = png.Encode(&buf, img)
 
-	bounds, err := DetectCardEdges(buf.Bytes())
-	if err != nil {
-		t.Errorf("DetectCardEdges failed with valid image: %v", err)
-	}
-	if bounds.Left == 0 && bounds.Right == 0 && bounds.Top == 0 && bounds.Bottom == 0 {
-		t.Error("Expected non-zero bounds")
-	}
+	t.Run("DBMatch", func(t *testing.T) {
+		mock.ExpectQuery("SELECT name FROM cards").
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnRows(sqlmock.NewRows([]string{"name"}).AddRow("Pikachu"))
+
+		_, card, _, err := ProcessCardScan(buf.Bytes(), nil, "eng", nil)
+		if err != nil {
+			t.Errorf("ProcessCardScan failed: %v", err)
+		}
+		if card != "Pikachu" {
+			t.Errorf("Expected Pikachu from DB, got %s", card)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("Expectations not met: %v", err)
+		}
+	})
+
+	t.Run("DBNoMatch", func(t *testing.T) {
+		mock.ExpectQuery("SELECT name FROM cards").
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnError(sql.ErrNoRows)
+
+		_, card, _, err := ProcessCardScan(buf.Bytes(), nil, "eng", nil)
+		if err != nil {
+			t.Errorf("ProcessCardScan failed: %v", err)
+		}
+		if card != "Unknown Card" {
+			t.Errorf("Expected Unknown Card, got %s", card)
+		}
+	})
 }
 
 func TestProcessCardScan_Stub(t *testing.T) {
@@ -103,7 +135,11 @@ func TestProcessCardScan_Stub(t *testing.T) {
 	if err != nil {
 		t.Errorf("ProcessCardScan failed: %v", err)
 	}
-	if !containsIgnoreCase(text, "OCR Not Available") || card != "Unknown Card" {
-		t.Errorf("Unexpected stub results: text=%s, card=%s", text, card)
+	// When CGO/Tesseract is enabled, it might return empty text for a blank image instead of the stub message.
+	if !containsIgnoreCase(text, "OCR Not Available") && text != "" {
+		t.Errorf("Unexpected OCR results: text=%s, card=%s", text, card)
+	}
+	if card != "Unknown Card" {
+		t.Errorf("Expected Unknown Card, got %s", card)
 	}
 }

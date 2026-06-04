@@ -24,11 +24,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"pokget/internal/models"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"pokget/internal/models"
 	"strings"
 	"time"
 )

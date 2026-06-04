@@ -28,6 +28,7 @@ import (
 	_ "image/png"  // Register PNG decoder
 
 	"github.com/anthonynsimon/bild/effect"
+	"github.com/anthonynsimon/bild/transform"
 )
 
 type Bounds struct {
@@ -44,6 +45,23 @@ func DetectCardEdges(imgBytes []byte) (Bounds, error) {
 		return Bounds{}, err
 	}
 
+	// BOLT OPTIMIZATION: Resize large images to a maximum dimension of 500px.
+	// Sobel edge detection complexity is O(N) where N is number of pixels.
+	// For 4K images, this reduces pixel count by ~98%, significantly speeding up
+	// edge detection while maintaining sufficient detail for boundary detection.
+	b := src.Bounds()
+	if b.Dx() > 500 || b.Dy() > 500 {
+		width, height := b.Dx(), b.Dy()
+		if width > height {
+			height = (height * 500) / width
+			width = 500
+		} else {
+			width = (width * 500) / height
+			height = 500
+		}
+		src = transform.Resize(src, width, height, transform.Linear)
+	}
+
 	// Basic edge detection to simulate corner snapping.
 	gray := effect.Grayscale(src)
 	edges := effect.Sobel(gray)
@@ -51,7 +69,7 @@ func DetectCardEdges(imgBytes []byte) (Bounds, error) {
 	// In a real implementation, we would analyze 'edges' to find the card's bounding box.
 	// For this fix, we implement a slightly more dynamic placeholder that simulates
 	// finding a centered card with some variance to show the logic is running.
-	
+
 	// Simulated edge analysis result:
 	return Bounds{
 		Left:   15.0 + float64(edges.Bounds().Dx()%5), // Slight variation based on image size

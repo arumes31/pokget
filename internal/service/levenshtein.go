@@ -8,8 +8,12 @@ func levenshtein(s1, s2 string) int {
 	s1 = strings.ToLower(s1)
 	s2 = strings.ToLower(s2)
 	n, m := len(s1), len(s2)
-	if n == 0 { return m }
-	if m == 0 { return n }
+	if n == 0 {
+		return m
+	}
+	if m == 0 {
+		return n
+	}
 	d := make([][]int, n+1)
 	for i := range d {
 		d[i] = make([]int, m+1)

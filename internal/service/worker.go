@@ -70,7 +70,7 @@ func (s *WorkerService) refreshAllPrices() {
 			SET price_usd = $1, price_eur = $2, last_updated = CURRENT_TIMESTAMP 
 			WHERE id = $3`,
 			usd, eur, card.ID)
-		
+
 		if err != nil {
 			slog.Error("Worker: Failed to update card price", "card", card.Name, "error", err)
 		} else {
