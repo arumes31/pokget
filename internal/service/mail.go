@@ -42,6 +42,9 @@ type MailService struct {
 	BaseURL  string
 	// Internal field for testing smtp.SendMail
 	sendMailFunc func(addr string, a smtp.Auth, from string, to []string, msg []byte) error
+	// tmpl is the pre-parsed confirmation email template.
+	// This optimization avoids parsing the template on every email send.
+	tmpl *template.Template
 }
 
 func NewMailService() *MailService {
@@ -51,6 +54,10 @@ func NewMailService() *MailService {
 	}
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
+	// Bolt: Pre-parse the template once during initialization to improve performance
+	// during SendConfirmationEmail calls (reduces CPU/allocations per call).
+	tmpl := template.Must(template.New("confirm").Parse(confirmEmailTemplate))
+
 	return &MailService{
 		Host:         os.Getenv("SMTP_HOST"),
 		Port:         os.Getenv("SMTP_PORT"),
@@ -59,6 +66,7 @@ func NewMailService() *MailService {
 		From:         os.Getenv("SMTP_FROM"),
 		BaseURL:      baseURL,
 		sendMailFunc: smtp.SendMail,
+		tmpl:         tmpl,
 	}
 }
 
@@ -70,18 +78,10 @@ func (s *MailService) SendConfirmationEmail(to, token string) error {
 		"ConfirmURL": confirmURL,
 	}
 
-	tmpl, err := template.New("confirm").Parse(confirmEmailTemplate)
-	if err != nil {
-		return err
-	}
-
 	var body bytes.Buffer
-	if err := tmpl.Execute(&body, data); err != nil {
+	if err := s.tmpl.Execute(&body, data); err != nil {
 		return err
 	}
-
-	// Log the confirmation URL for easier development/testing if SMTP fails
-	fmt.Printf("\n[MAIL] Confirmation link for %s: %s\n\n", to, confirmURL)
 
 	return s.sendMail(to, subject, body.String())
 }
