@@ -428,6 +428,7 @@ func TestHandlers(t *testing.T) {
 
 		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
 		rr := httptest.NewRecorder()
 
 		passHash, _ := auth.HashPassword("pass")
@@ -438,8 +439,8 @@ func TestHandlers(t *testing.T) {
 
 		h.Login(rr, req)
 
-		if rr.Code != http.StatusSeeOther {
-			t.Errorf("Expected status 303, got %d", rr.Code)
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
 		}
 	})
 
@@ -846,6 +847,79 @@ func TestHandlers(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", rr.Code)
 		}
+	})
+
+	t.Run("CreateBinder", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+		t.Run("MethodNotAllowed", func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/binders/create", nil)
+			rr := httptest.NewRecorder()
+			h.CreateBinder(rr, req)
+			if rr.Code != http.StatusMethodNotAllowed {
+				t.Errorf("Expected status 405, got %d", rr.Code)
+			}
+		})
+
+		t.Run("Unauthorized", func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/binders/create", nil)
+			rr := httptest.NewRecorder()
+			h.CreateBinder(rr, req)
+			if rr.Code != http.StatusUnauthorized {
+				t.Errorf("Expected status 401, got %d", rr.Code)
+			}
+		})
+
+		t.Run("MissingName", func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/binders/create", nil)
+			ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+			h.CreateBinder(rr, req)
+			if rr.Code != http.StatusBadRequest {
+				t.Errorf("Expected status 400, got %d", rr.Code)
+			}
+		})
+
+		t.Run("DBError", func(t *testing.T) {
+			form := "name=New+Binder&description=Test+Desc"
+			req := httptest.NewRequest("POST", "/binders/create", strings.NewReader(form))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+
+			mock.ExpectExec("INSERT INTO binders").
+				WithArgs("test-user", "New Binder", "Test Desc").
+				WillReturnError(errors.New("db error"))
+
+			h.CreateBinder(rr, req)
+			if rr.Code != http.StatusInternalServerError {
+				t.Errorf("Expected status 500, got %d", rr.Code)
+			}
+		})
+
+		t.Run("Success", func(t *testing.T) {
+			form := "name=New+Binder&description=Test+Desc"
+			req := httptest.NewRequest("POST", "/binders/create", strings.NewReader(form))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+
+			mock.ExpectExec("INSERT INTO binders").
+				WithArgs("test-user", "New Binder", "Test Desc").
+				WillReturnResult(sqlmock.NewResult(1, 1))
+
+			mock.ExpectQuery("SELECT b.id").WithArgs("test-user").
+				WillReturnRows(sqlmock.NewRows([]string{"id", "name", "desc", "created", "count"}).
+					AddRow("b1", "New Binder", "Test Desc", "2026-01-01", 0))
+
+			h.CreateBinder(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Errorf("Expected status 200, got %d", rr.Code)
+			}
+		})
 	})
 
 	t.Run("ErrorDatabase", func(t *testing.T) {
