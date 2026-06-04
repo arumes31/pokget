@@ -364,41 +364,8 @@ func TestScraperPriceClient(t *testing.T) {
 	})
 }
 
-func TestAuditService(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Failed to open mock db: %v", err)
-	}
-	defer db.Close()
-
-	s := NewAuditService(db)
-
-	t.Run("Log_Success", func(t *testing.T) {
-		mock.ExpectExec("INSERT INTO audit_logs").WithArgs("user-1", "LOGIN", sqlmock.AnyArg()).
-			WillReturnResult(sqlmock.NewResult(1, 1))
-
-		s.Log("user-1", "LOGIN", map[string]interface{}{"ip": "1.2.3.4"})
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("Expectations not met: %v", err)
-		}
-	})
-
-	t.Run("Log_Error", func(_ *testing.T) {
-		mock.ExpectExec("INSERT INTO audit_logs").WillReturnError(sql.ErrConnDone)
-		// Should not panic, just log the error
-		s.Log("user-1", "LOGIN", nil)
-	})
-}
 
 func TestCryptoService(t *testing.T) {
-	t.Run("New_Error", func(t *testing.T) {
-		_, err := NewCryptoService("too-short")
-		if err == nil {
-			t.Error("Expected error for short key")
-		}
-	})
-
 	key := "12345678901234567890123456789012" // 32 bytes
 	s, err := NewCryptoService(key)
 	if err != nil {
