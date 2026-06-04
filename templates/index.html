@@ -216,8 +216,8 @@
             <form id="edit-form" hx-post="/portfolio/edit" hx-swap="none" @htmx:after-request="showEditModal = false; htmx.ajax('GET', '/dashboard', '#main-content')">
                 <input type="hidden" name="item_id" :value="editItemId">
                 <div class="space-y-sm">
-                    <label class="text-[10px] uppercase font-bold text-on-surface-variant">Custom Price Override ($)</label>
-                    <input type="number" step="0.01" name="custom_price" :value="editCustomPrice" @input="editCustomPrice = $event.target.value" class="w-full bg-white/5 border border-white/10 rounded-lg p-sm text-on-surface">
+                    <label for="edit-custom-price" class="text-[10px] uppercase font-bold text-on-surface-variant">Custom Price Override ($)</label>
+                    <input id="edit-custom-price" type="number" step="0.01" name="custom_price" :value="editCustomPrice" @input="editCustomPrice = $event.target.value" class="w-full bg-white/5 border border-white/10 rounded-lg p-sm text-on-surface">
                 </div>
                 <div class="space-y-sm mt-md">
                     <label class="text-[10px] uppercase font-bold text-on-surface-variant">Private Notes (e.g. Miscut, Error)</label>
