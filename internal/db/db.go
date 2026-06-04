@@ -127,7 +127,7 @@ func ApplyMigrations(db *sql.DB, absPath string) error {
 		if vErr != nil {
 			return fmt.Errorf("could not apply migrations (and failed to get version): %w (version error: %v)", err, vErr)
 		}
-		
+
 		if dirty {
 			slog.Warn("Database is dirty, attempting to force version and retry", "version", version)
 			if fErr := m.Force(int(version)); fErr != nil { // nolint:gosec // version is expected to be within int range

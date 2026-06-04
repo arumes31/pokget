@@ -179,7 +179,7 @@ func (s *ScraperPriceClient) fetchPriceHeadless(card models.Card) (float64, erro
 
 	var priceStr string
 	var targetURL string
-	
+
 	switch strings.ToLower(card.Game) {
 	case "pokemon":
 		targetURL = fmt.Sprintf("https://www.tcgplayer.com/search/pokemon/product?q=%s", url.QueryEscape(card.Name))
@@ -213,10 +213,10 @@ func (s *ScraperPriceClient) ApplyMultiplier(price float64, condition string, mu
 	if multipliers == nil {
 		// Default multipliers
 		multipliers = map[string]float64{
-			"NM": 1.0,
-			"LP": 0.9,
-			"MP": 0.7,
-			"HP": 0.5,
+			"NM":  1.0,
+			"LP":  0.9,
+			"MP":  0.7,
+			"HP":  0.5,
 			"DMG": 0.3,
 		}
 	}

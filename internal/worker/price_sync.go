@@ -23,9 +23,9 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"pokget/internal/models"
 	"pokget/internal/service"
-	"log/slog"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -72,6 +72,35 @@ func (w *PriceSyncWorker) Stop() {
 
 func (w *PriceSyncWorker) syncPrices() {
 	slog.Info("Starting price synchronization cycle")
+
+	// 1. Pre-fetch all active price alerts to avoid N+1 queries
+	// Optimization: Batching alerts reduces DB roundtrips significantly
+	alertsByCard := make(map[string][]struct {
+		id          int
+		userID      string
+		targetPrice decimal.Decimal
+	})
+
+	alertRows, err := w.db.Query("SELECT id, card_id, user_id, target_price FROM price_alerts WHERE is_active = TRUE")
+	if err == nil {
+		defer alertRows.Close()
+		for alertRows.Next() {
+			var alert struct {
+				id          int
+				cardID      string
+				userID      string
+				targetPrice decimal.Decimal
+			}
+			if err := alertRows.Scan(&alert.id, &alert.cardID, &alert.userID, &alert.targetPrice); err == nil {
+				alertsByCard[alert.cardID] = append(alertsByCard[alert.cardID], struct {
+					id          int
+					userID      string
+					targetPrice decimal.Decimal
+				}{id: alert.id, userID: alert.userID, targetPrice: alert.targetPrice})
+			}
+		}
+	}
+
 	rows, err := w.db.Query("SELECT id, name, set_name, price_usd, price_eur FROM cards")
 	if err != nil {
 		slog.Error("Sync: Failed to query cards", "error", err)
@@ -92,7 +121,7 @@ func (w *PriceSyncWorker) syncPrices() {
 			continue
 		}
 
-		// 1. Update Card Price in DB
+		// 2. Update Card Price in DB
 		_, err = w.db.Exec("UPDATE cards SET price_usd = $1, price_eur = $2, last_updated = NOW() WHERE id = $3",
 			decimal.NewFromFloat(usd), decimal.NewFromFloat(eur), c.ID)
 		if err != nil {
@@ -101,29 +130,20 @@ func (w *PriceSyncWorker) syncPrices() {
 			slog.Debug("Sync: Updated card price", "card", c.Name, "usd", usd, "eur", eur)
 		}
 
-		// 2. Record Price History (Improvement #26)
+		// 3. Record Price History
 		_, err = w.db.Exec("INSERT INTO price_history (card_id, price_usd, price_eur) VALUES ($1, $2, $3)",
 			c.ID, decimal.NewFromFloat(usd), decimal.NewFromFloat(eur))
 		if err != nil {
 			slog.Error("Sync: Failed to record price history", "card", c.Name, "error", err)
 		}
 
-		// 3. Check Price Alerts (Improvement #38)
-		rowsAlerts, err := w.db.Query("SELECT id, user_id, target_price FROM price_alerts WHERE card_id = $1 AND is_active = TRUE", c.ID)
-		if err == nil {
-			defer rowsAlerts.Close()
-			for rowsAlerts.Next() {
-				var alertID int
-				var userID string
-				var targetPrice decimal.Decimal
-				if err := rowsAlerts.Scan(&alertID, &userID, &targetPrice); err == nil {
-					currentPrice := decimal.NewFromFloat(usd)
-					if currentPrice.LessThanOrEqual(targetPrice) {
-						slog.Info("ALERT: Price target hit!", "user", userID, "card", c.Name, "target", targetPrice, "current", currentPrice)
-						// In a real app, send email/push here
-						// Deactivate alert after hit?
-						// _, _ = w.db.Exec("UPDATE price_alerts SET is_active = FALSE WHERE id = $1", alertID)
-					}
+		// 4. Check Price Alerts from pre-fetched map
+		if alerts, ok := alertsByCard[c.ID]; ok {
+			for _, alert := range alerts {
+				currentPrice := decimal.NewFromFloat(usd)
+				if currentPrice.LessThanOrEqual(alert.targetPrice) {
+					slog.Info("ALERT: Price target hit!", "user", alert.userID, "card", c.Name, "target", alert.targetPrice, "current", currentPrice)
+					// Note: Real app would trigger notification here
 				}
 			}
 		}

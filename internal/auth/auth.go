@@ -39,7 +39,7 @@ var Store *sessions.CookieStore
 func init() {
 	key := os.Getenv("SESSION_KEY")
 	if key == "" {
-		key = "temporary-insecure-dev-key-32-chars-long" 
+		key = "temporary-insecure-dev-key-32-chars-long"
 	}
 	Store = InitStore(key)
 }

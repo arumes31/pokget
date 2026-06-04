@@ -39,10 +39,13 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		db, mock, _ := sqlmock.New()
 		defer db.Close()
 
+		mock.ExpectQuery("SELECT id, card_id, user_id, target_price FROM price_alerts").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "card_id", "user_id", "target_price"}))
+
 		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}).
 			AddRow(card.ID, card.Name, card.Set, decimal.NewFromFloat(0), decimal.NewFromFloat(0))
 
-		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT id, name, set_name, price_usd, price_eur FROM cards").WillReturnRows(rows)
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -55,11 +58,15 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		}
 	})
 
-	t.Run("QueryError", func(t *testing.T) {
+	t.Run("QueryAlertsError", func(t *testing.T) {
 		db, mock, _ := sqlmock.New()
 		defer db.Close()
 
-		mock.ExpectQuery("SELECT").WillReturnError(errors.New("db error"))
+		mock.ExpectQuery("SELECT id, card_id, user_id, target_price FROM price_alerts").
+			WillReturnError(errors.New("db error"))
+
+		mock.ExpectQuery("SELECT id, name, set_name, price_usd, price_eur FROM cards").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}))
 
 		worker := NewPriceSyncWorker(db, &service.MockPriceClient{}, time.Hour)
 		worker.syncPrices()
@@ -73,11 +80,14 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		db, mock, _ := sqlmock.New()
 		defer db.Close()
 
+		mock.ExpectQuery("SELECT id, card_id, user_id, target_price FROM price_alerts").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "card_id", "user_id", "target_price"}))
+
 		// Return a row with wrong type to trigger Scan error
 		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}).
 			AddRow("1", "C", "S", "not-a-decimal", 0)
 
-		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT id, name, set_name, price_usd, price_eur FROM cards").WillReturnRows(rows)
 
 		worker := NewPriceSyncWorker(db, &service.MockPriceClient{}, time.Hour)
 		worker.syncPrices()
@@ -91,10 +101,13 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		db, mock, _ := sqlmock.New()
 		defer db.Close()
 
+		mock.ExpectQuery("SELECT id, card_id, user_id, target_price FROM price_alerts").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "card_id", "user_id", "target_price"}))
+
 		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}).
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero)
 
-		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT id, name, set_name, price_usd, price_eur FROM cards").WillReturnRows(rows)
 
 		client := &service.MockPriceClient{Err: errors.New("fetch error")}
 		worker := NewPriceSyncWorker(db, client, time.Hour)
@@ -109,10 +122,13 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		db, mock, _ := sqlmock.New()
 		defer db.Close()
 
+		mock.ExpectQuery("SELECT id, card_id, user_id, target_price FROM price_alerts").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "card_id", "user_id", "target_price"}))
+
 		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}).
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero)
 
-		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT id, name, set_name, price_usd, price_eur FROM cards").WillReturnRows(rows)
 		mock.ExpectExec("UPDATE cards").WillReturnError(errors.New("upd error"))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -129,10 +145,13 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		db, mock, _ := sqlmock.New()
 		defer db.Close()
 
+		mock.ExpectQuery("SELECT id, card_id, user_id, target_price FROM price_alerts").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "card_id", "user_id", "target_price"}))
+
 		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}).
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero)
 
-		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT id, name, set_name, price_usd, price_eur FROM cards").WillReturnRows(rows)
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnError(errors.New("hist error"))
 
@@ -149,18 +168,18 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		db, mock, _ := sqlmock.New()
 		defer db.Close()
 
+		// Alert trigger
+		alertRows := sqlmock.NewRows([]string{"id", "card_id", "user_id", "target_price"}).
+			AddRow(1, card.ID, "user-1", decimal.NewFromFloat(200.0))
+		mock.ExpectQuery("SELECT id, card_id, user_id, target_price FROM price_alerts").
+			WillReturnRows(alertRows)
+
 		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}).
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero)
 
-		mock.ExpectQuery("SELECT id, name").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT id, name, set_name, price_usd, price_eur FROM cards").WillReturnRows(rows)
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
-
-		// Alert trigger
-		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price"}).
-			AddRow(1, "user-1", decimal.NewFromFloat(200.0))
-		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").WithArgs(card.ID).
-			WillReturnRows(alertRows)
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
 		worker := NewPriceSyncWorker(db, client, time.Hour)
@@ -197,8 +216,11 @@ func TestWorkerLifecycle(t *testing.T) {
 	t.Run("TickerExecution", func(t *testing.T) {
 		db2, mock, _ := sqlmock.New()
 		defer db2.Close()
-		
-		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}))
+
+		mock.ExpectQuery("SELECT id, card_id, user_id, target_price FROM price_alerts").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "card_id", "user_id", "target_price"}))
+		mock.ExpectQuery("SELECT id, name, set_name, price_usd, price_eur FROM cards").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}))
 
 		worker := NewPriceSyncWorker(db2, client, 10*time.Millisecond)
 		ctx, cancel := context.WithCancel(context.Background())

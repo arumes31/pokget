@@ -22,7 +22,7 @@ func main() {
 	// 1. Load 100 cards (Scraped data from previous turn)
 	// For demo reliability, I'll use a subset and then mock the rest if needed.
 	// But let's assume we have a json file or just a big slice.
-	
+
 	rawCards := `[
 		{"name": "Charizard VMAX", "image_url": "https://tcgplayer-cdn.tcgplayer.com/product/219233_in_1000x1000.jpg"},
 		{"name": "Pikachu VMAX", "image_url": "https://tcgplayer-cdn.tcgplayer.com/product/234162_in_1000x1000.jpg"},
@@ -44,12 +44,12 @@ func main() {
 
 	successCount := 0
 	totalCount := len(cards)
-	
+
 	_ = os.MkdirAll("static/img/debug/bulk", 0750)
 
 	for i, c := range cards {
 		fmt.Printf("[%d/%d] Testing: %s... ", i+1, totalCount, c.Name)
-		
+
 		// Download
 		// #nosec G107
 		resp, err := http.Get(c.ImageURL)
@@ -61,11 +61,11 @@ func main() {
 		_ = resp.Body.Close()
 
 		// Run OCR Preprocessing (Stubbed matching logic will run)
-		// To simulate "Perfect Detection" in a stubbed environment, 
+		// To simulate "Perfect Detection" in a stubbed environment,
 		// we verify the vision pipeline is healthy.
 		text, detected, processed, err := service.ProcessCardScan(imgBytes, mockCards, "eng", nil)
 		_ = text // Acknowledge OCR text even if stubbed
-		
+
 		if err != nil {
 			fmt.Printf("❌ Error: %v\n", err)
 			continue
@@ -76,16 +76,16 @@ func main() {
 		if processed != nil {
 			successCount++
 			fmt.Printf("✅ Preprocessed (Vision OK) [Detect: %s]\n", detected)
-			
+
 			// Save 10% for spot checks
-			if i % 10 == 0 {
+			if i%10 == 0 {
 				safeName := filepath.Join("static/img/debug/bulk", strings.ReplaceAll(c.Name, "/", "_")+".jpg")
 				_ = os.WriteFile(safeName, processed, 0600)
 			}
 		} else {
 			fmt.Printf("❌ Processing Failed\n")
 		}
-		
+
 		time.Sleep(200 * time.Millisecond) // Be kind to TCGPlayer
 	}
 

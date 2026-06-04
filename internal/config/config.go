@@ -32,11 +32,11 @@ type Config struct {
 		Debug bool   `env:"DEBUG" env-default:"false"`
 	}
 	DB struct {
-		Host     string `env:"DB_HOST" env-required:"true"`
-		Port     string `env:"DB_PORT" env-required:"true"`
-		User     string `env:"DB_USER" env-required:"true"`
-		Password string `env:"DB_PASSWORD" env-required:"true"`
-		Name     string `env:"DB_NAME" env-required:"true"`
+		Host           string `env:"DB_HOST" env-required:"true"`
+		Port           string `env:"DB_PORT" env-required:"true"`
+		User           string `env:"DB_USER" env-required:"true"`
+		Password       string `env:"DB_PASSWORD" env-required:"true"`
+		Name           string `env:"DB_NAME" env-required:"true"`
 		SSLMode        string `env:"DB_SSLMODE" env-default:"disable"`
 		MigrationsPath string `env:"MIGRATIONS_PATH" env-default:"migrations"`
 	}
@@ -46,11 +46,11 @@ type Config struct {
 		Password string `env:"REDIS_PASSWORD"`
 	}
 	SMTP struct {
-		Host     string `env:"SMTP_HOST"`
-		Port     string `env:"SMTP_PORT"`
-		User     string `env:"SMTP_USER"`
-		Pass     string `env:"SMTP_PASS"`
-		From     string `env:"SMTP_FROM"`
+		Host string `env:"SMTP_HOST"`
+		Port string `env:"SMTP_PORT"`
+		User string `env:"SMTP_USER"`
+		Pass string `env:"SMTP_PASS"`
+		From string `env:"SMTP_FROM"`
 	}
 	Auth struct {
 		SessionKey string `env:"SESSION_KEY" env-required:"true"`

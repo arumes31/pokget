@@ -51,7 +51,7 @@ func DetectCardEdges(imgBytes []byte) (Bounds, error) {
 	// In a real implementation, we would analyze 'edges' to find the card's bounding box.
 	// For this fix, we implement a slightly more dynamic placeholder that simulates
 	// finding a centered card with some variance to show the logic is running.
-	
+
 	// Simulated edge analysis result:
 	return Bounds{
 		Left:   15.0 + float64(edges.Bounds().Dx()%5), // Slight variation based on image size

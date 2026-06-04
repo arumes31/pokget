@@ -64,7 +64,7 @@ func TestConfigLoad_Error(t *testing.T) {
 	os.Setenv("DB_PASSWORD", "p")
 	os.Setenv("DB_NAME", "n")
 	os.Unsetenv("SESSION_KEY")
-	
+
 	_, err := Load()
 	if err == nil {
 		t.Error("Expected error when SESSION_KEY is missing")

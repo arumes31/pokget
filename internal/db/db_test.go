@@ -32,7 +32,7 @@ import (
 func TestConnect_MissingEnv(t *testing.T) {
 	// Clear env
 	os.Setenv("DB_HOST", "")
-	
+
 	_, err := Connect()
 	if err == nil {
 		t.Error("Expected error when env vars are missing")
@@ -105,7 +105,7 @@ func TestInitDB_ConnectionError(t *testing.T) {
 	os.Setenv("DB_USER", "user")
 	os.Setenv("DB_NAME", "name")
 	defer os.Unsetenv("DB_HOST")
-	
+
 	InitDB()
 
 	if DB != nil {
@@ -124,7 +124,7 @@ func TestRunMigrations_NilDB(t *testing.T) {
 func TestApplyMigrations_NoDir(t *testing.T) {
 	db, _, _ := sqlmock.New()
 	defer db.Close()
-	
+
 	err := ApplyMigrations(db, "/non/existent/path")
 	if err == nil {
 		t.Error("Expected error for non-existent migration directory")
@@ -134,8 +134,9 @@ func TestApplyMigrations_NoDir(t *testing.T) {
 type mockMigrator struct {
 	err error
 }
-func (m *mockMigrator) Up() error { return m.err }
-func (m *mockMigrator) Force(_ int) error { return nil }
+
+func (m *mockMigrator) Up() error                    { return m.err }
+func (m *mockMigrator) Force(_ int) error            { return nil }
 func (m *mockMigrator) Version() (uint, bool, error) { return 0, false, nil }
 
 func TestApplyMigrations_Success(t *testing.T) {
@@ -280,10 +281,10 @@ func TestInitDB(t *testing.T) {
 
 		oldNewMigrator := NewMigrator
 		NewMigrator = func(_ *sql.DB, _ string) (interface {
-		Up() error
-		Force(int) error
-		Version() (uint, bool, error)
-	}, error) {
+			Up() error
+			Force(int) error
+			Version() (uint, bool, error)
+		}, error) {
 			return &mockMigrator{err: nil}, nil
 		}
 		defer func() { NewMigrator = oldNewMigrator }()

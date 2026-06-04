@@ -25,11 +25,11 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"github.com/gorilla/csrf"
+	"log/slog"
+	"net/http"
 	"pokget/internal/auth"
 	"pokget/internal/models"
 	"pokget/internal/service"
-	"log/slog"
-	"net/http"
 	"time"
 )
 
@@ -56,7 +56,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := generateToken()
-	
+
 	// Check if user exists and is verified
 	var existingVerified bool
 	err = h.DB.QueryRow("SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
@@ -182,7 +182,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	remember := r.FormValue("remember") == "on"
 	session, _ := auth.Store.Get(r, "session")
 	session.Values["user_id"] = u.ID
-	
+
 	if remember {
 		session.Options.MaxAge = 86400 * 30 // 30 days
 	} else {
