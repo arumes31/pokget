@@ -20,7 +20,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Tesseract dependencies
         run: |
           sudo apt-get update
@@ -28,7 +28,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.26.3'
+          go-version: '1.26.4'
           cache: true
       - name: Install and run golangci-lint
         run: |
@@ -39,15 +39,15 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Tesseract dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libtesseract-dev libleptonica-dev pkg-config
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.26.3'
+          go-version: '1.26.4'
           cache: true
       - name: govulncheck
         run: |
