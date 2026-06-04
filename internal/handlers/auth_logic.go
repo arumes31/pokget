@@ -21,13 +21,11 @@
 package handlers
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"github.com/gorilla/csrf"
 	"pokget/internal/auth"
+	"pokget/internal/errors"
 	"pokget/internal/models"
-	"pokget/internal/service"
 	"log/slog"
 	"net/http"
 	"time"
@@ -49,45 +47,11 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash, err := auth.HashPassword(password)
-	if err != nil {
-		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+	if err := h.AuthService.RegisterUser(r.Context(), email, password); err != nil {
+		slog.Error("Registration failed", "error", err)
+		http.Error(w, err.Error(), errors.MapToStatusCode(err))
 		return
 	}
-
-	token := generateToken()
-	
-	// Check if user exists and is verified
-	var existingVerified bool
-	err = h.DB.QueryRow("SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
-	switch {
-	case err == nil:
-		if existingVerified {
-			http.Error(w, "User already exists", http.StatusConflict)
-			return
-		}
-		// User exists but is NOT verified, update their record instead of failing
-		_, err = h.DB.Exec("UPDATE users SET password_hash = $1, verification_token = $2, last_email_sent_at = NOW() WHERE email = $3", hash, token, email)
-	case err == sql.ErrNoRows:
-		// New user
-		_, err = h.DB.Exec("INSERT INTO users (email, password_hash, verification_token, last_email_sent_at) VALUES ($1, $2, $3, NOW())", email, hash, token)
-	}
-
-	if err != nil {
-		slog.Error("Failed to register/update user", "error", err)
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-
-	mailSvc := h.Mailer
-	if mailSvc == nil {
-		mailSvc = service.NewMailService()
-	}
-	if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
-		slog.Error("Failed to send confirmation email", "error", err)
-	}
-
-	h.Audit.Log("", "USER_REGISTER", map[string]interface{}{"email": email})
 
 	w.WriteHeader(http.StatusCreated)
 	data := map[string]interface{}{
@@ -141,7 +105,9 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 
 	mailSvc := h.Mailer
 	if mailSvc == nil {
-		mailSvc = service.NewMailService()
+		// This is a fallback, but in production h.Mailer should be set
+		http.Error(w, "Mailer service unavailable", http.StatusInternalServerError)
+		return
 	}
 	if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
 		slog.Error("Failed to resend confirmation email", "error", err)
@@ -249,16 +215,6 @@ func (h *Handler) ProcessConfirmEmail(w http.ResponseWriter, r *http.Request) {
 	if err := h.Templates.ExecuteTemplate(w, "confirm_success", nil); err != nil {
 		slog.Error("Failed to execute success template", "error", err)
 	}
-}
-
-var randReader = rand.Reader
-
-func generateToken() string {
-	b := make([]byte, 32)
-	if _, err := randReader.Read(b); err != nil {
-		panic("Failed to generate secure token: " + err.Error())
-	}
-	return hex.EncodeToString(b)
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {

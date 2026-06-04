@@ -65,6 +65,7 @@ type Handler struct {
 	Crypto       *service.CryptoService
 	Game         *service.GamificationService
 	LLM          *service.LLMService
+	AuthService  *service.AuthService
 	DB           *sql.DB
 	BuildVersion string
 }

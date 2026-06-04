@@ -115,6 +115,7 @@ func main() {
 
 	// Initialize Services
 	auditSvc := service.NewAuditService(db.DB)
+	authSvc := service.NewAuthService(db.DB, service.NewMailService(), auditSvc)
 	cryptoSvc, err := service.NewCryptoService(cfg.Auth.SessionKey)
 	if err != nil {
 		slog.Error("Failed to initialize crypto service", "error", err)
@@ -136,6 +137,7 @@ func main() {
 		Crypto:       cryptoSvc,
 		Game:         service.NewGamificationService(db.DB),
 		LLM:          service.NewLLMService(),
+		AuthService:  authSvc,
 		DB:           db.DB,
 		BuildVersion: buildVersion,
 	}
