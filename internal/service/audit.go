@@ -26,15 +26,29 @@ import (
 	"log/slog"
 )
 
+// AuditService handles application audit logging.
 type AuditService struct {
 	db *sql.DB
 }
 
+// NewAuditService creates a new AuditService.
 func NewAuditService(db *sql.DB) *AuditService {
 	return &AuditService{db: db}
 }
 
+// Log records an audit entry.
+// Performance Optimization (Bolt): Marshaling to JSON once and using a single db.Exec call.
 func (s *AuditService) Log(userID, action string, metadata map[string]interface{}) {
+	// Early return if metadata is empty to avoid unnecessary marshaling
+	if metadata == nil {
+		_, err := s.db.Exec("INSERT INTO audit_logs (user_id, action, metadata) VALUES ($1, $2, $3)",
+			userID, action, []byte("{}"))
+		if err != nil {
+			slog.Error("Audit: Failed to insert log", "error", err)
+		}
+		return
+	}
+
 	metaJSON, err := json.Marshal(metadata)
 	if err != nil {
 		slog.Error("Audit: Failed to marshal metadata", "error", err)
