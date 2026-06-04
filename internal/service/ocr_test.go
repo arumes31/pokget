@@ -107,3 +107,31 @@ func TestProcessCardScan_Stub(t *testing.T) {
 		t.Errorf("Unexpected stub results: text=%s, card=%s", text, card)
 	}
 }
+
+func TestFallbackExtract(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		expected string
+	}{
+		{"Single word", "Pikachu", "Pikachu"},
+		{"Capitalized sequence", "rare Charizard card", "Charizard"},
+		{"Multiple capitalized", "Shiny Mewtwo VMAX", "Shiny Mewtwo VMAX"},
+		{"With noise", "!!!Pikachu???", "Pikachu"},
+		{"First long word fallback", "the small cat jumped", "jumped"},
+		{"Unknown", "a b c", "Unknown Card"},
+		{"Empty", "", "Unknown Card"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := fallbackExtract(tt.text)
+			if err != nil {
+				t.Fatalf("fallbackExtract failed: %v", err)
+			}
+			if got != tt.expected {
+				t.Errorf("fallbackExtract(%q) = %q, want %q", tt.text, got, tt.expected)
+			}
+		})
+	}
+}
