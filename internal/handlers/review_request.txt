@@ -1,0 +1,7 @@
+I have refactored the auth handlers to simplify the code and improve performance.
+Key changes:
+1. Initialized the Mailer service once in cmd/pokget/main.go instead of re-creating it on every request.
+2. Extracted the core resend verification logic (rate limiting, DB updates, email sending) into a private helper method performResendVerification.
+3. Simplified the ResendVerification handler to use the new helper.
+4. Optimized the Register handler to use the pre-initialized Mailer.
+5. Fixed SQL query placeholders ($1, $2, etc.) that were broken in a previous edit.

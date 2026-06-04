@@ -132,6 +132,7 @@ func main() {
 		Templates:    templates,
 		MockCards:    allCards,
 		Fingerprint:  service.NewFingerprintService(db.DB),
+		Mailer:       service.NewMailService(),
 		Audit:        auditSvc,
 		Crypto:       cryptoSvc,
 		Game:         service.NewGamificationService(db.DB),

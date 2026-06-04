@@ -24,10 +24,10 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"github.com/gorilla/csrf"
 	"pokget/internal/auth"
 	"pokget/internal/models"
-	"pokget/internal/service"
 	"log/slog"
 	"net/http"
 	"time"
@@ -79,11 +79,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailSvc := h.Mailer
-	if mailSvc == nil {
-		mailSvc = service.NewMailService()
-	}
-	if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
+	if err := h.Mailer.SendConfirmationEmail(email, token); err != nil {
 		slog.Error("Failed to send confirmation email", "error", err)
 	}
 
@@ -99,6 +95,44 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// performResendVerification encapsulates the logic for rate limiting and resending verification emails.
+// It returns an HTTP status code and an error if applicable.
+func (h *Handler) performResendVerification(email string) (int, error) {
+	var lastSent sql.NullTime
+	var token string
+	var isVerified bool
+	err := h.DB.QueryRow("SELECT last_email_sent_at, verification_token, is_verified FROM users WHERE email = $1", email).Scan(&lastSent, &token, &isVerified)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Don't leak email existence
+			return http.StatusOK, nil
+		}
+		return http.StatusInternalServerError, err
+	}
+
+	if isVerified {
+		return http.StatusBadRequest, fmt.Errorf("account already verified")
+	}
+
+	// 5 minute rate limit
+	if lastSent.Valid && time.Since(lastSent.Time) < 5*time.Minute {
+		return http.StatusTooManyRequests, fmt.Errorf("please wait 5 minutes before resending")
+	}
+
+	// Update last sent time
+	_, err = h.DB.Exec("UPDATE users SET last_email_sent_at = NOW() WHERE email = $1", email)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	if err := h.Mailer.SendConfirmationEmail(email, token); err != nil {
+		slog.Error("Failed to resend confirmation email", "error", err)
+		return http.StatusInternalServerError, fmt.Errorf("failed to send email")
+	}
+
+	return http.StatusOK, nil
+}
+
 func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: ResendVerification", "method", r.Method, "url", r.URL.String())
 	email := r.FormValue("email")
@@ -107,49 +141,13 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var lastSent sql.NullTime
-	var token string
-	var isVerified bool
-	err := h.DB.QueryRow("SELECT last_email_sent_at, verification_token, is_verified FROM users WHERE email = $1", email).Scan(&lastSent, &token, &isVerified)
+	code, err := h.performResendVerification(email)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			// Don't leak email existence, just return OK but don't send
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		http.Error(w, "Internal error", http.StatusInternalServerError)
+		http.Error(w, err.Error(), code)
 		return
 	}
 
-	if isVerified {
-		http.Error(w, "Account already verified", http.StatusBadRequest)
-		return
-	}
-
-	// 5 minute rate limit
-	if lastSent.Valid && time.Since(lastSent.Time) < 5*time.Minute {
-		http.Error(w, "Please wait 5 minutes before resending", http.StatusTooManyRequests)
-		return
-	}
-
-	// Update last sent time
-	_, err = h.DB.Exec("UPDATE users SET last_email_sent_at = NOW() WHERE email = $1", email)
-	if err != nil {
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-
-	mailSvc := h.Mailer
-	if mailSvc == nil {
-		mailSvc = service.NewMailService()
-	}
-	if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
-		slog.Error("Failed to resend confirmation email", "error", err)
-		http.Error(w, "Failed to send email", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(code)
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
