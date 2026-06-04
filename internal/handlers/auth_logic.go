@@ -157,6 +157,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 
+	// ⚡ Bolt Optimization: Early return for empty credentials to avoid unnecessary DB query.
+	if email == "" || password == "" {
+		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		return
+	}
 	var u models.User
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
 	if err != nil {
