@@ -141,7 +141,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN portfolio p ON c.id = p.card_id
 		GROUP BY c.set_name`, userID)
 	
-	var setCompletion []SetProgress
+	setCompletion := make([]SetProgress, 0, 8) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -170,7 +170,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1`, userID)
 	
-	var portfolio []models.PortfolioItem
+	portfolio := make([]models.PortfolioItem, 0, 64) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
 	if rowsPortfolio != nil {
 		defer rowsPortfolio.Close()
 		for rowsPortfolio.Next() {
@@ -380,7 +380,7 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var cards []models.Card
+	cards := make([]models.Card, 0, 32) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
 	for rows.Next() {
 		var c models.Card
 		if err := rows.Scan(&c.Name); err == nil {
@@ -438,7 +438,7 @@ func (h *Handler) Binders(w http.ResponseWriter, r *http.Request) {
 		GROUP BY b.id, b.name, b.description, b.created_at
 		ORDER BY b.created_at DESC`, userID)
 	
-	var binders []Binder
+	binders := make([]Binder, 0, 8) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -512,7 +512,7 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.binder_id = $1 AND p.user_id = $2`, binderID, userID)
 	
-	var cards []models.PortfolioItem
+	cards := make([]models.PortfolioItem, 0, 64) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -554,7 +554,7 @@ func (h *Handler) reloadCards() (int, error) {
 	}
 	defer rows.Close()
 
-	var allCards []models.Card
+	allCards := make([]models.Card, 0, 1024) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations for cache reload
 	for rows.Next() {
 		var c models.Card
 		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash); err != nil {

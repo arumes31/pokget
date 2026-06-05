@@ -47,7 +47,7 @@ func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var items []models.WantlistItem
+	items := make([]models.WantlistItem, 0, 64) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
 	for rows.Next() {
 		var i models.WantlistItem
 		if err := rows.Scan(&i.ID, &i.CardID, &i.TargetPrice, &i.Notes, &i.Card.Name, &i.Card.Set, &i.Card.PriceUSD, &i.Card.ImageURL); err == nil {
