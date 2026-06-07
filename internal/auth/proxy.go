@@ -29,9 +29,9 @@ import (
 // ProxyMiddleware handles reverse proxy and Cloudflare headers to extract the real client IP.
 // Controllable via TRUST_PROXY and TRUST_CLOUDFLARE environment variables.
 func ProxyMiddleware(next http.Handler) http.Handler {
-	// Enabled by default unless explicitly set to "false"
-	trustProxy := os.Getenv("TRUST_PROXY") != "false"
-	trustCF := os.Getenv("TRUST_CLOUDFLARE") != "false"
+	// Disabled by default to prevent IP spoofing vulnerabilities unless explicitly enabled
+	trustProxy := os.Getenv("TRUST_PROXY") == "true"
+	trustCF := os.Getenv("TRUST_CLOUDFLARE") == "true"
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var realIP string
