@@ -11,12 +11,12 @@ import (
 
 type DummyPriceClient struct{}
 
-func (d *DummyPriceClient) FetchPrice(card models.Card) (float64, float64, error) {
+func (d *DummyPriceClient) FetchPrice(_ models.Card) (float64, float64, error) {
 	time.Sleep(1 * time.Second) // simulate network delay of 1 second
 	return 1.0, 1.0, nil
 }
 
-func (d *DummyPriceClient) ApplyMultiplier(price float64, condition string, multipliers map[string]float64) float64 {
+func (d *DummyPriceClient) ApplyMultiplier(price float64, _ string, _ map[string]float64) float64 {
 	return price
 }
 
