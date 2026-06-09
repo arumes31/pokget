@@ -170,7 +170,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1`, userID)
 	
-	var portfolio []models.PortfolioItem
+	portfolio := make([]models.PortfolioItem, 0, 32) // BOLT OPTIMIZATION: Pre-allocate portfolio slice to reduce allocations
 	if rowsPortfolio != nil {
 		defer rowsPortfolio.Close()
 		for rowsPortfolio.Next() {
@@ -554,7 +554,7 @@ func (h *Handler) reloadCards() (int, error) {
 	}
 	defer rows.Close()
 
-	var allCards []models.Card
+	allCards := make([]models.Card, 0, 512) // BOLT OPTIMIZATION: Pre-allocate large slice to reduce GC pressure
 	for rows.Next() {
 		var c models.Card
 		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash); err != nil {
