@@ -101,6 +101,12 @@ func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
 	defer rows.Close()
 
 	for rows.Next() {
+		// Check for cancellation before processing each card
+		if ctx.Err() != nil {
+			slog.Info("Repair: Stopping due to context cancellation")
+			break
+		}
+
 		var c models.Card
 		if err := rows.Scan(&c.ID, &c.Name, &c.ImageURL, &c.Game, &c.Language); err != nil {
 			continue
@@ -121,6 +127,9 @@ func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
 
 		// Rate limit downloads during repair to be nice to APIs
 		time.Sleep(500 * time.Millisecond)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("Repair: Row iteration error", "error", err)
 	}
 	slog.Info("Missing fingerprints repair cycle completed")
 }
@@ -144,7 +153,18 @@ func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
 		return
 	}
 
+	limiter := time.NewTicker(500 * time.Millisecond)
+	defer limiter.Stop()
+
 	for _, c := range cards {
+		// Check for cancellation before processing each card
+		if ctx.Err() != nil {
+			slog.Info("Sync: Stopping metadata sync due to context cancellation")
+			break
+		}
+
+		<-limiter.C // Rate limit external API calls
+
 		var exists bool
 		err := w.db.QueryRow("SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1)", c.ID).Scan(&exists)
 		if err != nil {

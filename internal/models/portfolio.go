@@ -23,19 +23,19 @@ package models
 import "time"
 
 type PortfolioItem struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"user_id"`
-	CardID          string    `json:"card_id"`
-	Condition       string    `json:"condition"`
-	Format          string    `json:"format"` // Raw, Graded
-	Grade           string    `json:"grade"`
-	GradingCompany  string    `json:"grading_company"`
-	Notes           string    `json:"notes"`
-	IsPublic        bool      `json:"is_public"`
-	CustomPrice     float64   `json:"custom_price"`
-	Language        string    `json:"language"`
-	CreatedAt       time.Time `json:"created_at"`
-	
+	ID             string    `json:"id"`
+	UserID         string    `json:"user_id"`
+	CardID         string    `json:"card_id"`
+	Condition      string    `json:"condition"`
+	Format         string    `json:"format"` // Raw, Graded
+	Grade          string    `json:"grade"`
+	GradingCompany string    `json:"grading_company"`
+	Notes          string    `json:"notes"`
+	IsPublic       bool      `json:"is_public"`
+	CustomPrice    *float64  `json:"custom_price"`
+	Language       string    `json:"language"`
+	CreatedAt      time.Time `json:"created_at"`
+
 	// Join fields
 	Card Card `json:"card"`
 }
@@ -47,7 +47,7 @@ type WantlistItem struct {
 	TargetPrice float64   `json:"target_price"`
 	Notes       string    `json:"notes"`
 	CreatedAt   time.Time `json:"created_at"`
-	
+
 	// Join fields
 	Card Card `json:"card"`
 }
@@ -61,7 +61,7 @@ type ErrorCard struct {
 	SubmittedBy              string    `json:"submitted_by"`
 	ImageURL                 string    `json:"image_url"`
 	CreatedAt                time.Time `json:"created_at"`
-	
+
 	// Join fields
 	Card Card `json:"card"`
 }

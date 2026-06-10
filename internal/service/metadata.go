@@ -51,10 +51,10 @@ func NewTCGDexClient() *TCGDexClient {
 }
 
 type tcgDexCard struct {
-	ID    string `json:"id"`
+	ID      string `json:"id"`
 	LocalID string `json:"localId"`
-	Name  string `json:"name"`
-	Image string `json:"image"`
+	Name    string `json:"name"`
+	Image   string `json:"image"`
 }
 
 func (t *TCGDexClient) FetchCards(ctx context.Context, game string, lang string) ([]models.Card, error) {
@@ -75,7 +75,7 @@ func (t *TCGDexClient) FetchCards(ctx context.Context, game string, lang string)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("TCGDex API returned status: %d", resp.StatusCode)
 	}
 

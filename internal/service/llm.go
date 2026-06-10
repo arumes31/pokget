@@ -183,11 +183,11 @@ Respond ONLY with the card name. If no match is found, respond with "Unknown Car
 	cleanedMatch := strings.TrimSpace(response)
 	slog.Info("LLM Fallback Result", "raw", response, "cleaned", cleanedMatch)
 
-	// Fallback for conversational models: check if the response contains any known card ID
+	// Fallback for conversational models: check if the response contains any known card name or ID
 	for _, c := range knownCards {
-		if strings.Contains(cleanedMatch, c.ID) {
-			slog.Info("LLM: Extracted card ID from conversational response", "id", c.ID)
-			return c.ID, nil
+		if strings.Contains(cleanedMatch, c.ID) || strings.EqualFold(cleanedMatch, c.Name) {
+			slog.Info("LLM: Extracted card from conversational response", "id", c.ID, "name", c.Name)
+			return c.Name, nil
 		}
 	}
 

@@ -1,6 +1,6 @@
 module ocr_sandbox
 
-go 1.23.0
+go 1.26
 
 require (
 	github.com/anthonynsimon/bild v0.15.0

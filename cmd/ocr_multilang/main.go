@@ -26,11 +26,12 @@ func main() {
 	limit := 50
 
 	results := make(map[string]int)
+	actualCounts := make(map[string]int)
 	client := &http.Client{Timeout: 15 * time.Second}
 
 	for _, lang := range languages {
 		fmt.Printf("\n--- Testing Language: %s ---\n", lang)
-		
+
 		// 1. Fetch card list from TCGdex
 		url := fmt.Sprintf("https://api.tcgdex.net/v2/%s/sets/swsh1", lang)
 		resp, err := client.Get(url)
@@ -38,7 +39,7 @@ func main() {
 			log.Printf("Failed to fetch set for %s: %v", lang, err)
 			continue
 		}
-		
+
 		var setData struct {
 			Cards []TCGdexCard `json:"cards"`
 		}
@@ -66,8 +67,12 @@ func main() {
 			if err != nil {
 				continue
 			}
-			imgBytes, _ := io.ReadAll(imgResp.Body)
-			imgResp.Body.Close()
+			defer imgResp.Body.Close()
+			imgBytes, err := io.ReadAll(imgResp.Body)
+			if err != nil {
+				log.Printf("Failed to read image for %s: %v", card.Name, err)
+				continue
+			}
 
 			// 3. Prepare Mock DB Cards
 			mockCards := []models.Card{
@@ -77,9 +82,12 @@ func main() {
 			// 4. Run Scan
 			tessLang := "eng"
 			switch lang {
-			case "fr": tessLang = "fra"
-			case "de": tessLang = "deu"
-			case "jp": tessLang = "jpn"
+			case "fr":
+				tessLang = "fra"
+			case "de":
+				tessLang = "deu"
+			case "jp":
+				tessLang = "jpn"
 			}
 
 			_, detected, processed, err := service.ProcessCardScan(imgBytes, mockCards, tessLang, nil)
@@ -110,10 +118,11 @@ func main() {
 		}
 		fmt.Printf("Result for %s: %d/%d (%.1f%%)\n", lang, correct, count, accuracy)
 		results[lang] = correct
+		actualCounts[lang] = count
 	}
 
 	fmt.Println("\n--- FINAL RESULTS ---")
 	for lang, correct := range results {
-		fmt.Printf("%s: %d/%d\n", lang, correct, limit)
+		fmt.Printf("%s: %d/%d\n", lang, correct, actualCounts[lang])
 	}
 }

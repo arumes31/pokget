@@ -66,8 +66,9 @@ func main() {
 	// Initialize Services
 	var fingerprintSvc *service.FingerprintService
 	var auditSvc *service.AuditService
-	
+
 	var dataWorker *worker.DataSyncWorker
+	var workerCancel context.CancelFunc
 	// Apply Migrations
 	if err := db.ApplyMigrations(db.DB, cfg.DB.MigrationsPath); err != nil {
 		slog.Error("Migration error", "error", err)
@@ -86,9 +87,11 @@ func main() {
 		priceClient := &service.DefaultPriceClient{Scraper: &service.ScraperPriceClient{}}
 		metadataClient := service.NewTCGDexClient()
 		metadataSvc := service.NewMetadataService(fingerprintSvc)
-		
+
 		dataWorker = worker.NewDataSyncWorker(db.DB, priceClient, metadataClient, metadataSvc, 1*time.Hour)
-		go dataWorker.Start(context.Background())
+		var workerCtx context.Context
+		workerCtx, workerCancel = context.WithCancel(context.Background())
+		go dataWorker.Start(workerCtx)
 	}
 
 	// Fetch all cards from DB for handlers (caching in memory for fast scanning)
@@ -152,7 +155,7 @@ func main() {
 	r.Use(middleware.SecurityHeadersMiddleware)
 	r.Use(auth.RateLimitMiddleware)
 	r.Use(auth.ProxyMiddleware)
-	
+
 	// CSRF Protection
 	csrfMiddleware := csrf.Protect(
 		[]byte(cfg.Auth.SessionKey),
@@ -230,6 +233,7 @@ func main() {
 
 	// Stop workers
 	if dataWorker != nil {
+		workerCancel()
 		dataWorker.Stop()
 	}
 

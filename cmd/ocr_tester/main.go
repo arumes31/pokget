@@ -6,10 +6,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
 	"pokget/internal/models"
 	"pokget/internal/service"
+	"strings"
+	"time"
 )
 
 type CardMetadata struct {
@@ -44,6 +44,7 @@ func main() {
 	llm := service.NewLLMService()
 
 	fmt.Println("Waiting for LLM model to be ready...")
+	ready := false
 	for i := 0; i < 60; i++ {
 		resp, err := llm.HTTPClient.Get(llm.BaseURL + "/api/tags")
 		if err == nil {
@@ -51,11 +52,16 @@ func main() {
 			resp.Body.Close()
 			if strings.Contains(string(body), "tinyllama") {
 				fmt.Println("\nLLM model is ready!")
+				ready = true
 				break
 			}
 		}
 		fmt.Print(".")
 		time.Sleep(10 * time.Second)
+	}
+	if !ready {
+		fmt.Println("\nError: LLM model 'tinyllama' never became ready. Aborting.")
+		os.Exit(1)
 	}
 
 	files, err := os.ReadDir("test_cards")
@@ -74,7 +80,7 @@ func main() {
 		if f.IsDir() || !strings.HasPrefix(f.Name(), "test_OP01-") {
 			continue
 		}
-		
+
 		meta, ok := metadata[f.Name()]
 		if !ok {
 			// Skip files not in metadata (like old test cards if any)
@@ -109,9 +115,10 @@ func main() {
 		}()
 
 		extractedText, _, _, processErr := service.ProcessCardScan(imgBytes, knownCards, lang, llm)
-		
+
 		os.Stdout = origStdout
 		w.Close()
+		r.Close()
 
 		if processErr != nil {
 			fmt.Printf("[FAIL] %s - Error: %v\n", f.Name(), processErr)
@@ -125,7 +132,7 @@ func main() {
 		// Flexible validation:
 		// 1. Check if name is in text
 		// 2. Check if number is in text
-		
+
 		matchedName := strings.Contains(extractedTextLower, nameLower)
 		matchedNumber := strings.Contains(extractedTextLower, strings.ToLower(number))
 
@@ -157,7 +164,7 @@ func main() {
 
 	fmt.Println("==================================================")
 	fmt.Printf("Results: %d/%d passed.\n", successCount, totalCount)
-	
+
 	if totalCount > 0 {
 		accuracy := float64(successCount) / float64(totalCount) * 100
 		fmt.Printf("Accuracy: %.2f%%\n", accuracy)
