@@ -47,7 +47,7 @@ func (h *Handler) ErrorDatabase(w http.ResponseWriter, r *http.Request) {
 		FROM error_cards e
 		JOIN cards c ON e.card_id = c.id
 		ORDER BY e.created_at DESC`)
-	
+
 	if err != nil {
 		slog.Error("Failed to fetch error database", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -55,7 +55,7 @@ func (h *Handler) ErrorDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var errors []ErrorCard
+	errors := make([]ErrorCard, 0, 64) // Pre-allocate to reduce reallocations
 	for rows.Next() {
 		var e ErrorCard
 		if err := rows.Scan(&e.ID, &e.CardID, &e.ErrorType, &e.Description, &e.EstimatedValueMultiplier, &e.CardName, &e.SetName, &e.ImageURL, &e.Game); err == nil {

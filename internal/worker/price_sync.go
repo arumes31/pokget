@@ -197,6 +197,13 @@ func (w *DataSyncWorker) syncPrices() {
 			continue
 		}
 
+		// Guard against a failed/empty scrape returning (0, 0): writing those
+		// would wipe a valid stored price and pollute price history with zeros.
+		if usd == 0 && eur == 0 {
+			slog.Warn("Sync: Skipping card with zero price (likely failed scrape)", "card", c.Name)
+			continue
+		}
+
 		// 1. Update Card Price in DB
 		_, err = w.db.Exec("UPDATE cards SET price_usd = $1, price_eur = $2, last_updated = NOW() WHERE id = $3",
 			decimal.NewFromFloat(usd), decimal.NewFromFloat(eur), c.ID)
@@ -214,24 +221,33 @@ func (w *DataSyncWorker) syncPrices() {
 		}
 
 		// 3. Check Price Alerts (Improvement #38)
-		rowsAlerts, err := w.db.Query("SELECT id, user_id, target_price FROM price_alerts WHERE card_id = $1 AND is_active = TRUE", c.ID)
-		if err == nil {
-			defer rowsAlerts.Close()
-			for rowsAlerts.Next() {
-				var alertID int
-				var userID string
-				var targetPrice decimal.Decimal
-				if err := rowsAlerts.Scan(&alertID, &userID, &targetPrice); err == nil {
-					currentPrice := decimal.NewFromFloat(usd)
-					if currentPrice.LessThanOrEqual(targetPrice) {
-						slog.Info("ALERT: Price target hit!", "user", userID, "card", c.Name, "target", targetPrice, "current", currentPrice)
-						// In a real app, send email/push here
-						// Deactivate alert after hit?
-						// _, _ = w.db.Exec("UPDATE price_alerts SET is_active = FALSE WHERE id = $1", alertID)
-					}
-				}
-			}
-		}
+		w.checkPriceAlerts(c, usd)
 	}
 	slog.Info("Price synchronization cycle completed")
+}
+
+// checkPriceAlerts evaluates active price alerts for a card against its current
+// USD price. It is a dedicated method so the result set is closed when this call
+// returns rather than accumulating open cursors for the duration of syncPrices
+// (a `defer` inside the per-card loop would leak connections across all cards).
+func (w *PriceSyncWorker) checkPriceAlerts(c models.Card, usd float64) {
+	rowsAlerts, err := w.db.Query("SELECT id, user_id, target_price FROM price_alerts WHERE card_id = $1 AND is_active = TRUE", c.ID)
+	if err != nil {
+		return
+	}
+	defer rowsAlerts.Close()
+
+	currentPrice := decimal.NewFromFloat(usd)
+	for rowsAlerts.Next() {
+		var alertID int
+		var userID string
+		var targetPrice decimal.Decimal
+		if err := rowsAlerts.Scan(&alertID, &userID, &targetPrice); err != nil {
+			continue
+		}
+		if currentPrice.LessThanOrEqual(targetPrice) {
+			slog.Info("ALERT: Price target hit!", "user", userID, "card", c.Name, "target", targetPrice, "current", currentPrice)
+			// In a real app, send email/push here.
+		}
+	}
 }

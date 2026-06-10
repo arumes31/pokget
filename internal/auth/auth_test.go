@@ -236,15 +236,16 @@ func TestProxyMiddleware(t *testing.T) {
 	})
 
 	t.Run("NoTrust", func(t *testing.T) {
-		os.Setenv("TRUST_PROXY", "false")
-		os.Setenv("TRUST_CLOUDFLARE", "false")
-		defer os.Unsetenv("TRUST_PROXY")
-		defer os.Unsetenv("TRUST_CLOUDFLARE")
+		// Verify fail-secure behavior when no env vars are set
+		os.Unsetenv("TRUST_PROXY")
+		os.Unsetenv("TRUST_CLOUDFLARE")
 
 		middleware := ProxyMiddleware(nextHandler)
 		req := httptest.NewRequest("GET", "/", nil)
 		originalRemoteAddr := req.RemoteAddr
 		req.Header.Set("X-Real-IP", "5.5.5.5")
+		req.Header.Set("CF-Connecting-IP", "6.6.6.6")
+		req.Header.Set("X-Forwarded-For", "7.7.7.7")
 		rr := httptest.NewRecorder()
 
 		middleware.ServeHTTP(rr, req)

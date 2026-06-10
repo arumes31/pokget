@@ -67,12 +67,12 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 	db.DB = dbMock
 
 	h := &Handler{
-		Templates:    tmpl,
-		MockCards:    []models.Card{{ID: "test-id", Name: "Test Card"}},
-		Audit:        service.NewAuditService(dbMock),
-		Game:         service.NewGamificationService(dbMock),
-		Fingerprint:  service.NewFingerprintService(dbMock),
-		DB:           dbMock,
+		Templates:   tmpl,
+		MockCards:   []models.Card{{ID: "test-id", Name: "Test Card"}},
+		Audit:       service.NewAuditService(dbMock),
+		Game:        service.NewGamificationService(dbMock),
+		Fingerprint: service.NewFingerprintService(dbMock),
+		DB:          dbMock,
 	}
 
 	return h, mock, func() { dbMock.Close() }
@@ -252,7 +252,7 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		// Return a real DB error, not sql.ErrNoRows
-		mock.ExpectQuery("SELECT id").WillReturnError(sql.ErrConnDone)
+		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnError(sql.ErrConnDone)
 
 		h.Login(rr, req)
 
@@ -337,7 +337,7 @@ func TestHandlers(t *testing.T) {
 		passHash, _ := auth.HashPassword("pass")
 		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
 			AddRow("user-123", "test@example.com", passHash, false)
-		mock.ExpectQuery("SELECT id, email").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 
 		h.Login(rr, req)
 
@@ -357,7 +357,7 @@ func TestHandlers(t *testing.T) {
 		passHash, _ := auth.HashPassword("pass")
 		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
 			AddRow("user-123", "test@example.com", passHash, true)
-		mock.ExpectQuery("SELECT id, email").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 
 		h.Login(rr, req)
 
@@ -450,12 +450,13 @@ func TestHandlers(t *testing.T) {
 
 		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
 		rr := httptest.NewRecorder()
 
 		passHash, _ := auth.HashPassword("pass")
 		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
 			AddRow("user-123", "test@example.com", passHash, true)
-		mock.ExpectQuery("SELECT id, email").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 		mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.Login(rr, req)
@@ -463,11 +464,68 @@ func TestHandlers(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", rr.Code)
 		}
-		if !strings.Contains(rr.Body.String(), `window.location.replace("/")`) {
-			t.Errorf("Expected JS redirect, got %s", rr.Body.String())
+	})
+
+	t.Run("Login_HTMX_Success", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		rr := httptest.NewRecorder()
+
+		passHash, _ := auth.HashPassword("pass")
+		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
+			AddRow("user-123", "test@example.com", passHash, true)
+		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
+		mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
+
+		h.Login(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+		if rr.Header().Get("HX-Redirect") != "/" {
+			t.Errorf("Expected HX-Redirect header '/', got %s", rr.Header().Get("HX-Redirect"))
 		}
 	})
 
+	t.Run("Login_RememberMe", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass&remember=on"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		passHash, _ := auth.HashPassword("pass")
+		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
+			AddRow("user-123", "test@example.com", passHash, true)
+		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
+		mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
+
+		h.Login(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Login_EmptyCredentials", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=&password="))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.Login(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status 401, got %d", rr.Code)
+		}
+	})
 	t.Run("ResendVerification_UserNotFound", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
@@ -514,7 +572,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email").WillReturnError(sql.ErrNoRows)
+		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnError(sql.ErrNoRows)
 
 		h.Login(rr, req)
 
@@ -571,7 +629,7 @@ func TestHandlers(t *testing.T) {
 
 		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
 			AddRow("user-123", "test@example.com", "invalid-hash", true)
-		mock.ExpectQuery("SELECT id, email").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 
 		h.Login(rr, req)
 
@@ -588,7 +646,7 @@ func TestHandlers(t *testing.T) {
 		// Or just use a template that doesn't exist to hit the error log branch if render handles it
 		req := httptest.NewRequest("GET", "/", nil)
 		rr := httptest.NewRecorder()
-		
+
 		// Passing nil to render with a template that expects fields might work,
 		// but let's just test with a missing template
 		h.Index(rr, req) // Authenticated redirect branch already tested
@@ -873,6 +931,79 @@ func TestHandlers(t *testing.T) {
 		}
 	})
 
+	t.Run("CreateBinder", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+		t.Run("MethodNotAllowed", func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/binders/create", nil)
+			rr := httptest.NewRecorder()
+			h.CreateBinder(rr, req)
+			if rr.Code != http.StatusMethodNotAllowed {
+				t.Errorf("Expected status 405, got %d", rr.Code)
+			}
+		})
+
+		t.Run("Unauthorized", func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/binders/create", nil)
+			rr := httptest.NewRecorder()
+			h.CreateBinder(rr, req)
+			if rr.Code != http.StatusUnauthorized {
+				t.Errorf("Expected status 401, got %d", rr.Code)
+			}
+		})
+
+		t.Run("MissingName", func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/binders/create", nil)
+			ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+			h.CreateBinder(rr, req)
+			if rr.Code != http.StatusBadRequest {
+				t.Errorf("Expected status 400, got %d", rr.Code)
+			}
+		})
+
+		t.Run("DBError", func(t *testing.T) {
+			form := "name=New+Binder&description=Test+Desc"
+			req := httptest.NewRequest("POST", "/binders/create", strings.NewReader(form))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+
+			mock.ExpectExec("INSERT INTO binders").
+				WithArgs("test-user", "New Binder", "Test Desc").
+				WillReturnError(errors.New("db error"))
+
+			h.CreateBinder(rr, req)
+			if rr.Code != http.StatusInternalServerError {
+				t.Errorf("Expected status 500, got %d", rr.Code)
+			}
+		})
+
+		t.Run("Success", func(t *testing.T) {
+			form := "name=New+Binder&description=Test+Desc"
+			req := httptest.NewRequest("POST", "/binders/create", strings.NewReader(form))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+
+			mock.ExpectExec("INSERT INTO binders").
+				WithArgs("test-user", "New Binder", "Test Desc").
+				WillReturnResult(sqlmock.NewResult(1, 1))
+
+			mock.ExpectQuery("SELECT b.id").WithArgs("test-user").
+				WillReturnRows(sqlmock.NewRows([]string{"id", "name", "desc", "created", "count"}).
+					AddRow("b1", "New Binder", "Test Desc", "2026-01-01", 0))
+
+			h.CreateBinder(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Errorf("Expected status 200, got %d", rr.Code)
+			}
+		})
+	})
+
 	t.Run("ErrorDatabase", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
@@ -1017,12 +1148,154 @@ func TestHandlers(t *testing.T) {
 		// Request a template that doesn't exist
 		h.render(rr, req, "nonexistent.html", nil)
 		if rr.Code != http.StatusInternalServerError {
+			t.Run("Login_HTMX_Success", func(t *testing.T) {
+				h, mock, cleanup := setupTestHandler(t)
+				defer cleanup()
+
+				req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass"))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				req.Header.Set("HX-Request", "true")
+				rr := httptest.NewRecorder()
+
+				passHash, _ := auth.HashPassword("pass")
+				rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
+					AddRow("user-123", "test@example.com", passHash, true)
+				mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
+				mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
+
+				h.Login(rr, req)
+
+				if rr.Code != http.StatusOK {
+					t.Errorf("Expected status 200, got %d", rr.Code)
+				}
+				if rr.Header().Get("HX-Redirect") != "/" {
+					t.Errorf("Expected HX-Redirect header '/', got %s", rr.Header().Get("HX-Redirect"))
+				}
+			})
+
+			t.Run("Login_RememberMe", func(t *testing.T) {
+				h, mock, cleanup := setupTestHandler(t)
+				defer cleanup()
+
+				req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass&remember=on"))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				rr := httptest.NewRecorder()
+
+				passHash, _ := auth.HashPassword("pass")
+				rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
+					AddRow("user-123", "test@example.com", passHash, true)
+				mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
+				mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
+
+				h.Login(rr, req)
+
+				if rr.Code != http.StatusOK {
+					t.Errorf("Expected status 200, got %d", rr.Code)
+				}
+			})
+
+			t.Run("Login_EmptyCredentials", func(t *testing.T) {
+				h, _, cleanup := setupTestHandler(t)
+				defer cleanup()
+
+				req := httptest.NewRequest("POST", "/login", strings.NewReader("email=&password="))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				rr := httptest.NewRecorder()
+
+				h.Login(rr, req)
+
+				if rr.Code != http.StatusUnauthorized {
+					t.Errorf("Expected status 401, got %d", rr.Code)
+				}
+			})
+			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+	})
+
+	t.Run("ErrorDatabase_DBError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/error", nil)
+		rr := httptest.NewRecorder()
+
+		mock.ExpectQuery("SELECT").WillReturnError(sql.ErrConnDone)
+
+		h.ErrorDatabase(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+	})
+
+	t.Run("ErrorDatabase_ScanError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/error", nil)
+		rr := httptest.NewRecorder()
+
+		// Return one row with wrong type for multiplier (string instead of float64) to trigger scan error
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "cid", "type", "desc", "mult", "name", "set", "url", "game"}).
+			AddRow("1", "c1", "Misprint", "Blurry", "invalid", "Pikachu", "Base", "url", "Pokemon"))
+
+		h.ErrorDatabase(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+	})
+
+	t.Run("SubmitError_MethodNotAllowed", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("GET", "/error/submit", nil)
+		rr := httptest.NewRecorder()
+
+		h.SubmitError(rr, req)
+
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Errorf("Expected status 405, got %d", rr.Code)
+		}
+	})
+
+	t.Run("SubmitError_Unauthorized", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/error/submit", nil)
+		rr := httptest.NewRecorder()
+
+		h.SubmitError(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status 401, got %d", rr.Code)
+		}
+	})
+
+	t.Run("SubmitError_DBError", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest("POST", "/error/submit", strings.NewReader("card_id=c1&error_type=Miscut&description=offcenter&multiplier=1.5"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		mock.ExpectExec("INSERT INTO error_cards").WillReturnError(sql.ErrConnDone)
+
+		h.SubmitError(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
 		}
 	})
 }
 
 type errorReader struct{}
+
 func (e *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, errors.New("rand fail")
 }

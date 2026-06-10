@@ -294,7 +294,7 @@
         <div x-show="detectedCard" x-transition class="glass-card p-4 border-emerald-500/30 bg-emerald-500/5">
             <div class="flex items-center gap-4">
                 <div x-show="detectedImage" class="w-16 aspect-[3/4] rounded-lg overflow-hidden border border-white/10 shadow-lg">
-                    <img :src="detectedImage" class="w-full h-full object-cover">
+                    <img :src="detectedImage" :alt="detectedCard ? ('Detected card: ' + detectedCard) : 'Detected card preview'" class="w-full h-full object-cover">
                 </div>
                 <div class="flex-1">
                     <p class="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Match Found</p>

@@ -81,9 +81,14 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 			portfolio = append(portfolio, p)
 		}
 	}
+	// BOLT OPTIMIZATION: Use strings.IndexByte for more efficient string extraction (one less allocation than Split)
+	username := email
+	if idx := strings.IndexByte(email, '@'); idx != -1 {
+		username = email[:idx]
+	}
 
 	h.render(w, r, "public_vault.html", map[string]interface{}{
-		"Username":  strings.Split(email, "@")[0],
+		"Username":  username,
 		"Portfolio": portfolio,
 		"Rank":      rank,
 		"XP":        xp,

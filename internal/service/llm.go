@@ -24,11 +24,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"pokget/internal/models"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"pokget/internal/models"
 	"strings"
 	"time"
 )
@@ -123,29 +123,7 @@ func (s *LLMService) AutoSetup() {
 	slog.Info("LLM: Model pulled successfully", "model", s.Model)
 }
 
-func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (string, error) {
-	cardDetails := []string{}
-	for _, c := range knownCards {
-		cardDetails = append(cardDetails, fmt.Sprintf("%s (ID/Number: %s)", c.Name, c.ID))
-	}
-
-	prompt := fmt.Sprintf(`Task: Match the extracted text to the most likely card from the list.
-Extracted text: "%s"
-Known cards: %s
-
-Examples:
-Extracted text: "Pikachu 19/122"
-Match: 19/122
-
-Extracted text: "Charizard swsh45-19"
-Match: swsh45-19
-
-Extracted text: "Garbage text with no match"
-Match: Unknown Card
-
-Respond ONLY with the exact ID/Number. Do not include any other text.
-Match:`, ocrText, strings.Join(cardDetails, ", "))
-
+func (s *LLMService) queryLLM(prompt string) (string, error) {
 	payload := map[string]interface{}{
 		"model":  s.Model,
 		"prompt": prompt,
@@ -181,8 +159,29 @@ Match:`, ocrText, strings.Join(cardDetails, ", "))
 		return "", fmt.Errorf("failed to unmarshal LLM response: %w", err)
 	}
 
-	cleanedMatch := strings.TrimSpace(result.Response)
-	slog.Info("LLM Fallback Result", "raw", result.Response, "cleaned", cleanedMatch)
+	return result.Response, nil
+}
+
+func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (string, error) {
+	// BOLT: Pre-allocate slice to avoid multiple reallocations during append.
+	// Expected impact: Minor reduction in GC pressure and allocation overhead.
+	cardNames := make([]string, 0, len(knownCards))
+	for _, c := range knownCards {
+		cardNames = append(cardNames, c.Name)
+	}
+
+	prompt := fmt.Sprintf(`The following text was extracted from a trading card using OCR and might have typos: "%s".
+Which of these card names is the most likely match?
+Known cards: %s.
+Respond ONLY with the card name. If no match is found, respond with "Unknown Card".`, ocrText, strings.Join(cardNames, ", "))
+
+	response, err := s.queryLLM(prompt)
+	if err != nil {
+		return "", err
+	}
+
+	cleanedMatch := strings.TrimSpace(response)
+	slog.Info("LLM Fallback Result", "raw", response, "cleaned", cleanedMatch)
 
 	// Fallback for conversational models: check if the response contains any known card ID
 	for _, c := range knownCards {
@@ -194,49 +193,31 @@ Match:`, ocrText, strings.Join(cardDetails, ", "))
 
 	return cleanedMatch, nil
 }
+
 func (s *LLMService) GenerateBinderName(cards []models.Card) (string, error) {
 	if len(cards) == 0 {
 		return "New Empty Binder", nil
 	}
 
-	cardNames := []string{}
-	for i, c := range cards {
-		cardNames = append(cardNames, c.Name)
-		if i > 20 {
-			break // Don't overwhelm the context
-		}
+	limit := len(cards)
+	if limit > 20 {
+		limit = 20
+	}
+
+	// BOLT: Pre-allocate slice to avoid multiple reallocations during append.
+	// Expected impact: Minor reduction in GC pressure and allocation overhead.
+	cardNames := make([]string, 0, limit)
+	for i := 0; i < limit; i++ {
+		cardNames = append(cardNames, cards[i].Name)
 	}
 
 	prompt := fmt.Sprintf(`Based on the following cards in a binder, suggest a single, creative, and premium-sounding name for the binder: %s.
 Respond ONLY with the name, no quotes or explanations.`, strings.Join(cardNames, ", "))
 
-	payload := map[string]interface{}{
-		"model":  s.Model,
-		"prompt": prompt,
-		"stream": false,
-	}
-
-	jsonData, err := json.Marshal(payload)
+	response, err := s.queryLLM(prompt)
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := s.HTTPClient.Post(s.BaseURL+"/api/generate", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Response string `json:"response"`
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(result.Response), nil
+	return strings.TrimSpace(response), nil
 }

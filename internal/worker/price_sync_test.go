@@ -145,6 +145,27 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		}
 	})
 
+	t.Run("SkipZeroPrice", func(t *testing.T) {
+		db, mock, _ := sqlmock.New()
+		defer db.Close()
+
+		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}).
+			AddRow(card.ID, card.Name, card.Set, decimal.NewFromFloat(150), decimal.NewFromFloat(140))
+
+		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+		// A failed scrape returns (0, 0): the worker must NOT issue UPDATE/INSERT,
+		// otherwise it would wipe the valid stored price. No Exec expectations set,
+		// so any DB write would make ExpectationsWereMet fail.
+
+		client := &service.MockPriceClient{FixedUSD: 0, FixedEUR: 0}
+		worker := NewPriceSyncWorker(db, client, time.Hour)
+		worker.syncPrices()
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("Expectations not met (zero price should be skipped): %v", err)
+		}
+	})
+
 	t.Run("PriceAlerts_Triggered", func(t *testing.T) {
 		db, mock, _ := sqlmock.New()
 		defer db.Close()

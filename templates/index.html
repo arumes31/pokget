@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html class="dark" lang="en">
+
 <head>
-    <meta charset="utf-8"/>
-    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
     <title>Pokget Vault - Premium TCG Portfolio</title>
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        rel="stylesheet" />
     <script src="/static/js/alpine.min.js?v=3" defer></script>
     <script src="/static/js/htmx.min.js?v=3"></script>
     <script src="/static/js/vault.js?v=3" defer></script>
@@ -30,22 +33,26 @@
             -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.08);
         }
+
         .neon-glow {
             box-shadow: 0 0 15px rgba(221, 183, 255, 0.15);
         }
+
         .material-symbols-outlined {
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
         }
+
         .fill-icon {
             font-variation-settings: 'FILL' 1;
         }
+
         body {
-          min-height: max(884px, 100dvh);
+            min-height: max(884px, 100dvh);
         }
     </style>
 </head>
-<body class="bg-background text-on-surface font-body-md min-h-screen pb-32" 
-      x-data="{ 
+
+<body class="bg-background text-on-surface font-body-md min-h-screen pb-32" x-data="{ 
           activeTab: 'home', 
           showEditModal: false, 
           editItemId: '', 
@@ -55,10 +62,9 @@
           showPwaPrompt: false,
           isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream,
           isPwaInstalled: window.matchMedia('(display-mode: standalone)').matches
-      }"
-      @beforeinstallprompt.window="deferredPrompt = $event; showPwaPrompt = !isPwaInstalled"
-      hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'
-      @open-edit-modal.window="showEditModal = true; editItemId = $event.detail.id; editNotes = $event.detail.notes; editCustomPrice = $event.detail.price">
+      }" @beforeinstallprompt.window="deferredPrompt = $event; showPwaPrompt = !isPwaInstalled"
+    hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'
+    @open-edit-modal.window="showEditModal = true; editItemId = $event.detail.id; editNotes = $event.detail.notes; editCustomPrice = $event.detail.price">
 
     <!-- TopAppBar -->
     <header class="fixed top-0 w-full z-50 bg-surface/60 backdrop-blur-[60px] border-b border-outline-variant/10">
@@ -71,41 +77,44 @@
                 <div class="hidden sm:flex flex-col items-end gap-1">
                     <span class="text-[9px] font-bold uppercase tracking-widest text-primary/60">{{ .UserRank }}</span>
                     <div class="w-24 h-1 bg-white/5 rounded-full overflow-hidden">
-                        <div class="h-full bg-primary shadow-[0_0_8px_rgba(221,183,255,0.4)]" x-init="$el.style.width = '{{ .UserXPPercent }}%'"></div>
+                        <div class="h-full bg-primary shadow-[0_0_8px_rgba(221,183,255,0.4)]"
+                            x-init="$el.style.width = '{{ .UserXPPercent }}%'"></div>
                     </div>
                 </div>
                 {{ end }}
                 <div class="relative" x-data="{ open: false }">
-                    <div @click="open = !open" class="w-10 h-10 rounded-full border border-primary/30 overflow-hidden active:scale-95 transition-transform cursor-pointer relative group">
-                        <img alt="User" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCj7r2jcjkIPzCnIWdl81c_zvMWsrTnfReN29OfZJcKY7QDJIcr0JZ8aWrfMIjGkOqlRU-8amurNTnS3V6ocE7r12mwNxFtrOfg2ePKMlTqMT9I-Y4TLNExFJ3IAG44E1SjN_Ycnf0W3z1kfG887hQg0a2VlNx-YvBM2QXnhAHbX_jqrOYwpoJjJvmkwLM5iTR4qri-j6evoNV5e0NYDrFjpcIg2U4ED4Ew7mrMzeZEljz5dEYwnL-QKRV19MuPodyLEI8bSDDP7wY">
-                        <div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div @click="open = !open"
+                        class="w-10 h-10 rounded-full border border-primary/30 overflow-hidden active:scale-95 transition-transform cursor-pointer relative group">
+                        <img alt="User" class="w-full h-full object-cover"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuCj7r2jcjkIPzCnIWdl81c_zvMWsrTnfReN29OfZJcKY7QDJIcr0JZ8aWrfMIjGkOqlRU-8amurNTnS3V6ocE7r12mwNxFtrOfg2ePKMlTqMT9I-Y4TLNExFJ3IAG44E1SjN_Ycnf0W3z1kfG887hQg0a2VlNx-YvBM2QXnhAHbX_jqrOYwpoJjJvmkwLM5iTR4qri-j6evoNV5e0NYDrFjpcIg2U4ED4Ew7mrMzeZEljz5dEYwnL-QKRV19MuPodyLEI8bSDDP7wY">
+                        <div
+                            class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                             <span class="material-symbols-outlined text-white text-xs">settings</span>
                         </div>
                     </div>
-                    
+
                     <!-- Dropdown Menu -->
-                    <div x-show="open" 
-                         @click.away="open = false"
-                         x-transition:enter="transition ease-out duration-100"
-                         x-transition:enter-start="transform opacity-0 scale-95"
-                         x-transition:enter-end="transform opacity-100 scale-100"
-                         x-transition:leave="transition ease-in duration-75"
-                         x-transition:leave-start="transform opacity-100 scale-100"
-                         x-transition:leave-end="transform opacity-0 scale-95"
-                         class="absolute right-0 mt-2 w-48 glass-card rounded-xl shadow-xl z-[60] border border-outline-variant/20 overflow-hidden"
-                         x-cloak>
+                    <div x-show="open" @click.away="open = false" x-transition:enter="transition ease-out duration-100"
+                        x-transition:enter-start="transform opacity-0 scale-95"
+                        x-transition:enter-end="transform opacity-100 scale-100"
+                        x-transition:leave="transition ease-in duration-75"
+                        x-transition:leave-start="transform opacity-100 scale-100"
+                        x-transition:leave-end="transform opacity-0 scale-95"
+                        class="absolute right-0 mt-2 w-48 glass-card rounded-xl shadow-xl z-[60] border border-outline-variant/20 overflow-hidden"
+                        x-cloak>
                         <div class="px-4 py-3 border-b border-outline-variant/10">
-                            <p class="text-[10px] font-bold text-primary/60 uppercase tracking-widest">{{ .UserRank }}</p>
+                            <p class="text-[10px] font-bold text-primary/60 uppercase tracking-widest">{{ .UserRank }}
+                            </p>
                             <p class="text-xs font-bold text-on-surface truncate">Account Node</p>
                         </div>
                         <div class="p-1">
-                            <a href="/settings" 
-                               class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-on-surface-variant hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
+                            <a href="/settings"
+                                class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-on-surface-variant hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
                                 <span class="material-symbols-outlined text-sm">person</span>
                                 <span>Settings</span>
                             </a>
-                            <button hx-get="/auth/logout" 
-                                    class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-on-surface-variant hover:text-red-400 hover:bg-red-500/5 rounded-lg transition-colors">
+                            <button hx-get="/auth/logout"
+                                class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-on-surface-variant hover:text-red-400 hover:bg-red-500/5 rounded-lg transition-colors">
                                 <span class="material-symbols-outlined text-sm">logout</span>
                                 <span>Logout</span>
                             </button>
@@ -116,8 +125,8 @@
         </div>
     </header>
 
-    <main id="main-content" class="pt-20 sm:pt-40 px-4 sm:px-6 max-w-container-max mx-auto space-y-10 sm:space-y-16" 
-          hx-get="/dashboard" hx-trigger="load">
+    <main id="main-content" class="pt-20 sm:pt-40 px-4 sm:px-6 max-w-container-max mx-auto space-y-10 sm:space-y-16"
+        hx-get="/dashboard" hx-trigger="load">
         <!-- Content will be loaded here via HTMX -->
         <!-- Skeleton Content: Shown during initial load -->
         <div class="space-y-xl htmx-indicator" id="dashboard-skeleton">
@@ -142,33 +151,34 @@
     </main>
 
     <!-- BottomNavBar -->
-    <nav class="fixed bottom-0 w-full z-50 rounded-t-xl bg-surface/70 backdrop-blur-xl border-t border-outline-variant/20 shadow-[0_-4px_20px_rgba(221,183,255,0.05)]">
+    <nav
+        class="fixed bottom-0 w-full z-50 rounded-t-xl bg-surface/70 backdrop-blur-xl border-t border-outline-variant/20 shadow-[0_-4px_20px_rgba(221,183,255,0.05)]">
         <div class="flex justify-around items-center h-20 px-md w-full max-w-container-max mx-auto">
             <!-- Home -->
             <button @click="activeTab = 'home'" hx-get="/dashboard" hx-target="#main-content"
-                    class="flex flex-col items-center justify-center transition-all duration-200"
-                    :class="activeTab === 'home' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                class="flex flex-col items-center justify-center transition-all duration-200"
+                :class="activeTab === 'home' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
                 <span class="material-symbols-outlined" :class="activeTab === 'home' && 'fill-icon'">home</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Vault</span>
             </button>
             <!-- Wantlist -->
             <button @click="activeTab = 'wantlist'" hx-get="/wantlist" hx-target="#main-content"
-                    class="flex flex-col items-center justify-center transition-all duration-200"
-                    :class="activeTab === 'wantlist' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                class="flex flex-col items-center justify-center transition-all duration-200"
+                :class="activeTab === 'wantlist' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
                 <span class="material-symbols-outlined" :class="activeTab === 'wantlist' && 'fill-icon'">favorite</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Grails</span>
             </button>
             <!-- Binders -->
             <button @click="activeTab = 'binders'" hx-get="/binders" hx-target="#main-content"
-                    class="flex flex-col items-center justify-center transition-all duration-200"
-                    :class="activeTab === 'binders' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                class="flex flex-col items-center justify-center transition-all duration-200"
+                :class="activeTab === 'binders' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
                 <span class="material-symbols-outlined" :class="activeTab === 'binders' && 'fill-icon'">style</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Binders</span>
             </button>
             <!-- Scan -->
             <button @click="activeTab = 'scan'" hx-get="/centering" hx-target="#main-content"
-                    class="flex flex-col items-center justify-center transition-all duration-200"
-                    :class="activeTab === 'scan' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                class="flex flex-col items-center justify-center transition-all duration-200"
+                :class="activeTab === 'scan' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
                 <div class="bg-primary/10 p-2 rounded-full mb-1 border border-primary/20">
                     <span class="material-symbols-outlined text-primary">qr_code_scanner</span>
                 </div>
@@ -176,14 +186,14 @@
             </button>
             <!-- Errors -->
             <button @click="activeTab = 'errors'" hx-get="/errors" hx-target="#main-content"
-                    class="flex flex-col items-center justify-center transition-all duration-200"
-                    :class="activeTab === 'errors' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
+                class="flex flex-col items-center justify-center transition-all duration-200"
+                :class="activeTab === 'errors' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
                 <span class="material-symbols-outlined" :class="activeTab === 'errors' && 'fill-icon'">warning</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Misprints</span>
             </button>
             <!-- Logout -->
             <button hx-get="/auth/logout"
-                    class="flex flex-col items-center justify-center transition-all duration-200 text-on-surface-variant hover:text-red-400 active:scale-90">
+                class="flex flex-col items-center justify-center transition-all duration-200 text-on-surface-variant hover:text-red-400 active:scale-90">
                 <span class="material-symbols-outlined">logout</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Logout</span>
             </button>
@@ -191,67 +201,73 @@
     </nav>
 
     <!-- Toast Notification -->
-    <div x-data="{ toasts: [] }" 
-         x-cloak
-         @notify.window="toasts.push({ id: Date.now(), msg: $event.detail.msg, type: $event.detail.type }); setTimeout(() => toasts.shift(), 3000)"
-         class="fixed top-6 left-half translate-x-half z-[100] flex flex-col gap-2 w-full max-w-[90%] pointer-events-none">
+    <div x-data="{ toasts: [] }" x-cloak
+        @notify.window="toasts.push({ id: Date.now(), msg: $event.detail.msg, type: $event.detail.type }); setTimeout(() => toasts.shift(), 3000)"
+        class="fixed top-6 left-half translate-x-half z-[100] flex flex-col gap-2 w-full max-w-[90%] pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
-            <div x-transition.duration.300ms
-                 class="glass-card px-6 py-3 shadow-2xl flex items-center gap-3 border-l-4"
-                 :class="toast.type === 'error' ? 'border-red-500' : 'border-primary'">
-                <span class="material-symbols-outlined text-lg" 
-                      :class="toast.type === 'error' ? 'text-red-400' : 'text-primary'"
-                      x-text="toast.type === 'error' ? 'error' : 'check_circle'"></span>
+            <div x-transition.duration.300ms class="glass-card px-6 py-3 shadow-2xl flex items-center gap-3 border-l-4"
+                :class="toast.type === 'error' ? 'border-red-500' : 'border-primary'">
+                <span class="material-symbols-outlined text-lg"
+                    :class="toast.type === 'error' ? 'text-red-400' : 'text-primary'"
+                    x-text="toast.type === 'error' ? 'error' : 'check_circle'"></span>
                 <p class="text-sm font-bold" x-text="toast.msg"></p>
             </div>
         </template>
     </div>
 
     <!-- Edit Modal -->
-    <div id="edit-modal" x-show="showEditModal" x-cloak 
-         class="fixed inset-0 z-[100] flex items-center justify-center p-md bg-black/60 backdrop-blur-sm"
-         @click.self="showEditModal = false">
+    <div id="edit-modal" x-show="showEditModal" x-cloak
+        class="fixed inset-0 z-[100] flex items-center justify-center p-md bg-black/60 backdrop-blur-sm"
+        @click.self="showEditModal = false">
         <div class="glass-card w-full max-w-md rounded-2xl p-lg space-y-md animate-in">
             <h3 class="font-h3 text-xl font-bold text-on-surface">Edit Card Details</h3>
-            <form id="edit-form" hx-post="/portfolio/edit" hx-swap="none" @htmx:after-request="showEditModal = false; htmx.ajax('GET', '/dashboard', '#main-content')">
+            <form id="edit-form" hx-post="/portfolio/edit" hx-swap="none"
+                @htmx:after-request="showEditModal = false; htmx.ajax('GET', '/dashboard', '#main-content')">
                 <input type="hidden" name="item_id" :value="editItemId">
                 <div class="space-y-sm">
-                    <label class="text-[10px] uppercase font-bold text-on-surface-variant">Custom Price Override ({{ .CurrencySymbol }})</label>
-                    <input type="number" step="0.01" name="custom_price" :value="editCustomPrice" @input="editCustomPrice = $event.target.value" class="w-full bg-white/5 border border-white/10 rounded-lg p-sm text-on-surface">
+                    <label for="edit-custom-price"
+                        class="text-[10px] uppercase font-bold text-on-surface-variant">Custom Price Override ({{
+                        .CurrencySymbol }})</label>
+                    <input id="edit-custom-price" type="number" step="0.01" name="custom_price" :value="editCustomPrice"
+                        @input="editCustomPrice = $event.target.value"
+                        class="w-full bg-white/5 border border-white/10 rounded-lg p-sm text-on-surface">
                 </div>
                 <div class="space-y-sm mt-md">
-                    <label class="text-[10px] uppercase font-bold text-on-surface-variant">Private Notes (e.g. Miscut, Error)</label>
-                    <textarea name="notes" :value="editNotes" @input="editNotes = $event.target.value" class="w-full bg-white/5 border border-white/10 rounded-lg p-sm text-on-surface h-24"></textarea>
+                    <label class="text-[10px] uppercase font-bold text-on-surface-variant">Private Notes (e.g. Miscut,
+                        Error)</label>
+                    <textarea name="notes" :value="editNotes" @input="editNotes = $event.target.value"
+                        class="w-full bg-white/5 border border-white/10 rounded-lg p-sm text-on-surface h-24"></textarea>
                 </div>
                 <div class="flex gap-sm mt-xl">
-                    <button type="button" class="flex-1 px-md py-sm rounded-lg bg-white/5 text-on-surface" @click="showEditModal = false">Cancel</button>
-                    <button type="submit" class="flex-1 px-md py-sm rounded-lg bg-primary text-on-primary font-bold">Save Changes</button>
+                    <button type="button" class="flex-1 px-md py-sm rounded-lg bg-white/5 text-on-surface"
+                        @click="showEditModal = false">Cancel</button>
+                    <button type="submit"
+                        class="flex-1 px-md py-sm rounded-lg bg-primary text-on-primary font-bold">Save Changes</button>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- PWA Install Prompt (Prestige Edition) -->
-    <div x-show="showPwaPrompt" 
-         x-transition:enter="transition ease-out duration-500"
-         x-transition:enter-start="translate-y-full opacity-0"
-         x-transition:enter-end="translate-y-0 opacity-100"
-         class="fixed bottom-24 left-md right-md z-[110] md:max-w-md md:left-auto md:right-lg"
-         x-cloak>
+    <div x-show="showPwaPrompt" x-transition:enter="transition ease-out duration-500"
+        x-transition:enter-start="translate-y-full opacity-0" x-transition:enter-end="translate-y-0 opacity-100"
+        class="fixed bottom-24 left-md right-md z-[110] md:max-w-md md:left-auto md:right-lg" x-cloak>
         <div class="glass-card p-6 rounded-[32px] border-primary/30 shadow-[0_20px_50px_rgba(221,183,255,0.2)]">
             <div class="flex items-start gap-4">
-                <div class="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 flex-shrink-0">
+                <div
+                    class="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 flex-shrink-0">
                     <img src="/static/img/logo.png" alt="Pokget" class="w-10 h-10">
                 </div>
                 <div class="flex-1">
                     <h4 class="text-lg font-bold text-on-surface tracking-tight">Deploy to Home Screen</h4>
-                    <p class="text-xs text-on-surface-variant/60 mt-1 leading-relaxed">Install Pokget as a native app for the fastest, most immersive vault experience.</p>
+                    <p class="text-xs text-on-surface-variant/60 mt-1 leading-relaxed">Install Pokget as a native app
+                        for the fastest, most immersive vault experience.</p>
                 </div>
                 <button @click="showPwaPrompt = false" class="text-white/20 hover:text-white">
                     <span class="material-symbols-outlined text-lg">close</span>
                 </button>
             </div>
-            
+
             <div class="mt-6 flex gap-3">
                 <template x-if="!isIOS">
                     <button @click="
@@ -268,18 +284,22 @@
                         Install Now
                     </button>
                 </template>
-                
+
                 <template x-if="isIOS">
                     <div class="flex-1 flex flex-col gap-3">
                         <div class="bg-white/5 rounded-xl p-3 border border-white/5 flex items-center gap-3">
                             <span class="material-symbols-outlined text-primary text-lg">ios_share</span>
-                            <span class="text-[10px] font-bold text-on-surface/80 uppercase tracking-widest">Tap Share</span>
+                            <span class="text-[10px] font-bold text-on-surface/80 uppercase tracking-widest">Tap
+                                Share</span>
                         </div>
                         <div class="bg-white/5 rounded-xl p-3 border border-white/5 flex items-center gap-3">
                             <span class="material-symbols-outlined text-primary text-lg">add_box</span>
-                            <span class="text-[10px] font-bold text-on-surface/80 uppercase tracking-widest">Add to Home Screen</span>
+                            <span class="text-[10px] font-bold text-on-surface/80 uppercase tracking-widest">Add to Home
+                                Screen</span>
                         </div>
-                        <button @click="showPwaPrompt = false" class="text-[10px] font-bold text-primary/60 uppercase tracking-widest self-center mt-2 border-b border-primary/20">I'll do it later</button>
+                        <button @click="showPwaPrompt = false"
+                            class="text-[10px] font-bold text-primary/60 uppercase tracking-widest self-center mt-2 border-b border-primary/20">I'll
+                            do it later</button>
                     </div>
                 </template>
             </div>
@@ -292,4 +312,5 @@
         }
     </script>
 </body>
+
 </html>
