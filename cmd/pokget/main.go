@@ -149,6 +149,7 @@ func main() {
 
 	r := mux.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
+	r.Use(middleware.SecurityHeadersMiddleware)
 	r.Use(auth.RateLimitMiddleware)
 	r.Use(auth.ProxyMiddleware)
 	

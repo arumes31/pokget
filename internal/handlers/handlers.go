@@ -610,7 +610,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	file, header, err := r.FormFile("card_image")
 	if err != nil {
 		slog.Warn("APIScan: Failed to get image from form", "error", err)
-		http.Error(w, "Failed to get image from form: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "Failed to get image from form", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
