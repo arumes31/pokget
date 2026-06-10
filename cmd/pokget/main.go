@@ -144,6 +144,7 @@ func main() {
 	r.Use(middleware.LoggingMiddleware)
 	r.Use(auth.RateLimitMiddleware)
 	r.Use(auth.ProxyMiddleware)
+	r.Use(middleware.SecurityHeadersMiddleware)
 	
 	// CSRF Protection
 	csrfMiddleware := csrf.Protect(
