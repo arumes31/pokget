@@ -23,9 +23,9 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"pokget/internal/models"
 	"pokget/internal/service"
-	"log/slog"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -55,7 +55,7 @@ func (w *DataSyncWorker) Start(ctx context.Context) {
 	slog.Info("Data Sync Worker starting", "interval", w.interval)
 	priceTicker := time.NewTicker(w.interval)
 	metadataTicker := time.NewTicker(24 * time.Hour) // Sync metadata daily
-	repairTicker := time.NewTicker(1 * time.Hour)   // Check for missing fingerprints hourly
+	repairTicker := time.NewTicker(1 * time.Hour)    // Check for missing fingerprints hourly
 	defer priceTicker.Stop()
 	defer metadataTicker.Stop()
 	defer repairTicker.Stop()
@@ -92,7 +92,7 @@ func (w *DataSyncWorker) Start(ctx context.Context) {
 
 func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
 	slog.Info("Starting missing fingerprints repair cycle")
-	
+
 	rows, err := w.db.Query("SELECT id, name, image_url, game, language FROM cards WHERE phash IS NULL LIMIT 100")
 	if err != nil {
 		slog.Error("Repair: Failed to query cards missing fingerprints", "error", err)
@@ -118,7 +118,7 @@ func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
 		} else {
 			slog.Info("Repair: Generated missing fingerprint", "id", c.ID, "name", c.Name)
 		}
-		
+
 		// Rate limit downloads during repair to be nice to APIs
 		time.Sleep(500 * time.Millisecond)
 	}
@@ -131,12 +131,12 @@ func (w *DataSyncWorker) Stop() {
 
 func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
 	slog.Info("Starting metadata synchronization cycle")
-	
+
 	if w.metadataService == nil {
 		slog.Error("Sync: metadataService is nil, skipping cycle")
 		return
 	}
-	
+
 	// Support Pokemon/English for POC
 	cards, err := w.metadataClient.FetchCards(ctx, "Pokemon", "en")
 	if err != nil {
@@ -165,7 +165,7 @@ func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
 			INSERT INTO cards (id, name, game, language, image_url, phash, price_usd, price_eur)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 			processed.ID, processed.Name, processed.Game, processed.Language, processed.ImageURL, processed.Phash, 0, 0)
-		
+
 		if err != nil {
 			slog.Error("Sync: Failed to insert card", "id", c.ID, "error", err)
 		} else {
@@ -230,7 +230,7 @@ func (w *DataSyncWorker) syncPrices() {
 // USD price. It is a dedicated method so the result set is closed when this call
 // returns rather than accumulating open cursors for the duration of syncPrices
 // (a `defer` inside the per-card loop would leak connections across all cards).
-func (w *PriceSyncWorker) checkPriceAlerts(c models.Card, usd float64) {
+func (w *DataSyncWorker) checkPriceAlerts(c models.Card, usd float64) {
 	rowsAlerts, err := w.db.Query("SELECT id, user_id, target_price FROM price_alerts WHERE card_id = $1 AND is_active = TRUE", c.ID)
 	if err != nil {
 		return

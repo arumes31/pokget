@@ -158,7 +158,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		// so any DB write would make ExpectationsWereMet fail.
 
 		client := &service.MockPriceClient{FixedUSD: 0, FixedEUR: 0}
-		worker := NewPriceSyncWorker(db, client, time.Hour)
+		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
 		worker.syncPrices()
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -218,7 +218,7 @@ func TestWorkerLifecycle(t *testing.T) {
 	t.Run("TickerExecution", func(t *testing.T) {
 		db2, mock, _ := sqlmock.New()
 		defer db2.Close()
-		
+
 		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}))
 
 		worker := NewDataSyncWorker(db2, client, nil, nil, 10*time.Millisecond)
