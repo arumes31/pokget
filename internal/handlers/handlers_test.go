@@ -700,7 +700,7 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE portfolio").WithArgs("updated", "10", "50.0", true, "123", "test-user").
+		mock.ExpectExec("UPDATE portfolio").WithArgs("updated", "10", 50.0, true, "123", "test-user").
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.EditPortfolioItem(rr, req)

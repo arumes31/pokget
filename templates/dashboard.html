@@ -105,7 +105,7 @@
                     <p class="font-bold text-xs sm:text-sm text-on-surface leading-tight truncate group-hover:text-primary transition-colors">{{ .Card.Name }}</p>
                 </div>
                 <button class="material-symbols-outlined text-lg text-on-surface-variant/30 hover:text-primary transition-colors flex-shrink-0" 
-                        onclick="openEditModal('{{ .ID }}', '{{ .Notes }}', '{{ .CustomPrice }}')">more_horiz</button>
+                        onclick="openEditModal('{{ .ID }}', '{{ .Notes }}', '{{ if .CustomPrice }}{{ printf "%.2f" .GetCustomPrice }}{{ end }}')">more_horiz</button>
             </div>
             
                 <div class="flex justify-between items-center mt-4 pt-3 border-t border-white/5">
@@ -113,7 +113,7 @@
                     <span class="text-[8px] text-on-surface-variant/40 uppercase font-black tracking-widest">Market</span>
                     <span class="font-black text-sm text-on-surface">
                         {{ $.CurrencySymbol }}{{ if .CustomPrice }}
-                            {{ printf "%.2f" .CustomPrice }}
+                            {{ printf "%.2f" .GetCustomPrice }}
                         {{ else }}
                             {{ if eq $.UserCurrency "EUR" }}
                                 {{ printf "%.2f" .Card.PriceEUR }}

@@ -65,3 +65,11 @@ type ErrorCard struct {
 	// Join fields
 	Card Card `json:"card"`
 }
+
+func (p PortfolioItem) GetCustomPrice() float64 {
+	if p.CustomPrice == nil {
+		return 0
+	}
+	return *p.CustomPrice
+}
+

@@ -36,6 +36,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"strconv"
 	"sync"
 	"time"
 
@@ -275,7 +276,16 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	notes := r.FormValue("notes")
-	customPrice := r.FormValue("custom_price")
+	customPriceStr := r.FormValue("custom_price")
+	var customPrice *float64
+	if customPriceStr != "" {
+		val, err := strconv.ParseFloat(customPriceStr, 64)
+		if err != nil {
+			http.Error(w, "Invalid custom price", http.StatusBadRequest)
+			return
+		}
+		customPrice = &val
+	}
 	binderID := r.FormValue("binder_id")
 
 	// If binderID is empty, try to find the default binder
@@ -348,7 +358,16 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 	}
 	notes := r.FormValue("notes")
 	grade := r.FormValue("grade")
-	customPrice := r.FormValue("custom_price")
+	customPriceStr := r.FormValue("custom_price")
+	var customPrice *float64
+	if customPriceStr != "" {
+		val, err := strconv.ParseFloat(customPriceStr, 64)
+		if err != nil {
+			http.Error(w, "Invalid custom price", http.StatusBadRequest)
+			return
+		}
+		customPrice = &val
+	}
 	isPublic := r.FormValue("is_public") == "true"
 
 	_, err := h.DB.Exec(`

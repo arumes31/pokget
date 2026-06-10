@@ -22,7 +22,7 @@
                 <div class="flex justify-between items-center mt-1">
                     <span class="font-bold text-lg text-on-surface">
                         {{ $.CurrencySymbol }}{{ if .CustomPrice }}
-                            {{ .CustomPrice }}
+                            {{ printf "%.2f" .GetCustomPrice }}
                         {{ else }}
                             {{ if eq $.UserCurrency "EUR" }}
                                 {{ .Card.PriceEUR }}

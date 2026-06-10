@@ -153,17 +153,12 @@ func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
 		return
 	}
 
-	limiter := time.NewTicker(500 * time.Millisecond)
-	defer limiter.Stop()
-
 	for _, c := range cards {
 		// Check for cancellation before processing each card
 		if ctx.Err() != nil {
 			slog.Info("Sync: Stopping metadata sync due to context cancellation")
 			break
 		}
-
-		<-limiter.C // Rate limit external API calls
 
 		var exists bool
 		err := w.db.QueryRow("SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1)", c.ID).Scan(&exists)
@@ -175,22 +170,28 @@ func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
 		}
 
 		// New card found! Process and insert
-		processed, err := w.metadataService.ProcessCard(ctx, c)
-		if err != nil {
-			slog.Error("Sync: Failed to process card", "id", c.ID, "error", err)
-			continue
-		}
+		func() {
+			limiter := time.NewTicker(500 * time.Millisecond)
+			defer limiter.Stop()
+			<-limiter.C
 
-		_, err = w.db.Exec(`
-			INSERT INTO cards (id, name, game, language, image_url, phash, price_usd, price_eur)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			processed.ID, processed.Name, processed.Game, processed.Language, processed.ImageURL, processed.Phash, 0, 0)
+			processed, err := w.metadataService.ProcessCard(ctx, c)
+			if err != nil {
+				slog.Error("Sync: Failed to process card", "id", c.ID, "error", err)
+				return
+			}
 
-		if err != nil {
-			slog.Error("Sync: Failed to insert card", "id", c.ID, "error", err)
-		} else {
-			slog.Info("Sync: Added new card with fingerprint", "id", c.ID, "name", c.Name)
-		}
+			_, err = w.db.Exec(`
+				INSERT INTO cards (id, name, game, language, image_url, phash, price_usd, price_eur)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+				processed.ID, processed.Name, processed.Game, processed.Language, processed.ImageURL, processed.Phash, 0, 0)
+
+			if err != nil {
+				slog.Error("Sync: Failed to insert card", "id", c.ID, "error", err)
+			} else {
+				slog.Info("Sync: Added new card with fingerprint", "id", c.ID, "name", c.Name)
+			}
+		}()
 	}
 	slog.Info("Metadata synchronization cycle completed")
 }
