@@ -47,8 +47,12 @@ func ProxyMiddleware(next http.Handler) http.Handler {
 				realIP = xrip
 			} else if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 				// X-Forwarded-For can be a comma-separated list; the first one is the original client
-				parts := strings.Split(xff, ",")
-				realIP = strings.TrimSpace(parts[0])
+				// Optimization: Use IndexByte instead of Split to avoid slice allocations
+				if commaIdx := strings.IndexByte(xff, ','); commaIdx != -1 {
+					realIP = strings.TrimSpace(xff[:commaIdx])
+				} else {
+					realIP = strings.TrimSpace(xff)
+				}
 			}
 		}
 
