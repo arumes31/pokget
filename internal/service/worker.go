@@ -61,7 +61,9 @@ func (s *WorkerService) refreshAllPrices() {
 		cards = append(cards, card)
 	}
 	// Early release of database connection
-	rows.Close()
+	if err := rows.Close(); err != nil {
+		slog.Error("Failed to close rows", "error", err)
+	}
 
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
