@@ -142,8 +142,10 @@ func main() {
 
 	r := mux.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
-	r.Use(auth.RateLimitMiddleware)
+	// SECURITY: ProxyMiddleware must run before RateLimitMiddleware so that
+	// the rate limiter uses the real client IP, not the proxy's IP.
 	r.Use(auth.ProxyMiddleware)
+	r.Use(auth.RateLimitMiddleware)
 	
 	// CSRF Protection
 	csrfMiddleware := csrf.Protect(
