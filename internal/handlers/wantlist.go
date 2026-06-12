@@ -47,7 +47,7 @@ func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var items []models.WantlistItem
+	items := make([]models.WantlistItem, 0, 16) // ⚡ BOLT OPTIMIZATION: Pre-allocate slice to reduce GC pressure
 	for rows.Next() {
 		var i models.WantlistItem
 		if err := rows.Scan(&i.ID, &i.CardID, &i.TargetPrice, &i.Notes, &i.Card.Name, &i.Card.Set, &i.Card.PriceUSD, &i.Card.ImageURL); err == nil {
@@ -92,7 +92,7 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("HX-Trigger", `{"notify": {"msg": "Identify Success: Grail added to Hunt", "type": "success"}}`)
-	
+
 	// Re-fetch and render the updated wantlist
 	h.Wantlist(w, r)
 }
