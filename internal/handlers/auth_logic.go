@@ -165,8 +165,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	var u models.User
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
+
+	// Use a dummy hash of cost 14 to prevent timing attacks if the user is not found.
+	// Cost 14 matches the auth.HashPassword configuration.
+	dummyHash := "$2a$14$g32FIJ9hTpApH44RI/lt4eBHUz.0RpjimxgeOyw91a2wY.dwgxO0i"
+
 	if err != nil {
 		if err == sql.ErrNoRows {
+			_ = auth.CheckPasswordHash(password, dummyHash)
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		}
