@@ -40,13 +40,13 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	var email string
 	var rank string
 	var xp int
-	
+
 	err := h.DB.QueryRow(`
 		SELECT id, email, rank_title, xp 
 		FROM users 
-		WHERE public_slug = $1 AND is_public_profile = TRUE`, 
+		WHERE public_slug = $1 AND is_public_profile = TRUE`,
 		slug).Scan(&userID, &email, &rank, &xp)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			slog.Warn("PublicVault: Vault not found", "slug", slug)
@@ -65,7 +65,7 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1 AND p.is_public = TRUE`, userID)
-	
+
 	if err != nil {
 		slog.Error("Failed to fetch public vault", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -73,7 +73,7 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var portfolio []models.PortfolioItem
+	portfolio := make([]models.PortfolioItem, 0, 64)
 	for rows.Next() {
 		var p models.PortfolioItem
 		if err := rows.Scan(&p.ID, &p.Condition, &p.Format, &p.Grade, &p.GradingCompany, &p.Notes,

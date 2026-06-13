@@ -51,7 +51,7 @@ func (s *WorkerService) refreshAllPrices() {
 		return
 	}
 
-	var cards []models.Card
+	cards := make([]models.Card, 0, 1024)
 	for rows.Next() {
 		var card models.Card
 		if err := rows.Scan(&card.ID, &card.Name, &card.Set, &card.Game); err != nil {
