@@ -228,7 +228,7 @@ func TestRunMigrations_Success(t *testing.T) {
 	defer func() { NewMigrator = oldNewMigrator }()
 
 	// Create temporary migrations directory
-	_ = os.Mkdir("migrations", 0755)
+	os.Mkdir("migrations", 0755)
 	defer os.RemoveAll("migrations")
 
 	err := RunMigrations()
@@ -305,7 +305,7 @@ func TestInitDB(t *testing.T) {
 		defer func() { NewMigrator = oldNewMigrator }()
 
 		// Create temporary migrations directory
-		_ = os.Mkdir("migrations", 0755)
+		os.Mkdir("migrations", 0755)
 		defer os.RemoveAll("migrations")
 
 		os.Setenv("DB_HOST", "localhost")

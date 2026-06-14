@@ -73,7 +73,8 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var portfolio []models.PortfolioItem
+	// ⚡ Bolt Optimization: Pre-allocate slice capacity to reduce memory reallocations
+	portfolio := make([]models.PortfolioItem, 0, 16)
 	for rows.Next() {
 		var p models.PortfolioItem
 		if err := rows.Scan(&p.ID, &p.Condition, &p.Format, &p.Grade, &p.GradingCompany, &p.Notes,

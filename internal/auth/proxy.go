@@ -46,13 +46,9 @@ func ProxyMiddleware(next http.Handler) http.Handler {
 			if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
 				realIP = xrip
 			} else if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-				// ⚡ Bolt Optimization: Use strings.IndexByte for more efficient string extraction
 				// X-Forwarded-For can be a comma-separated list; the first one is the original client
-				if idx := strings.IndexByte(xff, ','); idx != -1 {
-					realIP = strings.TrimSpace(xff[:idx])
-				} else {
-					realIP = strings.TrimSpace(xff)
-				}
+				parts := strings.Split(xff, ",")
+				realIP = strings.TrimSpace(parts[0])
 			}
 		}
 
