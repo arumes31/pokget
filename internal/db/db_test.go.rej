@@ -1,0 +1,19 @@
+--- internal/db/db_test.go
++++ internal/db/db_test.go
+@@ -230,7 +230,7 @@
+	defer os.RemoveAll("migrations")
+-	os.Mkdir("migrations", 0755)
++	_ = os.Mkdir("migrations", 0755)
+	err = os.WriteFile("migrations/1_test.up.sql", []byte("CREATE TABLE dummy (id int);"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create migration file: %v", err)
+	}
+
+@@ -307,7 +307,7 @@
+		defer os.RemoveAll("migrations")
+-		os.Mkdir("migrations", 0755)
++		_ = os.Mkdir("migrations", 0755)
+		err = os.WriteFile("migrations/1_test.up.sql", []byte("CREATE TABLE dummy (id int);"), 0644)
+		if err != nil {
+			t.Fatalf("Failed to create migration file: %v", err)
+		}
