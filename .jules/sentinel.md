@@ -6,3 +6,7 @@
 **Vulnerability:** The project was using Go 1.26.3, which contained standard library vulnerabilities in `net/textproto` (GO-2026-5039) allowing arbitrary inputs in errors without escaping, and `crypto/x509` (GO-2026-5037) causing inefficient candidate hostname parsing. There were also vulnerabilities in `golang.org/x/net@v0.54.0`.
 **Learning:** Even if the application code is secure, vulnerabilities in the Go standard library or essential dependencies like `x/net` can introduce security flaws into the application through transitive calls (e.g., via `colly.Collector` or `io.Copy`).
 **Prevention:** Regularly scan dependencies using `govulncheck` and keep the Go toolchain (`go` directive in `go.mod`) and package versions up to date.
+## 2024-06-15 - Unhandled Database Row Close Errors
+**Vulnerability:** The `worker.go` service contained an unhandled `rows.Close()` error (G104 CWE-703).
+**Learning:** `rows.Close()` can return errors, for example, if the network connection drops or the query result was aborted midway. Failing to check or explicitly ignore this error is flagged as a vulnerability by security scanners like `gosec` because silent failures during resource teardown can obscure database connection exhaustion or state inconsistencies.
+**Prevention:** Always check the error returned by `rows.Close()`, or explicitly ignore it using the blank identifier `_ = rows.Close()` to signify the intentional discard to static analysis tools.
