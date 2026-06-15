@@ -490,7 +490,7 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 // Now we verify the portfolio item belongs to the current user before deleting.
 func (h *Handler) DeletePortfolioItem(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: DeletePortfolioItem", "method", r.Method)
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}

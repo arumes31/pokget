@@ -218,7 +218,7 @@ func main() {
 	protected.HandleFunc("/settings/change-password", h.ChangePassword).Methods("POST") // BUG-M11: Route for password change with session invalidation
 	protected.HandleFunc("/portfolio/add", h.AddCardToPortfolio).Methods("POST")
 	protected.HandleFunc("/portfolio/edit", h.EditPortfolioItem).Methods("POST")
-	protected.HandleFunc("/portfolio/delete", h.DeletePortfolioItem).Methods("POST") // BUG-H02: Delete with ownership check
+	protected.HandleFunc("/portfolio/delete", h.DeletePortfolioItem).Methods("POST", "DELETE") // BUG-H02: Delete with ownership check
 	protected.HandleFunc("/portfolio/toggle-visibility", h.ToggleVisibility).Methods("POST")
 	protected.HandleFunc("/wantlist", h.Wantlist).Methods("GET")
 	protected.HandleFunc("/wantlist/add", h.AddToWantlist).Methods("POST")
