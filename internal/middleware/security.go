@@ -40,3 +40,17 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// BUG-L03 FIX: MaxBytesMiddleware limits the request body size to prevent
+// denial-of-service attacks where an attacker sends extremely large request
+// bodies to exhaust server memory. Previously, there was no limit on request
+// body size. Now, requests exceeding maxBytes receive a 413 Request Entity Too
+// Large response. Default is 1MB which is generous for form submissions.
+const MaxBodyBytes int64 = 1 << 20 // 1 MB
+
+func MaxBytesMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
+		next.ServeHTTP(w, r)
+	})
+}

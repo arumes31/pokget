@@ -35,8 +35,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,17 +57,19 @@ type Binder struct {
 }
 
 type Handler struct {
-	Templates    *template.Template
-	MockCards    []models.Card
-	CardsMu      sync.RWMutex // Protects concurrent access to MockCards
-	Fingerprint  *service.FingerprintService
-	Mailer       service.Mailer
-	Audit        *service.AuditService
-	Crypto       *service.CryptoService
-	Game         *service.GamificationService
-	LLM          *service.LLMService
-	DB           *sql.DB
-	BuildVersion string
+	Templates     *template.Template
+	MockCards     []models.Card
+	CardsMu       sync.RWMutex // Protects concurrent access to MockCards
+	Fingerprint   *service.FingerprintService
+	Detection     *service.DetectionPipeline // SCAN-07, SCAN-09, SCAN-16: Detection pipeline
+	Mailer        service.Mailer
+	Audit         *service.AuditService
+	Crypto        *service.CryptoService
+	Game          *service.GamificationService
+	LLM           *service.LLMService
+	DB            *sql.DB
+	BuildVersion  string
+	SecureCookies bool // BUG-C03: Configurable Secure flag for session cookies
 }
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
@@ -76,6 +78,14 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 	}
 	data["CSRFToken"] = csrf.Token(r)
 	data["BuildVersion"] = h.BuildVersion
+
+	// BUG-C04 FIX: Check if DB is nil before querying to prevent nil pointer dereference
+	// when the database connection fails at startup.
+	if h.DB == nil {
+		slog.Error("Database connection is nil, cannot render page")
+		http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
 
 	// Inject Global User Data (XP, Rank)
 	if userID, ok := r.Context().Value(auth.UserContextKey{}).(string); ok {
@@ -111,25 +121,59 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Index", "method", r.Method, "url", r.URL.String())
 	session, _ := auth.Store.Get(r, "session")
-	if userID, ok := session.Values["user_id"].(string); !ok || userID == "" {
+	userID, ok := session.Values["user_id"].(string)
+	if !ok || userID == "" {
 		http.Redirect(w, r, "/auth", http.StatusSeeOther)
 		return
 	}
 
+	// BUG-M02 FIX: Query the user's actual portfolio instead of using MockCards.
+	// Previously, the index page displayed mock/seed cards instead of the
+	// authenticated user's real portfolio data.
+	var userCurrency string
+	_ = h.DB.QueryRow("SELECT currency FROM users WHERE id = $1", userID).Scan(&userCurrency)
+	if userCurrency == "" {
+		userCurrency = "EUR"
+	}
+
+	rows, err := h.DB.Query(`
+		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.price_eur, c.game
+		FROM portfolio p
+		JOIN cards c ON p.card_id = c.id
+		WHERE p.user_id = $1`, userID)
+
+	portfolio := make([]models.PortfolioItem, 0, 64)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var p models.PortfolioItem
+			if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err == nil {
+				portfolio = append(portfolio, p)
+			}
+		}
+	}
+
 	h.render(w, r, "index.html", map[string]interface{}{
-		"Portfolio": h.MockCards,
-		"Currency":  "USD",
+		"Portfolio": portfolio,
+		"Currency":  userCurrency,
 	})
 }
 
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Dashboard", "method", r.Method, "url", r.URL.String())
-	currency := r.URL.Query().Get("currency")
+	// BUG-M04 FIX: Read currency from user's settings instead of URL query parameter.
+	// Previously, the dashboard always defaulted to USD regardless of the user's
+	// currency preference, causing prices to display in the wrong currency.
+	var currency string
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if ok {
+		_ = h.DB.QueryRow("SELECT currency FROM users WHERE id = $1", userID).Scan(&currency)
+	}
 	if currency == "" {
-		currency = "USD"
+		currency = "EUR"
 	}
 
-	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	// userID already extracted above for currency lookup
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -143,13 +187,17 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		Percent    int
 	}
 
+	// BUG-H03 FIX: Added p.user_id = $1 filter to the LEFT JOIN condition
+	// so that owned_cards only counts the current user's portfolio items.
+	// Previously, the JOIN matched all users' portfolio items, returning
+	// combined completion across ALL users.
 	rows, err := h.DB.Query(`
-		SELECT 
-			c.set_name, 
-			COUNT(DISTINCT c.id) FILTER (WHERE p.id IS NOT NULL AND p.user_id = $1) as owned_cards,
+		SELECT
+			c.set_name,
+			COUNT(DISTINCT c.id) FILTER (WHERE p.id IS NOT NULL) as owned_cards,
 			COUNT(DISTINCT c.id) as total_cards
 		FROM cards c
-		LEFT JOIN portfolio p ON c.id = p.card_id
+		LEFT JOIN portfolio p ON c.id = p.card_id AND p.user_id = $1
 		GROUP BY c.set_name`, userID)
 
 	setCompletion := make([]SetProgress, 0, 8) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
@@ -270,9 +318,18 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// BUG-H01 FIX: Validate required fields before inserting.
 	cardID := r.FormValue("card_id")
 	if cardID == "" {
-		http.Error(w, "Missing card_id", http.StatusBadRequest)
+		http.Error(w, "card_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the card actually exists in the database
+	var exists bool
+	err := h.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1)", cardID).Scan(&exists)
+	if err != nil || !exists {
+		http.Error(w, "Invalid card_id: card not found", http.StatusBadRequest)
 		return
 	}
 	notes := r.FormValue("notes")
@@ -297,7 +354,7 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_, err := h.DB.Exec(`
+	_, err = h.DB.Exec(`
 		INSERT INTO portfolio (user_id, card_id, binder_id, notes, custom_price, condition, format)
 		VALUES ($1, $2, NULLIF($3, '')::UUID, $4, $5, $6, $7)`,
 		userID, cardID, binderID, notes, customPrice, "Near Mint", "Raw")
@@ -350,12 +407,39 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := r.Context().Value(auth.UserContextKey{}).(string)
+	// BUG-H05 FIX: Properly check authentication and verify ownership.
+	// Previously, userID was extracted with a type assertion that silently
+	// ignored failure (using `_, _`), allowing unauthenticated or wrong-user
+	// edits to proceed.
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	itemID := r.FormValue("item_id")
 	if itemID == "" {
 		http.Error(w, "item_id is required", http.StatusBadRequest)
 		return
 	}
+
+	// Verify the portfolio item belongs to the current user
+	var ownerID string
+	err := h.DB.QueryRow("SELECT user_id FROM portfolio WHERE id = $1", itemID).Scan(&ownerID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Portfolio item not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to verify portfolio item ownership", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if ownerID != userID {
+		http.Error(w, "Forbidden: you do not own this portfolio item", http.StatusForbidden)
+		return
+	}
+
 	notes := r.FormValue("notes")
 	grade := r.FormValue("grade")
 	customPriceStr := r.FormValue("custom_price")
@@ -370,8 +454,8 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 	}
 	isPublic := r.FormValue("is_public") == "true"
 
-	_, err := h.DB.Exec(`
-		UPDATE portfolio 
+	_, err = h.DB.Exec(`
+		UPDATE portfolio
 		SET notes = $1, grade = $2, custom_price = $3, is_public = $4
 		WHERE id = $5 AND user_id = $6`,
 		notes, grade, customPrice, isPublic, itemID, userID)
@@ -391,8 +475,64 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Audit.Log(userID, "edit_portfolio_item", metadata)
 
+	// BUG-M09 FIX: Set Content-Type header for API responses.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Item updated successfully!"))
+}
+
+// BUG-H02 FIX: DeletePortfolioItem handler with ownership verification.
+// Any authenticated user could previously delete any portfolio item by guessing the ID.
+// Now we verify the portfolio item belongs to the current user before deleting.
+func (h *Handler) DeletePortfolioItem(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("Action: DeletePortfolioItem", "method", r.Method)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	itemID := r.FormValue("item_id")
+	if itemID == "" {
+		http.Error(w, "item_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the portfolio item belongs to the current user
+	var ownerID string
+	err := h.DB.QueryRow("SELECT user_id FROM portfolio WHERE id = $1", itemID).Scan(&ownerID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Portfolio item not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to verify portfolio item ownership", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if ownerID != userID {
+		http.Error(w, "Forbidden: you do not own this portfolio item", http.StatusForbidden)
+		return
+	}
+
+	_, err = h.DB.Exec("DELETE FROM portfolio WHERE id = $1 AND user_id = $2", itemID, userID)
+	if err != nil {
+		slog.Error("Failed to delete portfolio item", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	h.Audit.Log(userID, "delete_portfolio_item", map[string]interface{}{"item_id": itemID})
+
+	// BUG-M09 FIX: Set Content-Type header for API responses.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Item deleted successfully!"))
 }
 
 func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
@@ -402,8 +542,35 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := r.Context().Value(auth.UserContextKey{}).(string)
+	// BUG-H06 FIX: Properly check authentication and verify binder ownership.
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	binderID := r.FormValue("binder_id")
+	if binderID == "" {
+		http.Error(w, "binder_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the binder belongs to the current user
+	var ownerID string
+	err := h.DB.QueryRow("SELECT user_id FROM binders WHERE id = $1", binderID).Scan(&ownerID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Binder not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to verify binder ownership", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if ownerID != userID {
+		http.Error(w, "Forbidden: you do not own this binder", http.StatusForbidden)
+		return
+	}
 
 	// Fetch cards in binder
 	rows, err := h.DB.Query(`
@@ -581,6 +748,8 @@ func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// BUG-M09 FIX: Set Content-Type header for API responses.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(fmt.Sprintf("Successfully reloaded %d cards", count)))
 }
@@ -650,14 +819,6 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Visual Fingerprint Matching (FAST & Language Independent)
-	var detectedCard string
-	var detectedID string
-	var text string
-
-	var detectedPrice float64
-	var detectedImage string
-
 	// Get user currency preference
 	var userCurrency string
 	if userID, ok := r.Context().Value(auth.UserContextKey{}).(string); ok {
@@ -677,6 +838,71 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var detectedCard string
+	var detectedID string
+	var text string
+	var detectedPrice float64
+	var detectedImage string
+	var processedImg []byte
+
+	// SCAN-07, SCAN-09, SCAN-16: Use detection pipeline if available
+	if h.Detection != nil {
+		result := h.Detection.Detect(imgBytes, cards, lang)
+		text = result.OCRText
+		processedImg = result.ProcessedImage
+
+		if best := result.BestMatchCard(); best != nil {
+			detectedCard = best.Name
+			detectedID = best.ID
+			if userCurrency == "EUR" {
+				detectedPrice, _ = best.PriceEUR.Float64()
+			} else {
+				detectedPrice, _ = best.PriceUSD.Float64()
+			}
+			detectedImage = best.ImageURL
+		}
+
+		// Build top matches for API response (SCAN-09)
+		topMatches := make([]map[string]interface{}, 0, len(result.TopMatches))
+		for _, m := range result.TopMatches {
+			matchEntry := map[string]interface{}{
+				"name":         m.Card.Name,
+				"id":           m.Card.ID,
+				"confidence":   m.Confidence,
+				"needs_review": m.NeedsReview,
+			}
+			if userCurrency == "EUR" {
+				matchEntry["price"], _ = m.Card.PriceEUR.Float64()
+			} else {
+				matchEntry["price"], _ = m.Card.PriceUSD.Float64()
+			}
+			matchEntry["image_url"] = m.Card.ImageURL
+			topMatches = append(topMatches, matchEntry)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		resp := map[string]interface{}{
+			"text":             strings.ReplaceAll(text, "\n", " "),
+			"detected":         detectedCard,
+			"id":               detectedID,
+			"price":            detectedPrice,
+			"image_url":        detectedImage,
+			"confidence":       result.BestMatchConfidence(),
+			"needs_review":     result.BestMatchNeedsReview(),
+			"top_matches":      topMatches,
+			"pipeline_metrics": result.Metrics.Format(), // SCAN-16
+		}
+		if processedImg != nil {
+			resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			slog.Error("Failed to encode JSON response", "error", err)
+		}
+		return
+	}
+
+	// Fallback: Legacy sequential pipeline (backward-compatible)
+	// 1. Visual Fingerprint Matching (FAST & Language Independent)
 	if h.Fingerprint != nil {
 		img, _, err := image.Decode(bytes.NewReader(imgBytes))
 		if err != nil {
@@ -706,7 +932,6 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. OCR Fallback (if visual matching fails)
-	var processedImg []byte
 	if detectedCard == "" {
 		slog.Info("APIScan: Fingerprint missed, falling back to OCR")
 		var ocrMatch string

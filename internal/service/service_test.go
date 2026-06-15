@@ -418,12 +418,15 @@ func TestGamificationService(t *testing.T) {
 	s := NewGamificationService(db)
 
 	t.Run("AddXP_Success", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"xp", "rank_title"}).AddRow(100, "Novice Collector")
-		mock.ExpectQuery("SELECT xp, rank_title FROM users WHERE id = \\$1").WithArgs("user-1").WillReturnRows(rows)
+		// BUG-C02 FIX: AddXP now uses atomic UPDATE...RETURNING instead of SELECT+UPDATE
+		// The placeholder rank_title is GetUserRank(0).Title = "Novice Collector"
+		rows := sqlmock.NewRows([]string{"xp", "rank_title"}).AddRow(500, "Novice Collector")
+		mock.ExpectQuery("UPDATE users SET xp = xp \\+ \\$1, rank_title = \\$2 WHERE id = \\$3 RETURNING xp, rank_title").
+			WithArgs(400, "Novice Collector", "user-1").WillReturnRows(rows)
 
-		// 100 + 400 = 500 -> "Card Scout"
-		mock.ExpectExec("UPDATE users SET xp = \\$1, rank_title = \\$2 WHERE id = \\$3").
-			WithArgs(500, "Card Scout", "user-1").WillReturnResult(sqlmock.NewResult(1, 1))
+		// Rank changed from "Novice Collector" to "Card Scout", so a follow-up UPDATE is needed
+		mock.ExpectExec("UPDATE users SET rank_title = \\$1 WHERE id = \\$2").
+			WithArgs("Card Scout", "user-1").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		newXP, newRank, err := s.AddXP("user-1", 400)
 		if err != nil {
@@ -438,7 +441,9 @@ func TestGamificationService(t *testing.T) {
 	})
 
 	t.Run("AddXP_QueryError", func(t *testing.T) {
-		mock.ExpectQuery("SELECT xp, rank_title FROM users WHERE id = \\$1").WithArgs("user-2").WillReturnError(sql.ErrNoRows)
+		// BUG-C02 FIX: AddXP now uses UPDATE...RETURNING, so error comes from that query
+		mock.ExpectQuery("UPDATE users SET xp = xp \\+ \\$1, rank_title = \\$2 WHERE id = \\$3 RETURNING xp, rank_title").
+			WithArgs(100, "Novice Collector", "user-2").WillReturnError(sql.ErrNoRows)
 
 		_, _, err := s.AddXP("user-2", 100)
 		if err == nil {
@@ -550,7 +555,8 @@ func TestEventBus(t *testing.T) {
 	bus := NewEventBus()
 
 	t.Run("SubscribePublish", func(t *testing.T) {
-		ch := bus.Subscribe("test-event")
+		ch, unsubscribe := bus.Subscribe("test-event")
+		defer unsubscribe()
 
 		bus.Publish(Event{Type: "test-event", Payload: "hello"})
 

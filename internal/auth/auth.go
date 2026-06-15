@@ -31,6 +31,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/gorilla/sessions"
 	"golang.org/x/crypto/bcrypt"
@@ -91,16 +92,52 @@ func Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// BUG-H08 FIX: Track last access time for each rate limiter entry
+// so stale entries can be cleaned up periodically.
+type rateLimiterEntry struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
 var (
-	limiters = make(map[string]*rate.Limiter)
+	limiters = make(map[string]*rateLimiterEntry)
 	mu       sync.Mutex
 )
+
+// cleanupInterval controls how often the background cleanup runs.
+const cleanupInterval = 10 * time.Minute
+
+// maxLimiterAge controls how long an entry can be idle before eviction.
+const maxLimiterAge = 1 * time.Hour
+
+func init() {
+	// BUG-H08 FIX: Start background goroutine to periodically clean up
+	// old rate limiter entries, preventing unbounded memory growth.
+	go cleanupStaleLimiters()
+}
+
+// cleanupStaleLimiters removes entries that haven't been used recently.
+func cleanupStaleLimiters() {
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		mu.Lock()
+		now := time.Now()
+		for ip, entry := range limiters {
+			if now.Sub(entry.lastSeen) > maxLimiterAge {
+				delete(limiters, ip)
+			}
+		}
+		mu.Unlock()
+	}
+}
 
 func getLimiter(ip string) *rate.Limiter {
 	mu.Lock()
 	defer mu.Unlock()
 
-	limiter, exists := limiters[ip]
+	entry, exists := limiters[ip]
 	if !exists {
 		rateLimit := 1.0
 		burstLimit := 5
@@ -116,11 +153,16 @@ func getLimiter(ip string) *rate.Limiter {
 			}
 		}
 
-		limiter = rate.NewLimiter(rate.Limit(rateLimit), burstLimit)
-		limiters[ip] = limiter
+		limiter := rate.NewLimiter(rate.Limit(rateLimit), burstLimit)
+		limiters[ip] = &rateLimiterEntry{
+			limiter:  limiter,
+			lastSeen: time.Now(),
+		}
+		return limiter
 	}
 
-	return limiter
+	entry.lastSeen = time.Now()
+	return entry.limiter
 }
 
 func RateLimitMiddleware(next http.Handler) http.Handler {

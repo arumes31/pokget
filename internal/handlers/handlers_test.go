@@ -184,6 +184,9 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
+		// BUG-H01 FIX: Card existence check is now performed before INSERT
+		mock.ExpectQuery("SELECT EXISTS").WithArgs("test-id").WillReturnRows(
+			sqlmock.NewRows([]string{"exists"}).AddRow(true))
 		mock.ExpectExec("INSERT INTO portfolio").WillReturnError(sql.ErrConnDone)
 
 		h.AddCardToPortfolio(rr, req)
@@ -679,9 +682,9 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT xp, rank_title").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"xp", "rank_title"}).AddRow(10, "Novice"))
-		mock.ExpectExec("UPDATE users SET xp").WillReturnResult(sqlmock.NewResult(1, 1))
+		// BUG-C02 FIX: AddXP now uses atomic UPDATE ... RETURNING instead of SELECT + UPDATE
+		mock.ExpectQuery("UPDATE users SET xp").WithArgs(1, "Novice Collector", "test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"xp", "rank_title"}).AddRow(11, "Novice Collector"))
 
 		h.Heartbeat(rr, req)
 
@@ -700,6 +703,9 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
+		// BUG-H05 FIX: Ownership check is now performed before UPDATE
+		mock.ExpectQuery("SELECT user_id FROM portfolio").WithArgs("123").
+			WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow("test-user"))
 		mock.ExpectExec("UPDATE portfolio").WithArgs("updated", "10", 50.0, true, "123", "test-user").
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -786,6 +792,9 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
+		// BUG-H05 FIX: Ownership check is now performed before UPDATE
+		mock.ExpectQuery("SELECT user_id FROM portfolio").WithArgs("123").
+			WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow("test-user"))
 		mock.ExpectExec("UPDATE portfolio").WillReturnError(sql.ErrConnDone)
 
 		h.EditPortfolioItem(rr, req)
@@ -820,7 +829,8 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT xp").WillReturnError(sql.ErrConnDone)
+		// BUG-C02 FIX: AddXP now uses atomic UPDATE ... RETURNING instead of SELECT + UPDATE
+		mock.ExpectQuery("UPDATE users SET xp").WillReturnError(sql.ErrConnDone)
 
 		h.Heartbeat(rr, req)
 
@@ -1300,15 +1310,15 @@ func (e *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, errors.New("rand fail")
 }
 
-func TestGenerateToken_Panic(t *testing.T) {
+// BUG-L02 FIX: Updated test to verify generateToken returns an error
+// instead of panicking when the random reader fails.
+func TestGenerateToken_Error(t *testing.T) {
 	oldReader := randReader
 	randReader = &errorReader{}
 	defer func() { randReader = oldReader }()
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("The code did not panic")
-		}
-	}()
-	generateToken()
+	_, err := generateToken()
+	if err == nil {
+		t.Errorf("Expected error from generateToken, got nil")
+	}
 }

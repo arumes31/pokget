@@ -1,10 +1,12 @@
-<div class="max-w-container-max mx-auto w-full animate-in" x-data="{ mode: 'login', signupAttempted: false, resendDisabled: false, countdown: 0 }">
+<div class="max-w-container-max mx-auto w-full animate-in"
+    x-data="{ mode: 'login', signupAttempted: false, resendDisabled: false, countdown: 0 }">
     <div class="flex flex-col lg:flex-row items-center lg:items-end justify-between gap-12 lg:gap-20">
         <!-- Branding Section -->
         <div class="w-full lg:w-auto text-center lg:text-left">
             <div class="flex items-center justify-center lg:justify-start gap-6 mb-4">
                 <img src="/static/img/logo.png" alt="Pokget" class="w-20 h-20 lg:w-16 lg:h-16">
-                <h1 class="font-h2 text-6xl lg:text-5xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
+                <h1
+                    class="font-h2 text-6xl lg:text-5xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
                     Pokget
                 </h1>
             </div>
@@ -12,14 +14,13 @@
                 Digital Vault Access // v.2.0.4
             </p>
             <div class="flex justify-center lg:justify-start gap-12">
-                <button @click="mode = 'login'; signupAttempted = false" 
-                        class="text-lg font-black transition-all uppercase tracking-[0.3em]"
-                        :class="mode === 'login' ? 'text-primary' : 'text-on-surface-variant/20 hover:text-on-surface-variant/40'">
+                <button @click="mode = 'login'; signupAttempted = false"
+                    class="text-lg font-black transition-all uppercase tracking-[0.3em]"
+                    :class="mode === 'login' ? 'text-primary' : 'text-on-surface-variant/20 hover:text-on-surface-variant/40'">
                     Login
                 </button>
-                <button @click="mode = 'register'" 
-                        class="text-lg font-black transition-all uppercase tracking-[0.3em]"
-                        :class="mode === 'register' ? 'text-primary' : 'text-on-surface-variant/20 hover:text-on-surface-variant/40'">
+                <button @click="mode = 'register'" class="text-lg font-black transition-all uppercase tracking-[0.3em]"
+                    :class="mode === 'register' ? 'text-primary' : 'text-on-surface-variant/20 hover:text-on-surface-variant/40'">
                     Register
                 </button>
             </div>
@@ -28,46 +29,60 @@
         <!-- Inputs & CTA Cluster -->
         <div class="w-full lg:flex-grow flex flex-col items-center lg:items-end gap-12">
             <!-- Login Form -->
-            <form x-show="mode === 'login'" 
-                  hx-post="/auth/login" 
-                  hx-target="#main-content" 
-                  class="flex flex-col lg:flex-row items-center lg:items-end gap-10 w-full lg:w-auto relative">
+            <form x-show="mode === 'login'" hx-post="/auth/login" hx-target="#main-content"
+                class="flex flex-col lg:flex-row items-center lg:items-end gap-10 w-full lg:w-auto relative">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
-                
-                <div id="auth-error" class="absolute -top-12 left-0 w-full text-red-400 font-bold text-sm text-center lg:text-left h-8">
+
+                <div id="auth-error"
+                    class="absolute -top-12 left-0 w-full text-red-400 font-bold text-sm text-center lg:text-left h-8">
                 </div>
-                
+
                 <div class="relative group w-full lg:w-80">
-                    <label for="login-email" class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Access Node (Mail)</label>
-                    <input id="login-email" class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20" 
-                           placeholder="collector@example.com" type="email" name="email" required/>
+                    <label for="login-email"
+                        class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Access
+                        Node (Mail)</label>
+                    <input id="login-email"
+                    class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20"
+                    placeholder="collector@example.com" type="email" inputmode="email" autocomplete="email" name="email" required />
                 </div>
-                
+
                 <div class="relative group w-full lg:w-80">
-                    <label for="login-password" class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Security Key</label>
-                    <input id="login-password" class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20" 
-                           placeholder="••••••••" type="password" name="password" required/>
+                    <label for="login-password"
+                        class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Security
+                        Key</label>
+                    <input id="login-password"
+                    class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20"
+                    placeholder="••••••••" type="password" autocomplete="current-password" enterkeyhint="send" name="password" required />
                 </div>
-                
+
                 <div class="w-full lg:w-auto flex flex-col items-center lg:items-end gap-8">
-                    <button type="submit" class="w-full lg:w-auto bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-black text-xl px-14 py-6 rounded-[2.5rem] hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-4">
+                    <button type="submit"
+                        class="w-full lg:w-auto bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-black text-xl px-14 py-6 rounded-[2.5rem] hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-4">
                         Enter Vault
                         <span class="material-symbols-outlined text-[28px]">keyboard_tab</span>
                     </button>
-                    
+
                     <div class="flex flex-col sm:flex-row items-center gap-8 lg:gap-10">
                         <label class="flex items-center gap-3 cursor-pointer group">
                             <div class="relative w-6 h-6">
-                                <input type="checkbox" name="remember" class="peer opacity-0 absolute inset-0 cursor-pointer z-10">
-                                <div class="w-full h-full border-2 border-primary/20 rounded-lg peer-checked:bg-primary peer-checked:border-primary transition-all group-hover:border-primary/40"></div>
-                                <span class="material-symbols-outlined absolute inset-0 flex items-center justify-center text-[18px] text-on-primary scale-0 peer-checked:scale-100 transition-transform font-bold">check</span>
+                                <input type="checkbox" name="remember"
+                                    class="peer opacity-0 absolute inset-0 cursor-pointer z-10">
+                                <div
+                                    class="w-full h-full border-2 border-primary/20 rounded-lg peer-checked:bg-primary peer-checked:border-primary transition-all group-hover:border-primary/40">
+                                </div>
+                                <span
+                                    class="material-symbols-outlined absolute inset-0 flex items-center justify-center text-[18px] text-on-primary scale-0 peer-checked:scale-100 transition-transform font-bold">check</span>
                             </div>
-                            <span class="text-[11px] font-black text-on-surface-variant uppercase tracking-[0.2em] group-hover:text-primary transition-colors">Remember Session</span>
+                            <span
+                                class="text-[11px] font-black text-on-surface-variant uppercase tracking-[0.2em] group-hover:text-primary transition-colors">Remember
+                                Session</span>
                         </label>
 
-                        <button type="button" @click="$dispatch('notify', { msg: 'Mobile Biometrics Active: Use your device manager to autofill.', type: 'info' })"
-                                class="flex items-center gap-2 text-[11px] font-black text-primary/60 uppercase tracking-[0.2em] hover:text-primary transition-colors group">
-                            <span class="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">fingerprint</span>
+                        <button type="button"
+                            @click="$dispatch('notify', { msg: 'Mobile Biometrics Active: Use your device manager to autofill.', type: 'info' })"
+                            class="flex items-center gap-2 text-[11px] font-black text-primary/60 uppercase tracking-[0.2em] hover:text-primary transition-colors group">
+                            <span
+                                class="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">fingerprint</span>
                             Biometric Unlock
                         </button>
                     </div>
@@ -75,31 +90,39 @@
             </form>
 
             <!-- Register Form (Similar updates for consistency) -->
-            <form x-show="mode === 'register'" 
-                  hx-post="/auth/register" 
-                  hx-target="#main-content" 
-                  class="flex flex-col items-center lg:items-end gap-10 w-full relative">
+            <form x-show="mode === 'register'" hx-post="/auth/register" hx-target="#main-content"
+                class="flex flex-col items-center lg:items-end gap-10 w-full relative">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
-                <div id="auth-register-error" class="absolute -top-12 left-0 w-full text-red-400 font-bold text-sm text-center lg:text-left h-8">
+                <div id="auth-register-error"
+                    class="absolute -top-12 left-0 w-full text-red-400 font-bold text-sm text-center lg:text-left h-8">
                 </div>
-                
+
                 <div class="flex flex-col lg:flex-row items-center lg:items-end gap-10 w-full lg:w-auto">
                     <div class="relative group w-full lg:w-64">
-                        <label for="register-email" class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Mail</label>
-                        <input id="register-email" class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20" 
-                               placeholder="collector@example.com" type="email" name="email" required/>
+                        <label for="register-email"
+                            class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Mail</label>
+                        <input id="register-email"
+                        class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20"
+                        placeholder="collector@example.com" type="email" inputmode="email" autocomplete="email" name="email" required />
                     </div>
                     <div class="relative group w-full lg:w-64">
-                        <label for="register-password" class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Secret Key</label>
-                        <input id="register-password" class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20" 
-                               placeholder="••••••••" type="password" name="password" required/>
+                        <label for="register-password"
+                            class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Secret
+                            Key</label>
+                        <input id="register-password"
+                        class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20"
+                        placeholder="••••••••" type="password" autocomplete="new-password" enterkeyhint="next" name="password" required />
                     </div>
                     <div class="relative group w-full lg:w-64">
-                        <label for="register-confirm-password" class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Confirm Key</label>
-                        <input id="register-confirm-password" class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20" 
-                               placeholder="••••••••" type="password" name="confirm_password" required/>
+                        <label for="register-confirm-password"
+                            class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Confirm
+                            Key</label>
+                        <input id="register-confirm-password"
+                        class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20"
+                        placeholder="••••••••" type="password" autocomplete="new-password" enterkeyhint="send" name="confirm_password" required />
                     </div>
-                    <button type="submit" @click="signupAttempted = true" class="w-full lg:w-auto bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-black text-xl px-14 py-6 rounded-[2.5rem] hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-4">
+                    <button type="submit" @click="signupAttempted = true"
+                        class="w-full lg:w-auto bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-black text-xl px-14 py-6 rounded-[2.5rem] hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-4">
                         Initiate
                         <span class="material-symbols-outlined text-[28px]">vibration</span>
                     </button>
@@ -107,7 +130,8 @@
             </form>
 
             <!-- Resend Section -->
-            <div x-show="signupAttempted && mode === 'register'" x-transition class="md:absolute md:bottom-full md:right-0 mb-16 text-center md:text-right">
+            <div x-show="signupAttempted && mode === 'register'" x-transition
+                class="md:absolute md:bottom-full md:right-0 mb-16 text-center md:text-right">
                 <p class="text-sm text-on-surface-variant/40 uppercase tracking-widest mb-4">Key not received?</p>
                 <button @click="
                     if (!resendDisabled) {
@@ -122,31 +146,32 @@
                         }, 1000);
                         
                         const emailInput = $el.closest('.flex').querySelector('input[type=\'email\']');
-                        const formData = new FormData();
-                        formData.append('email', emailInput.value);
-
-                        fetch('/auth/resend', { 
-                            method: 'POST', 
-                            body: formData 
-                        }).then(res => {
-                            if (res.ok) {
-                                $dispatch('notify', { msg: 'Access Key Re-sent', type: 'success' });
-                            } else {
-                                $dispatch('notify', { msg: 'Rate Limit Breach', type: 'error' });
-                            }
-                        });
+                        const csrfToken = document.querySelector('input[name=" gorilla.csrf.Token"]')?.value; const
+                    formData=new FormData(); formData.append('email', emailInput.value); if (csrfToken)
+                    formData.append('gorilla.csrf.Token', csrfToken); fetch('/auth/resend', { method: 'POST' , body:
+                    formData }).then(res=> {
+                    if (res.ok) {
+                    $dispatch('notify', { msg: 'Access Key Re-sent', type: 'success' });
+                    } else {
+                    $dispatch('notify', { msg: 'Rate Limit Breach', type: 'error' });
+                    }
+                    });
                     }"
                     :disabled="resendDisabled"
-                    class="text-sm font-bold text-primary uppercase tracking-widest hover:text-white transition-colors disabled:opacity-20">
-                    <span x-text="resendDisabled ? 'Retry in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend Key'"></span>
+                    class="text-sm font-bold text-primary uppercase tracking-widest hover:text-white transition-colors
+                    disabled:opacity-20">
+                    <span
+                        x-text="resendDisabled ? 'Retry in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend Key'"></span>
                 </button>
             </div>
         </div>
     </div>
 
     <!-- Footer Elements -->
-    <div class="mt-20 flex flex-col md:flex-row justify-between items-center border-t border-outline-variant/10 pt-10 pb-4">
-        <span class="font-label-sm text-[10px] text-on-surface-variant/40 uppercase tracking-widest">© 2026 POKGET VAULT. PRESTIGE ENCRYPTED.</span>
+    <div
+        class="mt-20 flex flex-col md:flex-row justify-between items-center border-t border-outline-variant/10 pt-10 pb-4">
+        <span class="font-label-sm text-[10px] text-on-surface-variant/40 uppercase tracking-widest">© 2026 POKGET
+            VAULT. PRESTIGE ENCRYPTED.</span>
         <div class="flex gap-12 mt-8 md:mt-0">
             <!-- Removed Lost Access and Security Protocols links -->
         </div>
@@ -160,8 +185,8 @@
     </div>
     <h2 class="text-3xl font-bold mb-4">{{.Message}}</h2>
     <p class="text-on-surface-variant opacity-60 mb-10">You can now proceed to the vault gateway.</p>
-    <a href="/auth" 
-       class="inline-block bg-primary text-on-primary font-bold px-10 py-4 rounded-xl hover:scale-105 transition-transform">
+    <a href="/auth"
+        class="inline-block bg-primary text-on-primary font-bold px-10 py-4 rounded-xl hover:scale-105 transition-transform">
         Back to Login
     </a>
 </div>

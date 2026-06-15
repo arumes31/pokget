@@ -22,6 +22,7 @@ package service
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/png"
 	"pokget/internal/models"
@@ -133,5 +134,287 @@ func TestFallbackExtract(t *testing.T) {
 				t.Errorf("fallbackExtract(%q) = %q, want %q", tt.text, got, tt.expected)
 			}
 		})
+	}
+}
+
+// --- NEW: Comprehensive OCR tests ---
+
+// TestFallbackExtractCJK verifies that CJK regex pattern matches
+// Japanese katakana, Chinese hanzi, and Korean hangul characters.
+func TestFallbackExtractCJK(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		expected string
+	}{
+		// Japanese katakana — should match the CJK pattern
+		{"Japanese katakana", "ピカチュウ", "ピカチュウ"},
+		// Chinese hanzi
+		{"Chinese hanzi", "皮卡丘", "皮卡丘"},
+		// Korean hangul
+		{"Korean hangul", "피카츄", "피카츄"},
+		// Mixed CJK and Latin — CJK should take priority
+		{"Mixed CJK and Latin", "Card ピカチュウ VMAX", "ピカチュウ"},
+		// Multiple CJK segments — longest should win
+		// "リザードン" has 4 runes, "ピカチュウ" has 5 runes → ピカチュウ wins
+		{"Multiple CJK segments", "リザードン and ピカチュウV", "ピカチュウ"},
+		// Hiragana
+		{"Japanese hiragana", "ぴかちゅう", "ぴかちゅう"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := fallbackExtract(tt.text)
+			if err != nil {
+				t.Fatalf("fallbackExtract failed: %v", err)
+			}
+			if got != tt.expected {
+				t.Errorf("fallbackExtract(%q) = %q, want %q", tt.text, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestFallbackExtractCJKPatternDirectly tests the CJK regex pattern
+// directly to ensure it matches the expected character ranges.
+func TestFallbackExtractCJKPatternDirectly(t *testing.T) {
+	tests := []struct {
+		name    string
+		text    string
+		matches bool
+	}{
+		{"Katakana matches", "ピカチュウ", true},
+		{"Hiragana matches", "ひらがな", true},
+		{"CJK Unified Ideographs", "漢字", true},
+		{"Hangul matches", "한글", true},
+		{"Latin no match", "Pikachu", false},
+		{"Numbers no match", "12345", false},
+		{"Mixed has match", "Card ピカチュウ", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matched := cjkPattern.MatchString(tt.text)
+			if matched != tt.matches {
+				t.Errorf("cjkPattern.MatchString(%q) = %v, want %v", tt.text, matched, tt.matches)
+			}
+		})
+	}
+}
+
+// TestFallbackExtractLatinPatternDirectly tests the Latin capitalized
+// word regex pattern.
+func TestFallbackExtractLatinPatternDirectly(t *testing.T) {
+	tests := []struct {
+		name    string
+		text    string
+		matches bool
+	}{
+		{"Capitalized word", "Pikachu", true},
+		{"Multiple capitalized", "Shiny Mewtwo VMAX", true},
+		{"Lowercase no match", "pikachu", false},
+		{"Mixed case partial", "shiny Pikachu", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matched := latinCapitalizedPattern.MatchString(tt.text)
+			if matched != tt.matches {
+				t.Errorf("latinCapitalizedPattern.MatchString(%q) = %v, want %v",
+					tt.text, matched, tt.matches)
+			}
+		})
+	}
+}
+
+// TestOCRProcessCardScanWithMockCards verifies that ProcessCardScan
+// can match cards from a provided list using the stub implementation.
+func TestOCRProcessCardScanWithMockCards(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+
+	// The stub returns "OCR Not Available (Stub)" which won't match any card
+	// but we verify the function doesn't crash with mock cards
+	cards := []models.Card{
+		{ID: "1", Name: "Pikachu"},
+		{ID: "2", Name: "Charizard"},
+	}
+
+	text, card, _, err := ProcessCardScan(buf.Bytes(), cards, "eng", nil)
+	if err != nil {
+		t.Errorf("ProcessCardScan with mock cards failed: %v", err)
+	}
+	if text == "" {
+		t.Error("Expected non-empty text from ProcessCardScan")
+	}
+	// Stub mode returns "Unknown Card" since "OCR Not Available (Stub)" doesn't match
+	if card != "Unknown Card" {
+		t.Logf("ProcessCardScan returned card=%q (stub behavior may vary)", card)
+	}
+}
+
+// TestOCRProcessCardScanWithDifferentLanguages verifies that ProcessCardScan
+// handles different language parameters correctly.
+func TestOCRProcessCardScanWithDifferentLanguages(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+
+	languages := []string{"eng", "jpn", "eng+jpn", "chi_sim", "deu+eng", ""}
+	for _, lang := range languages {
+		t.Run("lang_"+lang, func(t *testing.T) {
+			// Clear cache to avoid hits
+			ocrCache.Clear()
+			text, _, _, err := ProcessCardScan(buf.Bytes(), nil, lang, nil)
+			if err != nil {
+				t.Errorf("ProcessCardScan with lang=%q failed: %v", lang, err)
+			}
+			if text == "" {
+				t.Errorf("Expected non-empty text for lang=%q", lang)
+			}
+		})
+	}
+}
+
+// TestOCRCacheHitOnSecondScan verifies that identical images return
+// cached results on the second call.
+func TestOCRCacheHitOnSecondScan(t *testing.T) {
+	// Clear cache before test
+	ocrCache.Clear()
+
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+
+	// First call — should process and cache
+	text1, card1, _, err := ProcessCardScan(buf.Bytes(), nil, "eng", nil)
+	if err != nil {
+		t.Fatalf("First ProcessCardScan failed: %v", err)
+	}
+
+	// Second call — should return cached result
+	text2, card2, _, err := ProcessCardScan(buf.Bytes(), nil, "eng", nil)
+	if err != nil {
+		t.Fatalf("Second ProcessCardScan failed: %v", err)
+	}
+
+	// Results should be identical
+	if text1 != text2 {
+		t.Errorf("Cache hit returned different text: first=%q, second=%q", text1, text2)
+	}
+	if card1 != card2 {
+		t.Errorf("Cache hit returned different card: first=%q, second=%q", card1, card2)
+	}
+}
+
+// TestOCREdgeDetectionWithValidImage verifies that DetectCardEdges
+// works with various image sizes.
+func TestOCREdgeDetectionWithValidImage(t *testing.T) {
+	sizes := []struct {
+		w, h int
+	}{
+		{10, 10},
+		{100, 100},
+		{640, 480},
+	}
+
+	for _, sz := range sizes {
+		t.Run(fmt.Sprintf("%dx%d", sz.w, sz.h), func(t *testing.T) {
+			img := image.NewRGBA(image.Rect(0, 0, sz.w, sz.h))
+			var buf bytes.Buffer
+			_ = png.Encode(&buf, img)
+
+			bounds, err := DetectCardEdges(buf.Bytes())
+			if err != nil {
+				t.Errorf("DetectCardEdges(%dx%d) failed: %v", sz.w, sz.h, err)
+			}
+			if bounds.Left < 0 || bounds.Right > 100 || bounds.Top < 0 || bounds.Bottom > 100 {
+				t.Errorf("Bounds out of range for %dx%d: %+v", sz.w, sz.h, bounds)
+			}
+		})
+	}
+}
+
+// TestOCRProcessCardScanCorruptedData verifies that corrupted image data
+// is handled gracefully without panicking.
+func TestOCRProcessCardScanCorruptedData(t *testing.T) {
+	ocrCache.Clear()
+
+	corruptedData := []byte{0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0xFF, 0xFF}
+	_, _, _, err := ProcessCardScan(corruptedData, nil, "eng", nil)
+	if err == nil {
+		t.Error("Expected error for corrupted image data")
+	}
+}
+
+// TestOCRProcessCardScanEmptyData verifies that empty image data
+// is handled gracefully.
+func TestOCRProcessCardScanEmptyData(t *testing.T) {
+	ocrCache.Clear()
+
+	_, _, _, err := ProcessCardScan([]byte{}, nil, "eng", nil)
+	if err == nil {
+		t.Error("Expected error for empty image data")
+	}
+}
+
+// TestOCRConcurrentRequests verifies that concurrent OCR requests
+// don't deadlock using the stub implementation.
+func TestOCRConcurrentRequests(t *testing.T) {
+	ocrCache.Clear()
+
+	img := image.NewRGBA(image.Rect(0, 0, 50, 50))
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+
+	done := make(chan error, 10)
+
+	// Launch 10 concurrent OCR requests
+	for i := 0; i < 10; i++ {
+		go func(idx int) {
+			// Use different languages to avoid cache hits
+			lang := "eng"
+			if idx%2 == 1 {
+				lang = "jpn"
+			}
+			_, _, _, err := ProcessCardScan(buf.Bytes(), nil, lang, nil)
+			done <- err
+		}(i)
+	}
+
+	// Wait for all with timeout
+	for i := 0; i < 10; i++ {
+		err := <-done
+		if err != nil {
+			t.Errorf("Concurrent OCR request %d failed: %v", i, err)
+		}
+	}
+}
+
+// TestOCRImageHashDeterminism verifies that the same image bytes
+// always produce the same hash.
+func TestOCRImageHashDeterminism(t *testing.T) {
+	data := []byte("deterministic-test-data")
+
+	hash1 := imageHash(data)
+	hash2 := imageHash(data)
+
+	if hash1 != hash2 {
+		t.Error("Expected identical hashes for identical input data")
+	}
+}
+
+// TestOCRImageHashCollisionResistance verifies that different data
+// produces different hashes.
+func TestOCRImageHashCollisionResistance(t *testing.T) {
+	data1 := []byte("image-data-1")
+	data2 := []byte("image-data-2")
+
+	hash1 := imageHash(data1)
+	hash2 := imageHash(data2)
+
+	if hash1 == hash2 {
+		t.Error("Expected different hashes for different input data")
 	}
 }

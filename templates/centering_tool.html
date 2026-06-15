@@ -192,29 +192,32 @@
             if (this.dragging === 'bottom') this.lines.bottom = Math.max(this.lines.top + 5, Math.min(y, 100));
             this.updateMetrics();
         }
-     }"
-     @mousemove="handleMove($event)"
-     @touchmove="handleMove($event)"
-     @mouseup="dragging = null"
-     @touchend="dragging = null"
-     class="space-y-6"
->
+     }" @mousemove="handleMove($event)" @touchmove="handleMove($event)" @mouseup="dragging = null"
+    @touchend="dragging = null" class="space-y-6">
     <div class="flex items-center justify-between px-1">
         <h2 class="text-lg font-bold">Card Scanner</h2>
-        <button class="text-white/40" @click="lines = { left: 10, right: 90, top: 10, bottom: 90 }; updateMetrics(); result = ''; detectedCard = ''">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        <button class="text-white/40"
+            @click="lines = { left: 10, right: 90, top: 10, bottom: 90 }; updateMetrics(); result = ''; detectedCard = ''">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+            </svg>
         </button>
     </div>
 
-    <div x-ref="container" class="relative aspect-[3/4] rounded-[2rem] overflow-hidden border border-purple-500/20 shadow-[0_0_30px_rgba(124,58,237,0.1)] bg-black">
+    <div x-ref="container"
+        class="relative aspect-[3/4] rounded-[2rem] overflow-hidden border border-purple-500/20 shadow-[0_0_30px_rgba(124,58,237,0.1)] bg-black">
         <!-- Live Video Feed -->
         <video x-ref="video" autoplay playsinline muted class="absolute inset-0 w-full h-full object-contain"></video>
 
 
 
         <!-- Camera Selector Overlay -->
-        <div x-show="cameras.length > 1" class="absolute top-3 right-3 z-[60] bg-black/60 backdrop-blur-md rounded-lg border border-white/10 pointer-events-auto">
-            <select x-model="currentCamera" @change="switchCamera()" class="bg-transparent text-white/80 text-[8px] font-bold px-2 py-1 outline-none appearance-none">
+        <div x-show="cameras.length > 1"
+            class="absolute top-3 right-3 z-[60] bg-black/60 backdrop-blur-md rounded-lg border border-white/10 pointer-events-auto">
+            <select x-model="currentCamera" @change="switchCamera()"
+                class="bg-transparent text-white/80 text-[8px] font-bold px-2 py-1 outline-none appearance-none">
                 <template x-for="cam in cameras">
                     <option :value="cam.deviceId" x-text="cam.label || 'Camera ' + (cameras.indexOf(cam) + 1)"></option>
                 </template>
@@ -223,89 +226,171 @@
 
         <!-- Camera Viewfinder Mockup -->
         <div class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-            <div class="w-64 h-80 border-2 border-white/20 rounded-2xl relative" :class="scanning ? 'border-purple-500 animate-pulse' : ''">
-                <div class="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-purple-500 rounded-tl-lg" :class="scanning ? 'animate-ping' : ''"></div>
-                <div class="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-purple-500 rounded-tr-lg" :class="scanning ? 'animate-ping' : ''"></div>
-                <div class="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-purple-500 rounded-bl-lg" :class="scanning ? 'animate-ping' : ''"></div>
-                <div class="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-purple-500 rounded-br-lg" :class="scanning ? 'animate-ping' : ''"></div>
+            <div class="w-64 h-80 border-2 border-white/20 rounded-2xl relative"
+                :class="scanning ? 'border-purple-500 animate-pulse' : ''">
+                <div class="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-purple-500 rounded-tl-lg"
+                    :class="scanning ? 'animate-ping' : ''"></div>
+                <div class="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-purple-500 rounded-tr-lg"
+                    :class="scanning ? 'animate-ping' : ''"></div>
+                <div class="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-purple-500 rounded-bl-lg"
+                    :class="scanning ? 'animate-ping' : ''"></div>
+                <div class="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-purple-500 rounded-br-lg"
+                    :class="scanning ? 'animate-ping' : ''"></div>
             </div>
         </div>
 
         <!-- Scan Status Overlay -->
         <div x-show="scanStatus" x-transition.opacity.duration.200ms
-             class="absolute inset-x-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-3 pointer-events-none">
-            <div class="bg-black/80 backdrop-blur-xl rounded-2xl px-6 py-4 border border-purple-500/30 shadow-[0_0_40px_rgba(124,58,237,0.3)] flex flex-col items-center gap-3 min-w-[220px]">
+            class="absolute inset-x-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-3 pointer-events-none">
+            <div
+                class="bg-black/80 backdrop-blur-xl rounded-2xl px-6 py-4 border border-purple-500/30 shadow-[0_0_40px_rgba(124,58,237,0.3)] flex flex-col items-center gap-3 min-w-[220px]">
                 <!-- Step dots -->
                 <div class="flex items-center gap-1.5">
                     <template x-for="step in 5">
                         <div class="w-2 h-2 rounded-full transition-all duration-300"
-                             :class="scanStep >= step ? (scanStep === step ? 'bg-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.8)] scale-125' : 'bg-purple-500') : 'bg-white/15'"></div>
+                            :class="scanStep >= step ? (scanStep === step ? 'bg-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.8)] scale-125' : 'bg-purple-500') : 'bg-white/15'">
+                        </div>
                     </template>
                 </div>
                 <!-- Status text -->
-                <p class="text-[11px] font-bold text-white/90 uppercase tracking-[0.2em] text-center" x-text="scanStatus"></p>
+                <p class="text-[11px] font-bold text-white/90 uppercase tracking-[0.2em] text-center"
+                    x-text="scanStatus"></p>
                 <!-- Progress bar -->
                 <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
                     <div class="h-full bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full transition-all duration-500 ease-out"
-                         :style="`width: ${(scanStep / 5) * 100}%`"></div>
+                        :style="`width: ${(scanStep / 5) * 100}%`"></div>
                 </div>
             </div>
         </div>
 
         <!-- Brackets / Lines -->
         <div class="absolute inset-0 pointer-events-none">
-            <!-- Vertical Lines -->
-            <div class="absolute w-0.5 h-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ew-resize" 
-                 :style="`left: ${lines.left}%`" @mousedown="dragging = 'left'" @touchstart="dragging = 'left'"></div>
-            <div class="absolute w-0.5 h-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ew-resize" 
-                 :style="`left: ${lines.right}%`" @mousedown="dragging = 'right'" @touchstart="dragging = 'right'"></div>
+            <!-- Vertical Lines with touch targets -->
+            <div class="absolute w-0.5 h-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ew-resize touch-none"
+                :style="`left: ${lines.left}%`" @mousedown="dragging = 'left'" @touchstart="dragging = 'left'">
+                <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[44px] h-full opacity-0"></div>
+            </div>
+            <div class="absolute w-0.5 h-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ew-resize touch-none"
+                :style="`left: ${lines.right}%`" @mousedown="dragging = 'right'" @touchstart="dragging = 'right'">
+                <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[44px] h-full opacity-0"></div>
+            </div>
 
-            <!-- Horizontal Lines -->
-            <div class="absolute h-0.5 w-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ns-resize" 
-                 :style="`top: ${lines.top}%`" @mousedown="dragging = 'top'" @touchstart="dragging = 'top'"></div>
-            <div class="absolute h-0.5 w-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ns-resize" 
-                 :style="`top: ${lines.bottom}%`" @mousedown="dragging = 'bottom'" @touchstart="dragging = 'bottom'"></div>
+            <!-- Horizontal Lines with touch targets -->
+            <div class="absolute h-0.5 w-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ns-resize touch-none"
+                :style="`top: ${lines.top}%`" @mousedown="dragging = 'top'" @touchstart="dragging = 'top'">
+                <div class="absolute left-0 top-1/2 -translate-y-1/2 h-[44px] w-full opacity-0"></div>
+            </div>
+            <div class="absolute h-0.5 w-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ns-resize touch-none"
+                :style="`top: ${lines.bottom}%`" @mousedown="dragging = 'bottom'" @touchstart="dragging = 'bottom'">
+                <div class="absolute left-0 top-1/2 -translate-y-1/2 h-[44px] w-full opacity-0"></div>
+            </div>
 
             <!-- Metrics -->
             <div class="absolute bg-black/80 text-purple-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-purple-500/30 backdrop-blur-sm"
-                 :style="`left: 5%; top: ${(lines.top + lines.bottom) / 2}%`" x-text="metrics.tb"></div>
+                :style="`left: 5%; top: ${(lines.top + lines.bottom) / 2}%`" x-text="metrics.tb"></div>
             <div class="absolute bg-black/80 text-blue-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-500/30 backdrop-blur-sm"
-                 :style="`left: ${(lines.left + lines.right) / 2}%; top: 5%`" x-text="metrics.lr"></div>
+                :style="`left: ${(lines.left + lines.right) / 2}%; top: 5%`" x-text="metrics.lr"></div>
         </div>
 
         <div class="absolute bottom-4 left-0 right-0 flex justify-center z-20">
-            <span class="text-[7px] font-bold text-white/40 uppercase tracking-[0.3em] bg-black/20 px-3 py-0.5 rounded-full backdrop-blur-md">Align card edges with guides</span>
+            <span
+                class="text-[7px] font-bold text-white/40 uppercase tracking-[0.3em] bg-black/20 px-3 py-0.5 rounded-full backdrop-blur-md">Align
+                card edges with guides</span>
         </div>
     </div>
 
     <!-- Controls / Metrics -->
     <div class="space-y-4">
 
-        <!-- Scan Button -->
-        <button @click="capture()" 
-                class="w-full py-4 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-xl"
-                :class="scanning ? 'bg-white/10 text-white/40 cursor-wait' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20'">
-            <svg x-show="!scanning" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            <svg x-show="scanning" class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <!-- Scan Button (min 48x48px touch target) -->
+        <button @click="capture()"
+            class="w-full min-h-[48px] py-4 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-xl"
+            :class="scanning ? 'bg-white/10 text-white/40 cursor-wait' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20'">
+            <svg x-show="!scanning" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+            </svg>
+            <svg x-show="scanning" class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
             <span x-text="scanning ? (scanStatus || 'SCANNING...') : 'CAPTURE CARD'"></span>
         </button>
+
+        <!-- Upload from file (mobile camera invocation) -->
+        <div class="flex gap-2">
+            <label
+                class="flex-1 min-h-[48px] bg-white/5 border border-white/10 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer hover:bg-white/10 transition-all active:scale-95">
+                <span class="material-symbols-outlined text-lg">upload_file</span>
+                <span>UPLOAD PHOTO</span>
+                <input type="file" accept="image/*" capture="environment" class="hidden" @change="async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        scanning = true;
+        scanStep = 2;
+        scanStatus = 'Uploading image...';
+        await tick();
+        const formData = new FormData();
+        formData.append('card_image', file);
+        formData.append('lang', lang);
+        scanStep = 3;
+        scanStatus = 'Processing image...';
+        await tick();
+        try {
+        const res = await fetch('/api/scan', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body: formData });
+        if (!res.ok) throw new Error('Server error');
+        scanStep = 4;
+        scanStatus = 'Matching card...';
+        await tick();
+        const data = await res.json();
+        scanStep = 5;
+        scanStatus = 'Indexing results...';
+        await tick();
+        result = data.text;
+        detectedCard = data.detected;
+        detectedID = data.id;
+        detectedPrice = data.price;
+        detectedImage = data.image_url;
+        scanStatus = 'Complete!';
+        if (data.bounds) { lines = data.bounds; updateMetrics(); }
+        } catch (err) {
+        console.error('Upload scan failed:', err);
+        window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Upload scan failed. Try again.', type: 'error' } }));
+        } finally {
+        scanning = false;
+        setTimeout(() => { scanStatus = ''; scanStep = 0; }, 2000);
+        }
+        e.target.value = '';
+        }">
+            </label>
+        </div>
 
         <!-- OCR Result Display -->
         <div x-show="detectedCard" x-transition class="glass-card p-4 border-emerald-500/30 bg-emerald-500/5">
             <div class="flex items-center gap-4">
-                <div x-show="detectedImage" class="w-16 aspect-[3/4] rounded-lg overflow-hidden border border-white/10 shadow-lg">
-                    <img :src="detectedImage" :alt="detectedCard ? ('Detected card: ' + detectedCard) : 'Detected card preview'" class="w-full h-full object-cover">
+                <div x-show="detectedImage"
+                    class="w-16 aspect-[3/4] rounded-lg overflow-hidden border border-white/10 shadow-lg">
+                    <img :src="detectedImage"
+                        :alt="detectedCard ? ('Detected card: ' + detectedCard) : 'Detected card preview'"
+                        class="w-full h-full object-cover">
                 </div>
                 <div class="flex-1">
                     <p class="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Match Found</p>
                     <p class="text-sm font-black text-on-surface truncate" x-text="detectedCard"></p>
-                    <p class="text-xs font-black text-primary mt-1" x-text="detectedPrice ? '{{ .CurrencySymbol }}' + parseFloat(detectedPrice).toFixed(2) : '--'"></p>
+                    <p class="text-xs font-black text-primary mt-1"
+                        x-text="detectedPrice ? '{{ .CurrencySymbol }}' + parseFloat(detectedPrice).toFixed(2) : '--'">
+                    </p>
                 </div>
-                <button @click="addToCollection()" 
-                        x-show="detectedID"
-                        :disabled="adding"
-                        class="bg-emerald-500 hover:bg-emerald-400 text-dark px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-1.5 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50">
-                    <svg x-show="!adding" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                <button @click="addToCollection()" x-show="detectedID" :disabled="adding"
+                    class="bg-emerald-500 hover:bg-emerald-400 text-dark px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-1.5 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50">
+                    <svg x-show="!adding" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M5 12h14" />
+                        <path d="M12 5v14" />
+                    </svg>
                     <span x-text="adding ? 'SAVING...' : 'ADD'"></span>
                 </button>
             </div>

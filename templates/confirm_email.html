@@ -1,38 +1,54 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Identity Verification | Pokget Vault</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>
         .vapor-bg {
             background: linear-gradient(180deg, #490080 0%, #131314 60%, #0e0e0f 100%);
         }
+
         .glass-card-prestige {
             background: rgba(28, 27, 28, 0.6);
             backdrop-filter: blur(40px);
             border: 1px solid rgba(255, 255, 255, 0.08);
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
+
         .neon-bloom {
             box-shadow: 0 0 30px rgba(168, 85, 247, 0.3);
         }
+
         @keyframes float {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-            100% { transform: translateY(0px); }
+            0% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+
+            100% {
+                transform: translateY(0px);
+            }
         }
+
         .animate-float {
             animation: float 6s ease-in-out infinite;
         }
     </style>
 </head>
-<body class="vapor-bg text-on-background min-h-screen relative overflow-hidden font-sans selection:bg-primary/30 flex items-center justify-center p-6">
-    
+
+<body
+    class="vapor-bg text-on-background min-h-screen relative overflow-hidden font-sans selection:bg-primary/30 flex items-center justify-center p-6">
+
     <!-- Decorative Elements (Match Auth Page) -->
     <div class="absolute inset-0 pointer-events-none select-none overflow-hidden">
         <div class="absolute top-[10%] left-[5%] opacity-10 transform -rotate-12">
@@ -41,7 +57,9 @@
         <div class="absolute bottom-[10%] right-[10%] opacity-10 transform rotate-6">
             <span class="font-serif text-3xl text-white">Awaiting authorization.</span>
         </div>
-        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[150px]"></div>
+        <div
+            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[150px]">
+        </div>
     </div>
 
     <div class="w-full max-w-xl relative z-10">
@@ -52,8 +70,9 @@
                     <img src="/static/img/logo.png" alt="Pokget" class="w-24 h-24 relative z-10">
                 </div>
             </div>
-            
-            <h1 class="text-5xl font-extrabold mb-6 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
+
+            <h1
+                class="text-5xl font-extrabold mb-6 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
                 Final Step
             </h1>
             <p class="text-on-surface-variant opacity-70 mb-12 text-xl leading-relaxed">
@@ -63,9 +82,9 @@
             <form hx-post="/auth/confirm" hx-target="#confirm-content" hx-swap="outerHTML">
                 <input type="hidden" name="token" value="{{.Token}}">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
-                
-                <button type="submit" 
-                        class="w-full bg-gradient-to-r from-primary to-secondary text-on-primary font-black py-6 rounded-2xl text-2xl shadow-xl hover:neon-bloom hover:scale-[1.02] active:scale-95 transition-all duration-500 uppercase tracking-[0.2em]">
+
+                <button type="submit"
+                    class="w-full bg-gradient-to-r from-primary to-secondary text-on-primary font-black py-6 rounded-2xl text-2xl shadow-xl hover:neon-bloom hover:scale-[1.02] active:scale-95 transition-all duration-500 uppercase tracking-[0.2em]">
                     Verify My Account
                 </button>
             </form>
@@ -78,19 +97,21 @@
         </div>
     </div>
 </body>
+
 </html>
 
 {{define "confirm_success"}}
 <div id="confirm-content" class="glass-card-prestige rounded-[2.5rem] p-12 md:p-16 text-center animate-in">
-    <div class="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-10 border border-primary/20">
+    <div
+        class="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-10 border border-primary/20">
         <span class="material-symbols-outlined text-primary text-5xl">verified_user</span>
     </div>
     <h2 class="text-4xl font-extrabold mb-6 tracking-tighter">Identity Verified</h2>
     <p class="text-on-surface-variant opacity-70 mb-12 text-xl">
         Your vault credentials have been secured. Welcome to the prestige.
     </p>
-    <a href="/auth" 
-       class="inline-block bg-white text-black font-black px-12 py-5 rounded-2xl hover:scale-105 transition-transform text-xl uppercase tracking-widest shadow-2xl">
+    <a href="/auth"
+        class="inline-block bg-white text-black font-black px-12 py-5 rounded-2xl hover:scale-105 transition-transform text-xl uppercase tracking-widest shadow-2xl">
         Enter the Vault
     </a>
 </div>

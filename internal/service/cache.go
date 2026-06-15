@@ -18,6 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+// BUG-L07 FIX: CacheService is dead code — it is never instantiated or used
+// anywhere in the application. The application uses PostgreSQL directly for
+// all data storage and has no Redis dependency in its deployment configuration.
+// Marking as deprecated so it can be removed in a future cleanup.
 package service
 
 import (
@@ -29,10 +33,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// Deprecated: CacheService is unused dead code. Do not reference in new code.
+// Will be removed in a future cleanup.
 type CacheService struct {
 	client *redis.Client
 }
 
+// Deprecated: NewCacheService is unused. Do not reference in new code.
 func NewCacheService() *CacheService {
 	addr := os.Getenv("REDIS_URL")
 	if addr == "" {
@@ -49,6 +56,7 @@ func NewCacheService() *CacheService {
 	return &CacheService{client: client}
 }
 
+// Deprecated: Set is unused. Do not reference in new code.
 func (s *CacheService) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -57,6 +65,7 @@ func (s *CacheService) Set(ctx context.Context, key string, value interface{}, t
 	return s.client.Set(ctx, key, data, ttl).Err()
 }
 
+// Deprecated: Get is unused. Do not reference in new code.
 func (s *CacheService) Get(ctx context.Context, key string, dest interface{}) error {
 	data, err := s.client.Get(ctx, key).Bytes()
 	if err != nil {
@@ -65,6 +74,7 @@ func (s *CacheService) Get(ctx context.Context, key string, dest interface{}) er
 	return json.Unmarshal(data, dest)
 }
 
+// Deprecated: Delete is unused. Do not reference in new code.
 func (s *CacheService) Delete(ctx context.Context, key string) error {
 	return s.client.Del(ctx, key).Err()
 }

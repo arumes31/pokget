@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8" />
-    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport" />
     <title>Pokget Vault - Premium TCG Portfolio</title>
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
     <link
@@ -52,7 +52,7 @@
     </style>
 </head>
 
-<body class="bg-background text-on-surface font-body-md min-h-screen pb-32" x-data="{ 
+<body class="bg-background text-on-surface font-body-md min-h-screen pb-32 overflow-x-hidden" x-data="{
           activeTab: 'home', 
           showEditModal: false, 
           editItemId: '', 
@@ -67,7 +67,8 @@
     @open-edit-modal.window="showEditModal = true; editItemId = $event.detail.id; editNotes = $event.detail.notes; editCustomPrice = $event.detail.price">
 
     <!-- TopAppBar -->
-    <header class="fixed top-0 w-full z-50 bg-surface/60 backdrop-blur-[60px] border-b border-outline-variant/10">
+    <header class="fixed top-0 w-full z-50 bg-surface/60 backdrop-blur-[60px] border-b border-outline-variant/10"
+        style="padding-top: env(safe-area-inset-top)">
         <div class="flex justify-between items-center px-lg h-16 w-full max-w-container-max mx-auto">
             <div class="flex items-center gap-md">
                 <h1 class="font-h3 text-h3 uppercase tracking-widest font-bold text-primary">VAULT</h1>
@@ -151,33 +152,33 @@
     </main>
 
     <!-- BottomNavBar -->
-    <nav
-        class="fixed bottom-0 w-full z-50 rounded-t-xl bg-surface/70 backdrop-blur-xl border-t border-outline-variant/20 shadow-[0_-4px_20px_rgba(221,183,255,0.05)]">
+    <nav class="fixed bottom-0 w-full z-50 rounded-t-xl bg-surface/70 backdrop-blur-xl border-t border-outline-variant/20 shadow-[0_-4px_20px_rgba(221,183,255,0.05)]"
+        style="padding-bottom: env(safe-area-inset-bottom)">
         <div class="flex justify-around items-center h-20 px-md w-full max-w-container-max mx-auto">
             <!-- Home -->
             <button @click="activeTab = 'home'" hx-get="/dashboard" hx-target="#main-content"
-                class="flex flex-col items-center justify-center transition-all duration-200"
+                class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] transition-all duration-200"
                 :class="activeTab === 'home' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
                 <span class="material-symbols-outlined" :class="activeTab === 'home' && 'fill-icon'">home</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Vault</span>
             </button>
             <!-- Wantlist -->
             <button @click="activeTab = 'wantlist'" hx-get="/wantlist" hx-target="#main-content"
-                class="flex flex-col items-center justify-center transition-all duration-200"
+                class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] transition-all duration-200"
                 :class="activeTab === 'wantlist' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
                 <span class="material-symbols-outlined" :class="activeTab === 'wantlist' && 'fill-icon'">favorite</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Grails</span>
             </button>
             <!-- Binders -->
             <button @click="activeTab = 'binders'" hx-get="/binders" hx-target="#main-content"
-                class="flex flex-col items-center justify-center transition-all duration-200"
+                class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] transition-all duration-200"
                 :class="activeTab === 'binders' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
                 <span class="material-symbols-outlined" :class="activeTab === 'binders' && 'fill-icon'">style</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Binders</span>
             </button>
             <!-- Scan -->
             <button @click="activeTab = 'scan'" hx-get="/centering" hx-target="#main-content"
-                class="flex flex-col items-center justify-center transition-all duration-200"
+                class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] transition-all duration-200"
                 :class="activeTab === 'scan' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
                 <div class="bg-primary/10 p-2 rounded-full mb-1 border border-primary/20">
                     <span class="material-symbols-outlined text-primary">qr_code_scanner</span>
@@ -186,14 +187,14 @@
             </button>
             <!-- Errors -->
             <button @click="activeTab = 'errors'" hx-get="/errors" hx-target="#main-content"
-                class="flex flex-col items-center justify-center transition-all duration-200"
+                class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] transition-all duration-200"
                 :class="activeTab === 'errors' ? 'text-primary relative after:content-[\'\'] after:absolute after:-bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full after:shadow-[0_0_8px_#ddb7ff] active:scale-90' : 'text-on-surface-variant hover:text-primary-fixed-dim'">
                 <span class="material-symbols-outlined" :class="activeTab === 'errors' && 'fill-icon'">warning</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Misprints</span>
             </button>
             <!-- Logout -->
             <button hx-get="/auth/logout"
-                class="flex flex-col items-center justify-center transition-all duration-200 text-on-surface-variant hover:text-red-400 active:scale-90">
+                class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] transition-all duration-200 text-on-surface-variant hover:text-red-400 active:scale-90">
                 <span class="material-symbols-outlined">logout</span>
                 <span class="font-label-sm text-[10px] uppercase tracking-tighter">Logout</span>
             </button>
@@ -219,7 +220,7 @@
     <div id="edit-modal" x-show="showEditModal" x-cloak
         class="fixed inset-0 z-[100] flex items-center justify-center p-md bg-black/60 backdrop-blur-sm"
         @click.self="showEditModal = false">
-        <div class="glass-card w-full max-w-md rounded-2xl p-lg space-y-md animate-in">
+        <div class="glass-card w-full max-w-md rounded-2xl p-lg space-y-md animate-in max-h-[90vh] overflow-y-auto">
             <h3 class="font-h3 text-xl font-bold text-on-surface">Edit Card Details</h3>
             <form id="edit-form" hx-post="/portfolio/edit" hx-swap="none"
                 @htmx:after-request="showEditModal = false; htmx.ajax('GET', '/dashboard', '#main-content')">

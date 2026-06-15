@@ -77,6 +77,11 @@ func main() {
 
 	if db.DB != nil {
 		fingerprintSvc = service.NewFingerprintService(db.DB)
+		// SCAN-02: Apply configurable pHash thresholds from config
+		fingerprintSvc.PhashHighConf = cfg.Scan.PhashHighConf
+		fingerprintSvc.PhashPotential = cfg.Scan.PhashPotential
+		// SCAN-03: Set OCR pool size from config
+		service.OCRPoolSize = cfg.Scan.OCRPoolSize
 		auditSvc = service.NewAuditService(db.DB)
 
 		if err := db.SeedDatabase(db.DB); err != nil {
@@ -137,22 +142,34 @@ func main() {
 		buildVersion = fmt.Sprintf("%d", info.ModTime().Unix())
 	}
 
+	// Initialize LLM service
+	llmSvc := service.NewLLMService()
+
+	// Initialize Detection Pipeline (SCAN-07, SCAN-09, SCAN-16)
+	var detectionPipeline *service.DetectionPipeline
+	if fingerprintSvc != nil {
+		detectionPipeline = service.NewDetectionPipeline(fingerprintSvc, llmSvc)
+	}
+
 	// Initialize Handlers
 	h := &handlers.Handler{
-		Templates:    templates,
-		MockCards:    allCards,
-		Fingerprint:  service.NewFingerprintService(db.DB),
-		Audit:        auditSvc,
-		Crypto:       cryptoSvc,
-		Game:         service.NewGamificationService(db.DB),
-		LLM:          service.NewLLMService(),
-		DB:           db.DB,
-		BuildVersion: buildVersion,
+		Templates:     templates,
+		MockCards:     allCards,
+		Fingerprint:   fingerprintSvc, // BUG-H01: Reuse fingerprintSvc instead of creating new one
+		Detection:     detectionPipeline,
+		Audit:         auditSvc,
+		Crypto:        cryptoSvc,
+		Game:          service.NewGamificationService(db.DB),
+		LLM:           llmSvc,
+		DB:            db.DB,
+		BuildVersion:  buildVersion,
+		SecureCookies: cfg.App.SecureCookies, // BUG-C03: Wire up configurable Secure flag
 	}
 
 	r := mux.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
 	r.Use(middleware.SecurityHeadersMiddleware)
+	r.Use(middleware.MaxBytesMiddleware) // BUG-L03 FIX: Limit request body size to prevent DoS
 	r.Use(auth.RateLimitMiddleware)
 	r.Use(auth.ProxyMiddleware)
 
@@ -194,8 +211,10 @@ func main() {
 	protected.HandleFunc("/binders/{id}", h.BinderDetail).Methods("GET")
 	protected.HandleFunc("/trade", h.Trade).Methods("GET")
 	protected.HandleFunc("/settings", h.Settings).Methods("GET", "POST")
+	protected.HandleFunc("/settings/change-password", h.ChangePassword).Methods("POST") // BUG-M11: Route for password change with session invalidation
 	protected.HandleFunc("/portfolio/add", h.AddCardToPortfolio).Methods("POST")
 	protected.HandleFunc("/portfolio/edit", h.EditPortfolioItem).Methods("POST")
+	protected.HandleFunc("/portfolio/delete", h.DeletePortfolioItem).Methods("POST") // BUG-H02: Delete with ownership check
 	protected.HandleFunc("/portfolio/toggle-visibility", h.ToggleVisibility).Methods("POST")
 	protected.HandleFunc("/wantlist", h.Wantlist).Methods("GET")
 	protected.HandleFunc("/wantlist/add", h.AddToWantlist).Methods("POST")
@@ -209,11 +228,14 @@ func main() {
 	admin.HandleFunc("/refresh-cache", h.RefreshCache).Methods("POST")
 
 	slog.Info("Server starting", "port", cfg.App.Port)
+	// BUG-C05 FIX: Use configurable WriteTimeout (default 120s) instead of
+	// hardcoded 15s which killed scan responses mid-stream during OCR+LLM processing.
+	writeTimeout := time.Duration(cfg.App.WriteTimeout) * time.Second
 	srv := &http.Server{
 		Addr:         ":" + cfg.App.Port,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: writeTimeout,
 		IdleTimeout:  60 * time.Second,
 	}
 

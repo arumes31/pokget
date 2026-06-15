@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"pokget/internal/auth"
 	"pokget/internal/models"
+	"strconv"
 )
 
 func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +79,21 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "card_id is required", http.StatusBadRequest)
 		return
 	}
-	targetPrice := r.FormValue("target_price")
+
+	// BUG-H10 FIX: Parse target_price as float64 to match the SQL DECIMAL type.
+	// Previously, the raw string was passed directly to SQL, which could cause
+	// conversion errors or type mismatches with the DECIMAL(12,2) column.
+	targetPriceStr := r.FormValue("target_price")
+	var targetPrice *float64
+	if targetPriceStr != "" {
+		val, err := strconv.ParseFloat(targetPriceStr, 64)
+		if err != nil {
+			http.Error(w, "Invalid target price", http.StatusBadRequest)
+			return
+		}
+		targetPrice = &val
+	}
+
 	notes := r.FormValue("notes")
 
 	_, err := h.DB.Exec(`
@@ -92,7 +107,7 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("HX-Trigger", `{"notify": {"msg": "Identify Success: Grail added to Hunt", "type": "success"}}`)
-	
+
 	// Re-fetch and render the updated wantlist
 	h.Wantlist(w, r)
 }

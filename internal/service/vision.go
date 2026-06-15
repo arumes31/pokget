@@ -23,10 +23,13 @@ package service
 import (
 	"bytes"
 	"image"
-	_ "image/gif"  // Register GIF decoder
-	_ "image/jpeg" // Register JPEG decoder
-	_ "image/png"  // Register PNG decoder
+	_ "image/gif"    // Register GIF decoder
+	_ "image/jpeg"   // Register JPEG decoder
+	_ "image/png"    // Register PNG decoder
+	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/anthonynsimon/bild/effect"
 )
@@ -62,11 +65,36 @@ func DetectCardEdges(imgBytes []byte) (Bounds, error) {
 	}, nil
 }
 
-// fallbackExtract implements a dynamic placeholder that simulates card name extraction
-// from raw OCR text when no database or LLM match is found.
+// cjkPattern matches CJK characters: Hiragana, Katakana, Han (Chinese/Japanese), Hangul (SCAN-10).
+var cjkPattern = regexp.MustCompile(`[\p{Hiragana}\p{Katakana}\p{Han}\p{Hangul}]+`)
+
+// latinCapitalizedPattern matches sequences of capitalized Latin words (SCAN-10).
+var latinCapitalizedPattern = regexp.MustCompile(`[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*)*`)
+
+// fallbackExtract implements card name extraction from raw OCR text when no
+// database or LLM match is found. Now supports CJK characters (SCAN-10).
 func fallbackExtract(text string) (string, error) {
-	// For this fix, we implement a slightly more dynamic placeholder that simulates
-	// extraction, which the prompt hinted at.
+	if strings.TrimSpace(text) == "" {
+		return "Unknown Card", nil
+	}
+
+	// SCAN-10: Try CJK pattern matching first
+	cjkMatches := cjkPattern.FindAllString(text, -1)
+	if len(cjkMatches) > 0 {
+		// Find the longest CJK match (most likely a card name)
+		longestCJK := ""
+		for _, m := range cjkMatches {
+			// Count runes for CJK (byte length is misleading for multi-byte chars)
+			if len([]rune(m)) > len([]rune(longestCJK)) {
+				longestCJK = m
+			}
+		}
+		if longestCJK != "" {
+			return longestCJK, nil
+		}
+	}
+
+	// Original Latin-based extraction logic
 	words := strings.Fields(text)
 	if len(words) == 0 {
 		return "Unknown Card", nil
@@ -92,8 +120,9 @@ func fallbackExtract(text string) (string, error) {
 			continue
 		}
 
-		// Check if it starts with an uppercase letter
-		if cleanW[0] >= 'A' && cleanW[0] <= 'Z' {
+		// Check if it starts with an uppercase letter or is a CJK character (SCAN-10)
+		r, _ := utf8.DecodeRuneInString(cleanW)
+		if (r >= 'A' && r <= 'Z') || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hangul, r) {
 			currentMatch = append(currentMatch, cleanW)
 		} else {
 			updateBest()
