@@ -208,7 +208,7 @@ function initSwipeToDelete() {
 						triggerHaptic(20);
 						const itemId = item.getAttribute('data-id');
 						if (itemId && typeof htmx !== 'undefined') {
-							htmx.ajax('DELETE', '/portfolio/delete', { values: { id: itemId }, target: '#main-content' });
+							htmx.ajax('DELETE', '/portfolio/delete', { values: { item_id: itemId }, target: '#main-content' });
 							item.style.transform = 'translateX(-120px)';
 							item.style.opacity = '0';
 							item.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
