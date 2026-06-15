@@ -33,6 +33,9 @@ import (
 	"time"
 )
 
+// Sentinel: dummy hash (cost 14) for mitigating timing attacks against user enumeration.
+const dummyHash = "$2a$14$hSyEywOImbCVtQa71qVGeONic8dL/59MwR5okU9PxpGgxXq1ZXWJ6"
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Register", "method", r.Method, "url", r.URL.String())
 	email := r.FormValue("email")
@@ -167,6 +170,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			// Sentinel Optimization: Execute CheckPasswordHash with dummy hash to prevent timing attack user enumeration
+			auth.CheckPasswordHash(password, dummyHash)
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		}
