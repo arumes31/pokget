@@ -191,6 +191,45 @@
             if (this.dragging === 'top') this.lines.top = Math.max(0, Math.min(y, this.lines.bottom - 5));
             if (this.dragging === 'bottom') this.lines.bottom = Math.max(this.lines.top + 5, Math.min(y, 100));
             this.updateMetrics();
+        },
+        async handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            this.scanning = true;
+            this.scanStep = 2;
+            this.scanStatus = 'Uploading image...';
+            await this.tick();
+            const formData = new FormData();
+            formData.append('card_image', file);
+            formData.append('lang', this.lang);
+            this.scanStep = 3;
+            this.scanStatus = 'Processing image...';
+            await this.tick();
+            try {
+                const res = await fetch('/api/scan', { method: 'POST', headers: { 'X-CSRF-Token': this.csrfToken }, body: formData });
+                if (!res.ok) throw new Error('Server error');
+                this.scanStep = 4;
+                this.scanStatus = 'Matching card...';
+                await this.tick();
+                const data = await res.json();
+                this.scanStep = 5;
+                this.scanStatus = 'Indexing results...';
+                await this.tick();
+                this.result = data.text;
+                this.detectedCard = data.detected;
+                this.detectedID = data.id;
+                this.detectedPrice = data.price;
+                this.detectedImage = data.image_url;
+                this.scanStatus = 'Complete!';
+                if (data.bounds) { this.lines = data.bounds; this.updateMetrics(); }
+            } catch (err) {
+                console.error('Upload scan failed:', err);
+                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Upload scan failed. Try again.', type: 'error' } }));
+            } finally {
+                this.scanning = false;
+                setTimeout(() => { this.scanStatus = ''; this.scanStep = 0; }, 2000);
+            }
+            event.target.value = '';
         }
      }" @mousemove="handleMove($event)" @touchmove="handleMove($event)" @mouseup="dragging = null"
     @touchend="dragging = null" class="space-y-6">
@@ -325,45 +364,8 @@
                 class="flex-1 min-h-[48px] bg-white/5 border border-white/10 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer hover:bg-white/10 transition-all active:scale-95">
                 <span class="material-symbols-outlined text-lg">upload_file</span>
                 <span>UPLOAD PHOTO</span>
-                <input type="file" accept="image/*" capture="environment" class="hidden" @change="async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        scanning = true;
-        scanStep = 2;
-        scanStatus = 'Uploading image...';
-        await tick();
-        const formData = new FormData();
-        formData.append('card_image', file);
-        formData.append('lang', lang);
-        scanStep = 3;
-        scanStatus = 'Processing image...';
-        await tick();
-        try {
-        const res = await fetch('/api/scan', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body: formData });
-        if (!res.ok) throw new Error('Server error');
-        scanStep = 4;
-        scanStatus = 'Matching card...';
-        await tick();
-        const data = await res.json();
-        scanStep = 5;
-        scanStatus = 'Indexing results...';
-        await tick();
-        result = data.text;
-        detectedCard = data.detected;
-        detectedID = data.id;
-        detectedPrice = data.price;
-        detectedImage = data.image_url;
-        scanStatus = 'Complete!';
-        if (data.bounds) { lines = data.bounds; updateMetrics(); }
-        } catch (err) {
-        console.error('Upload scan failed:', err);
-        window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Upload scan failed. Try again.', type: 'error' } }));
-        } finally {
-        scanning = false;
-        setTimeout(() => { scanStatus = ''; scanStep = 0; }, 2000);
-        }
-        e.target.value = '';
-        }">
+                <input type="file" accept="image/*" capture="environment" class="hidden"
+                    @change="handleFileUpload($event)">
             </label>
         </div>
 
@@ -380,7 +382,7 @@
                     <p class="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Match Found</p>
                     <p class="text-sm font-black text-on-surface truncate" x-text="detectedCard"></p>
                     <p class="text-xs font-black text-primary mt-1"
-                        x-text="detectedPrice ? '{{ .CurrencySymbol }}' + parseFloat(detectedPrice).toFixed(2) : '--'">
+                        x-text="!isNaN(parseFloat(detectedPrice)) ? '{{ .CurrencySymbol }}' + parseFloat(detectedPrice).toFixed(2) : '--'">
                     </p>
                 </div>
                 <button @click="addToCollection()" x-show="detectedID" :disabled="adding"

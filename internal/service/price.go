@@ -105,12 +105,46 @@ func parseCardmarketPrice(text string) (float64, error) {
 		// German locale: '.' groups thousands, ',' is the decimal separator.
 		cleaned = strings.ReplaceAll(cleaned, ".", "")
 		cleaned = strings.ReplaceAll(cleaned, ",", ".")
+	} else if isGermanThousandsDot(cleaned) {
+		// German locale without comma: a dot followed by exactly 3 digits
+		// at the end indicates a thousands separator (e.g. "1.234" = 1234).
+		cleaned = strings.ReplaceAll(cleaned, ".", "")
 	}
 
 	if cleaned == "" {
 		return 0, fmt.Errorf("no numeric price found in %q", text)
 	}
 	return strconv.ParseFloat(cleaned, 64)
+}
+
+// isGermanThousandsDot detects whether dots in the cleaned string are
+// thousands separators in German locale (e.g. "1.234" meaning 1234 EUR,
+// not 1.234). A dot is a thousands separator if it is followed by exactly
+// 3 digits and no comma appears after it.
+func isGermanThousandsDot(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '.' {
+			// Check if there are exactly 3 digits after the dot
+			remaining := s[i+1:]
+			if len(remaining) == 3 && isAllDigits(remaining) {
+				return true
+			}
+			// Also match patterns like "1.234.567" where each group is 3 digits
+			if len(remaining) > 3 && isAllDigits(remaining[:3]) && (remaining[3] == '.' || remaining[3] == ',') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isAllDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // Scrape fetches the current price from Cardmarket

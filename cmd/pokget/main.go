@@ -169,7 +169,6 @@ func main() {
 	r := mux.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
 	r.Use(middleware.SecurityHeadersMiddleware)
-	r.Use(middleware.MaxBytesMiddleware) // BUG-L03 FIX: Limit request body size to prevent DoS
 	r.Use(auth.RateLimitMiddleware)
 	r.Use(auth.ProxyMiddleware)
 
@@ -183,10 +182,15 @@ func main() {
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	// API routes (Exempt from CSRF for testing/external use)
-	r.HandleFunc("/api/scan", h.APIScan).Methods("POST")
+	// BUG-L03 FIX: Apply 20MB MaxBytes limit for /api/scan to allow image uploads
+	// while still preventing extremely large payloads.
+	scanRouter := r.PathPrefix("/api").Subrouter()
+	scanRouter.Use(middleware.MaxBytesMiddlewareWithLimit(20 << 20)) // 20 MB for image uploads
+	scanRouter.HandleFunc("/scan", h.APIScan).Methods("POST")
 
-	// Web Routes (Protected by CSRF)
+	// Web Routes (Protected by CSRF + 1MB MaxBytes limit)
 	web := r.NewRoute().Subrouter()
+	web.Use(middleware.MaxBytesMiddleware) // 1MB limit for form submissions
 	web.Use(csrfMiddleware)
 
 	// Public Web Routes

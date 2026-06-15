@@ -266,7 +266,7 @@ func TestBKTreeSearchRadiusCorrectness(t *testing.T) {
 	}
 
 	// Search with various radii and verify all results are within radius
-	query := uint64(42*1234567 + 42) // Exact match for card-0
+	query := uint64(42*1234567 + 42) // Exact match for card-42
 	for _, radius := range []int{0, 3, 5, 10, 20} {
 		results := tree.Search(query, radius)
 		for _, r := range results {

@@ -261,11 +261,14 @@ func TestOCRProcessCardScanWithDifferentLanguages(t *testing.T) {
 	var buf bytes.Buffer
 	_ = png.Encode(&buf, img)
 
+	// Clear cache once before the loop; different languages produce
+	// different cache keys so clearing inside the loop is unnecessary
+	// and can cause race conditions.
+	clearOCRCache()
+
 	languages := []string{"eng", "jpn", "eng+jpn", "chi_sim", "deu+eng", ""}
 	for _, lang := range languages {
 		t.Run("lang_"+lang, func(t *testing.T) {
-			// Clear cache to avoid hits
-			ocrCache.Clear()
 			text, _, _, err := ProcessCardScan(buf.Bytes(), nil, lang, nil)
 			if err != nil {
 				t.Errorf("ProcessCardScan with lang=%q failed: %v", lang, err)
@@ -281,7 +284,7 @@ func TestOCRProcessCardScanWithDifferentLanguages(t *testing.T) {
 // cached results on the second call.
 func TestOCRCacheHitOnSecondScan(t *testing.T) {
 	// Clear cache before test
-	ocrCache.Clear()
+	clearOCRCache()
 
 	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
 	var buf bytes.Buffer
@@ -339,7 +342,7 @@ func TestOCREdgeDetectionWithValidImage(t *testing.T) {
 // TestOCRProcessCardScanCorruptedData verifies that corrupted image data
 // is handled gracefully without panicking.
 func TestOCRProcessCardScanCorruptedData(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	corruptedData := []byte{0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0xFF, 0xFF}
 	_, _, _, err := ProcessCardScan(corruptedData, nil, "eng", nil)
@@ -351,7 +354,7 @@ func TestOCRProcessCardScanCorruptedData(t *testing.T) {
 // TestOCRProcessCardScanEmptyData verifies that empty image data
 // is handled gracefully.
 func TestOCRProcessCardScanEmptyData(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	_, _, _, err := ProcessCardScan([]byte{}, nil, "eng", nil)
 	if err == nil {
@@ -362,7 +365,7 @@ func TestOCRProcessCardScanEmptyData(t *testing.T) {
 // TestOCRConcurrentRequests verifies that concurrent OCR requests
 // don't deadlock using the stub implementation.
 func TestOCRConcurrentRequests(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	img := image.NewRGBA(image.Rect(0, 0, 50, 50))
 	var buf bytes.Buffer

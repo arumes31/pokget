@@ -36,7 +36,9 @@ func TestParseCardmarketPrice(t *testing.T) {
 		{"millions", "1.000.000,00 €", 1000000.0, false},
 		{"no currency symbol", "5,99", 5.99, false},
 		{"leading/trailing space", "  7,50 € ", 7.50, false},
-		{"non-breaking space", "3,20 €", 3.20, false},
+		{"non-breaking space", "3,20 €", 3.20, false},
+		{"german thousands no comma", "1.234 €", 1234.0, false},
+		{"german large thousands no comma", "12.345 €", 12345.0, false},
 		{"invalid text", "invalid", 0, true},
 		{"empty", "", 0, true},
 	}

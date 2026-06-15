@@ -44,3 +44,12 @@ type ocrCacheEntry struct {
 func imageHash(imgBytes []byte) [sha256.Size]byte {
 	return sha256.Sum256(imgBytes)
 }
+
+// clearOCRCache removes all entries from the OCR cache.
+// sync.Map has no Clear method, so we use Range+Delete.
+func clearOCRCache() {
+	ocrCache.Range(func(key, _ interface{}) bool {
+		ocrCache.Delete(key)
+		return true
+	})
+}

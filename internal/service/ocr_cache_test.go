@@ -51,7 +51,7 @@ func TestImageHash(t *testing.T) {
 
 func TestOCRCacheStoreAndLoad(t *testing.T) {
 	// Clear cache before test
-	ocrCache.Clear()
+	clearOCRCache()
 
 	// Store a result
 	h := imageHash([]byte("test"))
@@ -77,7 +77,7 @@ func TestOCRCacheStoreAndLoad(t *testing.T) {
 }
 
 func TestOCRCacheMiss(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	_, ok := ocrCache.Load("nonexistent-key")
 	if ok {
@@ -86,7 +86,7 @@ func TestOCRCacheMiss(t *testing.T) {
 }
 
 func TestOCRCacheOverwrite(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	h := imageHash([]byte("overwrite-test"))
 	key := string(h[:]) + "eng"
@@ -118,7 +118,7 @@ func TestOCRCacheOverwrite(t *testing.T) {
 }
 
 func TestOCRCacheDifferentLanguages(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	imgData := []byte("same-image-data")
 	hash := imageHash(imgData)

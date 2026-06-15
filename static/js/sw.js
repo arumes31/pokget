@@ -41,9 +41,11 @@ self.addEventListener('fetch', (event) => {
       caches.open(CACHE_NAME).then((cache) => {
         return cache.match(event.request).then((cachedResponse) => {
           const fetchPromise = fetch(event.request).then((networkResponse) => {
-            cache.put(event.request, networkResponse.clone());
+            if (networkResponse.ok) {
+              cache.put(event.request, networkResponse.clone());
+            }
             return networkResponse;
-          }).catch(() => cachedResponse);
+          }).catch(() => cachedResponse || new Response('Offline', { status: 503 }));
 
           return cachedResponse || fetchPromise;
         });
@@ -56,14 +58,18 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        const resClone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, resClone);
-        });
+        if (response.ok) {
+          const resClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, resClone);
+          });
+        }
         return response;
       })
       .catch(() => caches.match(event.request).then((cached) => {
-        return cached || (event.request.mode === 'navigate' ? caches.match('/dashboard') : undefined);
+        if (cached) return cached;
+        if (event.request.mode === 'navigate') return caches.match('/dashboard');
+        return new Response('Offline', { status: 503 });
       }))
   );
 });

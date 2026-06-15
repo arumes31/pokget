@@ -66,12 +66,12 @@ func (m *DetectionMetrics) Format() string {
 
 // ConfidenceScore represents a 0-100 confidence score from a detection method (SCAN-09).
 type ConfidenceScore struct {
-	Method     string // "fingerprint", "ocr", "llm"
-	Score      float64
-	CardName   string
-	CardID     string
-	Distance   int    // For fingerprint: Hamming distance
-	RawText    string // For OCR: the matched text
+	Method   string // "fingerprint", "ocr", "llm"
+	Score    float64
+	CardName string
+	CardID   string
+	Distance int    // For fingerprint: Hamming distance
+	RawText  string // For OCR: the matched text
 }
 
 // CardMatch represents a ranked match result with combined confidence (SCAN-09).
@@ -86,9 +86,9 @@ type CardMatch struct {
 
 // DetectionResult is the output of the full detection pipeline (SCAN-07, SCAN-09, SCAN-16).
 type DetectionResult struct {
-	TopMatches  []CardMatch
-	Metrics     DetectionMetrics
-	OCRText     string
+	TopMatches     []CardMatch
+	Metrics        DetectionMetrics
+	OCRText        string
 	ProcessedImage []byte
 }
 
@@ -280,8 +280,8 @@ func (p *DetectionPipeline) Detect(imgBytes []byte, cards []models.Card, lang st
 				score := ocrScoreFromLevenshtein(ocrText, c.Name)
 				cm := getOrCreateMatch(candidateMap, &c)
 				cm.OCRScore = &ConfidenceScore{
-					Method:  "ocr",
-					Score:   score,
+					Method:   "ocr",
+					Score:    score,
 					CardName: c.Name,
 					CardID:   c.ID,
 					RawText:  ocrText,
@@ -294,6 +294,12 @@ func (p *DetectionPipeline) Detect(imgBytes []byte, cards []models.Card, lang st
 	// --- Stage 4: LLM verification for low-confidence or potential matches (SCAN-08) ---
 	var llmDuration time.Duration
 	if p.LLM != nil && len(candidateMap) > 0 {
+		// Compute combined confidence scores before checking so hasHighConf
+		// evaluates already-computed values, not zero defaults.
+		for _, cm := range candidateMap {
+			cm.Confidence = combineScores(cm.FingerprintScore, cm.OCRScore, cm.LLMScore)
+		}
+
 		// Only run LLM if no high-confidence match found
 		hasHighConf := false
 		for _, cm := range candidateMap {
@@ -329,7 +335,7 @@ func (p *DetectionPipeline) Detect(imgBytes []byte, cards []models.Card, lang st
 		}
 	}
 
-	// Compute combined confidence scores (SCAN-09)
+	// Compute (or recompute) combined confidence scores (SCAN-09)
 	for _, cm := range candidateMap {
 		cm.Confidence = combineScores(cm.FingerprintScore, cm.OCRScore, cm.LLMScore)
 		cm.NeedsReview = cm.Confidence < 70 // SCAN-09: Flag low-confidence results

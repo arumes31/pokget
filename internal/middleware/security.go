@@ -49,8 +49,17 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 const MaxBodyBytes int64 = 1 << 20 // 1 MB
 
 func MaxBytesMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
-		next.ServeHTTP(w, r)
-	})
+	return MaxBytesMiddlewareWithLimit(MaxBodyBytes)(next)
+}
+
+// MaxBytesMiddlewareWithLimit returns a middleware that limits request body size
+// to the specified number of bytes. Use this for routes that need a different
+// limit than the default 1MB (e.g. image upload endpoints).
+func MaxBytesMiddlewareWithLimit(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			next.ServeHTTP(w, r)
+		})
+	}
 }

@@ -22,6 +22,9 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"pokget/internal/models"
 	"strings"
 	"testing"
@@ -221,25 +224,48 @@ func TestFuzzyMatchCardWithValidationJSONExtraction(t *testing.T) {
 }
 
 func TestLLMCardResponseConfidenceClamping(t *testing.T) {
-	// Test that the validation logic in FuzzyMatchCardWithValidation clamps
-	// out-of-range confidence values. Raw JSON unmarshal does NOT clamp —
-	// the validation step does (see llm.go lines 281-286).
+	// Test that FuzzyMatchCardWithValidation clamps out-of-range confidence
+	// values returned by the LLM, rather than manually replicating the clamping
+	// logic here. Uses a test HTTP server that returns JSON with invalid
+	// confidence values.
 
-	// Test negative confidence: validation should clamp to 0
-	resp := &LLMCardResponse{CardName: "Test", Confidence: -0.5}
-	if resp.Confidence < 0 {
-		resp.Confidence = 0 // mirrors the clamping in FuzzyMatchCardWithValidation
-	}
-	if resp.Confidence != 0 {
-		t.Errorf("Expected clamped confidence 0, got %f", resp.Confidence)
+	knownCards := []models.Card{
+		{ID: "test-1", Name: "Pikachu"},
 	}
 
-	// Test confidence > 1: validation should clamp to 1
-	resp = &LLMCardResponse{CardName: "Test", Confidence: 1.5}
-	if resp.Confidence > 1 {
-		resp.Confidence = 1 // mirrors the clamping in FuzzyMatchCardWithValidation
+	tests := []struct {
+		name          string
+		llmConfidence float64
+		wantClamped   float64
+	}{
+		{"negative confidence clamped to 0", -0.5, 0},
+		{"confidence > 1 clamped to 1", 1.5, 1},
 	}
-	if resp.Confidence != 1 {
-		t.Errorf("Expected clamped confidence 1, got %f", resp.Confidence)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up a test HTTP server that returns an LLM response with
+			// the specified out-of-range confidence value.
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				llmJSON := fmt.Sprintf(`{"card_name": "Pikachu", "confidence": %f}`, tt.llmConfidence)
+				resp := map[string]string{"response": llmJSON}
+				json.NewEncoder(w).Encode(resp)
+			}))
+			defer srv.Close()
+
+			svc := &LLMService{
+				BaseURL:    srv.URL,
+				Model:      "test-model",
+				HTTPClient: srv.Client(),
+			}
+
+			result, err := svc.FuzzyMatchCardWithValidation("Pikachu", knownCards)
+			if err != nil {
+				t.Fatalf("FuzzyMatchCardWithValidation returned error: %v", err)
+			}
+			if result.Confidence != tt.wantClamped {
+				t.Errorf("Expected clamped confidence %f, got %f", tt.wantClamped, result.Confidence)
+			}
+		})
 	}
 }

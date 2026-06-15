@@ -118,7 +118,8 @@ func (s *ImageCacheService) GetImagePath(cardID string, remoteURL string) (strin
 
 	// Download for free from remote source
 	slog.Info("ImageCache: Downloading card image", "id", cardID, "url", remoteURL)
-	resp, err := http.Get(remoteURL) // #nosec G107 - internal service downloading card assets
+	imageClient := &http.Client{Timeout: 30 * time.Second}
+	resp, err := imageClient.Get(remoteURL) // #nosec G107 - internal service downloading card assets
 	if err != nil {
 		return "", err
 	}

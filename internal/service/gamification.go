@@ -70,7 +70,9 @@ func (s *GamificationService) AddXP(userID string, amount int) (int, string, err
 	actualRank := s.GetUserRank(newXP)
 	if actualRank.Title != newRank {
 		// Rank changed, update it
-		_, _ = s.DB.Exec("UPDATE users SET rank_title = $1 WHERE id = $2", actualRank.Title, userID)
+		if _, err := s.DB.Exec("UPDATE users SET rank_title = $1 WHERE id = $2", actualRank.Title, userID); err != nil {
+			slog.Error("failed to update rank_title", "error", err, "user_id", userID)
+		}
 		newRank = actualRank.Title
 	}
 

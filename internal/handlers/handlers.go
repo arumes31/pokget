@@ -341,6 +341,10 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid custom price", http.StatusBadRequest)
 			return
 		}
+		if val < 0 {
+			http.Error(w, "Custom price must be non-negative", http.StatusBadRequest)
+			return
+		}
 		customPrice = &val
 	}
 	binderID := r.FormValue("binder_id")

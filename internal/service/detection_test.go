@@ -728,7 +728,7 @@ func TestOCRScoreCJK(t *testing.T) {
 // TestFullPipelineEnglishCard verifies the full detection pipeline with
 // an English card image (using stub OCR).
 func TestFullPipelineEnglishCard(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	pipeline := NewDetectionPipeline(fp, nil)
@@ -769,7 +769,7 @@ func TestFullPipelineEnglishCard(t *testing.T) {
 // TestFullPipelineJapaneseCard verifies the full detection pipeline with
 // a Japanese card image (using stub OCR with CJK language).
 func TestFullPipelineJapaneseCard(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	pipeline := NewDetectionPipeline(fp, nil)
@@ -799,7 +799,7 @@ func TestFullPipelineJapaneseCard(t *testing.T) {
 // TestFullPipelineNoMatch verifies that an unknown image results in
 // low confidence and is flagged for review.
 func TestFullPipelineNoMatch(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	pipeline := NewDetectionPipeline(fp, nil)
@@ -826,7 +826,7 @@ func TestFullPipelineNoMatch(t *testing.T) {
 // TestPipelineParallelExecution verifies that fingerprint and OCR run
 // concurrently (both stages should have non-zero durations).
 func TestPipelineParallelExecution(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	pipeline := NewDetectionPipeline(fp, nil)
@@ -855,7 +855,7 @@ func TestPipelineParallelExecution(t *testing.T) {
 // TestPipelineMetricsCollection verifies that timing metrics are recorded
 // for each stage of the pipeline.
 func TestPipelineMetricsCollection(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	pipeline := NewDetectionPipeline(fp, nil)
@@ -892,7 +892,7 @@ func TestPipelineMetricsCollection(t *testing.T) {
 // TestPipelineOCRCacheHitOnSecondScan verifies that scanning the same image
 // twice results in a cache hit on the second scan.
 func TestPipelineOCRCacheHitOnSecondScan(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	pipeline := NewDetectionPipeline(fp, nil)
@@ -923,7 +923,7 @@ func TestPipelineOCRCacheHitOnSecondScan(t *testing.T) {
 // TestPipelineWithFingerprintMatch verifies the pipeline when a fingerprint
 // match is found in the BK-tree.
 func TestPipelineWithFingerprintMatch(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	// Add a fingerprint to the BK-tree
@@ -957,7 +957,7 @@ func TestPipelineWithFingerprintMatch(t *testing.T) {
 // TestPipelineConcurrentDetectionRequests verifies that 10 simultaneous
 // detection requests don't deadlock or corrupt state.
 func TestPipelineConcurrentDetectionRequests(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	pipeline := NewDetectionPipeline(fp, nil)
@@ -1019,7 +1019,7 @@ func TestPipelineConcurrentDetectionRequests(t *testing.T) {
 // TestPipelineCorruptedImageData verifies that corrupted image data
 // is handled gracefully by the pipeline.
 func TestPipelineCorruptedImageData(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	pipeline := NewDetectionPipeline(fp, nil)
@@ -1049,7 +1049,7 @@ func TestPipelineCorruptedImageData(t *testing.T) {
 // TestPipelineEmptyImageData verifies that empty image data
 // is handled gracefully by the pipeline.
 func TestPipelineEmptyImageData(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	pipeline := NewDetectionPipeline(fp, nil)
@@ -1065,7 +1065,7 @@ func TestPipelineEmptyImageData(t *testing.T) {
 // TestPipelineVerySmallImage verifies that a very small image (50x50)
 // is processed without errors.
 func TestPipelineVerySmallImage(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	pipeline := NewDetectionPipeline(fp, nil)
@@ -1086,7 +1086,7 @@ func TestPipelineVerySmallImage(t *testing.T) {
 // TestPipelineLargeImage verifies that a large image (10MP+) is processed
 // without OOM or panics.
 func TestPipelineLargeImage(t *testing.T) {
-	ocrCache.Clear()
+	clearOCRCache()
 
 	fp := NewFingerprintService(nil)
 	pipeline := NewDetectionPipeline(fp, nil)

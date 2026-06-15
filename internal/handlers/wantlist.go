@@ -91,6 +91,10 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid target price", http.StatusBadRequest)
 			return
 		}
+		if val < 0 {
+			http.Error(w, "Invalid target price", http.StatusBadRequest)
+			return
+		}
 		targetPrice = &val
 	}
 
