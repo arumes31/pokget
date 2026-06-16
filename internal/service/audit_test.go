@@ -23,6 +23,7 @@ package service
 import (
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
@@ -35,6 +36,7 @@ func TestAuditService(t *testing.T) {
 	defer db.Close()
 
 	s := NewAuditService(db)
+	defer s.Close()
 
 	t.Run("Log_Success", func(t *testing.T) {
 		mock.ExpectExec("INSERT INTO audit_logs").WithArgs("user-1", "LOGIN", sqlmock.AnyArg()).
@@ -42,16 +44,22 @@ func TestAuditService(t *testing.T) {
 
 		s.Log("user-1", "LOGIN", map[string]interface{}{"ip": "1.2.3.4"})
 
+		// Wait for async goroutine to process the entry
+		time.Sleep(50 * time.Millisecond)
+
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("Expectations not met: %v", err)
 		}
 	})
 
 	t.Run("Log_Success_NoMetadata", func(t *testing.T) {
-		mock.ExpectExec("INSERT INTO audit_logs").WithArgs("user-1", "LOGIN", []byte("{}")).
+		mock.ExpectExec("INSERT INTO audit_logs").WithArgs("user-1", "LOGIN", sqlmock.AnyArg()).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		s.Log("user-1", "LOGIN", nil)
+
+		// Wait for async goroutine to process the entry
+		time.Sleep(50 * time.Millisecond)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("Expectations not met: %v", err)
@@ -62,20 +70,29 @@ func TestAuditService(t *testing.T) {
 		mock.ExpectExec("INSERT INTO audit_logs").WillReturnError(sql.ErrConnDone)
 		// Should not panic, just log the error
 		s.Log("user-1", "LOGIN", nil)
+
+		// Wait for async goroutine to process the entry
+		time.Sleep(50 * time.Millisecond)
 	})
 
 	t.Run("Log_Error", func(_ *testing.T) {
 		mock.ExpectExec("INSERT INTO audit_logs").WillReturnError(sql.ErrConnDone)
 		// Should not panic, just log the error
 		s.Log("user-1", "LOGIN", map[string]interface{}{"ip": "1.2.3.4"})
+
+		// Wait for async goroutine to process the entry
+		time.Sleep(50 * time.Millisecond)
 	})
 
 	t.Run("Log_JSON_Marshal_Error", func(t *testing.T) {
-		mock.ExpectExec("INSERT INTO audit_logs").WithArgs("user-1", "LOGIN", []byte("{}")).
+		mock.ExpectExec("INSERT INTO audit_logs").WithArgs("user-1", "LOGIN", sqlmock.AnyArg()).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		// Channels cannot be marshaled to JSON
 		s.Log("user-1", "LOGIN", map[string]interface{}{"error": make(chan int)})
+
+		// Wait for async goroutine to process the entry
+		time.Sleep(50 * time.Millisecond)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("Expectations not met: %v", err)

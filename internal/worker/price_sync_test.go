@@ -43,8 +43,10 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(card.ID, card.Name, card.Set, decimal.NewFromFloat(0), decimal.NewFromFloat(0))
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+		mock.ExpectBegin()
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
 		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
@@ -113,8 +115,9 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero)
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+		mock.ExpectBegin()
 		mock.ExpectExec("UPDATE cards").WillReturnError(errors.New("upd error"))
-		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectRollback()
 
 		client := &service.MockPriceClient{FixedUSD: 1.0, FixedEUR: 1.0}
 		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
@@ -133,8 +136,10 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero)
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+		mock.ExpectBegin()
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnError(errors.New("hist error"))
+		mock.ExpectRollback()
 
 		client := &service.MockPriceClient{FixedUSD: 1.0, FixedEUR: 1.0}
 		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
@@ -174,8 +179,10 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero)
 
 		mock.ExpectQuery("SELECT id, name").WillReturnRows(rows)
+		mock.ExpectBegin()
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
 
 		// Alert trigger
 		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price"}).

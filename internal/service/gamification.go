@@ -46,11 +46,15 @@ var Ranks = []Rank{
 }
 
 type GamificationService struct {
-	DB *sql.DB
+	DB       *sql.DB
+	badgeSem chan struct{}
 }
 
 func NewGamificationService(db *sql.DB) *GamificationService {
-	return &GamificationService{DB: db}
+	return &GamificationService{
+		DB:       db,
+		badgeSem: make(chan struct{}, 5), // max 5 concurrent badge checks
+	}
 }
 
 func (s *GamificationService) AddXP(userID string, amount int) (int, string, error) {
@@ -76,8 +80,16 @@ func (s *GamificationService) AddXP(userID string, amount int) (int, string, err
 		newRank = actualRank.Title
 	}
 
-	// Asynchronously check for badges to not block the main flow
-	go s.CheckForBadges(userID)
+	// Asynchronously check for badges with semaphore to limit concurrency
+	select {
+	case s.badgeSem <- struct{}{}:
+		go func() {
+			defer func() { <-s.badgeSem }()
+			s.CheckForBadges(userID)
+		}()
+	default:
+		slog.Warn("Badge check skipped: too many concurrent checks", "user_id", userID)
+	}
 
 	return newXP, newRank, nil
 }
@@ -85,18 +97,24 @@ func (s *GamificationService) AddXP(userID string, amount int) (int, string, err
 func (s *GamificationService) CheckForBadges(userID string) {
 	// 1. Check for "First Pull" badge
 	var count int
-	_ = s.DB.QueryRow("SELECT COUNT(*) FROM portfolio WHERE user_id = $1", userID).Scan(&count)
+	if err := s.DB.QueryRow("SELECT COUNT(*) FROM portfolio WHERE user_id = $1", userID).Scan(&count); err != nil {
+		slog.Warn("Failed to check portfolio count for badges", "user_id", userID, "error", err)
+		return
+	}
 	if count >= 1 {
 		s.AwardBadge(userID, "First Pull")
 	}
 
 	// 2. Check for "High Roller" badge
 	var totalValue float64
-	_ = s.DB.QueryRow(`
-		SELECT SUM(COALESCE(p.custom_price, c.price_usd)) 
-		FROM portfolio p 
-		JOIN cards c ON p.card_id = c.id 
-		WHERE p.user_id = $1`, userID).Scan(&totalValue)
+	if err := s.DB.QueryRow(`
+		SELECT SUM(COALESCE(p.custom_price, c.price_usd))
+		FROM portfolio p
+		JOIN cards c ON p.card_id = c.id
+		WHERE p.user_id = $1`, userID).Scan(&totalValue); err != nil {
+		slog.Warn("Failed to check portfolio value for badges", "user_id", userID, "error", err)
+		return
+	}
 
 	if totalValue >= 10000 {
 		s.AwardBadge(userID, "High Roller")

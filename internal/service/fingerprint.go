@@ -217,6 +217,7 @@ func hammingDistance(a, b uint64) int {
 type FingerprintService struct {
 	db             *sql.DB
 	tree           *BKTree
+	mu             sync.RWMutex
 	PhashHighConf  int // Strict threshold for high-confidence matches (SCAN-02)
 	PhashPotential int // Relaxed threshold for potential matches (SCAN-02)
 }
@@ -253,6 +254,7 @@ func (s *FingerprintService) loadFingerprintsFromDB() {
 		var c models.Card
 		var phash sql.NullInt64
 		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &phash, &c.Game); err != nil {
+			slog.Warn("Failed to scan fingerprint row, skipping", "error", err)
 			continue
 		}
 		if phash.Valid {
@@ -272,6 +274,8 @@ func (s *FingerprintService) AddFingerprint(hash uint64, card *models.Card) {
 
 // RebuildTree reloads all fingerprints from the database and rebuilds the BK-tree.
 func (s *FingerprintService) RebuildTree() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.tree = NewBKTree()
 	if s.db != nil {
 		s.loadFingerprintsFromDB()
@@ -338,6 +342,9 @@ type MatchResult struct {
 // SearchByHash uses the BK-tree for efficient search (SCAN-01).
 // Returns a two-tier result: high-confidence matches and potential matches (SCAN-02).
 func (s *FingerprintService) SearchByHash(hashVal int64) *MatchResult {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	query := uint64(hashVal) // #nosec G115
 
 	// SCAN-14: Check for exact match first (instant return)
@@ -376,6 +383,9 @@ func (s *FingerprintService) SearchByHash(hashVal int64) *MatchResult {
 // SearchByHashWithCards uses linear scan when BK-tree is empty, falling back
 // to the provided card list (SCAN-01 fallback).
 func (s *FingerprintService) SearchByHashWithCards(hashVal int64, cards []models.Card) *MatchResult {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	// Try BK-tree first
 	if s.tree.count > 0 {
 		return s.SearchByHash(hashVal)

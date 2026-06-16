@@ -35,12 +35,12 @@ type Config struct {
 		WriteTimeout  int    `env:"WRITE_TIMEOUT" env-default:"120"`   // BUG-C05: Configurable write timeout in seconds
 	} `yaml:"app"`
 	DB struct {
-		Host          string `env:"DB_HOST" env-required:"true"`
-		Port          string `env:"DB_PORT" env-required:"true"`
-		User          string `env:"DB_USER" env-required:"true"`
-		Password      string `env:"DB_PASSWORD" env-required:"true"`
-		Name          string `env:"DB_NAME" env-required:"true"`
-		SSLMode       string `env:"DB_SSLMODE" env-default:"disable"`
+		Host           string `env:"DB_HOST" env-required:"true"`
+		Port           string `env:"DB_PORT" env-required:"true"`
+		User           string `env:"DB_USER" env-required:"true"`
+		Password       string `env:"DB_PASSWORD" env-required:"true"`
+		Name           string `env:"DB_NAME" env-required:"true"`
+		SSLMode        string `env:"DB_SSLMODE" env-default:"prefer"`
 		MigrationsPath string `env:"MIGRATIONS_PATH" env-default:"migrations"`
 	} `yaml:"db"`
 	Redis struct {

@@ -74,7 +74,7 @@ func Connect() (*sql.DB, error) {
 	}
 
 	if sslmode == "" {
-		sslmode = "disable"
+		sslmode = "prefer"
 	}
 
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",

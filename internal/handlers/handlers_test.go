@@ -137,6 +137,10 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
+		// 0. Fetch currency from user settings
+		mock.ExpectQuery("SELECT currency").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"currency"}).AddRow("EUR"))
+
 		// 1. Fetch Set Completion
 		rowsSet := sqlmock.NewRows([]string{"set_name", "owned_cards", "total_cards"}).
 			AddRow("151", 10, 165)
@@ -233,16 +237,14 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		// User exists but is NOT verified
+		// User exists but is NOT verified — handler redirects to login
 		mock.ExpectQuery("SELECT is_verified").WillReturnRows(sqlmock.NewRows([]string{"is_verified"}).AddRow(false))
-		mock.ExpectExec("UPDATE users").WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.Mailer = &service.MockMailer{}
 		h.Register(rr, req)
 
-		if rr.Code != http.StatusCreated {
-			t.Errorf("Expected status 201, got %d", rr.Code)
+		if rr.Code != http.StatusSeeOther {
+			t.Errorf("Expected status 303, got %d", rr.Code)
 		}
 	})
 
@@ -306,12 +308,13 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
+		// User exists and IS verified — handler redirects to login to avoid email enumeration
 		mock.ExpectQuery("SELECT is_verified").WillReturnRows(sqlmock.NewRows([]string{"is_verified"}).AddRow(true))
 
 		h.Register(rr, req)
 
-		if rr.Code != http.StatusConflict {
-			t.Errorf("Expected status 409, got %d", rr.Code)
+		if rr.Code != http.StatusSeeOther {
+			t.Errorf("Expected status 303, got %d", rr.Code)
 		}
 	})
 
@@ -500,6 +503,7 @@ func TestHandlers(t *testing.T) {
 
 		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass&remember=on"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
 		rr := httptest.NewRecorder()
 
 		passHash, _ := auth.HashPassword("pass")
@@ -1189,6 +1193,7 @@ func TestHandlers(t *testing.T) {
 
 				req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass&remember=on"))
 				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				req.Header.Set("HX-Request", "true")
 				rr := httptest.NewRecorder()
 
 				passHash, _ := auth.HashPassword("pass")

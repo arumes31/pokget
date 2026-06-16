@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"pokget/internal/models"
+	"sort"
 	"strings"
 	"time"
 )
@@ -103,7 +104,7 @@ func (s *LLMService) AutoSetup() {
 	// 2. Pull model if not exists
 	slog.Info("LLM: Model not found, pulling...", "model", s.Model)
 	payload := map[string]interface{}{
-		"model": s.Model,
+		"model":  s.Model,
 		"stream": false,
 	}
 	jsonData, _ := json.Marshal(payload)
@@ -171,6 +172,36 @@ type LLMCardResponse struct {
 	Confidence float64 `json:"confidence"`
 }
 
+// sanitizeOCRText removes potential prompt injection patterns from OCR text
+func sanitizeOCRText(text string) string {
+	// Limit length to prevent excessively long prompts
+	if len(text) > 500 {
+		text = text[:500]
+	}
+	// Remove common prompt-breaking patterns
+	replacements := []struct{ old, new string }{
+		{"Ignore", ""},
+		{"ignore", ""},
+		{"IGNORE", ""},
+		{"Disregard", ""},
+		{"disregard", ""},
+		{"DISREGARD", ""},
+		{"System:", ""},
+		{"system:", ""},
+		{"Assistant:", ""},
+		{"assistant:", ""},
+		{"<|", ""},
+		{"|>", ""},
+	}
+	for _, r := range replacements {
+		text = strings.ReplaceAll(text, r.old, r.new)
+	}
+	// Remove newlines that could break the prompt structure
+	text = strings.ReplaceAll(text, "\n", " ")
+	text = strings.ReplaceAll(text, "\r", " ")
+	return strings.TrimSpace(text)
+}
+
 // FuzzyMatchCard sends OCR text to the LLM for fuzzy matching against known cards.
 // SCAN-08: Only sends a shortlist of candidate cards instead of all 15K+ names.
 func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (string, error) {
@@ -198,10 +229,11 @@ func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (s
 		cardListStr = strings.Join(fallbackNames, ", ")
 	}
 
+	sanitizedOCR := sanitizeOCRText(ocrText)
 	prompt := fmt.Sprintf(`The following text was extracted from a trading card using OCR and might have typos: "%s".
 Which of these card names is the most likely match?
 Known cards: %s.
-Respond ONLY with the card name. If no match is found, respond with "Unknown Card".`, ocrText, cardListStr)
+Respond ONLY with the card name. If no match is found, respond with "Unknown Card".`, sanitizedOCR, cardListStr)
 
 	response, err := s.queryLLM(prompt)
 	if err != nil {
@@ -243,11 +275,12 @@ func (s *LLMService) FuzzyMatchCardWithValidation(ocrText string, knownCards []m
 		cardNames = append(cardNames, c.Name)
 	}
 
+	sanitizedOCR := sanitizeOCRText(ocrText)
 	prompt := fmt.Sprintf(`The following text was extracted from a trading card using OCR and might have typos: "%s".
 Which of these card names is the most likely match?
 Known cards: %s.
 Respond in JSON format: {"card_name": "the card name", "confidence": 0.9}
-If no match is found, respond with: {"card_name": "Unknown Card", "confidence": 0.0}`, ocrText, strings.Join(cardNames, ", "))
+If no match is found, respond with: {"card_name": "Unknown Card", "confidence": 0.0}`, sanitizedOCR, strings.Join(cardNames, ", "))
 
 	response, err := s.queryLLM(prompt)
 	if err != nil {
@@ -371,13 +404,9 @@ func buildShortlist(ocrText string, cards []models.Card, maxCandidates int) []mo
 	}
 
 	// Sort by score (ascending = best matches first)
-	for i := 0; i < len(scored); i++ {
-		for j := i + 1; j < len(scored); j++ {
-			if scored[j].score < scored[i].score {
-				scored[i], scored[j] = scored[j], scored[i]
-			}
-		}
-	}
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score < scored[j].score
+	})
 
 	// Return top maxCandidates
 	limit := maxCandidates

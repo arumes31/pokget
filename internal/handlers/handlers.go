@@ -67,6 +67,7 @@ type Handler struct {
 	Crypto        *service.CryptoService
 	Game          *service.GamificationService
 	LLM           *service.LLMService
+	PriceClient   *service.ScraperPriceClient
 	DB            *sql.DB
 	BuildVersion  string
 	SecureCookies bool // BUG-C03: Configurable Secure flag for session cookies
@@ -92,7 +93,9 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 		var xp int
 		var rankTitle string
 		var currency string
-		_ = h.DB.QueryRow("SELECT xp, rank_title, currency FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle, &currency)
+		if err := h.DB.QueryRow("SELECT xp, rank_title, currency FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle, &currency); err != nil {
+			slog.Warn("Failed to fetch user gamification data for render", "user_id", userID, "error", err)
+		}
 
 		if currency == "" {
 			currency = "EUR"
@@ -147,7 +150,9 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			var p models.PortfolioItem
-			if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err == nil {
+			if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
+				slog.Warn("Failed to scan row in dashboard query", "error", err)
+			} else {
 				portfolio = append(portfolio, p)
 			}
 		}
@@ -205,7 +210,9 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			var s SetProgress
-			if err := rows.Scan(&s.Name, &s.OwnedCards, &s.TotalCards); err == nil {
+			if err := rows.Scan(&s.Name, &s.OwnedCards, &s.TotalCards); err != nil {
+				slog.Warn("Failed to scan row in dashboard query", "error", err)
+			} else {
 				if s.TotalCards > 0 {
 					s.Percent = (s.OwnedCards * 100) / s.TotalCards
 				}
@@ -223,20 +230,25 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch Portfolio with multipliers
-	rowsPortfolio, _ := h.DB.Query(`
+	rowsPortfolio, err := h.DB.Query(`
 		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.price_eur, c.game
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1`, userID)
+	if err != nil {
+		slog.Error("Failed to query portfolio for dashboard", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	portfolio := make([]models.PortfolioItem, 0, 64) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
-	if rowsPortfolio != nil {
-		defer rowsPortfolio.Close()
-		for rowsPortfolio.Next() {
-			var p models.PortfolioItem
-			if err := rowsPortfolio.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err == nil {
-				portfolio = append(portfolio, p)
-			}
+	defer rowsPortfolio.Close()
+	for rowsPortfolio.Next() {
+		var p models.PortfolioItem
+		if err := rowsPortfolio.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
+			slog.Warn("Failed to scan row in dashboard query", "error", err)
+		} else {
+			portfolio = append(portfolio, p)
 		}
 	}
 
@@ -246,13 +258,15 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	var multStr string
 	var userCurrency string
 	_ = h.DB.QueryRow("SELECT condition_multipliers, currency FROM users WHERE id = $1", userID).Scan(&multStr, &userCurrency)
-	_ = json.Unmarshal([]byte(multStr), &multipliers)
+	if err := json.Unmarshal([]byte(multStr), &multipliers); err != nil {
+		slog.Warn("Failed to parse condition multipliers, using defaults", "error", err)
+	}
 
 	if userCurrency == "" {
 		userCurrency = "EUR"
 	}
 
-	priceService := &service.ScraperPriceClient{}
+	priceService := h.PriceClient
 	for _, item := range portfolio {
 		if item.CustomPrice != nil {
 			totalValuation += *item.CustomPrice
@@ -592,12 +606,14 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 	cards := make([]models.Card, 0, 32) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
 	for rows.Next() {
 		var c models.Card
-		if err := rows.Scan(&c.Name); err == nil {
+		if err := rows.Scan(&c.Name); err != nil {
+			slog.Warn("Failed to scan row in dashboard query", "error", err)
+		} else {
 			cards = append(cards, c)
 		}
 	}
 
-	llm := service.NewLLMService()
+	llm := h.LLM
 	newName, err := llm.GenerateBinderName(cards)
 	if err != nil {
 		slog.Error("LLM: Failed to generate binder name", "error", err)
@@ -653,7 +669,9 @@ func (h *Handler) Binders(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var b Binder
 			var createdAt string
-			if err := rows.Scan(&b.ID, &b.Name, &b.Description, &createdAt, &b.CardCount); err == nil {
+			if err := rows.Scan(&b.ID, &b.Name, &b.Description, &createdAt, &b.CardCount); err != nil {
+				slog.Warn("Failed to scan row in dashboard query", "error", err)
+			} else {
 				b.UpdatedAt = createdAt // Simple assignment for now
 				binders = append(binders, b)
 			}
@@ -726,7 +744,9 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			var p models.PortfolioItem
-			if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err == nil {
+			if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
+				slog.Warn("Failed to scan row in dashboard query", "error", err)
+			} else {
 				cards = append(cards, p)
 			}
 		}
@@ -748,7 +768,8 @@ func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 
 	count, err := h.reloadCards()
 	if err != nil {
-		http.Error(w, "Failed to refresh cache: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Failed to refresh cache", "error", err)
+		http.Error(w, "Failed to refresh cache", http.StatusInternalServerError)
 		return
 	}
 

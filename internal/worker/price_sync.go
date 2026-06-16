@@ -160,16 +160,17 @@ func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
 			break
 		}
 
-		var exists bool
-		err := w.db.QueryRow("SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1)", c.ID).Scan(&exists)
+		// Use INSERT...ON CONFLICT DO NOTHING to eliminate N+1 SELECT EXISTS pattern
+		_, err := w.db.Exec(`
+			INSERT INTO cards (id, name, set_name, image_url, game, price_usd, price_eur)
+			VALUES ($1, $2, $3, $4, $5, 0, 0)
+			ON CONFLICT (id) DO NOTHING`,
+			c.ID, c.Name, c.Set, c.ImageURL, c.Game)
 		if err != nil {
-			continue
-		}
-		if exists {
-			continue
+			slog.Warn("Failed to upsert card", "card_id", c.ID, "error", err)
 		}
 
-		// New card found! Process and insert
+		// New card found! Process and insert fingerprint
 		func() {
 			limiter := time.NewTicker(500 * time.Millisecond)
 			defer limiter.Stop()
@@ -182,12 +183,11 @@ func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
 			}
 
 			_, err = w.db.Exec(`
-				INSERT INTO cards (id, name, game, language, image_url, phash, price_usd, price_eur)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-				processed.ID, processed.Name, processed.Game, processed.Language, processed.ImageURL, processed.Phash, 0, 0)
+				UPDATE cards SET phash = $1, image_url = $2 WHERE id = $3 AND phash IS NULL`,
+				processed.Phash, processed.ImageURL, processed.ID)
 
 			if err != nil {
-				slog.Error("Sync: Failed to insert card", "id", c.ID, "error", err)
+				slog.Error("Sync: Failed to update card fingerprint", "id", c.ID, "error", err)
 			} else {
 				slog.Info("Sync: Added new card with fingerprint", "id", c.ID, "name", c.Name)
 			}
@@ -225,20 +225,30 @@ func (w *DataSyncWorker) syncPrices() {
 			continue
 		}
 
-		// 1. Update Card Price in DB
-		_, err = w.db.Exec("UPDATE cards SET price_usd = $1, price_eur = $2, last_updated = NOW() WHERE id = $3",
+		// 1. Update Card Price and Record Price History in a transaction
+		tx, err := w.db.Begin()
+		if err != nil {
+			slog.Error("Failed to begin transaction for price update", "card", c.Name, "error", err)
+			continue
+		}
+		_, err = tx.Exec("UPDATE cards SET price_usd = $1, price_eur = $2, last_updated = NOW() WHERE id = $3",
 			decimal.NewFromFloat(usd), decimal.NewFromFloat(eur), c.ID)
 		if err != nil {
-			slog.Error("Sync: Failed to update DB", "card", c.Name, "error", err)
-		} else {
-			slog.Debug("Sync: Updated card price", "card", c.Name, "usd", usd, "eur", eur)
+			tx.Rollback()
+			slog.Error("Failed to update card price", "card", c.Name, "error", err)
+			continue
 		}
-
-		// 2. Record Price History (Improvement #26)
-		_, err = w.db.Exec("INSERT INTO price_history (card_id, price_usd, price_eur) VALUES ($1, $2, $3)",
+		_, err = tx.Exec("INSERT INTO price_history (card_id, price_usd, price_eur) VALUES ($1, $2, $3)",
 			c.ID, decimal.NewFromFloat(usd), decimal.NewFromFloat(eur))
 		if err != nil {
-			slog.Error("Sync: Failed to record price history", "card", c.Name, "error", err)
+			tx.Rollback()
+			slog.Error("Failed to insert price history", "card", c.Name, "error", err)
+			continue
+		}
+		if err := tx.Commit(); err != nil {
+			slog.Error("Failed to commit price update transaction", "card", c.Name, "error", err)
+		} else {
+			slog.Debug("Sync: Updated card price", "card", c.Name, "usd", usd, "eur", eur)
 		}
 
 		// 3. Check Price Alerts (Improvement #38)
@@ -254,6 +264,7 @@ func (w *DataSyncWorker) syncPrices() {
 func (w *DataSyncWorker) checkPriceAlerts(c models.Card, usd float64) {
 	rowsAlerts, err := w.db.Query("SELECT id, user_id, target_price FROM price_alerts WHERE card_id = $1 AND is_active = TRUE", c.ID)
 	if err != nil {
+		slog.Warn("Failed to query price alerts", "card_id", c.ID, "error", err)
 		return
 	}
 	defer rowsAlerts.Close()
@@ -264,6 +275,7 @@ func (w *DataSyncWorker) checkPriceAlerts(c models.Card, usd float64) {
 		var userID string
 		var targetPrice decimal.Decimal
 		if err := rowsAlerts.Scan(&alertID, &userID, &targetPrice); err != nil {
+			slog.Warn("Failed to scan price alert row", "error", err)
 			continue
 		}
 		if currentPrice.LessThanOrEqual(targetPrice) {

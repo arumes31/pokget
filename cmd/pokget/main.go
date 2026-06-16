@@ -22,6 +22,8 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -43,6 +45,13 @@ import (
 	"github.com/gorilla/csrf"
 	"github.com/gorilla/mux"
 )
+
+// deriveKey derives a purpose-specific key from a master key using HMAC-SHA256
+func deriveKey(masterKey, purpose string) []byte {
+	mac := hmac.New(sha256.New, []byte(masterKey))
+	mac.Write([]byte(purpose))
+	return mac.Sum(nil)
+}
 
 func main() {
 	// Load Configuration
@@ -130,7 +139,8 @@ func main() {
 	templates := template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
 
 	// Initialize Services
-	cryptoSvc, err := service.NewCryptoService(cfg.Auth.SessionKey)
+	cryptoKey := deriveKey(cfg.Auth.SessionKey, "pokget:crypto:aes256")
+	cryptoSvc, err := service.NewCryptoService(string(cryptoKey))
 	if err != nil {
 		slog.Error("Failed to initialize crypto service", "error", err)
 		os.Exit(1)
@@ -161,6 +171,7 @@ func main() {
 		Crypto:        cryptoSvc,
 		Game:          service.NewGamificationService(db.DB),
 		LLM:           llmSvc,
+		PriceClient:   &service.ScraperPriceClient{},
 		DB:            db.DB,
 		BuildVersion:  buildVersion,
 		SecureCookies: cfg.App.SecureCookies, // BUG-C03: Wire up configurable Secure flag
@@ -173,9 +184,10 @@ func main() {
 	r.Use(auth.ProxyMiddleware)
 
 	// CSRF Protection
+	csrfKey := deriveKey(cfg.Auth.SessionKey, "pokget:csrf:auth")
 	csrfMiddleware := csrf.Protect(
-		[]byte(cfg.Auth.SessionKey),
-		csrf.Secure(false), // Disable for local development without HTTPS
+		csrfKey,
+		csrf.Secure(cfg.App.SecureCookies),
 	)
 
 	// Static files (Exempt from CSRF)

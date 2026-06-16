@@ -25,6 +25,7 @@ package service
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -37,6 +38,7 @@ import (
 	"pokget/internal/models"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -69,9 +71,15 @@ func initOCRClientPool() {
 }
 
 // acquireOCRClient gets a Tesseract client from the pool (SCAN-03).
-func acquireOCRClient() *gosseract.Client {
+// Returns an error if the pool is exhausted and no client becomes available within 30 seconds.
+func acquireOCRClient() (*gosseract.Client, error) {
 	ocrClientPoolOnce.Do(initOCRClientPool)
-	return <-ocrClientPool
+	select {
+	case client := <-ocrClientPool:
+		return client, nil
+	case <-time.After(30 * time.Second):
+		return nil, fmt.Errorf("OCR client pool exhausted: timeout waiting for available client")
+	}
 }
 
 // releaseOCRClient returns a Tesseract client to the pool (SCAN-03).
@@ -539,14 +547,23 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 
 	// 2. Perform OCR using client pool (SCAN-03)
 	slog.Info("OCR: Acquiring Tesseract client from pool...")
-	client := acquireOCRClient()
+	client, err := acquireOCRClient()
+	if err != nil {
+		return "", "", nil, fmt.Errorf("failed to acquire OCR client: %w", err)
+	}
 	defer releaseOCRClient(client)
 
-	_ = client.SetLanguage(lang)
+	if err := client.SetLanguage(lang); err != nil {
+		slog.Warn("Tesseract: failed to set language", "lang", lang, "error", err)
+		// Non-fatal: continue with default language
+	}
 
 	// Pass 1: Grayscale
 	slog.Info("OCR: Executing Tesseract Pass 1 (Grayscale)...")
-	_ = client.SetImageFromBytes(buf1.Bytes())
+	if err := client.SetImageFromBytes(buf1.Bytes()); err != nil {
+		releaseOCRClient(client)
+		return "", "", nil, fmt.Errorf("tesseract: failed to set image: %w", err)
+	}
 	text1, err1 := client.Text()
 	if err1 != nil {
 		slog.Error("OCR: Pass 1 failed", "error", err1)
@@ -555,7 +572,10 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	// Pass 2: Blue Channel Sparse
 	slog.Info("OCR: Executing Tesseract Pass 2 (Blue Channel, Sparse)...")
 	client.SetVariable("tessedit_pageseg_mode", "11") // Sparse text
-	_ = client.SetImageFromBytes(buf2.Bytes())
+	if err := client.SetImageFromBytes(buf2.Bytes()); err != nil {
+		releaseOCRClient(client)
+		return "", "", nil, fmt.Errorf("tesseract: failed to set image: %w", err)
+	}
 	text2, err2 := client.Text()
 	if err2 != nil {
 		slog.Error("OCR: Pass 2 failed", "error", err2)
@@ -564,7 +584,10 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	// Pass 3: Preprocessed (SCAN-05)
 	slog.Info("OCR: Executing Tesseract Pass 3 (Preprocessed)...")
 	client.SetVariable("tessedit_pageseg_mode", "3") // Fully automatic page segmentation
-	_ = client.SetImageFromBytes(buf3.Bytes())
+	if err := client.SetImageFromBytes(buf3.Bytes()); err != nil {
+		releaseOCRClient(client)
+		return "", "", nil, fmt.Errorf("tesseract: failed to set image: %w", err)
+	}
 	text3, err3 := client.Text()
 	if err3 != nil {
 		slog.Error("OCR: Pass 3 failed", "error", err3)
@@ -580,7 +603,7 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 
 	// Special handling for Japanese/Chinese (CJK): remove spaces for better matching
 	normalizedText := text
-	if lang == "jpn" || lang == "chi_sim" || lang == "chi_tra" {
+	if strings.Contains(lang, "jpn") || strings.Contains(lang, "chi_sim") || strings.Contains(lang, "chi_tra") {
 		normalizedText = strings.ReplaceAll(text, " ", "")
 		normalizedText = strings.ReplaceAll(normalizedText, "\n", "")
 	}

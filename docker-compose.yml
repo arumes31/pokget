@@ -20,8 +20,8 @@ services:
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
       - SMTP_FROM=${SMTP_FROM:-no-reply@pokget.com}
-      - TRUST_PROXY=${TRUST_PROXY:-true}
-      - TRUST_CLOUDFLARE=${TRUST_CLOUDFLARE:-true}
+      - TRUST_PROXY=${TRUST_PROXY:-false}
+      - TRUST_CLOUDFLARE=${TRUST_CLOUDFLARE:-false}
     depends_on:
       pokget_db:
         condition: service_healthy

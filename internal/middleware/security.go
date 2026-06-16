@@ -34,8 +34,12 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 		// Prevent clickjacking by ensuring content cannot be embedded in a frame, iframe, object, or embed
 		w.Header().Set("X-Frame-Options", "DENY")
 
-		// Enable XSS filtering in browsers that support it (older browsers)
-		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		// Content-Security-Policy — allows inline scripts/styles for HTMX/Alpine.js
+		// and connects to self for XHR. Adjust as needed for production.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 
 		next.ServeHTTP(w, r)
 	})

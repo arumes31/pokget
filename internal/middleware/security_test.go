@@ -23,6 +23,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -50,8 +51,18 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 		t.Errorf("Expected X-Frame-Options: DENY, got %q", got)
 	}
 
-	// Validate X-XSS-Protection
-	if got := rr.Header().Get("X-XSS-Protection"); got != "1; mode=block" {
-		t.Errorf("Expected X-XSS-Protection: 1; mode=block, got %q", got)
+	// Validate Content-Security-Policy
+	if got := rr.Header().Get("Content-Security-Policy"); !strings.Contains(got, "default-src 'self'") {
+		t.Errorf("Expected Content-Security-Policy to contain \"default-src 'self'\", got %q", got)
+	}
+
+	// Validate Referrer-Policy
+	if got := rr.Header().Get("Referrer-Policy"); got != "strict-origin-when-cross-origin" {
+		t.Errorf("Expected Referrer-Policy: strict-origin-when-cross-origin, got %q", got)
+	}
+
+	// Validate Permissions-Policy
+	if got := rr.Header().Get("Permissions-Policy"); !strings.Contains(got, "camera=()") {
+		t.Errorf("Expected Permissions-Policy to contain \"camera=()\", got %q", got)
 	}
 }
