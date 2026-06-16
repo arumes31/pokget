@@ -1,4 +1,0 @@
-## 2026-06-16 - Prevent User Enumeration Timing Attack in Login
-**Vulnerability:** The `Login` handler returned early when a database miss occurred (`sql.ErrNoRows`), allowing an attacker to determine if an email exists by measuring the response time (which would be faster for a non-existent email compared to an existing email, due to the time taken by password hashing).
-**Learning:** The application was vulnerable to user enumeration attacks because the computationally expensive operation of checking a password hash (bcrypt) was only performed for existing users.
-**Prevention:** Always perform the computationally expensive password hashing against a constant dummy hash when an account does not exist to ensure constant response times and mask user existence. The dummy hash should be created with the same algorithm and cost as actual user passwords.
