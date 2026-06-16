@@ -7,7 +7,7 @@ import (
 )
 
 func BenchmarkProxyMiddlewareSplit(b *testing.B) {
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {})
 	middleware := ProxyMiddleware(nextHandler)
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("X-Forwarded-For", "192.168.1.1, 10.0.0.1")
