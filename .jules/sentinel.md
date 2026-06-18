@@ -1,0 +1,4 @@
+## 2024-05-18 - Prevent User Enumeration Timing Attack in Login Handler
+**Vulnerability:** The `Login` handler returned early on a database miss (`sql.ErrNoRows`), taking drastically less time (microseconds) compared to a user found hit which computed an expensive bcrypt password hash (approx 2.6 seconds). This timing discrepancy allowed attackers to quickly enumerate which email addresses exist in the database.
+**Learning:** Returning immediately after an authentication database miss without matching the expensive computational cost of a successful user lookup introduces an observable side-channel (timing attack).
+**Prevention:** Always execute the authentication's hashing function (e.g., `bcrypt.CompareHashAndPassword`) against a constant dummy hash of the exact same computational cost before returning an invalid credential error, even when the user is not found.
