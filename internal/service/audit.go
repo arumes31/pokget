@@ -23,13 +23,16 @@ package service
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"sync"
 )
 
 // AuditService handles application audit logging.
 type AuditService struct {
 	db    *sql.DB
 	logCh chan auditEntry
+	wg    sync.WaitGroup
 }
 
 type auditEntry struct {
@@ -44,14 +47,20 @@ func NewAuditService(db *sql.DB) *AuditService {
 		db:    db,
 		logCh: make(chan auditEntry, 256),
 	}
+	s.wg.Add(1)
 	go s.processLogs()
 	return s
 }
 
 func (s *AuditService) processLogs() {
+	defer s.wg.Done()
 	for entry := range s.logCh {
-		metadataJSON, _ := json.Marshal(entry.metadata)
-		_, err := s.db.Exec(
+		metadataJSON, err := json.Marshal(entry.metadata)
+		if err != nil {
+			slog.Error("Failed to marshal audit log metadata", "user_id", entry.userID, "action", entry.action, "error", err)
+			metadataJSON = []byte(fmt.Sprintf(`{"error":"marshal failed","action":%q}`, entry.action))
+		}
+		_, err = s.db.Exec(
 			"INSERT INTO audit_logs (user_id, action, metadata, created_at) VALUES ($1, $2, $3, NOW())",
 			entry.userID, entry.action, string(metadataJSON),
 		)
@@ -73,4 +82,5 @@ func (s *AuditService) Log(userID, action string, metadata map[string]interface{
 // Close stops the background log processor.
 func (s *AuditService) Close() {
 	close(s.logCh)
+	s.wg.Wait()
 }

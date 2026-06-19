@@ -108,7 +108,7 @@ func (s *GamificationService) CheckForBadges(userID string) {
 	// 2. Check for "High Roller" badge
 	var totalValue float64
 	if err := s.DB.QueryRow(`
-		SELECT SUM(COALESCE(p.custom_price, c.price_usd))
+		SELECT COALESCE(SUM(COALESCE(p.custom_price, c.price_usd)), 0)
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1`, userID).Scan(&totalValue); err != nil {

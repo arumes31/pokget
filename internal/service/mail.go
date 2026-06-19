@@ -106,8 +106,8 @@ func (s *MailService) sendMail(to, subject, body string) error {
 	// PlainAuth will refuse to send credentials unless the connection is TLS
 	// or the server supports STARTTLS (Go's smtp package handles this for port 587)
 	// For explicit safety, verify the host/port combination
-	if s.Port != "465" && s.Port != "587" {
-		return fmt.Errorf("mail: refusing to send credentials over non-TLS port %s", s.Port)
+	if s.Port != "587" {
+		return fmt.Errorf("mail: only STARTTLS-capable port 587 is supported for secure mail transmission (got port %s)", s.Port)
 	}
 
 	auth := smtp.PlainAuth("", s.Username, s.Password, s.Host)

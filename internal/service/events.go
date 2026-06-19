@@ -88,7 +88,8 @@ func (b *EventBus) unsubscribe(eventType string, ch chan Event) {
 // and default to avoid blocking goroutines when a subscriber's channel is full.
 func (b *EventBus) Publish(event Event) {
 	b.mu.RLock()
-	subs := b.subscribers[event.Type]
+	subs := make([]subscriberEntry, len(b.subscribers[event.Type]))
+	copy(subs, b.subscribers[event.Type])
 	b.mu.RUnlock()
 
 	for _, entry := range subs {

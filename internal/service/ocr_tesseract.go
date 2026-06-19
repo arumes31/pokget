@@ -561,7 +561,6 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	// Pass 1: Grayscale
 	slog.Info("OCR: Executing Tesseract Pass 1 (Grayscale)...")
 	if err := client.SetImageFromBytes(buf1.Bytes()); err != nil {
-		releaseOCRClient(client)
 		return "", "", nil, fmt.Errorf("tesseract: failed to set image: %w", err)
 	}
 	text1, err1 := client.Text()
@@ -573,7 +572,6 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	slog.Info("OCR: Executing Tesseract Pass 2 (Blue Channel, Sparse)...")
 	client.SetVariable("tessedit_pageseg_mode", "11") // Sparse text
 	if err := client.SetImageFromBytes(buf2.Bytes()); err != nil {
-		releaseOCRClient(client)
 		return "", "", nil, fmt.Errorf("tesseract: failed to set image: %w", err)
 	}
 	text2, err2 := client.Text()
@@ -585,7 +583,6 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	slog.Info("OCR: Executing Tesseract Pass 3 (Preprocessed)...")
 	client.SetVariable("tessedit_pageseg_mode", "3") // Fully automatic page segmentation
 	if err := client.SetImageFromBytes(buf3.Bytes()); err != nil {
-		releaseOCRClient(client)
 		return "", "", nil, fmt.Errorf("tesseract: failed to set image: %w", err)
 	}
 	text3, err3 := client.Text()
