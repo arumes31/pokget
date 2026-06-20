@@ -91,21 +91,17 @@ func Middleware(next http.Handler) http.Handler {
 }
 
 var (
-	limiters = make(map[string]*rate.Limiter)
-	mu       sync.Mutex
+	limiters sync.Map
 )
 
+// ⚡ Bolt Optimization: Use sync.Map for rate limiters to avoid mutex lock contention on every request.
 func getLimiter(ip string) *rate.Limiter {
-	mu.Lock()
-	defer mu.Unlock()
-
-	limiter, exists := limiters[ip]
-	if !exists {
-		limiter = rate.NewLimiter(1, 5) // 1 request per second with a burst of 5
-		limiters[ip] = limiter
+	if v, ok := limiters.Load(ip); ok {
+		return v.(*rate.Limiter)
 	}
-
-	return limiter
+	limiter := rate.NewLimiter(1, 5) // 1 request per second with a burst of 5
+	v, _ := limiters.LoadOrStore(ip, limiter)
+	return v.(*rate.Limiter)
 }
 
 func RateLimitMiddleware(next http.Handler) http.Handler {
