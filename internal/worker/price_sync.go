@@ -22,6 +22,8 @@ package worker
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"database/sql"
 	"pokget/internal/models"
 	"pokget/internal/service"
@@ -79,6 +81,14 @@ func (w *PriceSyncWorker) syncPrices() {
 	}
 	defer rows.Close()
 
+	type historyEntry struct {
+		cardID string
+		usd    decimal.Decimal
+		eur    decimal.Decimal
+	}
+	// We allocate a reasonable baseline capacity for the slice to reduce allocations.
+	historyBatch := make([]historyEntry, 0, 100)
+
 	for rows.Next() {
 		var c models.Card
 		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR); err != nil {
@@ -108,16 +118,44 @@ func (w *PriceSyncWorker) syncPrices() {
 			slog.Debug("Sync: Updated card price", "card", c.Name, "usd", usd, "eur", eur)
 		}
 
-		// 2. Record Price History (Improvement #26)
-		_, err = w.db.Exec("INSERT INTO price_history (card_id, price_usd, price_eur) VALUES ($1, $2, $3)",
-			c.ID, decimal.NewFromFloat(usd), decimal.NewFromFloat(eur))
-		if err != nil {
-			slog.Error("Sync: Failed to record price history", "card", c.Name, "error", err)
-		}
+		// 2. Queue Price History for Bulk Insert
+		historyBatch = append(historyBatch, historyEntry{
+			cardID: c.ID,
+			usd:    decimal.NewFromFloat(usd),
+			eur:    decimal.NewFromFloat(eur),
+		})
 
 		// 3. Check Price Alerts (Improvement #38)
 		w.checkPriceAlerts(c, usd)
 	}
+
+	// 4. Bulk Insert Price History
+	if len(historyBatch) > 0 {
+		batchSize := 1000
+		for i := 0; i < len(historyBatch); i += batchSize {
+			end := i + batchSize
+			if end > len(historyBatch) {
+				end = len(historyBatch)
+			}
+			batch := historyBatch[i:end]
+
+			valueStrings := make([]string, 0, len(batch))
+			valueArgs := make([]interface{}, 0, len(batch)*3)
+
+			for j, entry := range batch {
+				valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d)", j*3+1, j*3+2, j*3+3))
+				valueArgs = append(valueArgs, entry.cardID, entry.usd, entry.eur)
+			}
+
+			// nolint:gosec // valueStrings contains only hardcoded placeholders like "($1, $2, $3)" built by the logic above, no user input.
+			query := fmt.Sprintf("INSERT INTO price_history (card_id, price_usd, price_eur) VALUES %s", strings.Join(valueStrings, ","))
+			_, err = w.db.Exec(query, valueArgs...)
+			if err != nil {
+				slog.Error("Sync: Failed to record price history batch", "error", err)
+			}
+		}
+	}
+
 	slog.Info("Price synchronization cycle completed")
 }
 

@@ -44,6 +44,8 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
+		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price"})
+		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").WillReturnRows(alertRows)
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
@@ -114,6 +116,8 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
 		mock.ExpectExec("UPDATE cards").WillReturnError(errors.New("upd error"))
+		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price"})
+		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").WillReturnRows(alertRows)
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		client := &service.MockPriceClient{FixedUSD: 1.0, FixedEUR: 1.0}
@@ -134,6 +138,9 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
+		// We mock an empty alerts result here before the bulk insert
+		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price"})
+		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").WillReturnRows(alertRows)
 		mock.ExpectExec("INSERT INTO price_history").WillReturnError(errors.New("hist error"))
 
 		client := &service.MockPriceClient{FixedUSD: 1.0, FixedEUR: 1.0}
@@ -175,13 +182,14 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 
 		mock.ExpectQuery("SELECT id, name").WillReturnRows(rows)
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		// Alert trigger
 		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price"}).
 			AddRow(1, "user-1", decimal.NewFromFloat(200.0))
 		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").WithArgs(card.ID).
 			WillReturnRows(alertRows)
+
+		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
 		worker := NewPriceSyncWorker(db, client, time.Hour)
