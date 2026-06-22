@@ -50,7 +50,7 @@ func init() {
 			panic("Failed to generate secure session key: " + err.Error())
 		}
 		key = hex.EncodeToString(b)
-		os.Setenv("SESSION_KEY", key)
+		_ = os.Setenv("SESSION_KEY", key)
 	}
 	Store = InitStore(key)
 }
