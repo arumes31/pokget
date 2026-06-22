@@ -47,6 +47,9 @@ func main() {
 	
 	_ = os.MkdirAll("static/img/debug/bulk", 0750)
 
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
 	for i, c := range cards {
 		fmt.Printf("[%d/%d] Testing: %s... ", i+1, totalCount, c.Name)
 		
@@ -86,7 +89,7 @@ func main() {
 			fmt.Printf("❌ Processing Failed\n")
 		}
 		
-		time.Sleep(200 * time.Millisecond) // Be kind to TCGPlayer
+		<-ticker.C // Be kind to TCGPlayer
 	}
 
 	fmt.Printf("\n--------------------------------------------\n")
