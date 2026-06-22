@@ -72,21 +72,26 @@ func (s *GamificationService) AddXP(userID string, amount int) (int, string, err
 }
 
 func (s *GamificationService) CheckForBadges(userID string) {
-	// 1. Check for "First Pull" badge
+	// ⚡ Bolt: Fetch metrics in a single query to prevent N+1 bottleneck
 	var count int
-	_ = s.DB.QueryRow("SELECT COUNT(*) FROM portfolio WHERE user_id = $1", userID).Scan(&count)
+	var totalValue float64
+
+	err := s.DB.QueryRow(`
+		SELECT
+			(SELECT COUNT(*) FROM portfolio WHERE user_id = $1) as port_count,
+			COALESCE((SELECT SUM(COALESCE(p.custom_price, c.price_usd)) FROM portfolio p JOIN cards c ON p.card_id = c.id WHERE p.user_id = $1), 0) as port_value
+	`, userID).Scan(&count, &totalValue)
+
+	if err != nil {
+		return
+	}
+
+	// 1. Check for "First Pull" badge
 	if count >= 1 {
 		s.AwardBadge(userID, "First Pull")
 	}
 
 	// 2. Check for "High Roller" badge
-	var totalValue float64
-	_ = s.DB.QueryRow(`
-		SELECT SUM(COALESCE(p.custom_price, c.price_usd)) 
-		FROM portfolio p 
-		JOIN cards c ON p.card_id = c.id 
-		WHERE p.user_id = $1`, userID).Scan(&totalValue)
-
 	if totalValue >= 10000 {
 		s.AwardBadge(userID, "High Roller")
 	}
