@@ -22,13 +22,13 @@
                 <div class="flex items-center gap-4 bg-white/[0.03] backdrop-blur-3xl px-5 py-3 rounded-3xl border border-white/10 shadow-xl self-start sm:self-auto group transition-transform hover:scale-105">
                     <div class="relative w-12 h-12 flex-shrink-0">
                         <div class="absolute inset-0 bg-primary/30 blur-lg rounded-full animate-pulse"></div>
-                        <img src="{{ .RankIcon }}" alt="Rank" class="w-full h-full object-contain relative z-10">
+                        <img src="{{ .UserRankIcon }}" alt="Rank" class="w-full h-full object-contain relative z-10">
                     </div>
                     <div class="flex flex-col">
                         <span class="text-[9px] uppercase font-bold text-on-surface-variant tracking-widest opacity-60">Legacy Status</span>
-                        <span class="text-sm font-black text-primary uppercase tracking-tighter">{{ .Rank }}</span>
+                        <span class="text-sm font-black text-primary uppercase tracking-tighter">{{ .UserRank }}</span>
                         <div class="w-24 h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden border border-white/5">
-                            <div class="h-full bg-primary shadow-[0_0_12px_#ddb7ff] transition-all duration-1000" x-init="setTimeout(() => $el.style.width = '{{ .XPPercent }}%', 500)"></div>
+                            <div class="h-full bg-primary shadow-[0_0_12px_#ddb7ff] transition-all duration-1000" x-init="setTimeout(() => $el.style.width = '{{ .UserXPPercent }}%', 500)"></div>
                         </div>
                     </div>
                 </div>
