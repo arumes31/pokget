@@ -31,6 +31,12 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+type SyncedCard struct {
+	card models.Card
+	usd  float64
+}
+
+
 type PriceSyncWorker struct {
 	db          *sql.DB
 	priceClient service.PriceClient
@@ -79,6 +85,9 @@ func (w *PriceSyncWorker) syncPrices() {
 	}
 	defer rows.Close()
 
+
+	var syncedCards []SyncedCard
+
 	for rows.Next() {
 		var c models.Card
 		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR); err != nil {
@@ -116,32 +125,49 @@ func (w *PriceSyncWorker) syncPrices() {
 		}
 
 		// 3. Check Price Alerts (Improvement #38)
-		w.checkPriceAlerts(c, usd)
+		syncedCards = append(syncedCards, SyncedCard{card: c, usd: usd})
 	}
+
+	// 3. Check Price Alerts (Improvement #38)
+	w.checkPriceAlerts(syncedCards)
 	slog.Info("Price synchronization cycle completed")
 }
 
-// checkPriceAlerts evaluates active price alerts for a card against its current
-// USD price. It is a dedicated method so the result set is closed when this call
-// returns rather than accumulating open cursors for the duration of syncPrices
-// (a `defer` inside the per-card loop would leak connections across all cards).
-func (w *PriceSyncWorker) checkPriceAlerts(c models.Card, usd float64) {
-	rowsAlerts, err := w.db.Query("SELECT id, user_id, target_price FROM price_alerts WHERE card_id = $1 AND is_active = TRUE", c.ID)
+// checkPriceAlerts evaluates active price alerts batched against all updated prices.
+func (w *PriceSyncWorker) checkPriceAlerts(synced []SyncedCard) {
+	if len(synced) == 0 {
+		return
+	}
+
+	rowsAlerts, err := w.db.Query("SELECT id, user_id, target_price, card_id FROM price_alerts WHERE is_active = TRUE")
 	if err != nil {
 		return
 	}
 	defer rowsAlerts.Close()
 
-	currentPrice := decimal.NewFromFloat(usd)
+	// Map card_id to synced card data for fast lookup
+	prices := make(map[string]SyncedCard, len(synced))
+	for _, sc := range synced {
+		prices[sc.card.ID] = sc
+	}
+
 	for rowsAlerts.Next() {
 		var alertID int
 		var userID string
 		var targetPrice decimal.Decimal
-		if err := rowsAlerts.Scan(&alertID, &userID, &targetPrice); err != nil {
+		var cardID string
+		if err := rowsAlerts.Scan(&alertID, &userID, &targetPrice, &cardID); err != nil {
 			continue
 		}
+
+		sc, exists := prices[cardID]
+		if !exists {
+			continue
+		}
+
+		currentPrice := decimal.NewFromFloat(sc.usd)
 		if currentPrice.LessThanOrEqual(targetPrice) {
-			slog.Info("ALERT: Price target hit!", "user", userID, "card", c.Name, "target", targetPrice, "current", currentPrice)
+			slog.Info("ALERT: Price target hit!", "user", userID, "card", sc.card.Name, "target", targetPrice, "current", currentPrice)
 			// In a real app, send email/push here.
 		}
 	}

@@ -178,9 +178,9 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		// Alert trigger
-		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price"}).
-			AddRow(1, "user-1", decimal.NewFromFloat(200.0))
-		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").WithArgs(card.ID).
+		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price", "card_id"}).
+			AddRow(1, "user-1", decimal.NewFromFloat(200.0), card.ID)
+		mock.ExpectQuery("SELECT id, user_id, target_price, card_id FROM price_alerts WHERE is_active = TRUE").
 			WillReturnRows(alertRows)
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
