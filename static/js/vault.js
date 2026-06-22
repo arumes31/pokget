@@ -72,7 +72,6 @@ function initHeartbeat() {
             
             if (response.ok) {
                 const data = await response.json();
-                console.log(`[Pokget] Heartbeat successful. XP: ${data.xp}, Rank: ${data.rank}`);
                 // Optional: Show a subtle notification or update UI
             }
         } catch (err) {
