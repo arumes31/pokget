@@ -41,12 +41,16 @@ var Store *sessions.CookieStore
 func init() {
 	key := os.Getenv("SESSION_KEY")
 	if key == "" {
-		slog.Warn("SESSION_KEY not set, generating a random 32-byte key for this session. Sessions will be invalidated on restart!")
+		if os.Getenv("DEBUG") != "true" {
+			panic("SESSION_KEY environment variable is required but not set")
+		}
+		slog.Warn("SESSION_KEY not set in DEBUG mode, generating a random 32-byte key for this session. Sessions will be invalidated on restart!")
 		b := make([]byte, 32)
 		if _, err := rand.Read(b); err != nil {
 			panic("Failed to generate secure session key: " + err.Error())
 		}
 		key = hex.EncodeToString(b)
+		os.Setenv("SESSION_KEY", key)
 	}
 	Store = InitStore(key)
 }
