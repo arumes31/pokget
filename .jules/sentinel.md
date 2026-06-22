@@ -1,0 +1,4 @@
+## 2024-05-18 - User Enumeration via Timing Attack
+**Vulnerability:** The `Login` handler returned early if an email didn't exist in the database, resulting in a significantly faster response time than if the email existed (which required an expensive bcrypt password hash comparison). This timing difference allowed attackers to enumerate existing user accounts.
+**Learning:** Returning early on `sql.ErrNoRows` before performing heavy cryptographic operations creates an observable timing side-channel.
+**Prevention:** Ensure constant time responses for authentication endpoints by executing the same expensive operation (e.g., comparing the password against a valid-looking dummy hash) even when the user is not found.
