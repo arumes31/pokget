@@ -147,8 +147,8 @@ func (w *PriceSyncWorker) syncPrices() {
 				valueArgs = append(valueArgs, entry.cardID, entry.usd, entry.eur)
 			}
 
-			query := fmt.Sprintf("INSERT INTO price_history (card_id, price_usd, price_eur) VALUES %s", strings.Join(valueStrings, ","))
 			// #nosec G201 -- valueStrings contains only hardcoded placeholders like "($1, $2, $3)" built by the logic above, no user input.
+			query := fmt.Sprintf("INSERT INTO price_history (card_id, price_usd, price_eur) VALUES %s", strings.Join(valueStrings, ","))
 			_, err = w.db.Exec(query, valueArgs...)
 			if err != nil {
 				slog.Error("Sync: Failed to record price history batch", "error", err)
