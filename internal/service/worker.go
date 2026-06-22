@@ -61,7 +61,7 @@ func (s *WorkerService) refreshAllPrices() {
 		cards = append(cards, card)
 	}
 	// Early release of database connection
-	rows.Close()
+	_ = rows.Close()
 
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
