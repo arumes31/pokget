@@ -1,6 +1,6 @@
 module pokget
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -48,7 +48,7 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/temoto/robotstxt v1.1.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/net v0.54.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
