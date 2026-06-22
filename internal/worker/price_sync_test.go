@@ -43,8 +43,12 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(card.ID, card.Name, card.Set, decimal.NewFromFloat(0), decimal.NewFromFloat(0))
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+        mock.ExpectBegin()
+        mock.ExpectPrepare("UPDATE cards")
+        mock.ExpectPrepare("INSERT INTO price_history")
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
+        mock.ExpectCommit()
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
 		worker := NewPriceSyncWorker(db, client, time.Hour)
@@ -78,6 +82,10 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow("1", "C", "S", "not-a-decimal", 0)
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+        mock.ExpectBegin()
+        mock.ExpectPrepare("UPDATE cards")
+        mock.ExpectPrepare("INSERT INTO price_history")
+        mock.ExpectCommit()
 
 		worker := NewPriceSyncWorker(db, &service.MockPriceClient{}, time.Hour)
 		worker.syncPrices()
@@ -95,6 +103,10 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero)
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+        mock.ExpectBegin()
+        mock.ExpectPrepare("UPDATE cards")
+        mock.ExpectPrepare("INSERT INTO price_history")
+        mock.ExpectCommit()
 
 		client := &service.MockPriceClient{Err: errors.New("fetch error")}
 		worker := NewPriceSyncWorker(db, client, time.Hour)
@@ -113,8 +125,12 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero)
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+        mock.ExpectBegin()
+        mock.ExpectPrepare("UPDATE cards")
+        mock.ExpectPrepare("INSERT INTO price_history")
 		mock.ExpectExec("UPDATE cards").WillReturnError(errors.New("upd error"))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
+        mock.ExpectCommit()
 
 		client := &service.MockPriceClient{FixedUSD: 1.0, FixedEUR: 1.0}
 		worker := NewPriceSyncWorker(db, client, time.Hour)
@@ -133,8 +149,12 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero)
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+        mock.ExpectBegin()
+        mock.ExpectPrepare("UPDATE cards")
+        mock.ExpectPrepare("INSERT INTO price_history")
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnError(errors.New("hist error"))
+        mock.ExpectCommit()
 
 		client := &service.MockPriceClient{FixedUSD: 1.0, FixedEUR: 1.0}
 		worker := NewPriceSyncWorker(db, client, time.Hour)
@@ -153,6 +173,10 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(card.ID, card.Name, card.Set, decimal.NewFromFloat(150), decimal.NewFromFloat(140))
 
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+        mock.ExpectBegin()
+        mock.ExpectPrepare("UPDATE cards")
+        mock.ExpectPrepare("INSERT INTO price_history")
+        mock.ExpectCommit()
 		// A failed scrape returns (0, 0): the worker must NOT issue UPDATE/INSERT,
 		// otherwise it would wipe the valid stored price. No Exec expectations set,
 		// so any DB write would make ExpectationsWereMet fail.
@@ -174,6 +198,9 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero)
 
 		mock.ExpectQuery("SELECT id, name").WillReturnRows(rows)
+        mock.ExpectBegin()
+        mock.ExpectPrepare("UPDATE cards")
+        mock.ExpectPrepare("INSERT INTO price_history")
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -182,6 +209,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(1, "user-1", decimal.NewFromFloat(200.0))
 		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").WithArgs(card.ID).
 			WillReturnRows(alertRows)
+        mock.ExpectCommit()
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
 		worker := NewPriceSyncWorker(db, client, time.Hour)
@@ -220,6 +248,10 @@ func TestWorkerLifecycle(t *testing.T) {
 		defer db2.Close()
 		
 		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur"}))
+        mock.ExpectBegin()
+        mock.ExpectPrepare("UPDATE cards")
+        mock.ExpectPrepare("INSERT INTO price_history")
+        mock.ExpectCommit()
 
 		worker := NewPriceSyncWorker(db2, client, 10*time.Millisecond)
 		ctx, cancel := context.WithCancel(context.Background())

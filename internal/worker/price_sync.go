@@ -79,6 +79,28 @@ func (w *PriceSyncWorker) syncPrices() {
 	}
 	defer rows.Close()
 
+	// Begin transaction for bulk updates
+	tx, err := w.db.Begin()
+	if err != nil {
+		slog.Error("Sync: Failed to begin transaction", "error", err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmtUpdate, err := tx.Prepare("UPDATE cards SET price_usd = $1, price_eur = $2, last_updated = NOW() WHERE id = $3")
+	if err != nil {
+		slog.Error("Sync: Failed to prepare update statement", "error", err)
+		return
+	}
+	defer stmtUpdate.Close()
+
+	stmtHistory, err := tx.Prepare("INSERT INTO price_history (card_id, price_usd, price_eur) VALUES ($1, $2, $3)")
+	if err != nil {
+		slog.Error("Sync: Failed to prepare history statement", "error", err)
+		return
+	}
+	defer stmtHistory.Close()
+
 	for rows.Next() {
 		var c models.Card
 		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR); err != nil {
@@ -99,9 +121,8 @@ func (w *PriceSyncWorker) syncPrices() {
 			continue
 		}
 
-		// 1. Update Card Price in DB
-		_, err = w.db.Exec("UPDATE cards SET price_usd = $1, price_eur = $2, last_updated = NOW() WHERE id = $3",
-			decimal.NewFromFloat(usd), decimal.NewFromFloat(eur), c.ID)
+		// 1. Update Card Price in DB using prepared statement
+		_, err = stmtUpdate.Exec(decimal.NewFromFloat(usd), decimal.NewFromFloat(eur), c.ID)
 		if err != nil {
 			slog.Error("Sync: Failed to update DB", "card", c.Name, "error", err)
 		} else {
@@ -109,8 +130,7 @@ func (w *PriceSyncWorker) syncPrices() {
 		}
 
 		// 2. Record Price History (Improvement #26)
-		_, err = w.db.Exec("INSERT INTO price_history (card_id, price_usd, price_eur) VALUES ($1, $2, $3)",
-			c.ID, decimal.NewFromFloat(usd), decimal.NewFromFloat(eur))
+		_, err = stmtHistory.Exec(c.ID, decimal.NewFromFloat(usd), decimal.NewFromFloat(eur))
 		if err != nil {
 			slog.Error("Sync: Failed to record price history", "card", c.Name, "error", err)
 		}
@@ -118,6 +138,11 @@ func (w *PriceSyncWorker) syncPrices() {
 		// 3. Check Price Alerts (Improvement #38)
 		w.checkPriceAlerts(c, usd)
 	}
+
+	if err := tx.Commit(); err != nil {
+		slog.Error("Sync: Failed to commit transaction", "error", err)
+	}
+
 	slog.Info("Price synchronization cycle completed")
 }
 
