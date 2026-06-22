@@ -148,7 +148,7 @@ func main() {
 	// CSRF Protection
 	csrfMiddleware := csrf.Protect(
 		[]byte(cfg.Auth.SessionKey),
-		csrf.Secure(false), // Disable for local development without HTTPS
+		csrf.Secure(!cfg.App.Debug), // Disable for local development without HTTPS, enabled in production
 	)
 	r.Use(csrfMiddleware)
 
