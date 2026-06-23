@@ -1,0 +1,4 @@
+## 2026-06-23 - Prevent user enumeration via login timing attacks
+**Vulnerability:** The Login handler returned early (`http.StatusUnauthorized`) when a user email was not found in the database (`sql.ErrNoRows`), but proceeded to execute an expensive bcrypt password check (`auth.CheckPasswordHash` with cost 14) when the user was found. This substantial difference in response times allows attackers to enumerate valid user emails by measuring login request latency.
+**Learning:** Returning early on database misses without simulating the expensive hashing operation breaks constant-time execution paths in authentication flows, thereby leaking the existence of users.
+**Prevention:** Always perform the expensive password hash comparison against a constant structurally valid dummy hash when the user is not found to normalize response times and mask user existence.
