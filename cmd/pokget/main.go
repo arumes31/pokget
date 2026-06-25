@@ -22,6 +22,8 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -44,6 +46,13 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// deriveKey derives a purpose-specific key from a master key using HMAC-SHA256
+func deriveKey(masterKey, purpose string) []byte {
+	mac := hmac.New(sha256.New, []byte(masterKey))
+	mac.Write([]byte(purpose))
+	return mac.Sum(nil)
+}
+
 func main() {
 	// Load Configuration
 	cfg, err := config.Load()
@@ -63,9 +72,12 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	// Initialize Database
-	db.InitDB()
-	var priceWorker *worker.PriceSyncWorker
+	// Initialize Services
+	var fingerprintSvc *service.FingerprintService
+	var auditSvc *service.AuditService
+
+	var dataWorker *worker.DataSyncWorker
+	var workerCancel context.CancelFunc
 	// Apply Migrations
 	if err := db.ApplyMigrations(db.DB, cfg.DB.MigrationsPath); err != nil {
 		slog.Error("Migration error", "error", err)
@@ -73,14 +85,27 @@ func main() {
 	}
 
 	if db.DB != nil {
+		fingerprintSvc = service.NewFingerprintService(db.DB)
+		// SCAN-02: Apply configurable pHash thresholds from config
+		fingerprintSvc.PhashHighConf = cfg.Scan.PhashHighConf
+		fingerprintSvc.PhashPotential = cfg.Scan.PhashPotential
+		// SCAN-03: Set OCR pool size from config
+		service.OCRPoolSize = cfg.Scan.OCRPoolSize
+		auditSvc = service.NewAuditService(db.DB)
+
 		if err := db.SeedDatabase(db.DB); err != nil {
 			slog.Error("Database seeding failed", "error", err)
 		}
 
-		// Start Price Sync Worker after DB is ready
+		// Start Data Sync Worker after DB is ready
 		priceClient := &service.DefaultPriceClient{Scraper: &service.ScraperPriceClient{}}
-		priceWorker = worker.NewPriceSyncWorker(db.DB, priceClient, 1*time.Hour)
-		go priceWorker.Start(context.Background())
+		metadataClient := service.NewTCGDexClient()
+		metadataSvc := service.NewMetadataService(fingerprintSvc)
+
+		dataWorker = worker.NewDataSyncWorker(db.DB, priceClient, metadataClient, metadataSvc, 1*time.Hour)
+		var workerCtx context.Context
+		workerCtx, workerCancel = context.WithCancel(context.Background())
+		go dataWorker.Start(workerCtx)
 	}
 
 	// Fetch all cards from DB for handlers (caching in memory for fast scanning)
@@ -114,8 +139,8 @@ func main() {
 	templates := template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
 
 	// Initialize Services
-	auditSvc := service.NewAuditService(db.DB)
-	cryptoSvc, err := service.NewCryptoService(cfg.Auth.SessionKey)
+	cryptoKey := deriveKey(cfg.Auth.SessionKey, "pokget:crypto:aes256")
+	cryptoSvc, err := service.NewCryptoService(string(cryptoKey))
 	if err != nil {
 		slog.Error("Failed to initialize crypto service", "error", err)
 		os.Exit(1)
@@ -127,49 +152,73 @@ func main() {
 		buildVersion = fmt.Sprintf("%d", info.ModTime().Unix())
 	}
 
+	// Initialize LLM service
+	llmSvc := service.NewLLMService()
+
+	// Initialize Detection Pipeline (SCAN-07, SCAN-09, SCAN-16)
+	var detectionPipeline *service.DetectionPipeline
+	if fingerprintSvc != nil {
+		detectionPipeline = service.NewDetectionPipeline(fingerprintSvc, llmSvc)
+	}
+
 	// Initialize Handlers
 	h := &handlers.Handler{
-		Templates:    templates,
-		MockCards:    allCards,
-		Fingerprint:  service.NewFingerprintService(db.DB),
-		Audit:        auditSvc,
-		Crypto:       cryptoSvc,
-		Game:         service.NewGamificationService(db.DB),
-		LLM:          service.NewLLMService(),
-		DB:           db.DB,
-		BuildVersion: buildVersion,
+		Templates:     templates,
+		MockCards:     allCards,
+		Fingerprint:   fingerprintSvc, // BUG-H01: Reuse fingerprintSvc instead of creating new one
+		Detection:     detectionPipeline,
+		Audit:         auditSvc,
+		Crypto:        cryptoSvc,
+		Game:          service.NewGamificationService(db.DB),
+		LLM:           llmSvc,
+		PriceClient:   &service.ScraperPriceClient{},
+		DB:            db.DB,
+		BuildVersion:  buildVersion,
+		SecureCookies: cfg.App.SecureCookies, // BUG-C03: Wire up configurable Secure flag
 	}
 
 	r := mux.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
+	r.Use(middleware.SecurityHeadersMiddleware)
 	r.Use(auth.RateLimitMiddleware)
 	r.Use(auth.ProxyMiddleware)
-	
-	// CSRF Protection
-	csrfMiddleware := csrf.Protect(
-		[]byte(cfg.Auth.SessionKey),
-		csrf.Secure(false), // Disable for local development without HTTPS
-	)
-	r.Use(csrfMiddleware)
 
-	// Static files
+	// CSRF Protection
+	csrfKey := deriveKey(cfg.Auth.SessionKey, "pokget:csrf:auth")
+	csrfMiddleware := csrf.Protect(
+		csrfKey,
+		csrf.Secure(cfg.App.SecureCookies),
+	)
+
+	// Static files (Exempt from CSRF)
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
-	// Public Routes
-	r.HandleFunc("/", h.Index).Methods("GET")
-	r.HandleFunc("/auth", h.Auth).Methods("GET")
-	r.HandleFunc("/auth/register", h.Register).Methods("POST")
-	r.HandleFunc("/auth/login", h.Login).Methods("POST")
-	r.HandleFunc("/auth/resend", h.ResendVerification).Methods("POST")
-	r.HandleFunc("/auth/confirm", h.ConfirmEmail).Methods("GET")
-	r.HandleFunc("/auth/confirm", h.ProcessConfirmEmail).Methods("POST")
-	r.HandleFunc("/auth/logout", h.Logout).Methods("GET", "POST")
-	r.HandleFunc("/api/scan", h.APIScan).Methods("POST")
-	r.HandleFunc("/vault/{slug}", h.PublicVault).Methods("GET")
-	r.HandleFunc("/errors", h.ErrorDatabase).Methods("GET")
+	// API routes (Exempt from CSRF for testing/external use)
+	// BUG-L03 FIX: Apply 20MB MaxBytes limit for /api/scan to allow image uploads
+	// while still preventing extremely large payloads.
+	scanRouter := r.PathPrefix("/api").Subrouter()
+	scanRouter.Use(middleware.MaxBytesMiddlewareWithLimit(20 << 20)) // 20 MB for image uploads
+	scanRouter.HandleFunc("/scan", h.APIScan).Methods("POST")
 
-	// Protected Routes (Require Authentication)
-	protected := r.PathPrefix("/").Subrouter()
+	// Web Routes (Protected by CSRF + 1MB MaxBytes limit)
+	web := r.NewRoute().Subrouter()
+	web.Use(middleware.MaxBytesMiddleware) // 1MB limit for form submissions
+	web.Use(csrfMiddleware)
+
+	// Public Web Routes
+	web.HandleFunc("/", h.Index).Methods("GET")
+	web.HandleFunc("/auth", h.Auth).Methods("GET")
+	web.HandleFunc("/auth/register", h.Register).Methods("POST")
+	web.HandleFunc("/auth/login", h.Login).Methods("POST")
+	web.HandleFunc("/auth/resend", h.ResendVerification).Methods("POST")
+	web.HandleFunc("/auth/confirm", h.ConfirmEmail).Methods("GET")
+	web.HandleFunc("/auth/confirm", h.ProcessConfirmEmail).Methods("POST")
+	web.HandleFunc("/auth/logout", h.Logout).Methods("GET", "POST")
+	web.HandleFunc("/vault/{slug}", h.PublicVault).Methods("GET")
+	web.HandleFunc("/errors", h.ErrorDatabase).Methods("GET")
+
+	// Protected Routes (Require Authentication + CSRF)
+	protected := web.PathPrefix("/").Subrouter()
 	protected.Use(auth.Middleware)
 	protected.HandleFunc("/dashboard", h.Dashboard).Methods("GET")
 	protected.HandleFunc("/centering", h.Centering).Methods("GET")
@@ -177,8 +226,11 @@ func main() {
 	protected.HandleFunc("/binders/create", h.CreateBinder).Methods("POST")
 	protected.HandleFunc("/binders/{id}", h.BinderDetail).Methods("GET")
 	protected.HandleFunc("/trade", h.Trade).Methods("GET")
+	protected.HandleFunc("/settings", h.Settings).Methods("GET", "POST")
+	protected.HandleFunc("/settings/change-password", h.ChangePassword).Methods("POST") // BUG-M11: Route for password change with session invalidation
 	protected.HandleFunc("/portfolio/add", h.AddCardToPortfolio).Methods("POST")
 	protected.HandleFunc("/portfolio/edit", h.EditPortfolioItem).Methods("POST")
+	protected.HandleFunc("/portfolio/delete", h.DeletePortfolioItem).Methods("POST", "DELETE") // BUG-H02: Delete with ownership check
 	protected.HandleFunc("/portfolio/toggle-visibility", h.ToggleVisibility).Methods("POST")
 	protected.HandleFunc("/wantlist", h.Wantlist).Methods("GET")
 	protected.HandleFunc("/wantlist/add", h.AddToWantlist).Methods("POST")
@@ -186,18 +238,20 @@ func main() {
 	protected.HandleFunc("/api/gamification/heartbeat", h.Heartbeat).Methods("POST")
 	protected.HandleFunc("/api/portfolio/add", h.AddCardToPortfolio).Methods("POST")
 
-	// Admin Routes (Require Authentication + Admin Role)
-	admin := r.PathPrefix("/api/admin").Subrouter()
-	admin.Use(auth.Middleware)
+	// Admin Routes (Require Authentication + Admin Role + CSRF)
+	admin := protected.PathPrefix("/api/admin").Subrouter()
 	admin.Use(auth.AdminMiddleware(db.DB))
 	admin.HandleFunc("/refresh-cache", h.RefreshCache).Methods("POST")
 
 	slog.Info("Server starting", "port", cfg.App.Port)
+	// BUG-C05 FIX: Use configurable WriteTimeout (default 120s) instead of
+	// hardcoded 15s which killed scan responses mid-stream during OCR+LLM processing.
+	writeTimeout := time.Duration(cfg.App.WriteTimeout) * time.Second
 	srv := &http.Server{
 		Addr:         ":" + cfg.App.Port,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: writeTimeout,
 		IdleTimeout:  60 * time.Second,
 	}
 
@@ -216,8 +270,9 @@ func main() {
 	slog.Info("Shutting down server...")
 
 	// Stop workers
-	if priceWorker != nil {
-		priceWorker.Stop()
+	if dataWorker != nil {
+		workerCancel()
+		dataWorker.Stop()
 	}
 
 	// Create a context with timeout for shutdown

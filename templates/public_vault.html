@@ -2,7 +2,7 @@
 <html class="dark" lang="en">
 <head>
     <meta charset="utf-8"/>
-    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport"/>
     <title>{{ .Username }}'s Public Vault - Pokget</title>
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
@@ -20,7 +20,7 @@
         }
     </style>
 </head>
-<body class="min-h-screen pb-20">
+<body class="min-h-screen pb-20 overflow-x-hidden" style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom)">
     <!-- Header -->
     <header class="fixed top-0 w-full z-50 bg-[#131314]/60 backdrop-blur-xl border-b border-white/5">
         <div class="flex justify-between items-center px-8 h-16 max-w-7xl mx-auto">
@@ -39,7 +39,7 @@
         </section>
 
         <!-- Gallery Grid -->
-        <section class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+        <section class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-6">
             {{ range .Portfolio }}
             <div class="glass-card rounded-2xl p-3 flex flex-col gap-3 group transition-transform hover:-translate-y-2 duration-300">
                 <div class="aspect-[3/4] rounded-xl overflow-hidden shadow-2xl relative">
@@ -51,10 +51,16 @@
                     {{ end }}
                 </div>
                 <div class="px-1">
-                    <p class="text-[8px] text-[#ddb7ff] uppercase tracking-widest">{{ .Card.Set }}</p>
-                    <p class="text-sm font-bold truncate">{{ .Card.Name }}</p>
+                    <p class="text-[11px] sm:text-[8px] text-[#ddb7ff] uppercase tracking-widest">{{ .Card.Set }}</p>
+                    <p class="text-[11px] sm:text-sm font-bold truncate">{{ .Card.Name }}</p>
                     <div class="flex justify-between items-center mt-2">
-                        <span class="text-lg font-bold">${{ .Card.PriceUSD }}</span>
+                        <span class="text-lg font-bold">
+                            {{ $.CurrencySymbol }}{{ if eq $.UserCurrency "EUR" }}
+                                {{ .Card.PriceEUR }}
+                            {{ else }}
+                                {{ .Card.PriceUSD }}
+                            {{ end }}
+                        </span>
                         <span class="text-[10px] opacity-40 uppercase">{{ .Condition }}</span>
                     </div>
                 </div>

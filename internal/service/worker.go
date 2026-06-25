@@ -1,4 +1,8 @@
 // Copyright (c) 2026 arumes31
+// BUG-L08 FIX: WorkerService is dead code — it is never instantiated or used
+// anywhere in the application. The application uses worker.DataSyncWorker
+// (in internal/worker/price_sync.go) for background price syncing instead.
+// Marking as deprecated so it can be removed in a future cleanup.
 package service
 
 import (
@@ -9,11 +13,14 @@ import (
 	"time"
 )
 
+// Deprecated: WorkerService is unused dead code. The application uses
+// worker.DataSyncWorker instead. Do not reference in new code.
 type WorkerService struct {
 	DB          *sql.DB
 	PriceClient PriceClient
 }
 
+// Deprecated: NewWorkerService is unused. Do not reference in new code.
 func NewWorkerService(db *sql.DB, priceClient PriceClient) *WorkerService {
 	return &WorkerService{
 		DB:          db,
@@ -21,7 +28,7 @@ func NewWorkerService(db *sql.DB, priceClient PriceClient) *WorkerService {
 	}
 }
 
-// StartBackgroundPriceScraper runs every 24 hours to refresh all card prices
+// Deprecated: StartBackgroundPriceScraper is unused. Do not reference in new code.
 func (s *WorkerService) StartBackgroundPriceScraper(ctx context.Context) {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
@@ -61,7 +68,9 @@ func (s *WorkerService) refreshAllPrices() {
 		cards = append(cards, card)
 	}
 	// Early release of database connection
-	rows.Close()
+	if err := rows.Close(); err != nil {
+		slog.Error("Worker: Failed to close rows", "error", err)
+	}
 
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()

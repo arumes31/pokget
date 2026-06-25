@@ -105,6 +105,10 @@ func parseCardmarketPrice(text string) (float64, error) {
 		// German locale: '.' groups thousands, ',' is the decimal separator.
 		cleaned = strings.ReplaceAll(cleaned, ".", "")
 		cleaned = strings.ReplaceAll(cleaned, ",", ".")
+	} else if isGermanThousandsDot(cleaned) {
+		// German locale without comma: a dot followed by exactly 3 digits
+		// at the end indicates a thousands separator (e.g. "1.234" = 1234).
+		cleaned = strings.ReplaceAll(cleaned, ".", "")
 	}
 
 	if cleaned == "" {
@@ -113,11 +117,50 @@ func parseCardmarketPrice(text string) (float64, error) {
 	return strconv.ParseFloat(cleaned, 64)
 }
 
+// isGermanThousandsDot detects whether dots in the cleaned string are
+// thousands separators in German locale (e.g. "1.234" meaning 1234 EUR,
+// not 1.234). A dot is a thousands separator if it is followed by exactly
+// 3 digits and no comma appears after it.
+func isGermanThousandsDot(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '.' {
+			// Check if there are exactly 3 digits after the dot
+			remaining := s[i+1:]
+			if len(remaining) == 3 && isAllDigits(remaining) {
+				return true
+			}
+			// Also match patterns like "1.234.567" where each group is 3 digits
+			if len(remaining) > 3 && isAllDigits(remaining[:3]) && (remaining[3] == '.' || remaining[3] == ',') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isAllDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // Scrape fetches the current price from Cardmarket
 func (s *CardmarketScraper) Scrape(card models.Card) (float64, error) {
+	return s.ScrapeWithRetry(card, 3)
+}
+
+// BUG-M10 FIX: ScrapeWithRetry implements exponential backoff with retry
+// for 429 (Too Many Requests) responses. Previously, the price sync service
+// didn't handle 429 status codes, potentially getting IP-banned by the API.
+// Now, on 429 responses, it waits with exponential backoff before retrying.
+func (s *CardmarketScraper) ScrapeWithRetry(card models.Card, maxRetries int) (float64, error) {
 	var eur float64
 	var scrapeErr error
 	var found bool
+	var got429 bool
 
 	c := colly.NewCollector()
 	c.SetRequestTimeout(15 * time.Second)
@@ -165,8 +208,17 @@ func (s *CardmarketScraper) Scrape(card models.Card) (float64, error) {
 	})
 
 	c.OnError(func(r *colly.Response, err error) {
-		if r != nil && r.Request != nil {
-			slog.Error("CardmarketScraper: Request failed", "url", r.Request.URL, "status", r.StatusCode, "error", err)
+		if r != nil {
+			// BUG-M10 FIX: Detect 429 Too Many Requests and signal retry
+			if r.StatusCode == 429 {
+				got429 = true
+				retryAfter := r.Headers.Get("Retry-After")
+				slog.Warn("CardmarketScraper: Rate limited (429)", "url", cmURL, "retry_after", retryAfter)
+				return
+			}
+			if r.Request != nil {
+				slog.Error("CardmarketScraper: Request failed", "url", r.Request.URL, "status", r.StatusCode, "error", err)
+			}
 		} else {
 			slog.Error("CardmarketScraper: Request failed", "error", err)
 		}
@@ -176,6 +228,14 @@ func (s *CardmarketScraper) Scrape(card models.Card) (float64, error) {
 	if err := c.Visit(cmURL); err != nil {
 		slog.Error("CardmarketScraper: Failed to visit URL", "url", cmURL, "error", err)
 		scrapeErr = err
+	}
+
+	// BUG-M10 FIX: Handle 429 with exponential backoff retry
+	if got429 && maxRetries > 0 {
+		backoff := 5 * time.Second * time.Duration(4-maxRetries) // Exponential: 5s, 10s, 15s
+		slog.Warn("CardmarketScraper: Rate limited, backing off before retry", "card", card.Name, "backoff", backoff, "retries_left", maxRetries-1)
+		time.Sleep(backoff)
+		return s.ScrapeWithRetry(card, maxRetries-1)
 	}
 
 	// If the request succeeded but no price element matched, surface an error

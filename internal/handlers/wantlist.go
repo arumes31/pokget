@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"pokget/internal/auth"
 	"pokget/internal/models"
+	"strconv"
 )
 
 func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +37,7 @@ func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.DB.Query(`
-		SELECT w.id, w.card_id, w.target_price, w.notes, c.name, c.set_name, c.price_usd, c.image_url
+		SELECT w.id, w.card_id, w.target_price, w.notes, c.name, c.set_name, c.price_usd, c.price_eur, c.image_url
 		FROM wantlist w
 		JOIN cards c ON w.card_id = c.id
 		WHERE w.user_id = $1`, userID)
@@ -47,10 +48,10 @@ func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var items []models.WantlistItem
+	items := make([]models.WantlistItem, 0, 64) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
 	for rows.Next() {
 		var i models.WantlistItem
-		if err := rows.Scan(&i.ID, &i.CardID, &i.TargetPrice, &i.Notes, &i.Card.Name, &i.Card.Set, &i.Card.PriceUSD, &i.Card.ImageURL); err == nil {
+		if err := rows.Scan(&i.ID, &i.CardID, &i.TargetPrice, &i.Notes, &i.Card.Name, &i.Card.Set, &i.Card.PriceUSD, &i.Card.PriceEUR, &i.Card.ImageURL); err == nil {
 			items = append(items, i)
 		}
 	}
@@ -78,7 +79,25 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "card_id is required", http.StatusBadRequest)
 		return
 	}
-	targetPrice := r.FormValue("target_price")
+
+	// BUG-H10 FIX: Parse target_price as float64 to match the SQL DECIMAL type.
+	// Previously, the raw string was passed directly to SQL, which could cause
+	// conversion errors or type mismatches with the DECIMAL(12,2) column.
+	targetPriceStr := r.FormValue("target_price")
+	var targetPrice *float64
+	if targetPriceStr != "" {
+		val, err := strconv.ParseFloat(targetPriceStr, 64)
+		if err != nil {
+			http.Error(w, "Invalid target price", http.StatusBadRequest)
+			return
+		}
+		if val < 0 {
+			http.Error(w, "Invalid target price", http.StatusBadRequest)
+			return
+		}
+		targetPrice = &val
+	}
+
 	notes := r.FormValue("notes")
 
 	_, err := h.DB.Exec(`
@@ -92,7 +111,7 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("HX-Trigger", `{"notify": {"msg": "Identify Success: Grail added to Hunt", "type": "success"}}`)
-	
+
 	// Re-fetch and render the updated wantlist
 	h.Wantlist(w, r)
 }

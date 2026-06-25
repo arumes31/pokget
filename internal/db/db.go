@@ -33,6 +33,14 @@ import (
 	_ "github.com/lib/pq"                                // Register PostgreSQL driver
 )
 
+// DB is the global database connection pool used throughout the application.
+//
+// BUG-L01 FIX: Document the global mutable variable pattern. This package-level
+// variable is initialized by InitDB() and read by all handlers and services.
+// While a global mutable variable is not ideal (it makes testing harder and
+// creates hidden coupling), it is the established pattern in this codebase.
+// Prefer passing *sql.DB via dependency injection in new code. When the DB
+// is nil (e.g. startup failure), handlers must check and return 503.
 var DB *sql.DB
 
 func InitDB() {
@@ -66,7 +74,7 @@ func Connect() (*sql.DB, error) {
 	}
 
 	if sslmode == "" {
-		sslmode = "disable"
+		sslmode = "prefer"
 	}
 
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
@@ -127,7 +135,7 @@ func ApplyMigrations(db *sql.DB, absPath string) error {
 		if vErr != nil {
 			return fmt.Errorf("could not apply migrations (and failed to get version): %w (version error: %v)", err, vErr)
 		}
-		
+
 		if dirty {
 			slog.Warn("Database is dirty, attempting to force version and retry", "version", version)
 			if fErr := m.Force(int(version)); fErr != nil { // nolint:gosec // version is expected to be within int range

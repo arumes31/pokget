@@ -9,16 +9,22 @@ import (
 // Why: Large strings or many comparisons could lead to excessive memory allocation and GC pressure.
 // Impact: Reduces memory usage from O(N*M) to O(min(N,M)), which is critical for high-frequency OCR matching.
 // Measurement: For two strings of length 100, memory usage drops from ~40KB to ~0.8KB per call, and avoids extra allocations per row.
+//
+// BUG-M05 FIX: Convert strings to []rune before computing distance so the
+// algorithm works on Unicode code points instead of bytes. Previously, the
+// function operated on bytes, producing incorrect results for CJK characters
+// and other multi-byte Unicode.
 func levenshtein(s1, s2 string) int {
-	s1 = strings.ToLower(s1)
-	s2 = strings.ToLower(s2)
+	// Convert to runes for correct Unicode handling
+	r1 := []rune(strings.ToLower(s1))
+	r2 := []rune(strings.ToLower(s2))
 
-	// Ensure s2 is the shorter string to minimize space usage to O(min(N,M))
-	if len(s1) < len(s2) {
-		s1, s2 = s2, s1
+	// Ensure r2 is the shorter slice to minimize space usage to O(min(N,M))
+	if len(r1) < len(r2) {
+		r1, r2 = r2, r1
 	}
 
-	n, m := len(s1), len(s2)
+	n, m := len(r1), len(r2)
 	if m == 0 {
 		return n
 	}
@@ -34,7 +40,7 @@ func levenshtein(s1, s2 string) int {
 		v0[0] = i + 1
 		for j := 0; j < m; j++ {
 			cost := 1
-			if s1[i] == s2[j] {
+			if r1[i] == r2[j] {
 				cost = 0
 			}
 			temp := v0[j+1]

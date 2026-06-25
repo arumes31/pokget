@@ -40,13 +40,13 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	var email string
 	var rank string
 	var xp int
-	
+
 	err := h.DB.QueryRow(`
 		SELECT id, email, rank_title, xp 
 		FROM users 
-		WHERE public_slug = $1 AND is_public_profile = TRUE`, 
+		WHERE public_slug = $1 AND is_public_profile = TRUE`,
 		slug).Scan(&userID, &email, &rank, &xp)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			slog.Warn("PublicVault: Vault not found", "slug", slug)
@@ -61,11 +61,11 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	// Fetch public portfolio items
 	rows, err := h.DB.Query(`
 		SELECT p.id, p.condition, p.format, p.grade, p.grading_company, p.notes, 
-		       c.name, c.set_name, c.price_usd, c.image_url, c.game
+		       c.name, c.set_name, c.price_usd, c.price_eur, c.image_url, c.game
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1 AND p.is_public = TRUE`, userID)
-	
+
 	if err != nil {
 		slog.Error("Failed to fetch public vault", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -73,11 +73,11 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var portfolio []models.PortfolioItem
+	portfolio := make([]models.PortfolioItem, 0, 64) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
 	for rows.Next() {
 		var p models.PortfolioItem
 		if err := rows.Scan(&p.ID, &p.Condition, &p.Format, &p.Grade, &p.GradingCompany, &p.Notes,
-			&p.Card.Name, &p.Card.Set, &p.Card.PriceUSD, &p.Card.ImageURL, &p.Card.Game); err == nil {
+			&p.Card.Name, &p.Card.Set, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.ImageURL, &p.Card.Game); err == nil {
 			portfolio = append(portfolio, p)
 		}
 	}
@@ -117,5 +117,7 @@ func (h *Handler) ToggleVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// BUG-M09 FIX: Set Content-Type header for API responses.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 }

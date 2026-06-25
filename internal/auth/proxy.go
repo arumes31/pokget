@@ -29,9 +29,9 @@ import (
 // ProxyMiddleware handles reverse proxy and Cloudflare headers to extract the real client IP.
 // Controllable via TRUST_PROXY and TRUST_CLOUDFLARE environment variables.
 func ProxyMiddleware(next http.Handler) http.Handler {
-	// Enabled by default unless explicitly set to "false"
-	trustProxy := os.Getenv("TRUST_PROXY") != "false"
-	trustCF := os.Getenv("TRUST_CLOUDFLARE") != "false"
+	// Security: Fail-secure default. Only trust proxy headers if explicitly enabled.
+	trustProxy := os.Getenv("TRUST_PROXY") == "true"
+	trustCF := os.Getenv("TRUST_CLOUDFLARE") == "true"
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var realIP string
@@ -46,9 +46,13 @@ func ProxyMiddleware(next http.Handler) http.Handler {
 			if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
 				realIP = xrip
 			} else if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-				// X-Forwarded-For can be a comma-separated list; the first one is the original client
-				parts := strings.Split(xff, ",")
-				realIP = strings.TrimSpace(parts[0])
+				// X-Forwarded-For can be a comma-separated list; the first one is the original client.
+				// Use IndexByte to avoid heap allocations from strings.Split.
+				if commaIdx := strings.IndexByte(xff, ','); commaIdx != -1 {
+					realIP = strings.TrimSpace(xff[:commaIdx])
+				} else {
+					realIP = strings.TrimSpace(xff)
+				}
 			}
 		}
 

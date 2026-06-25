@@ -1,21 +1,14 @@
-<div class="fixed inset-0 z-[100] flex flex-col justify-end" 
-     x-show="showAddModal" 
-     x-transition:enter="transition ease-out duration-300" 
-     x-transition:enter-start="translate-y-full" 
-     x-transition:enter-end="translate-y-0" 
-     x-transition:leave="transition ease-in duration-300" 
-     x-transition:leave-start="translate-y-0" 
-     x-transition:leave-end="translate-y-full"
-     @keydown.escape.window="showAddModal = false"
-     role="dialog"
-     aria-modal="true"
-     aria-labelledby="add-card-title">
+<div class="fixed inset-0 z-[100] flex flex-col justify-end" x-show="showAddModal"
+    x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-y-full"
+    x-transition:enter-end="translate-y-0" x-transition:leave="transition ease-in duration-300"
+    x-transition:leave-start="translate-y-0" x-transition:leave-end="translate-y-full"
+    @keydown.escape.window="showAddModal = false" role="dialog" aria-modal="true" aria-labelledby="add-card-title">
     <!-- Backdrop -->
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showAddModal = false" aria-hidden="true"></div>
-    
+
     <!-- Modal Content -->
-    <div class="glass-card w-full max-w-md mx-auto rounded-t-[2.5rem] rounded-b-none p-8 z-10 border-b-0 border-x-0 h-[80vh] overflow-y-auto no-scrollbar"
-         x-data="{ 
+    <div class="glass-card w-full max-w-md mx-auto rounded-t-[2.5rem] rounded-b-none p-8 z-10 border-b-0 border-x-0 max-h-[90vh] overflow-y-auto no-scrollbar"
+        x-data="{ 
             loading: false,
             async submit() {
                 this.loading = true;
@@ -26,25 +19,28 @@
             }
          }">
         <div class="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-8"></div>
-        
+
         <h3 id="add-card-title" class="text-xl font-bold mb-6">Add to Portfolio</h3>
-        
+
         <form @submit.prevent="submit" class="space-y-6 pb-12">
             <!-- Card Details Preview -->
             <div class="flex gap-4 p-4 glass-card bg-white/5 border-purple-500/20">
-                <img src="https://images.pokemontcg.io/swsh45/19_hires.png" alt="Charizard VMAX" class="w-16 h-20 object-contain">
+                <img src="https://images.pokemontcg.io/swsh45/19_hires.png" alt="Charizard VMAX"
+                    class="w-16 h-20 object-contain">
                 <div>
                     <p class="font-bold">Charizard VMAX</p>
                     <p class="text-xs text-white/40">Shining Fates • SV107/SV122</p>
-                    <p class="text-sm font-bold text-purple-400 mt-2">$120.50 (TCGPlayer)</p>
+                    <p class="text-sm font-bold text-purple-400 mt-2">{{ .CurrencySymbol }}120.50 (TCGPlayer)</p>
                 </div>
             </div>
 
             <!-- Inputs -->
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label for="condition" class="block text-[10px] font-bold text-white/40 uppercase mb-2">Condition</label>
-                    <select id="condition" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors appearance-none">
+                    <label for="condition"
+                        class="block text-[10px] font-bold text-white/40 uppercase mb-2">Condition</label>
+                    <select id="condition"
+                        class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors appearance-none">
                         <option value="NM">Near Mint</option>
                         <option value="LP">Lightly Played</option>
                         <option value="MP">Moderately Played</option>
@@ -52,7 +48,8 @@
                 </div>
                 <div>
                     <label for="format" class="block text-[10px] font-bold text-white/40 uppercase mb-2">Format</label>
-                    <select id="format" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors appearance-none">
+                    <select id="format"
+                        class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors appearance-none">
                         <option>Raw</option>
                         <option>Graded</option>
                         <option>Sealed</option>
@@ -62,8 +59,10 @@
 
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label for="language" class="block text-[10px] font-bold text-white/40 uppercase mb-2">Language</label>
-                    <select id="language" name="language" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors appearance-none">
+                    <label for="language"
+                        class="block text-[10px] font-bold text-white/40 uppercase mb-2">Language</label>
+                    <select id="language" name="language"
+                        class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors appearance-none">
                         <option value="en">English</option>
                         <option value="jp">Japanese</option>
                         <option value="fr">French</option>
@@ -78,7 +77,8 @@
             <div>
                 <span class="block text-[10px] font-bold text-white/40 uppercase mb-2">Grading Company</span>
                 <div class="flex gap-2" role="group" aria-label="Select grading company">
-                    <button type="button" class="glass-button flex-1 py-2 text-[10px] font-bold border-purple-500/50 text-purple-400">PSA</button>
+                    <button type="button"
+                        class="glass-button flex-1 py-2 text-[10px] font-bold border-purple-500/50 text-purple-400">PSA</button>
                     <button type="button" class="glass-button flex-1 py-2 text-[10px] font-bold">BGS</button>
                     <button type="button" class="glass-button flex-1 py-2 text-[10px] font-bold">CGC</button>
                 </div>
@@ -86,12 +86,16 @@
 
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label for="purchase-price" class="block text-[10px] font-bold text-white/40 uppercase mb-2">Purchase Price</label>
-                    <input type="number" id="purchase-price" placeholder="100.00" step="0.01" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors">
+                    <label for="purchase-price"
+                        class="block text-[10px] font-bold text-white/40 uppercase mb-2">Purchase Price</label>
+                    <input type="number" id="purchase-price" inputmode="decimal" placeholder="100.00" step="0.01"
+                        class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors">
                 </div>
                 <div>
-                    <label for="currency" class="block text-[10px] font-bold text-white/40 uppercase mb-2">Currency</label>
-                    <select id="currency" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors appearance-none">
+                    <label for="currency"
+                        class="block text-[10px] font-bold text-white/40 uppercase mb-2">Currency</label>
+                    <select id="currency"
+                        class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors appearance-none">
                         <option>USD</option>
                         <option>EUR</option>
                     </select>
@@ -99,20 +103,28 @@
             </div>
 
             <div>
-                <label for="binder-location" class="block text-[10px] font-bold text-white/40 uppercase mb-2">Binder Location</label>
-                <select id="binder-location" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors appearance-none">
+                <label for="binder-location" class="block text-[10px] font-bold text-white/40 uppercase mb-2">Binder
+                    Location</label>
+                <select id="binder-location"
+                    class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-purple-500/50 transition-colors appearance-none">
                     <option>Main Binder</option>
                     <option>Charizard Master Set</option>
                     <option>For Sale / Trade</option>
                 </select>
             </div>
 
-            <button type="submit" 
-                    :disabled="loading"
-                    class="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold text-sm shadow-xl shadow-purple-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+            <button type="submit" :disabled="loading"
+                class="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold text-sm shadow-xl shadow-purple-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                 <span x-show="!loading">ADD TO COLLECTION</span>
                 <span x-show="loading" class="flex items-center justify-center gap-2">
-                    <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none"
+                        viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                        </circle>
+                        <path class="opacity-75" fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                        </path>
+                    </svg>
                     PROCESSING...
                 </span>
             </button>

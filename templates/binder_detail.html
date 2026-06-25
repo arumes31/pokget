@@ -9,22 +9,31 @@
         </div>
     </div>
 
-    <div class="grid grid-cols-2 gap-md md:grid-cols-4 lg:grid-cols-6 pb-8">
+    <div class="grid grid-cols-2 gap-md sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 pb-8">
         {{ range .Cards }}
-        <div class="glass-card rounded-xl p-sm flex flex-col gap-sm group hover:border-primary/40 transition-all duration-300 cursor-pointer active:scale-95">
+        <div
+            class="glass-card rounded-xl p-sm flex flex-col gap-sm group hover:border-primary/40 transition-all duration-300 cursor-pointer active:scale-95">
             <div class="aspect-[3/4] rounded-lg overflow-hidden relative shadow-lg">
-                <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                <div class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}"
+                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                <div
+                    class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                </div>
             </div>
             <div class="px-xs pb-xs">
-                <p class="font-label-sm text-[8px] text-primary-fixed-dim uppercase tracking-widest">{{ .Card.Game }}</p>
-                <p class="font-label-sm text-xs text-on-surface-variant truncate">{{ .Card.Name }}</p>
+                <p class="font-label-sm text-[11px] sm:text-[8px] text-primary-fixed-dim uppercase tracking-widest">{{
+                    .Card.Game }}</p>
+                <p class="font-label-sm text-[11px] sm:text-xs text-on-surface-variant truncate">{{ .Card.Name }}</p>
                 <div class="flex justify-between items-center mt-1">
                     <span class="font-bold text-lg text-on-surface">
-                        {{ if .CustomPrice }}
-                            ${{ .CustomPrice }}
+                        {{ $.CurrencySymbol }}{{ if .CustomPrice }}
+                        {{ printf "%.2f" .GetCustomPrice }}
                         {{ else }}
-                            ${{ .Card.PriceUSD }}
+                        {{ if eq $.UserCurrency "EUR" }}
+                        {{ .Card.PriceEUR }}
+                        {{ else }}
+                        {{ .Card.PriceUSD }}
+                        {{ end }}
                         {{ end }}
                     </span>
                     <span class="text-[10px] font-bold text-white/40 uppercase">{{ .Condition }}</span>

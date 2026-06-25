@@ -21,6 +21,8 @@
 package errors
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -41,6 +43,22 @@ func (e *AppError) Error() string {
 	return e.Message
 }
 
+// ClientMessage returns only the user-safe message without internal details
+func (e *AppError) ClientMessage() string {
+	return e.Message
+}
+
+// MarshalJSON implements json.Marshaler — excludes stack trace from JSON output
+func (e *AppError) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Message string `json:"message"`
+		Code    int    `json:"code"`
+	}{
+		Message: e.Message,
+		Code:    e.Code,
+	})
+}
+
 // Wrap creates a new AppError with a stack trace.
 func Wrap(code int, message string, err error) *AppError {
 	stack := make([]byte, 1024)
@@ -55,7 +73,8 @@ func Wrap(code int, message string, err error) *AppError {
 
 // MapToStatusCode returns the HTTP status code for an error.
 func MapToStatusCode(err error) int {
-	if appErr, ok := err.(*AppError); ok {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
 		return appErr.Code
 	}
 	return http.StatusInternalServerError

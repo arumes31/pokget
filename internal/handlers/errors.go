@@ -96,6 +96,8 @@ func (h *Handler) SubmitError(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// BUG-M09 FIX: Set Content-Type header for API responses.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Error card submitted! Review in progress."))
 }

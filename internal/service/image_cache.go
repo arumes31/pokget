@@ -28,10 +28,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 type ImageCacheService struct {
-	BaseDir string
+	BaseDir    string
+	maxAge     time.Duration // BUG-H07: Maximum age for cached images
+	stopCh     chan struct{}
+	httpClient *http.Client
 }
 
 func NewImageCacheService(baseDir string) *ImageCacheService {
@@ -39,7 +43,55 @@ func NewImageCacheService(baseDir string) *ImageCacheService {
 	if err := os.MkdirAll(baseDir, 0700); err != nil { // #nosec G301 - restricted permissions
 		slog.Error("Failed to create image cache directory", "dir", baseDir, "error", err)
 	}
-	return &ImageCacheService{BaseDir: baseDir}
+	svc := &ImageCacheService{
+		BaseDir:    baseDir,
+		maxAge:     24 * time.Hour, // Default: evict entries older than 24 hours
+		stopCh:     make(chan struct{}),
+		httpClient: &http.Client{Timeout: 30 * time.Second},
+	}
+
+	// BUG-H07 FIX: Start background goroutine to periodically clean up stale cache entries
+	go svc.cleanupStaleEntries()
+
+	return svc
+}
+
+// Close stops the background cleanup goroutine.
+func (s *ImageCacheService) Close() {
+	close(s.stopCh)
+}
+
+// cleanupStaleEntries periodically removes cached image files older than maxAge
+func (s *ImageCacheService) cleanupStaleEntries() {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			entries, err := os.ReadDir(s.BaseDir)
+			if err != nil {
+				continue
+			}
+			now := time.Now()
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				info, err := entry.Info()
+				if err != nil {
+					continue
+				}
+				if now.Sub(info.ModTime()) > s.maxAge {
+					path := filepath.Join(s.BaseDir, entry.Name())
+					_ = os.Remove(path)
+					slog.Info("ImageCache: Evicted stale entry", "file", entry.Name())
+				}
+			}
+		case <-s.stopCh:
+			return
+		}
+	}
 }
 
 // GetImagePath returns the local path for a card image, downloading it if necessary
@@ -48,9 +100,15 @@ func (s *ImageCacheService) GetImagePath(cardID string, remoteURL string) (strin
 	safeID := filepath.Base(cardID)
 	localPath := filepath.Join(s.BaseDir, safeID+".png")
 
-	// Check if already exists
-	if _, err := os.Stat(localPath); err == nil {
-		return localPath, nil
+	// Check if already exists and is not stale
+	if info, err := os.Stat(localPath); err == nil {
+		// BUG-H07 FIX: Check if the cached file has expired
+		if time.Since(info.ModTime()) > s.maxAge {
+			_ = os.Remove(localPath)
+			slog.Info("ImageCache: Evicted stale entry on read", "file", safeID+".png")
+		} else {
+			return localPath, nil
+		}
 	}
 
 	// Validate URL before downloading to prevent SSRF
@@ -74,7 +132,7 @@ func (s *ImageCacheService) GetImagePath(cardID string, remoteURL string) (strin
 
 	// Download for free from remote source
 	slog.Info("ImageCache: Downloading card image", "id", cardID, "url", remoteURL)
-	resp, err := http.Get(remoteURL) // #nosec G107 - internal service downloading card assets
+	resp, err := s.httpClient.Get(remoteURL) // #nosec G107 - internal service downloading card assets
 	if err != nil {
 		return "", err
 	}
@@ -90,6 +148,22 @@ func (s *ImageCacheService) GetImagePath(cardID string, remoteURL string) (strin
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, resp.Body)
-	return localPath, err
+	// Limit downloaded image size to 10MB
+	const maxImageSize = 10 << 20
+	if resp.ContentLength > maxImageSize {
+		return "", fmt.Errorf("image too large: %d bytes (max %d)", resp.ContentLength, maxImageSize)
+	}
+	limitedReader := &io.LimitedReader{R: resp.Body, N: maxImageSize}
+
+	_, err = io.Copy(out, limitedReader)
+	if err != nil {
+		return "", err
+	}
+	if limitedReader.N <= 0 {
+		// The reader hit the 10MB limit — the downloaded image is truncated
+		out.Close()
+		os.Remove(localPath)
+		return "", fmt.Errorf("image exceeded 10MB limit and was truncated")
+	}
+	return localPath, nil
 }

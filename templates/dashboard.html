@@ -5,30 +5,41 @@
         <div class="flex flex-col gap-6 sm:gap-8">
             <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6">
                 <div class="flex flex-col gap-2">
-                    <span class="font-label-sm text-[10px] sm:text-xs uppercase text-on-surface-variant tracking-[0.3em] opacity-50">Portfolio Value</span>
+                    <span
+                        class="font-label-sm text-[10px] sm:text-xs uppercase text-on-surface-variant tracking-[0.3em] opacity-50">Portfolio
+                        Value</span>
                     <div class="flex flex-wrap items-baseline gap-3">
-                        <span class="font-h1 text-4xl sm:text-5xl md:text-6xl font-black text-on-surface tracking-tighter roll-counter" 
-                              data-target="{{ .TotalValuation }}" data-prefix="$">$0.00</span>
+                        <span
+                            class="font-h1 text-4xl sm:text-5xl md:text-6xl font-black text-on-surface tracking-tighter roll-counter"
+                            data-target="{{ .TotalValuation }}" data-prefix="{{ .CurrencySymbol }}">{{ .CurrencySymbol
+                            }}0.00</span>
                         {{ if gt .TotalValuation 0.0 }}
-                        <div class="flex items-center {{ if ge .Change24h 0.0 }}text-tertiary bg-tertiary/10 border-tertiary/20{{ else }}text-red-400 bg-red-400/10 border-red-400/20{{ end }} gap-1 px-2.5 py-1 rounded-xl border backdrop-blur-md">
-                            <span class="material-symbols-outlined text-[14px]">{{ if ge .Change24h 0.0 }}trending_up{{ else }}trending_down{{ end }}</span>
-                            <span class="font-label-sm text-[11px] font-black">{{ if ge .Change24h 0.0 }}+{{ end }}{{ printf "%.1f" .Change24h }}%</span>
+                        <div
+                            class="flex items-center {{ if ge .Change24h 0.0 }}text-tertiary bg-tertiary/10 border-tertiary/20{{ else }}text-red-400 bg-red-400/10 border-red-400/20{{ end }} gap-1 px-2.5 py-1 rounded-xl border backdrop-blur-md">
+                            <span class="material-symbols-outlined text-[14px]">{{ if ge .Change24h 0.0 }}trending_up{{
+                                else }}trending_down{{ end }}</span>
+                            <span class="font-label-sm text-[11px] font-black">{{ if ge .Change24h 0.0 }}+{{ end }}{{
+                                printf "%.1f" .Change24h }}%</span>
                         </div>
                         {{ end }}
                     </div>
                 </div>
-                
+
                 <!-- Rank Display (Floating Card style for mobile) -->
-                <div class="flex items-center gap-4 bg-white/[0.03] backdrop-blur-3xl px-5 py-3 rounded-3xl border border-white/10 shadow-xl self-start sm:self-auto group transition-transform hover:scale-105">
+                <div
+                    class="flex items-center gap-4 bg-white/[0.03] backdrop-blur-3xl px-5 py-3 rounded-3xl border border-white/10 shadow-xl self-start sm:self-auto group transition-transform hover:scale-105">
                     <div class="relative w-12 h-12 flex-shrink-0">
                         <div class="absolute inset-0 bg-primary/30 blur-lg rounded-full animate-pulse"></div>
                         <img src="{{ .RankIcon }}" alt="Rank" class="w-full h-full object-contain relative z-10">
                     </div>
                     <div class="flex flex-col">
-                        <span class="text-[9px] uppercase font-bold text-on-surface-variant tracking-widest opacity-60">Legacy Status</span>
+                        <span
+                            class="text-[9px] uppercase font-bold text-on-surface-variant tracking-widest opacity-60">Legacy
+                            Status</span>
                         <span class="text-sm font-black text-primary uppercase tracking-tighter">{{ .Rank }}</span>
                         <div class="w-24 h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden border border-white/5">
-                            <div class="h-full bg-primary shadow-[0_0_12px_#ddb7ff] transition-all duration-1000" x-init="setTimeout(() => $el.style.width = '{{ .XPPercent }}%', 500)"></div>
+                            <div class="h-full bg-primary shadow-[0_0_12px_#ddb7ff] transition-all duration-1000"
+                                x-init="setTimeout(() => $el.style.width = '{{ .XPPercent }}%', 500)"></div>
                         </div>
                     </div>
                 </div>
@@ -43,8 +54,11 @@
                         <stop offset="100%" stop-color="#ddb7ff" stop-opacity="0"></stop>
                     </linearGradient>
                 </defs>
-                <path class="drop-shadow-[0_0_15px_rgba(221,183,255,0.5)]" d="M0,85 Q40,75 80,90 T160,45 T240,65 T320,25 T400,30" fill="transparent" stroke="#ddb7ff" stroke-width="3" stroke-linecap="round"></path>
-                <path d="M0,85 Q40,75 80,90 T160,45 T240,65 T320,25 T400,30 L400,100 L0,100 Z" fill="url(#gradient-hero-v2)"></path>
+                <path class="drop-shadow-[0_0_15px_rgba(221,183,255,0.5)]"
+                    d="M0,85 Q40,75 80,90 T160,45 T240,65 T320,25 T400,30" fill="transparent" stroke="#ddb7ff"
+                    stroke-width="3" stroke-linecap="round"></path>
+                <path d="M0,85 Q40,75 80,90 T160,45 T240,65 T320,25 T400,30 L400,100 L0,100 Z"
+                    fill="url(#gradient-hero-v2)"></path>
             </svg>
         </div>
     </div>
@@ -55,7 +69,8 @@
     <!-- Total Assets -->
     <div class="glass-card p-4 sm:p-5 rounded-3xl flex flex-col gap-1 border border-white/5 bg-white/[0.02]">
         <span class="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-40">Assets</span>
-        <span class="font-black text-2xl sm:text-3xl text-on-surface roll-counter" data-target="{{ len .Portfolio }}">0</span>
+        <span class="font-black text-2xl sm:text-3xl text-on-surface roll-counter"
+            data-target="{{ len .Portfolio }}">0</span>
     </div>
     <!-- Binder Count -->
     <div class="glass-card p-4 sm:p-5 rounded-3xl flex flex-col gap-1 border border-white/5 bg-white/[0.02]">
@@ -63,14 +78,16 @@
         <span class="font-black text-2xl sm:text-3xl text-on-surface">{{ .BinderCount }}</span>
     </div>
     <!-- Top Performer: Spans 2 cols on small mobile, 1 on larger -->
-    <div class="glass-card p-4 sm:p-5 rounded-3xl flex flex-col gap-1 border border-white/5 bg-white/[0.02] col-span-2 sm:col-span-1">
+    <div
+        class="glass-card p-4 sm:p-5 rounded-3xl flex flex-col gap-1 border border-white/5 bg-white/[0.02] col-span-2 sm:col-span-1">
         <span class="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-40">MVP Card</span>
         <div class="flex items-center gap-2">
             {{ if .Portfolio }}
-                <span class="font-black text-xs sm:text-sm text-secondary truncate">{{ (index .Portfolio 0).Card.Name }}</span>
-                <span class="text-[10px] text-tertiary font-bold">+12%</span>
+            <span class="font-black text-xs sm:text-sm text-secondary truncate">{{ (index .Portfolio 0).Card.Name
+                }}</span>
+            <span class="text-[10px] text-tertiary font-bold">+12%</span>
             {{ else }}
-                <span class="font-black text-xs text-on-surface/20 italic tracking-tight">Standby...</span>
+            <span class="font-black text-xs text-on-surface/20 italic tracking-tight">Standby...</span>
             {{ end }}
         </div>
     </div>
@@ -79,21 +96,28 @@
 <!-- Collection Header -->
 <div class="flex justify-between items-center px-2">
     <h2 class="text-xl sm:text-2xl font-black text-on-surface tracking-tight">Main Vault</h2>
-    <button class="text-[10px] font-black text-primary uppercase tracking-[0.2em] hover:text-primary-fixed transition-colors" hx-get="/binders" hx-target="#main-content">All Archives</button>
+    <button
+        class="text-[10px] font-black text-primary uppercase tracking-[0.2em] hover:text-primary-fixed transition-colors"
+        hx-get="/binders" hx-target="#main-content">All Archives</button>
 </div>
 
 <!-- Card Collection Grid: Optimized for 2-column mobile and responsive upward -->
-<section class="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4 xl:grid-cols-6 pb-20">
+<section class="grid grid-cols-2 gap-3 sm:gap-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 pb-20">
     {{ range .Portfolio }}
-    <div class="glass-card rounded-[2rem] p-2.5 flex flex-col gap-4 group hover:border-primary/50 transition-all duration-500 cursor-pointer active:scale-[0.98] border-white/5 shadow-lg hover:shadow-primary/10">
+    <div
+        class="glass-card rounded-[2rem] p-2.5 flex flex-col gap-4 group hover:border-primary/50 transition-all duration-500 cursor-pointer active:scale-[0.98] border-white/5 shadow-lg hover:shadow-primary/10">
         <!-- Image Container -->
         <div class="aspect-[3/4] rounded-3xl overflow-hidden relative shadow-2xl">
-            <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000">
+            <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}"
+                class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000">
             <!-- Overlay Gradient -->
-            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60"></div>
+            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60">
+            </div>
             <!-- Condition Badge -->
             <div class="absolute top-3 right-3">
-                <span class="px-2 py-1 rounded-lg bg-black/40 backdrop-blur-xl text-[8px] font-black text-white border border-white/10 uppercase tracking-tighter">{{ .Condition }}</span>
+                <span
+                    class="px-2 py-1 rounded-lg bg-black/40 backdrop-blur-xl text-[11px] sm:text-[8px] font-black text-white border border-white/10 uppercase tracking-tighter">{{
+                    .Condition }}</span>
             </div>
         </div>
 
@@ -101,27 +125,38 @@
         <div class="px-1.5 pb-2">
             <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
-                    <p class="text-[8px] text-primary/70 font-black uppercase tracking-[0.2em] truncate">{{ .Card.Set }}</p>
-                    <p class="font-bold text-xs sm:text-sm text-on-surface leading-tight truncate group-hover:text-primary transition-colors">{{ .Card.Name }}</p>
+                    <p class="text-[11px] sm:text-[8px] text-primary/70 font-black uppercase tracking-[0.2em] truncate">
+                        {{ .Card.Set }}</p>
+                    <p
+                        class="font-bold text-[11px] sm:text-xs md:text-sm text-on-surface leading-tight truncate group-hover:text-primary transition-colors">
+                        {{ .Card.Name }}</p>
                 </div>
-                <button class="material-symbols-outlined text-lg text-on-surface-variant/30 hover:text-primary transition-colors flex-shrink-0" 
-                        onclick="openEditModal('{{ .ID }}', '{{ .Notes }}', '{{ .CustomPrice }}')">more_horiz</button>
+                <button
+                    class="material-symbols-outlined text-lg text-on-surface-variant/30 hover:text-primary transition-colors flex-shrink-0"
+                    onclick="openEditModal('{{ .ID }}', '{{ .Notes }}', '{{ if .CustomPrice }}{{ printf " %.2f"
+                    .GetCustomPrice }}{{ end }}')">more_horiz</button>
             </div>
-            
+
             <div class="flex justify-between items-center mt-4 pt-3 border-t border-white/5">
                 <div class="flex flex-col">
-                    <span class="text-[8px] text-on-surface-variant/40 uppercase font-black tracking-widest">Market</span>
+                    <span
+                        class="text-[11px] sm:text-[8px] text-on-surface-variant/40 uppercase font-black tracking-widest">Market</span>
                     <span class="font-black text-sm text-on-surface">
-                        {{ if .CustomPrice }}
-                            ${{ printf "%.2f" .CustomPrice }}
+                        {{ $.CurrencySymbol }}{{ if .CustomPrice }}
+                        {{ printf "%.2f" .GetCustomPrice }}
                         {{ else }}
-                            ${{ printf "%.2f" .Card.PriceUSD }}
+                        {{ if eq $.UserCurrency "EUR" }}
+                        {{ printf "%.2f" .Card.PriceEUR }}
+                        {{ else }}
+                        {{ printf "%.2f" .Card.PriceUSD }}
+                        {{ end }}
                         {{ end }}
                     </span>
                 </div>
                 {{ if .CustomPrice }}
                 <div class="bg-primary/10 px-1.5 py-0.5 rounded-md border border-primary/20">
-                    <span class="text-[7px] font-black text-primary uppercase tracking-tighter">Fix</span>
+                    <span
+                        class="text-[11px] sm:text-[7px] font-black text-primary uppercase tracking-tighter">Fix</span>
                 </div>
                 {{ end }}
             </div>

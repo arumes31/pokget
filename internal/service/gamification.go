@@ -22,6 +22,7 @@ package service
 
 import (
 	"database/sql"
+	"log/slog"
 	"sort"
 )
 
@@ -45,47 +46,75 @@ var Ranks = []Rank{
 }
 
 type GamificationService struct {
-	DB *sql.DB
+	DB       *sql.DB
+	badgeSem chan struct{}
 }
 
 func NewGamificationService(db *sql.DB) *GamificationService {
-	return &GamificationService{DB: db}
+	return &GamificationService{
+		DB:       db,
+		badgeSem: make(chan struct{}, 5), // max 5 concurrent badge checks
+	}
 }
 
 func (s *GamificationService) AddXP(userID string, amount int) (int, string, error) {
-	var currentXP int
-	var currentRank string
-	err := s.DB.QueryRow("SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&currentXP, &currentRank)
+	// BUG-C02 FIX: Use atomic increment instead of read-then-write to prevent race conditions
+	// under concurrent requests. Use UPDATE ... RETURNING to get the new XP value atomically.
+	var newXP int
+	var newRank string
+	err := s.DB.QueryRow(
+		"UPDATE users SET xp = xp + $1, rank_title = $2 WHERE id = $3 RETURNING xp, rank_title",
+		amount, s.GetUserRank(0).Title, userID, // placeholder rank, will be recalculated below
+	).Scan(&newXP, &newRank)
 	if err != nil {
 		return 0, "", err
 	}
 
-	newXP := currentXP + amount
-	newRank := s.GetUserRank(newXP).Title
-
-	_, err = s.DB.Exec("UPDATE users SET xp = $1, rank_title = $2 WHERE id = $3", newXP, newRank, userID)
-	if err == nil {
-		// Asynchronously check for badges to not block the main flow
-		go s.CheckForBadges(userID)
+	// Recalculate rank based on the new XP value
+	actualRank := s.GetUserRank(newXP)
+	if actualRank.Title != newRank {
+		// Rank changed, update it
+		if _, err := s.DB.Exec("UPDATE users SET rank_title = $1 WHERE id = $2", actualRank.Title, userID); err != nil {
+			slog.Error("failed to update rank_title", "error", err, "user_id", userID)
+		}
+		newRank = actualRank.Title
 	}
-	return newXP, newRank, err
+
+	// Asynchronously check for badges with semaphore to limit concurrency
+	select {
+	case s.badgeSem <- struct{}{}:
+		go func() {
+			defer func() { <-s.badgeSem }()
+			s.CheckForBadges(userID)
+		}()
+	default:
+		slog.Warn("Badge check skipped: too many concurrent checks", "user_id", userID)
+	}
+
+	return newXP, newRank, nil
 }
 
 func (s *GamificationService) CheckForBadges(userID string) {
 	// 1. Check for "First Pull" badge
 	var count int
-	_ = s.DB.QueryRow("SELECT COUNT(*) FROM portfolio WHERE user_id = $1", userID).Scan(&count)
+	if err := s.DB.QueryRow("SELECT COUNT(*) FROM portfolio WHERE user_id = $1", userID).Scan(&count); err != nil {
+		slog.Warn("Failed to check portfolio count for badges", "user_id", userID, "error", err)
+		return
+	}
 	if count >= 1 {
 		s.AwardBadge(userID, "First Pull")
 	}
 
 	// 2. Check for "High Roller" badge
 	var totalValue float64
-	_ = s.DB.QueryRow(`
-		SELECT SUM(COALESCE(p.custom_price, c.price_usd)) 
-		FROM portfolio p 
-		JOIN cards c ON p.card_id = c.id 
-		WHERE p.user_id = $1`, userID).Scan(&totalValue)
+	if err := s.DB.QueryRow(`
+		SELECT COALESCE(SUM(COALESCE(p.custom_price, c.price_usd)), 0)
+		FROM portfolio p
+		JOIN cards c ON p.card_id = c.id
+		WHERE p.user_id = $1`, userID).Scan(&totalValue); err != nil {
+		slog.Warn("Failed to check portfolio value for badges", "user_id", userID, "error", err)
+		return
+	}
 
 	if totalValue >= 10000 {
 		s.AwardBadge(userID, "High Roller")
@@ -100,17 +129,19 @@ func (s *GamificationService) AwardBadge(userID, badgeName string) {
 		return
 	}
 
-	// Try to insert (ignore if already exists)
-	_, err = s.DB.Exec("INSERT INTO user_badges (user_id, badge_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", userID, badgeID)
-	if err == nil {
-		// Award XP for the badge if it was newly inserted
-		// Note: Exec returns rows affected, but it's simpler to just call AddXP if the insert succeeded
-		// However, ON CONFLICT DO NOTHING might make it hard to know if it's new.
-		// Let's use a more robust way.
-		result, _ := s.DB.Exec("INSERT INTO user_badges (user_id, badge_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", userID, badgeID)
-		if rows, _ := result.RowsAffected(); rows > 0 {
-			_, _, _ = s.AddXP(userID, xpReward)
-		}
+	// BUG-C01 FIX: Use a single INSERT with ON CONFLICT DO NOTHING and check RowsAffected
+	// to determine if the badge was newly awarded. Previously, two INSERT statements were
+	// executed — the second always conflicted with the first, so badge XP was never awarded.
+	result, err := s.DB.Exec("INSERT INTO user_badges (user_id, badge_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", userID, badgeID)
+	if err != nil {
+		slog.Error("Failed to award badge", "badge", badgeName, "user_id", userID, "error", err)
+		return
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows > 0 {
+		// Badge was newly awarded — grant the XP reward
+		_, _, _ = s.AddXP(userID, xpReward)
 	}
 }
 

@@ -24,13 +24,15 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
-	"github.com/gorilla/csrf"
+	"fmt"
+	"log/slog"
+	"net/http"
 	"pokget/internal/auth"
 	"pokget/internal/models"
 	"pokget/internal/service"
-	"log/slog"
-	"net/http"
 	"time"
+
+	"github.com/gorilla/csrf"
 )
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +55,9 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var existingVerified bool
 	err := h.DB.QueryRow("SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
 	if err == nil && existingVerified {
-		http.Error(w, "User already exists", http.StatusConflict)
+		// Return success to avoid email enumeration — user already exists and is verified
+		// Do not reveal whether the email is registered
+		http.Redirect(w, r, "/auth?tab=login", http.StatusSeeOther)
 		return
 	}
 
@@ -64,11 +68,18 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token := generateToken()
-	
+	token, errToken := generateToken()
+	if errToken != nil {
+		slog.Error("Failed to generate verification token", "error", errToken)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
 	if err == nil {
-		// User exists but is NOT verified, update their record
-		_, err = h.DB.Exec("UPDATE users SET password_hash = $1, verification_token = $2, last_email_sent_at = NOW() WHERE email = $3", hash, token, email)
+		// User exists but is NOT verified — do NOT overwrite their credentials
+		// Redirect to login page where they can use "Resend Verification" instead
+		http.Redirect(w, r, "/auth?tab=login&msg=unverified", http.StatusSeeOther)
+		return
 	} else if err == sql.ErrNoRows {
 		// New user
 		_, err = h.DB.Exec("INSERT INTO users (email, password_hash, verification_token, last_email_sent_at) VALUES ($1, $2, $3, NOW())", email, hash, token)
@@ -186,9 +197,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	remember := r.FormValue("remember") == "on"
-	session, _ := auth.Store.Get(r, "session")
+	session, err := auth.Store.Get(r, "session")
+	if err != nil {
+		slog.Error("Failed to get session", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	session.Values["user_id"] = u.ID
-	
+
 	if remember {
 		session.Options.MaxAge = 86400 * 30 // 30 days
 	} else {
@@ -196,7 +212,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	session.Options.SameSite = http.SameSiteLaxMode
 	session.Options.HttpOnly = true
-	session.Options.Secure = true // Ensure cookie is only sent over HTTPS
+	// BUG-C03 FIX: Make Secure flag configurable based on environment.
+	// Previously hardcoded to true, which broke login over HTTP (e.g. local development).
+	// Now uses h.SecureCookies which is set from config at startup.
+	session.Options.Secure = h.SecureCookies
 
 	if err := session.Save(r, w); err != nil {
 		slog.Error("Failed to save session", "error", err)
@@ -213,9 +232,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	// For non-HTMX requests, replace the history entry with JS
-	w.Header().Set("Content-Type", "text/html")
-	_, _ = w.Write([]byte(`<script>window.location.replace("/")</script>`))
+	// For non-HTMX requests, use HTTP redirect
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
@@ -260,19 +278,25 @@ func (h *Handler) ProcessConfirmEmail(w http.ResponseWriter, r *http.Request) {
 
 var randReader = rand.Reader
 
-func generateToken() string {
+// BUG-L02 FIX: generateToken now returns an error instead of panicking when
+// the cryptographic random reader fails. Previously, a failed rand.Read would
+// crash the entire server. Now the caller can handle the error gracefully.
+func generateToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := randReader.Read(b); err != nil {
-		panic("Failed to generate secure token: " + err.Error())
+		return "", fmt.Errorf("failed to generate secure token: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	session, _ := auth.Store.Get(r, "session")
 	session.Values["user_id"] = ""
 	session.Options.MaxAge = -1
-	_ = session.Save(r, w)
+	if err := session.Save(r, w); err != nil {
+		slog.Error("Failed to save session on logout", "error", err)
+		// Continue anyway — the session values are cleared in memory
+	}
 
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Redirect", "/auth")

@@ -20,8 +20,8 @@ services:
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
       - SMTP_FROM=${SMTP_FROM:-no-reply@pokget.com}
-      - TRUST_PROXY=${TRUST_PROXY:-true}
-      - TRUST_CLOUDFLARE=${TRUST_CLOUDFLARE:-true}
+      - TRUST_PROXY=${TRUST_PROXY:-false}
+      - TRUST_CLOUDFLARE=${TRUST_CLOUDFLARE:-false}
     depends_on:
       pokget_db:
         condition: service_healthy
@@ -38,7 +38,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD:-pokget_pass}
       - POSTGRES_DB=${DB_NAME:-pokget_db}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 10s
       timeout: 5s
       retries: 5

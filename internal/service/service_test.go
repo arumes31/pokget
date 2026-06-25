@@ -43,7 +43,7 @@ import (
 	"github.com/go-redis/redismock/v9"
 )
 
-func createTestImage() image.Image {
+func createDefaultTestImage() image.Image {
 	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
 	draw.Draw(img, img.Bounds(), &image.Uniform{color.RGBA{255, 0, 0, 255}}, image.Point{}, draw.Src)
 	return img
@@ -59,7 +59,7 @@ func TestFingerprintService(t *testing.T) {
 	s := NewFingerprintService(db)
 
 	t.Run("CalculateHash", func(t *testing.T) {
-		img := createTestImage()
+		img := createDefaultTestImage()
 		hash, err := s.CalculateHash(img)
 		if err != nil {
 			t.Errorf("CalculateHash failed: %v", err)
@@ -78,7 +78,7 @@ func TestFingerprintService(t *testing.T) {
 	})
 
 	t.Run("MatchFingerprint", func(t *testing.T) {
-		img := createTestImage()
+		img := createDefaultTestImage()
 		hash, _ := s.CalculateHash(img)
 
 		cards := []models.Card{
@@ -168,7 +168,7 @@ func TestImageCacheService(t *testing.T) {
 
 func TestMailService(t *testing.T) {
 	s := NewMailService()
-	
+
 	t.Run("SendConfirmationEmail", func(t *testing.T) {
 		s.sendMailFunc = func(_ string, _ smtp.Auth, _ string, to []string, _ []byte) error {
 			if to[0] != "test@example.com" {
@@ -206,14 +206,14 @@ func TestLLMService(t *testing.T) {
 	t.Run("FuzzyMatchCard_Success", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"response": "Charizard"}`))
+			_, _ = w.Write([]byte(`{"response": "id-123"}`))
 		}))
 		defer server.Close()
 
 		s.BaseURL = server.URL
 		s.HTTPClient = server.Client()
 
-		match, err := s.FuzzyMatchCard("Chrizard", []models.Card{{Name: "Charizard"}})
+		match, err := s.FuzzyMatchCard("Chrizard", []models.Card{{ID: "id-123", Name: "Charizard"}})
 		if err != nil {
 			t.Errorf("FuzzyMatchCard failed: %v", err)
 		}
@@ -283,10 +283,10 @@ func TestScraperPriceClient(t *testing.T) {
 			t.Error("Expected error for nil scraper")
 		}
 	})
-	
+
 	t.Run("ScrapeError", func(t *testing.T) {
 		scraper := &ScraperPriceClient{}
-		
+
 		card := models.Card{Name: "MissingNo", Set: "Glitch"}
 		_, _, err := scraper.FetchPrice(card)
 		// Should return an error because it fails to connect/find the actual URL or parse
@@ -314,7 +314,7 @@ func TestScraperPriceClient(t *testing.T) {
 
 		scraper := NewScraperPriceClient()
 		scraper.Cardmarket.BaseURL = server.URL
-		
+
 		card := models.Card{Name: "Charizard", Set: "Base", Game: "Pokemon"}
 		_, eur, err := scraper.FetchPrice(card)
 		if err != nil {
@@ -334,7 +334,7 @@ func TestScraperPriceClient(t *testing.T) {
 
 		scraper := NewScraperPriceClient()
 		scraper.Cardmarket.BaseURL = server.URL
-		
+
 		card := models.Card{Name: "Charizard", Set: "Base"}
 		_, _, err := scraper.FetchPrice(card)
 		if err == nil {
@@ -362,7 +362,6 @@ func TestScraperPriceClient(t *testing.T) {
 		}
 	})
 }
-
 
 func TestCryptoService(t *testing.T) {
 	key := "12345678901234567890123456789012" // 32 bytes
@@ -419,12 +418,15 @@ func TestGamificationService(t *testing.T) {
 	s := NewGamificationService(db)
 
 	t.Run("AddXP_Success", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"xp", "rank_title"}).AddRow(100, "Novice Collector")
-		mock.ExpectQuery("SELECT xp, rank_title FROM users WHERE id = \\$1").WithArgs("user-1").WillReturnRows(rows)
+		// BUG-C02 FIX: AddXP now uses atomic UPDATE...RETURNING instead of SELECT+UPDATE
+		// The placeholder rank_title is GetUserRank(0).Title = "Novice Collector"
+		rows := sqlmock.NewRows([]string{"xp", "rank_title"}).AddRow(500, "Novice Collector")
+		mock.ExpectQuery("UPDATE users SET xp = xp \\+ \\$1, rank_title = \\$2 WHERE id = \\$3 RETURNING xp, rank_title").
+			WithArgs(400, "Novice Collector", "user-1").WillReturnRows(rows)
 
-		// 100 + 400 = 500 -> "Card Scout"
-		mock.ExpectExec("UPDATE users SET xp = \\$1, rank_title = \\$2 WHERE id = \\$3").
-			WithArgs(500, "Card Scout", "user-1").WillReturnResult(sqlmock.NewResult(1, 1))
+		// Rank changed from "Novice Collector" to "Card Scout", so a follow-up UPDATE is needed
+		mock.ExpectExec("UPDATE users SET rank_title = \\$1 WHERE id = \\$2").
+			WithArgs("Card Scout", "user-1").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		newXP, newRank, err := s.AddXP("user-1", 400)
 		if err != nil {
@@ -439,7 +441,9 @@ func TestGamificationService(t *testing.T) {
 	})
 
 	t.Run("AddXP_QueryError", func(t *testing.T) {
-		mock.ExpectQuery("SELECT xp, rank_title FROM users WHERE id = \\$1").WithArgs("user-2").WillReturnError(sql.ErrNoRows)
+		// BUG-C02 FIX: AddXP now uses UPDATE...RETURNING, so error comes from that query
+		mock.ExpectQuery("UPDATE users SET xp = xp \\+ \\$1, rank_title = \\$2 WHERE id = \\$3 RETURNING xp, rank_title").
+			WithArgs(100, "Novice Collector", "user-2").WillReturnError(sql.ErrNoRows)
 
 		_, _, err := s.AddXP("user-2", 100)
 		if err == nil {
@@ -469,7 +473,7 @@ func TestGamificationService(t *testing.T) {
 			t.Errorf("Expected 10.0 pct, got %f", pct)
 		}
 	})
-	
+
 	t.Run("GetProgressToNextRank_MaxRank", func(t *testing.T) {
 		relXP, reqXP, pct := s.GetProgressToNextRank(300000)
 		if relXP != 300000 || reqXP != 300000 || pct != 100.0 {
@@ -487,7 +491,7 @@ func TestCacheService(t *testing.T) {
 	t.Run("SetGet", func(t *testing.T) {
 		val := map[string]string{"foo": "bar"}
 		data, _ := json.Marshal(val)
-		
+
 		mock.ExpectSet("test-key", data, 0).SetVal("OK")
 		err := s.Set(ctx, "test-key", val, 0)
 		if err != nil {
@@ -527,8 +531,6 @@ func TestCacheService(t *testing.T) {
 	})
 }
 
-
-
 func TestLevenshtein(t *testing.T) {
 	tests := []struct {
 		s1, s2 string
@@ -553,8 +555,9 @@ func TestEventBus(t *testing.T) {
 	bus := NewEventBus()
 
 	t.Run("SubscribePublish", func(t *testing.T) {
-		ch := bus.Subscribe("test-event")
-		
+		ch, unsubscribe := bus.Subscribe("test-event")
+		defer unsubscribe()
+
 		bus.Publish(Event{Type: "test-event", Payload: "hello"})
 
 		select {

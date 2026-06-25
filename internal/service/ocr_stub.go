@@ -34,8 +34,19 @@ import (
 	"github.com/anthonynsimon/bild/effect"
 )
 
-func ProcessCardScan(imgBytes []byte, _ []models.Card, _ string, _ *LLMService) (string, string, []byte, error) {
+// ocrCache, ocrCacheEntry, and imageHash are defined in ocr_cache.go (SCAN-06)
+
+func ProcessCardScan(imgBytes []byte, _ []models.Card, lang string, _ *LLMService) (string, string, []byte, error) {
 	slog.Warn("OCR: Tesseract is not available on this platform. Preprocessing ONLY.")
+
+	// SCAN-06: Check OCR cache before processing
+	hash := imageHash(imgBytes)
+	cacheKey := string(hash[:]) + lang
+	if cached, ok := ocrCache.Load(cacheKey); ok {
+		entry := cached.(ocrCacheEntry)
+		slog.Info("OCR: Cache hit (stub)", "detected", entry.DetectedCard)
+		return entry.Text, entry.DetectedCard, nil, nil
+	}
 
 	// Run Preprocessing even in stub to test Vision pipeline
 	src, _, err := image.Decode(bytes.NewReader(imgBytes))
@@ -59,10 +70,10 @@ func ProcessCardScan(imgBytes []byte, _ []models.Card, _ string, _ *LLMService) 
 	if db.DB != nil {
 		var name string
 		err := db.DB.QueryRow(`
-			SELECT name FROM cards 
-			WHERE name % $1 
-			ORDER BY similarity(name, $1) DESC 
-			LIMIT 1`, text).Scan(&name)
+		SELECT name FROM cards
+		WHERE name % $1
+		ORDER BY similarity(name, $1) DESC
+		LIMIT 1`, text).Scan(&name)
 
 		if err == nil {
 			detectedCard = name
@@ -79,6 +90,12 @@ func ProcessCardScan(imgBytes []byte, _ []models.Card, _ string, _ *LLMService) 
 			}
 		}
 	}
+
+	// SCAN-06: Cache the OCR result
+	ocrCache.Store(cacheKey, ocrCacheEntry{
+		Text:         text,
+		DetectedCard: detectedCard,
+	})
 
 	return text, detectedCard, buf.Bytes(), nil
 }

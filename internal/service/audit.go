@@ -23,41 +23,64 @@ package service
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"sync"
 )
 
 // AuditService handles application audit logging.
 type AuditService struct {
-	db *sql.DB
+	db    *sql.DB
+	logCh chan auditEntry
+	wg    sync.WaitGroup
+}
+
+type auditEntry struct {
+	userID   string
+	action   string
+	metadata map[string]interface{}
 }
 
 // NewAuditService creates a new AuditService.
 func NewAuditService(db *sql.DB) *AuditService {
-	return &AuditService{db: db}
+	s := &AuditService{
+		db:    db,
+		logCh: make(chan auditEntry, 256),
+	}
+	s.wg.Add(1)
+	go s.processLogs()
+	return s
 }
 
-// Log records an audit entry.
-// Performance Optimization (Bolt): Marshaling to JSON once and using a single db.Exec call.
-func (s *AuditService) Log(userID, action string, metadata map[string]interface{}) {
-	// Early return if metadata is empty to avoid unnecessary marshaling
-	if metadata == nil {
-		_, err := s.db.Exec("INSERT INTO audit_logs (user_id, action, metadata) VALUES ($1, $2, $3)",
-			userID, action, []byte("{}"))
+func (s *AuditService) processLogs() {
+	defer s.wg.Done()
+	for entry := range s.logCh {
+		metadataJSON, err := json.Marshal(entry.metadata)
 		if err != nil {
-			slog.Error("Audit: Failed to insert log", "error", err)
+			slog.Error("Failed to marshal audit log metadata", "user_id", entry.userID, "action", entry.action, "error", err)
+			metadataJSON = []byte(fmt.Sprintf(`{"error":"marshal failed","action":%q}`, entry.action))
 		}
-		return
+		_, err = s.db.Exec(
+			"INSERT INTO audit_logs (user_id, action, metadata, created_at) VALUES ($1, $2, $3, NOW())",
+			entry.userID, entry.action, string(metadataJSON),
+		)
+		if err != nil {
+			slog.Error("Failed to write audit log", "user_id", entry.userID, "action", entry.action, "error", err)
+		}
 	}
+}
 
-	metaJSON, err := json.Marshal(metadata)
-	if err != nil {
-		slog.Error("Audit: Failed to marshal metadata", "error", err)
-		metaJSON = []byte("{}")
+// Log records an audit entry asynchronously.
+func (s *AuditService) Log(userID, action string, metadata map[string]interface{}) {
+	select {
+	case s.logCh <- auditEntry{userID: userID, action: action, metadata: metadata}:
+	default:
+		slog.Warn("Audit log channel full, dropping entry", "user_id", userID, "action", action)
 	}
+}
 
-	_, err = s.db.Exec("INSERT INTO audit_logs (user_id, action, metadata) VALUES ($1, $2, $3)",
-		userID, action, metaJSON)
-	if err != nil {
-		slog.Error("Audit: Failed to insert log", "error", err)
-	}
+// Close stops the background log processor.
+func (s *AuditService) Close() {
+	close(s.logCh)
+	s.wg.Wait()
 }

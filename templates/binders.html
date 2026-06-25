@@ -76,7 +76,7 @@
          x-transition:enter-end="opacity-100 translate-y-0"
          class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-background/80 backdrop-blur-xl"
          x-cloak>
-        <div class="glass-card w-full max-w-md p-10 space-y-8 border-tertiary/30 relative overflow-hidden" @click.away="showNewBinderModal = false">
+         <div class="glass-card w-full max-w-md p-10 space-y-8 border-tertiary/30 relative max-h-[90vh] overflow-y-auto" @click.away="showNewBinderModal = false">
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-tertiary to-transparent"></div>
             
             <div class="flex justify-between items-center">
