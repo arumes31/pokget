@@ -766,7 +766,7 @@ func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Action: RefreshCache", "user", r.Context().Value(auth.UserContextKey{}))
 
-	count, err := h.reloadCards()
+	count, err := h.ReloadCardsCache()
 	if err != nil {
 		slog.Error("Failed to refresh cache", "error", err)
 		http.Error(w, "Failed to refresh cache", http.StatusInternalServerError)
@@ -779,7 +779,7 @@ func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(fmt.Sprintf("Successfully reloaded %d cards", count)))
 }
 
-func (h *Handler) reloadCards() (int, error) {
+func (h *Handler) ReloadCardsCache() (int, error) {
 	rows, err := h.DB.Query("SELECT id, name, set_name, price_usd, price_eur, image_url, variant, change_24h, phash FROM cards")
 	if err != nil {
 		return 0, err
@@ -799,6 +799,13 @@ func (h *Handler) reloadCards() (int, error) {
 	h.MockCards = allCards
 	h.CardsMu.Unlock()
 	slog.Info("Database: Reloaded cards into cache", "count", len(allCards))
+
+	// Rebuild BK-tree index for fingerprint matching
+	if h.Fingerprint != nil {
+		h.Fingerprint.RebuildTree()
+		slog.Info("Fingerprint: Rebuilt BK-tree index after cache reload")
+	}
+
 	return len(allCards), nil
 }
 

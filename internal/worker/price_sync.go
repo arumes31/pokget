@@ -38,6 +38,7 @@ type DataSyncWorker struct {
 	metadataService *service.MetadataService
 	interval        time.Duration
 	stop            chan struct{}
+	OnSyncComplete  func()
 }
 
 func NewDataSyncWorker(db *sql.DB, pc service.PriceClient, mc service.MetadataClient, ms *service.MetadataService, interval time.Duration) *DataSyncWorker {
@@ -132,6 +133,9 @@ func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
 		slog.Error("Repair: Row iteration error", "error", err)
 	}
 	slog.Info("Missing fingerprints repair cycle completed")
+	if w.OnSyncComplete != nil {
+		w.OnSyncComplete()
+	}
 }
 
 func (w *DataSyncWorker) Stop() {
@@ -194,6 +198,9 @@ func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
 		}()
 	}
 	slog.Info("Metadata synchronization cycle completed")
+	if w.OnSyncComplete != nil {
+		w.OnSyncComplete()
+	}
 }
 
 func (w *DataSyncWorker) syncPrices() {
@@ -255,6 +262,9 @@ func (w *DataSyncWorker) syncPrices() {
 		w.checkPriceAlerts(c, usd)
 	}
 	slog.Info("Price synchronization cycle completed")
+	if w.OnSyncComplete != nil {
+		w.OnSyncComplete()
+	}
 }
 
 // checkPriceAlerts evaluates active price alerts for a card against its current

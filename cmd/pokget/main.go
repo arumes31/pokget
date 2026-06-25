@@ -177,6 +177,18 @@ func main() {
 		SecureCookies: cfg.App.SecureCookies, // BUG-C03: Wire up configurable Secure flag
 	}
 
+	// Wire up background sync callback to reload cache and rebuild BK-tree index dynamically
+	if dataWorker != nil {
+		dataWorker.OnSyncComplete = func() {
+			slog.Info("Worker: Sync complete, reloading cards cache and rebuilding BK-tree")
+			if count, err := h.ReloadCardsCache(); err != nil {
+				slog.Error("Worker: Failed to reload cards cache", "error", err)
+			} else {
+				slog.Info("Worker: Successfully reloaded cache", "count", count)
+			}
+		}
+	}
+
 	r := mux.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
 	r.Use(middleware.SecurityHeadersMiddleware)

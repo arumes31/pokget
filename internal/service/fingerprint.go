@@ -368,7 +368,7 @@ func (s *FingerprintService) SearchByHash(hashVal int64) *MatchResult {
 		if m.Distance < result.BestDistance {
 			result.BestDistance = m.Distance
 		}
-		if m.Distance <= s.PhashHighConf {
+		if m.Distance <= s.PhashHighConf && result.HighConfidence == nil {
 			result.HighConfidence = m.Card
 		}
 	}

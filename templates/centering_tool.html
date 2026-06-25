@@ -231,13 +231,13 @@
             }
             event.target.value = '';
         }
-     }" @mousemove="handleMove($event)" @touchmove="handleMove($event)" @mouseup="dragging = null"
-    @touchend="dragging = null" class="space-y-6">
-    <div class="flex items-center justify-between px-1">
-        <h2 class="text-lg font-bold">Card Scanner</h2>
-        <button class="text-white/40"
+      }" @mousemove="handleMove($event)" @touchmove="handleMove($event)" @mouseup="dragging = null"
+    @touchend="dragging = null" class="space-y-6 md:space-y-6">
+    <div class="flex items-center justify-between px-4 py-3 absolute top-6 left-4 right-4 z-40 bg-black/40 backdrop-blur-md rounded-2xl border border-white/5 md:relative md:top-auto md:left-auto md:right-auto md:z-auto md:bg-transparent md:border-none md:p-0 md:px-1">
+        <h2 class="text-xs font-bold uppercase tracking-widest text-primary md:text-lg md:normal-case md:tracking-normal md:text-on-surface">Card Scanner</h2>
+        <button class="text-white/40 hover:text-white transition-colors" aria-label="Reset scanner guide lines"
             @click="lines = { left: 10, right: 90, top: 10, bottom: 90 }; updateMetrics(); result = ''; detectedCard = ''">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                 <path d="M3 3v5h5" />
@@ -246,9 +246,9 @@
     </div>
 
     <div x-ref="container"
-        class="relative aspect-[3/4] rounded-[2rem] overflow-hidden border border-purple-500/20 shadow-[0_0_30px_rgba(124,58,237,0.1)] bg-black">
+        class="fixed inset-0 z-30 bg-black md:relative md:inset-auto md:aspect-[3/4] md:rounded-[2rem] md:border md:border-purple-500/20 md:shadow-[0_0_30px_rgba(124,58,237,0.1)]">
         <!-- Live Video Feed -->
-        <video x-ref="video" autoplay playsinline muted class="absolute inset-0 w-full h-full object-contain"></video>
+        <video x-ref="video" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover md:object-contain"></video>
 
 
 
@@ -331,15 +331,15 @@
                 :style="`left: ${(lines.left + lines.right) / 2}%; top: 5%`" x-text="metrics.lr"></div>
         </div>
 
-        <div class="absolute bottom-4 left-0 right-0 flex justify-center z-20">
+        <div class="absolute bottom-28 left-0 right-0 flex justify-center z-20 md:bottom-4">
             <span
-                class="text-[7px] font-bold text-white/40 uppercase tracking-[0.3em] bg-black/20 px-3 py-0.5 rounded-full backdrop-blur-md">Align
+                class="text-[7px] font-bold text-white/40 uppercase tracking-[0.3em] bg-black/25 px-3 py-1 rounded-full backdrop-blur-md border border-white/5">Align
                 card edges with guides</span>
         </div>
     </div>
 
     <!-- Controls / Metrics -->
-    <div class="space-y-4">
+    <div class="space-y-4 absolute bottom-24 left-4 right-4 z-40 md:relative md:bottom-auto md:left-auto md:right-auto md:z-auto md:space-y-4">
 
         <!-- Scan Button (min 48x48px touch target) -->
         <button @click="capture()"
