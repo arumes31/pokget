@@ -404,7 +404,7 @@ func otsuBinarize(src image.Image) *image.RGBA {
 // with the most horizontal text lines (estimated by horizontal edge analysis).
 func deskewImage(src image.Image) image.Image {
 	bestAngle := 0.0
-	bestScore := -1
+	bestScore := -1.0
 
 	bounds := src.Bounds()
 	if bounds.Dx() < 50 || bounds.Dy() < 50 {

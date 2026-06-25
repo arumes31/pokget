@@ -6,8 +6,8 @@ RUN apk add --no-cache \
     tesseract-ocr-data-deu \
     tesseract-ocr-data-jpn \
     tesseract-ocr-data-kor \
-    tesseract-ocr-data-chi-sim \
-    tesseract-ocr-data-chi-tra \
+    tesseract-ocr-data-chi_sim \
+    tesseract-ocr-data-chi_tra \
     tesseract-ocr-dev \
     gcc g++ musl-dev build-base
 WORKDIR /app

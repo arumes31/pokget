@@ -77,6 +77,25 @@ The project maintains a rigorous testing standard:
 *   **Fuzzing**: Algorithmic components (Levenshtein distance, XP calculation) are verified for all edge cases.
 *   **Static Analysis**: Zero warnings from `golangci-lint`, `govulncheck`, and `gosec`.
 
+### 🧪 Running Comprehensive Tests
+We have a comprehensive test suite that validates the integration of all system components (OCR, downloading, fingerprinting, and indexing):
+1. **OCR & Indexing**: Picks 5 random cards from the local `test_cards/` cache, runs them through the Tesseract OCR pre-processing and extraction pipeline, and verifies that the `dont fingerprint test_cards` constraint is respected (i.e. they are not registered in the database).
+2. **Download**: Fetches cards from the TCGdex API and downloads high-resolution card images.
+3. **Fingerprinting & Indexing**: Calculates the perceptual hash (pHash) of the downloaded card, inserts it into the database, rebuilds the BK-tree, and asserts that a pHash-based BK-tree search successfully retrieves and matches the card with zero distance.
+
+To run the comprehensive test suite inside Docker:
+```bash
+# 1. Build the test container
+docker build -t pokget_test -f Dockerfile.test .
+
+# 2. Start the database container
+docker compose up -d pokget_db
+
+# 3. Run the comprehensive test suite
+docker run --rm --network pokget_default -e DB_HOST=pokget_db -e DB_PORT=5432 -e DB_USER=pokget_user -e DB_PASSWORD=pokget_pass -e DB_NAME=pokget_db pokget_test go run cmd/comprehensive_test/main.go
+```
+
+
 ---
 
 ## 🛠️ Quick Start
