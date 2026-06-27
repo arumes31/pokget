@@ -101,6 +101,10 @@ func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
 	}
 	defer rows.Close()
 
+	// ⚡ Bolt: Use a ticker instead of sleep for rate limiting to overlap processing time with wait time.
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
 	for rows.Next() {
 		// Check for cancellation before processing each card
 		if ctx.Err() != nil {
@@ -127,7 +131,7 @@ func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
 		}
 
 		// Rate limit downloads during repair to be nice to APIs
-		time.Sleep(500 * time.Millisecond)
+		<-ticker.C
 	}
 	if err := rows.Err(); err != nil {
 		slog.Error("Repair: Row iteration error", "error", err)
