@@ -174,10 +174,16 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
+	// Dummy hash used to mitigate timing attacks for user enumeration
+	// Generated with bcrypt cost 14 to match actual password hashing cost
+	const dummyHash = "$2a$14$/UHK1N/1JtsTVbN7HnVjYutHW86GSUxc9FhpAJnu1tVMNTrNzzhNC"
+
 	var u models.User
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			// Perform dummy hash comparison to prevent timing attacks
+			auth.CheckPasswordHash(password, dummyHash)
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		}
