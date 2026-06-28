@@ -150,16 +150,13 @@ func (s *LLMService) queryLLM(prompt string) (string, error) {
 		return "", fmt.Errorf("LLM API returned non-OK status: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read LLM response body: %w", err)
-	}
-
 	var result struct {
 		Response string `json:"response"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("failed to unmarshal LLM response: %w", err)
+	// ⚡ Bolt Optimization: Use json.NewDecoder instead of io.ReadAll + json.Unmarshal
+	// This prevents allocating a large byte slice for the entire response body in memory.
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode LLM response: %w", err)
 	}
 
 	return result.Response, nil
