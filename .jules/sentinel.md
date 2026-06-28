@@ -2,3 +2,8 @@
 **Vulnerability:** The `ProxyMiddleware` incorrectly trusted reverse proxy headers (`X-Forwarded-For`, `CF-Connecting-IP`) by default if the `TRUST_PROXY` and `TRUST_CLOUDFLARE` environment variables were completely missing. This allowed unauthenticated attackers to supply a fake `X-Forwarded-For` header to spoof their IP address, bypassing rate limits and other IP-based security measures.
 **Learning:** Checking for `!= "false"` when parsing boolean environment variables inadvertently creates a fail-open, insecure default. When configuring security-sensitive mechanisms (like trusting external IP headers), defaults must always be fail-secure.
 **Prevention:** Always use explicit opt-in logic (e.g., `== "true"`) for security features controlled by environment variables. Ensure that when an env var is empty/unset, the application falls back to its safest state.
+
+## 2025-01-22 - Fix User Enumeration Timing Attack in Login
+**Vulnerability:** The login endpoint performed an early return (`sql.ErrNoRows`) when an email was not found in the database. This allowed attackers to enumerate valid user accounts by observing the significant timing difference between instant rejections for non-existent users and the slow, CPU-intensive bcrypt hash comparison for existing users.
+**Learning:** Returning early before expensive cryptographic operations creates a distinguishable timing channel. Attackers can leverage this to harvest valid emails, increasing the risk of targeted phishing or credential stuffing.
+**Prevention:** To prevent timing attacks, always ensure that authentication endpoints perform the same costly cryptographic operations (using a dummy hash if necessary) regardless of whether the user exists, resulting in a roughly constant response time.
