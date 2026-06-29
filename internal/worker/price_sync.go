@@ -101,7 +101,14 @@ func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
 	}
 	defer rows.Close()
 
+	// BOLT OPTIMIZATION: Initialize ticker outside the loop and block on <-ticker.C inside
+	// to allow processing time to overlap with the rate limit window.
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
 	for rows.Next() {
+		<-ticker.C
+
 		// Check for cancellation before processing each card
 		if ctx.Err() != nil {
 			slog.Info("Repair: Stopping due to context cancellation")
@@ -125,9 +132,6 @@ func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
 		} else {
 			slog.Info("Repair: Generated missing fingerprint", "id", c.ID, "name", c.Name)
 		}
-
-		// Rate limit downloads during repair to be nice to APIs
-		time.Sleep(500 * time.Millisecond)
 	}
 	if err := rows.Err(); err != nil {
 		slog.Error("Repair: Row iteration error", "error", err)
@@ -157,6 +161,11 @@ func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
 		return
 	}
 
+	// BOLT OPTIMIZATION: Initialize limiter outside the loop and block on <-limiter.C inside
+	// to allow processing time to overlap with the rate limit window.
+	limiter := time.NewTicker(500 * time.Millisecond)
+	defer limiter.Stop()
+
 	for _, c := range cards {
 		// Check for cancellation before processing each card
 		if ctx.Err() != nil {
@@ -176,8 +185,6 @@ func (w *DataSyncWorker) syncMetadata(ctx context.Context) {
 
 		// New card found! Process and insert fingerprint
 		func() {
-			limiter := time.NewTicker(500 * time.Millisecond)
-			defer limiter.Stop()
 			<-limiter.C
 
 			processed, err := w.metadataService.ProcessCard(ctx, c)
