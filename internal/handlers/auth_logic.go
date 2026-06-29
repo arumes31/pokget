@@ -176,17 +176,20 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	var u models.User
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
-			return
-		}
+
+	// Sentinel: Prevent timing attack for user enumeration. Evaluate bcrypt even if user is not found.
+	dummyHash := "$2a$14$h1FPAZObS1jrTK9aXJ.9AuEAvOAnsfVXHefMgLf.JOeRbStYGlv2S"
+	hashToCompare := u.PasswordHash
+	if err == sql.ErrNoRows {
+		hashToCompare = dummyHash
+	} else if err != nil {
 		slog.Error("Login: database error", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	if !auth.CheckPasswordHash(password, u.PasswordHash) {
+	isValidPassword := auth.CheckPasswordHash(password, hashToCompare)
+	if err == sql.ErrNoRows || !isValidPassword {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
