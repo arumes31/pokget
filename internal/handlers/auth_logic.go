@@ -178,6 +178,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			// Security: Prevent user enumeration timing attacks.
+			// Execute a dummy bcrypt comparison so the response time remains constant
+			// regardless of whether the email exists in the database.
+			// The dummy hash must be structurally valid and use the same cost (14).
+			auth.CheckPasswordHash(password, "$2a$14$00000000000000000000000000000000000000000000000000000")
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		}
