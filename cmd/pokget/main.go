@@ -192,8 +192,8 @@ func main() {
 	r := mux.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
 	r.Use(middleware.SecurityHeadersMiddleware)
-	r.Use(auth.RateLimitMiddleware)
 	r.Use(auth.ProxyMiddleware)
+	r.Use(auth.RateLimitMiddleware)
 
 	// CSRF Protection
 	csrfKey := deriveKey(cfg.Auth.SessionKey, "pokget:csrf:auth")
