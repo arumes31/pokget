@@ -2,3 +2,8 @@
 **Vulnerability:** The `ProxyMiddleware` incorrectly trusted reverse proxy headers (`X-Forwarded-For`, `CF-Connecting-IP`) by default if the `TRUST_PROXY` and `TRUST_CLOUDFLARE` environment variables were completely missing. This allowed unauthenticated attackers to supply a fake `X-Forwarded-For` header to spoof their IP address, bypassing rate limits and other IP-based security measures.
 **Learning:** Checking for `!= "false"` when parsing boolean environment variables inadvertently creates a fail-open, insecure default. When configuring security-sensitive mechanisms (like trusting external IP headers), defaults must always be fail-secure.
 **Prevention:** Always use explicit opt-in logic (e.g., `== "true"`) for security features controlled by environment variables. Ensure that when an env var is empty/unset, the application falls back to its safest state.
+
+## 2024-07-04 - Fix User Enumeration Timing Attack
+**Vulnerability:** The `Login` handler immediately returned an error when an email was not found in the database. Because checking an existing password against bcrypt takes time, attackers could enumerate valid user emails by measuring the response time.
+**Learning:** Early returns in authentication flows before performing computationally expensive operations (like password hashing) create timing discrepancies.
+**Prevention:** Ensure constant response times by always running the expensive operation. If a user is not found, verify the provided password against a structurally valid dummy bcrypt hash with the same cost factor.
