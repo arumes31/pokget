@@ -35,6 +35,9 @@ import (
 	"github.com/gorilla/csrf"
 )
 
+// 🛡️ Sentinel: Dummy hash with correct structure and cost factor (14) to prevent timing attacks
+var dummyHash = "$2a$14$JZ4Qr2Z3UcrqNT1FGX1cuOpZkXq0I2riasSljjLn2zA7kN57x.p/K"
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Register", "method", r.Method, "url", r.URL.String())
 	email := r.FormValue("email")
@@ -178,6 +181,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			// 🛡️ Sentinel: Perform dummy hash check to prevent user enumeration via timing attack
+			auth.CheckPasswordHash(password, dummyHash)
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		}
