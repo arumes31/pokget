@@ -192,8 +192,11 @@ func main() {
 	r := mux.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
 	r.Use(middleware.SecurityHeadersMiddleware)
-	r.Use(auth.RateLimitMiddleware)
+	// Security: ProxyMiddleware MUST be applied before RateLimitMiddleware.
+	// This ensures the rate limiter evaluates the real client IP (e.g. from X-Forwarded-For)
+	// rather than the reverse proxy's IP, preventing attackers from bypassing IP-based limits.
 	r.Use(auth.ProxyMiddleware)
+	r.Use(auth.RateLimitMiddleware)
 
 	// CSRF Protection
 	csrfKey := deriveKey(cfg.Auth.SessionKey, "pokget:csrf:auth")
