@@ -101,11 +101,18 @@ func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
 	}
 	defer rows.Close()
 
+	// Rate limit downloads during repair to be nice to APIs.
+	// Initializing a ticker before the loop allows processing time to overlap with the rate limit window.
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
 	for rows.Next() {
-		// Check for cancellation before processing each card
-		if ctx.Err() != nil {
+		// Wait for rate limit ticker or context cancellation
+		select {
+		case <-ctx.Done():
 			slog.Info("Repair: Stopping due to context cancellation")
-			break
+			return
+		case <-ticker.C:
 		}
 
 		var c models.Card
@@ -126,8 +133,6 @@ func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
 			slog.Info("Repair: Generated missing fingerprint", "id", c.ID, "name", c.Name)
 		}
 
-		// Rate limit downloads during repair to be nice to APIs
-		time.Sleep(500 * time.Millisecond)
 	}
 	if err := rows.Err(); err != nil {
 		slog.Error("Repair: Row iteration error", "error", err)
