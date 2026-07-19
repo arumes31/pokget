@@ -150,17 +150,15 @@ func (s *LLMService) queryLLM(prompt string) (string, error) {
 		return "", fmt.Errorf("LLM API returned non-OK status: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read LLM response body: %w", err)
-	}
-
 	var result struct {
 		Response string `json:"response"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("failed to unmarshal LLM response: %w", err)
 	}
+
+	// Explicitly drain the remaining body to ensure HTTP transport can reuse the TCP connection (Keep-Alive).
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	return result.Response, nil
 }
