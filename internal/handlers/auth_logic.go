@@ -174,19 +174,24 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
+	// Dummy hash to prevent timing attacks. Represents a valid bcrypt hash with cost 14.
+	dummyHash := "$2a$14$o0Z5IR5qrGAQLoP4N8d36OFQixm62GJZnix66BGctmAnkSZ0wxXz6"
 	var u models.User
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
-			return
-		}
+
+	// If the user doesn't exist, we compare against a dummy hash to ensure constant time.
+	hashToCompare := u.PasswordHash
+	if err == sql.ErrNoRows {
+		hashToCompare = dummyHash
+	} else if err != nil {
 		slog.Error("Login: database error", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	if !auth.CheckPasswordHash(password, u.PasswordHash) {
+	hashValid := auth.CheckPasswordHash(password, hashToCompare)
+
+	if err == sql.ErrNoRows || !hashValid {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
