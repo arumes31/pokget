@@ -176,17 +176,26 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	var u models.User
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
+
+	// 🛡️ Sentinel: Prevent user enumeration timing attack by always executing the hash comparison
+	targetHash := "$2a$14$o0Z5IR5qrGAQLoP4N8d36OFQixm62GJZnix66BGctmAnkSZ0wxXz6" // Dummy hash with cost 14
+	userExists := true
+
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+			userExists = false
+		} else {
+			slog.Error("Login: database error", "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		slog.Error("Login: database error", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
+	} else {
+		targetHash = u.PasswordHash
 	}
 
-	if !auth.CheckPasswordHash(password, u.PasswordHash) {
+	passwordMatch := auth.CheckPasswordHash(password, targetHash)
+
+	if !userExists || !passwordMatch {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
