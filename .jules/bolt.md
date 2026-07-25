@@ -1,3 +1,3 @@
-## 2026-06-08 - String Split Overhead in Middlewares
-**Learning:** `strings.Split` causes significant heap allocations (allocating a slice of strings) which is particularly detrimental inside high-frequency middleware like `ProxyMiddleware`.
-**Action:** Always prefer `strings.IndexByte` and manual string slicing when extracting a specific segment from a character-delimited string (like headers or IPs) to eliminate unnecessary garbage collection pressure in hot paths.
+## 2024-05-24 - Efficient HTTP response decoding
+**Learning:** Decoding JSON directly from the http.Response.Body stream is more performant than using io.ReadAll to read into memory and then json.Unmarshal.
+**Action:** When decoding JSON from an `io.Reader` (like an `http.Response.Body`), prefer `json.NewDecoder(reader).Decode(&dest)` over `io.ReadAll(reader)` followed by `json.Unmarshal()`. Ensure the remaining body is explicitly drained using `_, _ = io.Copy(io.Discard, resp.Body)` to allow HTTP transport keep-alive reuse.
