@@ -55,6 +55,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var existingVerified bool
 	err := h.DB.QueryRow("SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
 	if err == nil && existingVerified {
+		// Mitigation for timing attacks (user enumeration):
+		// Use actual HashPassword instead of CheckPasswordHash with hardcoded cost
+		// to ensure the cost factor perfectly matches the application's configuration
+		// and prevents reverse timing attacks.
+		_, _ = auth.HashPassword(password)
+
 		// Return success to avoid email enumeration — user already exists and is verified
 		// Do not reveal whether the email is registered
 		http.Redirect(w, r, "/auth?tab=login", http.StatusSeeOther)
@@ -178,6 +184,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			// Mitigation for timing attacks (user enumeration):
+			// Use actual HashPassword instead of CheckPasswordHash with hardcoded cost
+			// to ensure the cost factor perfectly matches the application's configuration
+			// and prevents reverse timing attacks.
+			_, _ = auth.HashPassword(password)
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		}
