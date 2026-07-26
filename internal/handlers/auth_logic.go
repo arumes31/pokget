@@ -176,17 +176,25 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	var u models.User
 	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
-			return
-		}
-		slog.Error("Login: database error", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
+
+	// Security: Prevent timing attacks for user enumeration by ensuring hash
+	// computation time is consistent regardless of whether the user exists.
+	userExists := err == nil
+	var passwordMatch bool
+
+	if userExists {
+		passwordMatch = auth.CheckPasswordHash(password, u.PasswordHash)
+	} else {
+		// Use actual hashing function for identical timing instead of dummy hash
+		_, _ = auth.HashPassword(password)
 	}
 
-	if !auth.CheckPasswordHash(password, u.PasswordHash) {
+	if !userExists || !passwordMatch {
+		if err != nil && err != sql.ErrNoRows {
+			slog.Error("Login: database error", "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
