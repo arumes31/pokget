@@ -1,4 +1,4 @@
-## 2024-06-08 - Fix IP Spoofing Default in ProxyMiddleware
-**Vulnerability:** The `ProxyMiddleware` incorrectly trusted reverse proxy headers (`X-Forwarded-For`, `CF-Connecting-IP`) by default if the `TRUST_PROXY` and `TRUST_CLOUDFLARE` environment variables were completely missing. This allowed unauthenticated attackers to supply a fake `X-Forwarded-For` header to spoof their IP address, bypassing rate limits and other IP-based security measures.
-**Learning:** Checking for `!= "false"` when parsing boolean environment variables inadvertently creates a fail-open, insecure default. When configuring security-sensitive mechanisms (like trusting external IP headers), defaults must always be fail-secure.
-**Prevention:** Always use explicit opt-in logic (e.g., `== "true"`) for security features controlled by environment variables. Ensure that when an env var is empty/unset, the application falls back to its safest state.
+## 2024-05-24 - Timing Attack in Login Flow
+**Vulnerability:** Timing attack possible during login flow when checking for user existence. The application returns early when a user is not found (`sql.ErrNoRows`), making it faster than when hashing a password for a valid user.
+**Learning:** Returning early on database misses (like `sql.ErrNoRows`) allows attackers to enumerate registered emails via timing differences.
+**Prevention:** Avoid early returns on database misses. Instead of returning early, always perform a dummy password hash computation using the application's actual hashing function (e.g., `_, _ = auth.HashPassword(password)`) to ensure the timing perfectly matches the current configuration and prevents user enumeration.
