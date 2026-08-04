@@ -32,6 +32,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -46,7 +47,9 @@ const (
 	defaultLLMMaxCandidates = 20
 	defaultLLMMinEvidence   = 180
 	defaultLLMMinConfidence = 0.55
-	defaultLLMNumPredict    = 96
+	defaultLLMNumPredict    = 32
+	defaultLLMNumContext    = 2048
+	defaultLLMNumThread     = 8
 	defaultLLMSeed          = 42
 )
 
@@ -67,6 +70,8 @@ type LLMConfig struct {
 	Temperature   float64
 	Seed          int
 	NumPredict    int
+	NumContext    int
+	NumThread     int
 	MaxCandidates int
 	MinEvidence   int
 	MinConfidence float64
@@ -82,6 +87,8 @@ type LLMService struct {
 	Temperature   float64
 	Seed          int
 	NumPredict    int
+	NumContext    int
+	NumThread     int
 	MaxCandidates int
 	MinEvidence   int
 	MinConfidence float64
@@ -95,6 +102,8 @@ func NewLLMService() *LLMService {
 		Temperature:   envFloat("OLLAMA_TEMPERATURE", 0),
 		Seed:          envInt("OLLAMA_SEED", defaultLLMSeed),
 		NumPredict:    envInt("OLLAMA_NUM_PREDICT", defaultLLMNumPredict),
+		NumContext:    envInt("OLLAMA_NUM_CTX", defaultLLMNumContext),
+		NumThread:     envInt("OLLAMA_NUM_THREAD", defaultLLMNumThread),
 		MaxCandidates: envInt("OLLAMA_MAX_CANDIDATES", defaultLLMMaxCandidates),
 		MinEvidence:   envInt("OLLAMA_MIN_EVIDENCE", defaultLLMMinEvidence),
 		MinConfidence: envFloat("OLLAMA_MIN_CONFIDENCE", defaultLLMMinConfidence),
@@ -130,6 +139,12 @@ func NewLLMServiceWithConfig(config LLMConfig) (*LLMService, error) {
 	if config.NumPredict <= 0 {
 		config.NumPredict = defaultLLMNumPredict
 	}
+	if config.NumContext <= 0 {
+		config.NumContext = defaultLLMNumContext
+	}
+	if config.NumThread <= 0 {
+		config.NumThread = defaultLLMNumThread
+	}
 	if config.MaxCandidates <= 0 {
 		config.MaxCandidates = defaultLLMMaxCandidates
 	}
@@ -153,6 +168,8 @@ func NewLLMServiceWithConfig(config LLMConfig) (*LLMService, error) {
 		Temperature:   config.Temperature,
 		Seed:          config.Seed,
 		NumPredict:    config.NumPredict,
+		NumContext:    config.NumContext,
+		NumThread:     config.NumThread,
 		MaxCandidates: config.MaxCandidates,
 		MinEvidence:   config.MinEvidence,
 		MinConfidence: config.MinConfidence,
@@ -285,10 +302,10 @@ func (s *LLMService) queryLLM(prompt string) (string, error) {
 }
 
 func (s *LLMService) queryLLMContext(ctx context.Context, prompt string) (string, error) {
-	return s.queryLLMRequest(ctx, prompt, false)
+	return s.queryLLMRequest(ctx, prompt, nil)
 }
 
-func (s *LLMService) queryLLMRequest(ctx context.Context, prompt string, structured bool) (string, error) {
+func (s *LLMService) queryLLMRequest(ctx context.Context, prompt string, responseFormat any) (string, error) {
 	payload := map[string]any{
 		"model":  s.Model,
 		"prompt": prompt,
@@ -297,10 +314,12 @@ func (s *LLMService) queryLLMRequest(ctx context.Context, prompt string, structu
 			"temperature": s.Temperature,
 			"seed":        s.effectiveSeed(),
 			"num_predict": s.effectiveNumPredict(),
+			"num_ctx":     s.effectiveNumContext(),
+			"num_thread":  s.effectiveNumThread(),
 		},
 	}
-	if structured {
-		payload["format"] = "json"
+	if responseFormat != nil {
+		payload["format"] = responseFormat
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -352,6 +371,20 @@ func (s *LLMService) effectiveNumPredict() int {
 		return defaultLLMNumPredict
 	}
 	return s.NumPredict
+}
+
+func (s *LLMService) effectiveNumContext() int {
+	if s.NumContext <= 0 {
+		return defaultLLMNumContext
+	}
+	return s.NumContext
+}
+
+func (s *LLMService) effectiveNumThread() int {
+	if s.NumThread <= 0 {
+		return defaultLLMNumThread
+	}
+	return s.NumThread
 }
 
 func (s *LLMService) effectiveMaxCandidates() int {
@@ -493,7 +526,7 @@ func (s *LLMService) FuzzyMatchCardWithValidationContext(ctx context.Context, oc
 		`Return exactly {"card_id":"<supplied ID>","confidence":0.0,"abstain":false}; ` +
 		`otherwise return {"card_id":"","confidence":0.0,"abstain":true}. Input: ` + string(inputJSON)
 
-	response, err := s.queryLLMRequest(ctx, prompt, true)
+	response, err := s.queryLLMRequest(ctx, prompt, llmCardResponseSchema(shortlistByID))
 	if err != nil {
 		return nil, fmt.Errorf("LLM query failed: %w", err)
 	}
@@ -536,6 +569,31 @@ func (s *LLMService) FuzzyMatchCardWithValidationContext(ctx context.Context, oc
 	return &LLMCardResponse{
 		CardName: card.Name, CardID: card.ID, Confidence: raw.Confidence,
 	}, nil
+}
+
+func llmCardResponseSchema(shortlist map[string]models.Card) map[string]any {
+	allowedIDs := make([]string, 1, len(shortlist)+1)
+	for cardID := range shortlist {
+		allowedIDs = append(allowedIDs, cardID)
+	}
+	slices.Sort(allowedIDs)
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"card_id", "confidence", "abstain"},
+		"properties": map[string]any{
+			"card_id": map[string]any{
+				"type": "string",
+				"enum": allowedIDs,
+			},
+			"confidence": map[string]any{
+				"type":    "number",
+				"minimum": 0,
+				"maximum": 1,
+			},
+			"abstain": map[string]any{"type": "boolean"},
+		},
+	}
 }
 
 // validatePlainTextResponse remains for source compatibility. Plain-text LLM

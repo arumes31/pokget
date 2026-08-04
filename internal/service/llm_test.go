@@ -342,7 +342,8 @@ func TestLLMStrictMatchSendsOnlyEvidenceBackedShortlist(t *testing.T) {
 
 	service := &LLMService{
 		BaseURL: server.URL, Model: "test-model", HTTPClient: server.Client(),
-		Seed: 7, NumPredict: 48, MaxCandidates: 5, MinEvidence: 180, MinConfidence: 0.6,
+		Seed: 7, NumPredict: 48, NumContext: 1024, NumThread: 4,
+		MaxCandidates: 5, MinEvidence: 180, MinConfidence: 0.6,
 	}
 	inactive := false
 	response, err := service.FuzzyMatchCardScopedContext(context.Background(), "Pikachu 025", []models.Card{
@@ -358,11 +359,21 @@ func TestLLMStrictMatchSendsOnlyEvidenceBackedShortlist(t *testing.T) {
 	if response.CardID != "pikachu-025" || response.CardName != "Pikachu" || response.Abstained {
 		t.Fatalf("strict response = %+v", response)
 	}
-	if requestPayload["format"] != "json" {
-		t.Fatalf("format = %#v, want json", requestPayload["format"])
+	format, ok := requestPayload["format"].(map[string]any)
+	if !ok || format["type"] != "object" || format["additionalProperties"] != false {
+		t.Fatalf("format = %#v, want strict object schema", requestPayload["format"])
+	}
+	properties, ok := format["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema properties = %#v", format["properties"])
+	}
+	cardID, ok := properties["card_id"].(map[string]any)
+	if !ok || !jsonArrayContains(cardID["enum"], "") || !jsonArrayContains(cardID["enum"], "pikachu-025") {
+		t.Fatalf("card_id schema = %#v", properties["card_id"])
 	}
 	options, ok := requestPayload["options"].(map[string]any)
-	if !ok || options["seed"] != float64(7) || options["num_predict"] != float64(48) {
+	if !ok || options["seed"] != float64(7) || options["num_predict"] != float64(48) ||
+		options["num_ctx"] != float64(1024) || options["num_thread"] != float64(4) {
 		t.Fatalf("options = %#v", requestPayload["options"])
 	}
 	prompt, _ := requestPayload["prompt"].(string)
@@ -373,6 +384,19 @@ func TestLLMStrictMatchSendsOnlyEvidenceBackedShortlist(t *testing.T) {
 		strings.Contains(prompt, "magic-pikachu") || strings.Contains(prompt, "german-pikachu") {
 		t.Fatalf("prompt leaked non-evidence or inactive corpus entries: %s", prompt)
 	}
+}
+
+func jsonArrayContains(value any, wanted string) bool {
+	values, ok := value.([]any)
+	if !ok {
+		return false
+	}
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func TestLLMStrictMatchRejectsArbitraryAndOutsideShortlistOutput(t *testing.T) {
