@@ -13,7 +13,7 @@ services:
       - DB_NAME=${DB_NAME:-pokget_db}
       - DB_SSLMODE=disable
       - OLLAMA_HOST=pokget_ollama
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-tinyllama}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma3:270m}
       - OLLAMA_TEMPERATURE=${OLLAMA_TEMPERATURE:-0}
       - OLLAMA_SEED=${OLLAMA_SEED:-42}
       - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-32}

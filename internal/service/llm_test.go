@@ -211,12 +211,7 @@ func TestFuzzyMatchCardWithValidationJSONExtraction(t *testing.T) {
 	}
 }
 
-func TestLLMCardResponseConfidenceClamping(t *testing.T) {
-	// Test that FuzzyMatchCardWithValidation clamps out-of-range confidence
-	// values returned by the LLM, rather than manually replicating the clamping
-	// logic here. Uses a test HTTP server that returns JSON with invalid
-	// confidence values.
-
+func TestLLMCardResponseConfidenceUsesDeterministicEvidence(t *testing.T) {
 	knownCards := []models.Card{
 		{ID: "test-1", Name: "Pikachu"},
 	}
@@ -224,16 +219,13 @@ func TestLLMCardResponseConfidenceClamping(t *testing.T) {
 	tests := []struct {
 		name          string
 		llmConfidence float64
-		wantClamped   float64
 	}{
-		{"negative confidence clamped to 0", -0.5, 0},
-		{"confidence > 1 clamped to 1", 1.5, 1},
+		{"negative self-report ignored", -0.5},
+		{"inflated self-report ignored", 1.5},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up a test HTTP server that returns an LLM response with
-			// the specified out-of-range confidence value.
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				llmJSON := fmt.Sprintf(`{"card_id": "test-1", "confidence": %f, "abstain": false}`, tt.llmConfidence)
 				resp := map[string]string{"response": llmJSON}
@@ -251,8 +243,9 @@ func TestLLMCardResponseConfidenceClamping(t *testing.T) {
 			if err != nil {
 				t.Fatalf("FuzzyMatchCardWithValidation returned error: %v", err)
 			}
-			if result.Confidence != tt.wantClamped {
-				t.Errorf("Expected clamped confidence %f, got %f", tt.wantClamped, result.Confidence)
+			want := llmEvidenceConfidence(scoreCandidate("pikachu", "pikachu", []string{"pikachu"}, knownCards[0]).Score)
+			if result.Confidence != want {
+				t.Errorf("confidence = %f, want deterministic evidence confidence %f", result.Confidence, want)
 			}
 		})
 	}

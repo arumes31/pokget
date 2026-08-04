@@ -79,8 +79,8 @@ func main() {
 		if err == nil {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			if strings.Contains(string(body), "tinyllama") {
-				fmt.Println("\nLLM model 'tinyllama' is ready!")
+			if strings.Contains(string(body), llm.Model) {
+				fmt.Printf("\nLLM model %q is ready!\n", llm.Model)
 				llmReady = true
 				break
 			}
@@ -89,7 +89,7 @@ func main() {
 		time.Sleep(10 * time.Second)
 	}
 	if !llmReady {
-		fmt.Println("\nLLM model 'tinyllama' is not ready yet. Proceeding with Tesseract + Fuzzy String Matching.")
+		fmt.Printf("\nLLM model %q is not ready yet. Proceeding with Tesseract + Fuzzy String Matching.\n", llm.Model)
 		llm = nil
 	}
 

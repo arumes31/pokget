@@ -51,7 +51,7 @@ func main() {
 		if err == nil {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			if strings.Contains(string(body), "tinyllama") {
+			if strings.Contains(string(body), llm.Model) {
 				fmt.Println("\nLLM model is ready!")
 				ready = true
 				break
@@ -61,7 +61,7 @@ func main() {
 		time.Sleep(10 * time.Second)
 	}
 	if !ready {
-		fmt.Println("\nError: LLM model 'tinyllama' never became ready. Aborting.")
+		fmt.Printf("\nError: LLM model %q never became ready. Aborting.\n", llm.Model)
 		os.Exit(1)
 	}
 
