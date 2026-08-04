@@ -9,6 +9,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
         rel="stylesheet" />
+    <script src="/static/js/scanner.js?v={{ .BuildVersion }}" defer></script>
     <script src="/static/js/alpine.min.js?v=3" defer></script>
     <script src="/static/js/htmx.min.js?v=3"></script>
     <script src="/static/js/vault.js?v=4" defer></script>
@@ -22,7 +23,8 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/static/js/sw.js');
+                navigator.serviceWorker.register('/static/js/sw.js')
+                    .catch((error) => console.warn('Service worker registration failed', error));
             });
         }
     </script>

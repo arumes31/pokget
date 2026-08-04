@@ -1,275 +1,18 @@
 {{define "centering_tool.html"}}
-<div x-data="{ 
-        scanning: false,
-        scanStatus: '',
-        scanStep: 0,
-        lines: { left: 10, right: 90, top: 10, bottom: 90 },
-        metrics: { lr: '50/50', tb: '50/50' },
-        dragging: null,
-        result: '',
-        detectedCard: '',
-        detectedID: '',
-        detectedPrice: '',
-        detectedImage: '',
-        confidence: 0,
-        needsReview: false,
-        matchConfirmed: false,
-        topMatches: [],
-        adding: false,
-        lang: 'eng',
-        game: 'pokemon',
-        cameraError: '',
-        cameras: [],
-        currentCamera: null,
-        csrfToken: '{{.CSRFToken}}',
-        init() {
-            this.lang = localStorage.getItem('pokget_scan_lang') || 'eng';
-            this.game = localStorage.getItem('pokget_scan_game') || 'pokemon';
-            this.$watch('lang', val => localStorage.setItem('pokget_scan_lang', val));
-            this.$watch('game', val => localStorage.setItem('pokget_scan_game', val));
-            this.setupScanner();
-        },
-        destroy() {
-            if (this.$refs.video && this.$refs.video.srcObject) {
-                this.$refs.video.srcObject.getTracks().forEach(track => track.stop());
-            }
-        },
-        async setupScanner() {
-            await this.loadCameras();
-            await this.startCamera();
-        },
-        async loadCameras() {
-            try {
-                // Request permissions first to get labels
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-                stream.getTracks().forEach(track => track.stop()); // Stop immediately
-                
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                this.cameras = devices.filter(device => device.kind === 'videoinput');
-                if (this.cameras.length > 0) {
-                    // Prefer back camera if found
-                    const backCam = this.cameras.find(cam => cam.label.toLowerCase().includes('back') || cam.label.toLowerCase().includes('environment'));
-                    this.currentCamera = backCam ? backCam.deviceId : this.cameras[0].deviceId;
-                }
-            } catch (err) {
-                console.error('Error listing cameras:', err);
-                this.cameraError = 'Camera unavailable. You can upload a photo instead.';
-            }
-        },
-        async startCamera() {
-            const constraints = {
-                video: this.currentCamera ? { deviceId: { exact: this.currentCamera } } : { facingMode: 'environment' }
-            };
-            
-            if (this.$refs.video.srcObject) {
-                this.$refs.video.srcObject.getTracks().forEach(track => track.stop());
-            }
-
-            navigator.mediaDevices.getUserMedia(constraints)
-                .then(stream => { this.$refs.video.srcObject = stream; this.cameraError = ''; })
-                .catch(err => {
-                    console.error('Camera access denied:', err);
-                    this.cameraError = 'Camera access was denied. Upload a photo or enable camera permission.';
-                });
-        },
-        async switchCamera() {
-            await this.startCamera();
-        },
-        // Helper to yield to the browser so Alpine can repaint between status changes
-        tick() {
-            return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        },
-        async capture() {
-            if (this.scanning) return;
-            
-            // Check if video is ready
-            if (!this.$refs.video.videoWidth || !this.$refs.video.videoHeight) {
-                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Camera not ready. Please wait.', type: 'error' } }));
-                return;
-            }
-
-            this.scanning = true;
-            this.scanStep = 1;
-            this.scanStatus = 'Capturing frame...';
-            await this.tick();
-
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = this.$refs.video.videoWidth;
-                canvas.height = this.$refs.video.videoHeight;
-                canvas.getContext('2d').drawImage(this.$refs.video, 0, 0);
-                
-                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
-                if (!blob) {
-                    throw new Error('Failed to capture frame');
-                }
-
-                this.scanStep = 2;
-                this.scanStatus = 'Uploading image...';
-                await this.tick();
-                await new Promise(r => setTimeout(r, 300));
-
-                const formData = new FormData();
-                formData.append('card_image', blob, 'capture.jpg');
-                formData.append('lang', this.lang);
-                formData.append('game', this.game);
-
-                this.scanStep = 3;
-                this.scanStatus = 'Processing image...';
-                await this.tick();
-
-                const res = await fetch('/api/scan', { 
-                    method: 'POST', 
-                    headers: { 'X-CSRF-Token': this.csrfToken },
-                    body: formData 
-                });
-                
-                if (!res.ok) {
-                    const errText = await res.text();
-                    console.error('Scanner API error:', res.status, errText);
-                    throw new Error('Server error');
-                }
-
-                this.scanStep = 4;
-                this.scanStatus = 'Matching card...';
-                await this.tick();
-
-                const data = await res.json();
-                await new Promise(r => setTimeout(r, 400));
-
-                this.scanStep = 5;
-                this.scanStatus = 'Indexing results...';
-                await this.tick();
-                await new Promise(r => setTimeout(r, 400));
-
-                this.result = data.text;
-                this.detectedCard = data.detected;
-                this.detectedID = data.id;
-                this.detectedPrice = data.price;
-                this.detectedImage = data.image_url;
-                this.confidence = Number(data.confidence || 0);
-                this.needsReview = Boolean(data.needs_review);
-                this.matchConfirmed = !this.needsReview;
-                this.topMatches = data.top_matches || [];
-                
-                this.scanStatus = 'Complete!';
-                await this.tick();
-
-                // Auto-Snap logic
-                if (data.bounds) {
-                    this.lines = data.bounds;
-                    this.updateMetrics();
-                    window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Auto-Snap Success!', type: 'success' } }));
-                } else if (this.detectedCard && this.detectedCard !== 'Unknown Card') {
-                    window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Card Detected!', type: 'success' } }));
-                } else {
-                    window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'No match found. Try again.', type: 'error' } }));
-                }
-            } catch (err) {
-                console.error('Capture failed:', err);
-                this.scanStatus = '';
-                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Scanner Error: please try again', type: 'error' } }));
-            } finally {
-                this.scanning = false;
-                setTimeout(() => { this.scanStatus = ''; this.scanStep = 0; }, 2000);
-            }
-        },
-        async addToCollection() {
-            if (!this.detectedID) return;
-            if (this.needsReview && !this.matchConfirmed) {
-                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Confirm the intended printing before adding it.', type: 'error' } }));
-                return;
-            }
-            this.adding = true;
-            const formData = new FormData();
-            formData.append('card_id', this.detectedID);
-            
-            try {
-                const res = await fetch('/portfolio/add', { 
-                    method: 'POST', 
-                    headers: { 'X-CSRF-Token': this.csrfToken },
-                    body: formData 
-                });
-                if (res.ok) {
-                    window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Added to collection!', type: 'success' } }));
-                } else {
-                    throw new Error('Failed to add');
-                }
-            } catch (err) {
-                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Error adding card.', type: 'error' } }));
-            }
-            this.adding = false;
-        },
-        updateMetrics() {
-            let lrRatio = Math.round((this.lines.left / (this.lines.left + (100 - this.lines.right))) * 100);
-            let tbRatio = Math.round((this.lines.top / (this.lines.top + (100 - this.lines.bottom))) * 100);
-            this.metrics.lr = `${lrRatio}/${100 - lrRatio}`;
-            this.metrics.tb = `${tbRatio}/${100 - tbRatio}`;
-        },
-        handleMove(e) {
-            if (!this.dragging) return;
-            const rect = this.$refs.container.getBoundingClientRect();
-            const x = ((e.clientX || e.touches[0].clientX) - rect.left) / rect.width * 100;
-            const y = ((e.clientY || e.touches[0].clientY) - rect.top) / rect.height * 100;
-            
-            if (this.dragging === 'left') this.lines.left = Math.max(0, Math.min(x, this.lines.right - 5));
-            if (this.dragging === 'right') this.lines.right = Math.max(this.lines.left + 5, Math.min(x, 100));
-            if (this.dragging === 'top') this.lines.top = Math.max(0, Math.min(y, this.lines.bottom - 5));
-            if (this.dragging === 'bottom') this.lines.bottom = Math.max(this.lines.top + 5, Math.min(y, 100));
-            this.updateMetrics();
-        },
-        async handleFileUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            this.scanning = true;
-            this.scanStep = 2;
-            this.scanStatus = 'Uploading image...';
-            await this.tick();
-            const formData = new FormData();
-            formData.append('card_image', file);
-            formData.append('lang', this.lang);
-            formData.append('game', this.game);
-            this.scanStep = 3;
-            this.scanStatus = 'Processing image...';
-            await this.tick();
-            try {
-                const res = await fetch('/api/scan', { method: 'POST', headers: { 'X-CSRF-Token': this.csrfToken }, body: formData });
-                if (!res.ok) throw new Error('Server error');
-                this.scanStep = 4;
-                this.scanStatus = 'Matching card...';
-                await this.tick();
-                const data = await res.json();
-                this.scanStep = 5;
-                this.scanStatus = 'Indexing results...';
-                await this.tick();
-                this.result = data.text;
-                this.detectedCard = data.detected;
-                this.detectedID = data.id;
-                this.detectedPrice = data.price;
-                this.detectedImage = data.image_url;
-                this.confidence = Number(data.confidence || 0);
-                this.needsReview = Boolean(data.needs_review);
-                this.matchConfirmed = !this.needsReview;
-                this.topMatches = data.top_matches || [];
-                this.scanStatus = 'Complete!';
-                if (data.bounds) { this.lines = data.bounds; this.updateMetrics(); }
-            } catch (err) {
-                console.error('Upload scan failed:', err);
-                window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Upload scan failed. Try again.', type: 'error' } }));
-            } finally {
-                this.scanning = false;
-                setTimeout(() => { this.scanStatus = ''; this.scanStep = 0; }, 2000);
-            }
-            event.target.value = '';
-        }
-      }" @mousemove="handleMove($event)" @touchmove="handleMove($event)" @mouseup="dragging = null"
-    @touchend="dragging = null" class="space-y-6 md:space-y-6">
-    <div class="flex items-center justify-between px-4 py-3 absolute top-6 left-4 right-4 z-40 bg-black/40 backdrop-blur-md rounded-2xl border border-white/5 md:relative md:top-auto md:left-auto md:right-auto md:z-auto md:bg-transparent md:border-none md:p-0 md:px-1">
-        <h2 class="text-xs font-bold uppercase tracking-widest text-primary md:text-lg md:normal-case md:tracking-normal md:text-on-surface">Card Scanner</h2>
-        <button class="text-white/40 hover:text-white transition-colors" aria-label="Reset scanner guide lines"
-            @click="lines = { left: 10, right: 90, top: 10, bottom: 90 }; updateMetrics(); result = ''; detectedCard = ''">
+<div x-data="cardScanner({ csrfToken: '{{ .CSRFToken }}' })"
+    @pointermove="handleMove($event)" @pointerup="finishGuideDrag()" @pointercancel="finishGuideDrag()"
+    class="space-y-6 md:space-y-6">
+    <div
+        class="flex items-center justify-between px-4 py-3 absolute top-6 left-4 right-4 z-40 bg-black/40 backdrop-blur-md rounded-2xl border border-white/5 md:relative md:top-auto md:left-auto md:right-auto md:z-auto md:bg-transparent md:border-none md:p-0 md:px-1">
+        <div>
+            <h2 class="text-xs font-bold uppercase tracking-widest text-primary md:text-lg md:normal-case md:tracking-normal md:text-on-surface">
+                Card Scanner</h2>
+            <p class="hidden md:block text-xs text-white/40">Crop to the printed card, then let Pokget compare only the selected TCG.</p>
+        </div>
+        <button type="button" class="text-white/40 hover:text-white transition-colors"
+            aria-label="Reset scanner, preview, and guide lines" @click="resetAll()">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                 <path d="M3 3v5h5" />
             </svg>
@@ -277,218 +20,239 @@
     </div>
 
     <div x-ref="container"
-        class="fixed inset-0 z-30 bg-black md:relative md:inset-auto md:aspect-[3/4] md:rounded-[2rem] md:border md:border-purple-500/20 md:shadow-[0_0_30px_rgba(124,58,237,0.1)]">
-        <!-- Live Video Feed -->
-        <video x-ref="video" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover md:object-contain"></video>
+        class="fixed inset-0 z-30 bg-black overflow-hidden md:relative md:inset-auto md:aspect-[3/4] md:rounded-[2rem] md:border md:border-purple-500/20 md:shadow-[0_0_30px_rgba(124,58,237,0.1)]">
+        <video x-ref="video" x-show="!previewURL" autoplay playsinline muted
+            class="absolute inset-0 w-full h-full object-cover md:object-contain"
+            aria-label="Live camera preview"></video>
 
+        <img x-show="previewURL" :src="previewURL" alt="Selected card photo preview"
+            class="absolute inset-0 w-full h-full object-contain">
 
-
-        <!-- Camera Selector Overlay -->
-        <div x-show="cameras.length > 1"
+        <div x-show="cameras.length > 1 && !previewURL"
             class="absolute top-3 right-3 z-[60] bg-black/60 backdrop-blur-md rounded-lg border border-white/10 pointer-events-auto">
-            <select x-model="currentCamera" @change="switchCamera()" aria-label="Camera source"
-                class="bg-transparent text-white/80 text-[8px] font-bold px-2 py-1 outline-none appearance-none">
-                <template x-for="cam in cameras">
-                    <option :value="cam.deviceId" x-text="cam.label || 'Camera ' + (cameras.indexOf(cam) + 1)"></option>
+            <label for="scanner-camera" class="sr-only">Camera source</label>
+            <select id="scanner-camera" x-model="currentCamera" @change="switchCamera()"
+                :disabled="scanning"
+                class="bg-transparent text-white/80 text-[10px] font-bold px-3 py-2 outline-none appearance-none">
+                <template x-for="(camera, index) in cameras" :key="camera.deviceId">
+                    <option :value="camera.deviceId" x-text="camera.label || 'Camera ' + (index + 1)"></option>
                 </template>
             </select>
         </div>
 
-        <!-- Camera Viewfinder Mockup -->
-        <div class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-            <div class="w-64 h-80 border-2 border-white/20 rounded-2xl relative"
-                :class="scanning ? 'border-purple-500 animate-pulse' : ''">
-                <div class="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-purple-500 rounded-tl-lg"
-                    :class="scanning ? 'animate-ping' : ''"></div>
-                <div class="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-purple-500 rounded-tr-lg"
-                    :class="scanning ? 'animate-ping' : ''"></div>
-                <div class="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-purple-500 rounded-bl-lg"
-                    :class="scanning ? 'animate-ping' : ''"></div>
-                <div class="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-purple-500 rounded-br-lg"
-                    :class="scanning ? 'animate-ping' : ''"></div>
-            </div>
+        <div x-show="previewURL" class="absolute top-3 left-3 z-[60] flex gap-2 pointer-events-auto">
+            <button type="button" @click="rotatePreview()" :disabled="scanning"
+                class="bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-[10px] font-bold text-white disabled:opacity-40">
+                ROTATE 90°
+            </button>
+            <button type="button" @click="clearPreview()" :disabled="scanning"
+                class="bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-[10px] font-bold text-white disabled:opacity-40">
+                USE CAMERA
+            </button>
         </div>
 
-        <!-- Scan Status Overlay -->
-        <div x-show="scanStatus" x-transition.opacity.duration.200ms
-            class="absolute inset-x-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-3 pointer-events-none">
+        <div x-show="scanning" x-cloak
+            class="absolute inset-x-0 top-1/2 -translate-y-1/2 z-[70] flex flex-col items-center gap-3 pointer-events-none"
+            role="status" aria-live="polite" :aria-label="scanStatus">
             <div
-                class="bg-black/80 backdrop-blur-xl rounded-2xl px-6 py-4 border border-purple-500/30 shadow-[0_0_40px_rgba(124,58,237,0.3)] flex flex-col items-center gap-3 min-w-[220px]">
-                <!-- Step dots -->
-                <div class="flex items-center gap-1.5">
-                    <template x-for="step in 5">
-                        <div class="w-2 h-2 rounded-full transition-all duration-300"
-                            :class="scanStep >= step ? (scanStep === step ? 'bg-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.8)] scale-125' : 'bg-purple-500') : 'bg-white/15'">
-                        </div>
-                    </template>
-                </div>
-                <!-- Status text -->
+                class="bg-black/80 backdrop-blur-xl rounded-2xl px-6 py-4 border border-purple-500/30 shadow-[0_0_40px_rgba(124,58,237,0.3)] flex flex-col items-center gap-3 min-w-[220px] pointer-events-auto">
+                <svg class="animate-spin text-purple-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
                 <p class="text-[11px] font-bold text-white/90 uppercase tracking-[0.2em] text-center"
                     x-text="scanStatus"></p>
-                <!-- Progress bar -->
-                <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-                    <div class="h-full bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full transition-all duration-500 ease-out"
+                <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden" role="progressbar"
+                    aria-label="Scan progress" aria-valuemin="0" aria-valuemax="5" :aria-valuenow="scanStep">
+                    <div class="h-full bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full transition-all duration-300"
                         :style="`width: ${(scanStep / 5) * 100}%`"></div>
                 </div>
+                <button type="button" @click="cancelScan()"
+                    class="text-[10px] font-bold text-white/60 hover:text-white">CANCEL</button>
             </div>
         </div>
 
-        <!-- Brackets / Lines -->
-        <div class="absolute inset-0 pointer-events-none">
-            <!-- Vertical Lines with touch targets -->
-            <div class="absolute w-0.5 h-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ew-resize touch-none"
-                :style="`left: ${lines.left}%`" @mousedown="dragging = 'left'" @touchstart="dragging = 'left'">
-                <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[44px] h-full opacity-0"></div>
-            </div>
-            <div class="absolute w-0.5 h-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ew-resize touch-none"
-                :style="`left: ${lines.right}%`" @mousedown="dragging = 'right'" @touchstart="dragging = 'right'">
-                <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[44px] h-full opacity-0"></div>
-            </div>
+        <div class="absolute inset-0 pointer-events-none" aria-label="Card crop guides">
+            <div class="absolute inset-x-0 top-0 bg-black/40" :style="`height: ${lines.top}%`"></div>
+            <div class="absolute inset-x-0 bottom-0 bg-black/40" :style="`height: ${100 - lines.bottom}%`"></div>
+            <div class="absolute left-0 bg-black/40" :style="`top: ${lines.top}%; bottom: ${100 - lines.bottom}%; width: ${lines.left}%`"></div>
+            <div class="absolute right-0 bg-black/40" :style="`top: ${lines.top}%; bottom: ${100 - lines.bottom}%; width: ${100 - lines.right}%`"></div>
+            <button type="button"
+                class="absolute top-0 h-full w-[44px] pointer-events-auto cursor-ew-resize touch-none"
+                :style="`left: calc(${lines.left}% - 22px)`" role="slider" aria-orientation="horizontal" aria-label="Left crop guide"
+                :aria-valuenow="Math.round(lines.left)" aria-valuemin="0" :aria-valuemax="Math.round(lines.right - 5)"
+                @pointerdown.prevent="startGuideDrag('left', $event)"
+                @keydown.left.prevent="nudgeGuide('left', -1)" @keydown.right.prevent="nudgeGuide('left', 1)">
+                <span class="absolute left-1/2 top-0 w-0.5 h-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)]"></span>
+            </button>
+            <button type="button"
+                class="absolute top-0 h-full w-[44px] pointer-events-auto cursor-ew-resize touch-none"
+                :style="`left: calc(${lines.right}% - 22px)`" role="slider" aria-orientation="horizontal" aria-label="Right crop guide"
+                :aria-valuenow="Math.round(lines.right)" :aria-valuemin="Math.round(lines.left + 5)" aria-valuemax="100"
+                @pointerdown.prevent="startGuideDrag('right', $event)"
+                @keydown.left.prevent="nudgeGuide('right', -1)" @keydown.right.prevent="nudgeGuide('right', 1)">
+                <span class="absolute left-1/2 top-0 w-0.5 h-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)]"></span>
+            </button>
+            <button type="button"
+                class="absolute left-0 w-full h-[44px] pointer-events-auto cursor-ns-resize touch-none"
+                :style="`top: calc(${lines.top}% - 22px)`" role="slider" aria-orientation="vertical" aria-label="Top crop guide"
+                :aria-valuenow="Math.round(lines.top)" aria-valuemin="0" :aria-valuemax="Math.round(lines.bottom - 5)"
+                @pointerdown.prevent="startGuideDrag('top', $event)"
+                @keydown.up.prevent="nudgeGuide('top', -1)" @keydown.down.prevent="nudgeGuide('top', 1)">
+                <span class="absolute left-0 top-1/2 h-0.5 w-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)]"></span>
+            </button>
+            <button type="button"
+                class="absolute left-0 w-full h-[44px] pointer-events-auto cursor-ns-resize touch-none"
+                :style="`top: calc(${lines.bottom}% - 22px)`" role="slider" aria-orientation="vertical" aria-label="Bottom crop guide"
+                :aria-valuenow="Math.round(lines.bottom)" :aria-valuemin="Math.round(lines.top + 5)" aria-valuemax="100"
+                @pointerdown.prevent="startGuideDrag('bottom', $event)"
+                @keydown.up.prevent="nudgeGuide('bottom', -1)" @keydown.down.prevent="nudgeGuide('bottom', 1)">
+                <span class="absolute left-0 top-1/2 h-0.5 w-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)]"></span>
+            </button>
 
-            <!-- Horizontal Lines with touch targets -->
-            <div class="absolute h-0.5 w-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ns-resize touch-none"
-                :style="`top: ${lines.top}%`" @mousedown="dragging = 'top'" @touchstart="dragging = 'top'">
-                <div class="absolute left-0 top-1/2 -translate-y-1/2 h-[44px] w-full opacity-0"></div>
-            </div>
-            <div class="absolute h-0.5 w-full bg-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.8)] pointer-events-auto cursor-ns-resize touch-none"
-                :style="`top: ${lines.bottom}%`" @mousedown="dragging = 'bottom'" @touchstart="dragging = 'bottom'">
-                <div class="absolute left-0 top-1/2 -translate-y-1/2 h-[44px] w-full opacity-0"></div>
-            </div>
-
-            <!-- Metrics -->
             <div class="absolute bg-black/80 text-purple-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-purple-500/30 backdrop-blur-sm"
                 :style="`left: 5%; top: ${(lines.top + lines.bottom) / 2}%`" x-text="metrics.tb"></div>
             <div class="absolute bg-black/80 text-blue-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-500/30 backdrop-blur-sm"
                 :style="`left: ${(lines.left + lines.right) / 2}%; top: 5%`" x-text="metrics.lr"></div>
         </div>
 
-        <div class="absolute bottom-28 left-0 right-0 flex justify-center z-20 md:bottom-4">
+        <div class="absolute bottom-28 left-0 right-0 flex justify-center z-20 md:bottom-4 pointer-events-none">
             <span
-                class="text-[7px] font-bold text-white/40 uppercase tracking-[0.3em] bg-black/25 px-3 py-1 rounded-full backdrop-blur-md border border-white/5">Align
-                card edges with guides</span>
+                class="text-[9px] font-bold text-white/60 uppercase tracking-widest bg-black/60 px-3 py-1 rounded-full backdrop-blur-md border border-white/5">Only
+                the area inside the guides is uploaded</span>
         </div>
     </div>
 
-    <!-- Controls / Metrics -->
-    <div class="space-y-4 absolute bottom-24 left-4 right-4 z-40 md:relative md:bottom-auto md:left-auto md:right-auto md:z-auto md:space-y-4">
-
-        <div class="grid grid-cols-2 gap-2" aria-label="Scan options">
-            <label class="text-[9px] font-bold uppercase tracking-widest text-white/60">
+    <div class="scanner-controls space-y-4 absolute bottom-24 left-4 right-4 z-40 md:relative md:bottom-auto md:left-auto md:right-auto md:z-auto">
+        <fieldset class="grid grid-cols-2 gap-2">
+            <legend class="sr-only">Scan options</legend>
+            <label for="scanner-game" class="text-[10px] font-bold uppercase tracking-widest text-white/60">
                 TCG
-                <select x-model="game" class="mt-1 w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs text-white">
+                <select id="scanner-game" x-model="game"
+                    :disabled="scanning"
+                    class="mt-1 w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs text-white">
                     <option value="pokemon">Pokémon</option>
-                    <option value="magic">Magic</option>
+                    <option value="magic">Magic: The Gathering</option>
                     <option value="one_piece">One Piece</option>
-                    <option value="lorcana">Lorcana</option>
+                    <option value="lorcana">Disney Lorcana</option>
                     <option value="weiss_schwarz">Weiss Schwarz</option>
                     <option value="yugioh">Yu-Gi-Oh!</option>
                 </select>
             </label>
-            <label class="text-[9px] font-bold uppercase tracking-widest text-white/60">
+            <label for="scanner-language" class="text-[10px] font-bold uppercase tracking-widest text-white/60">
                 Card language
-                <select x-model="lang" class="mt-1 w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs text-white">
-                    <option value="eng">English</option>
-                    <option value="jpn">Japanese</option>
-                    <option value="deu">German</option>
-                    <option value="fra">French</option>
-                    <option value="eng+jpn+deu+fra+chi_sim+chi_tra+kor">Auto detect</option>
+                <select id="scanner-language" x-model="lang"
+                    :disabled="scanning"
+                    class="mt-1 w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs text-white">
+                    <template x-for="language in availableLanguages" :key="language.value">
+                        <option :value="language.value" x-text="language.label"></option>
+                    </template>
                 </select>
             </label>
-        </div>
+        </fieldset>
+
         <p x-show="cameraError" x-text="cameraError" role="status" aria-live="polite"
             class="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"></p>
+        <p x-show="scanError" x-text="scanError" role="alert" aria-live="assertive"
+            class="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200"></p>
 
-        <!-- Scan Button (min 48x48px touch target) -->
-        <button type="button" @click="capture()" :disabled="scanning" :aria-busy="scanning.toString()"
+        <button type="button" x-show="!previewURL" @click="capture()"
+            :disabled="scanning || !activeStream" :aria-busy="scanning.toString()"
             class="w-full min-h-[48px] py-4 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-xl"
-            :class="scanning ? 'bg-white/10 text-white/40 cursor-wait' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20'">
-            <svg x-show="!scanning" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                <circle cx="12" cy="13" r="4" />
-            </svg>
-            <svg x-show="scanning" class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-            </svg>
-            <span x-text="scanning ? (scanStatus || 'SCANNING...') : 'CAPTURE CARD'"></span>
+            :class="scanning || !activeStream ? 'bg-white/10 text-white/40 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20'">
+            <span class="material-symbols-outlined text-lg" aria-hidden="true">photo_camera</span>
+            <span>CAPTURE GUIDE CROP</span>
         </button>
 
-        <!-- Upload from file (mobile camera invocation) -->
-        <div class="flex gap-2">
-            <label
-                class="flex-1 min-h-[48px] bg-white/5 border border-white/10 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer hover:bg-white/10 transition-all active:scale-95">
-                <span class="material-symbols-outlined text-lg">upload_file</span>
-                <span>UPLOAD PHOTO</span>
-                <input type="file" accept="image/*" capture="environment" class="hidden"
-                    @change="handleFileUpload($event)">
+        <button type="button" x-show="previewURL" @click="scanUpload()" :disabled="scanning"
+            class="w-full min-h-[48px] bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold text-sm shadow-xl shadow-purple-500/20 disabled:opacity-50">
+            SCAN SELECTED CROP
+        </button>
+
+        <div class="grid grid-cols-2 gap-2">
+            <label for="scanner-file"
+                class="min-h-[48px] bg-white/5 border border-white/10 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer hover:bg-white/10 transition-all active:scale-95">
+                <span class="material-symbols-outlined text-lg" aria-hidden="true">upload_file</span>
+                <span>CHOOSE PHOTO</span>
+                <input id="scanner-file" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only"
+                    :disabled="scanning" @change="handleFileUpload($event)">
             </label>
+            <button type="button" @click="retryLastScan()" :disabled="!lastScanBlob || scanning"
+                class="min-h-[48px] bg-white/5 border border-white/10 rounded-2xl font-bold text-xs disabled:opacity-40">
+                RETRY LAST CROP
+            </button>
         </div>
 
-        <!-- OCR Result Display -->
         <div x-show="detectedCard" x-transition role="status" aria-live="polite"
-            class="glass-card p-4" :class="needsReview && !matchConfirmed ? 'border-amber-500/40 bg-amber-500/5' : 'border-emerald-500/30 bg-emerald-500/5'">
+            class="glass-card p-4"
+            :class="needsReview && !matchConfirmed ? 'border-amber-500/40 bg-amber-500/5' : 'border-emerald-500/30 bg-emerald-500/5'">
             <div class="flex items-center gap-4">
-                <div x-show="detectedImage"
-                    class="w-16 aspect-[3/4] rounded-lg overflow-hidden border border-white/10 shadow-lg">
+                <div x-show="detectedImage" class="w-16 aspect-[3/4] rounded-lg overflow-hidden border border-white/10 shadow-lg">
                     <img :src="detectedImage"
                         :alt="detectedCard ? ('Detected card: ' + detectedCard) : 'Detected card preview'"
-                        class="w-full h-full object-cover">
+                        loading="lazy" referrerpolicy="no-referrer" class="w-full h-full object-cover">
                 </div>
-                <div class="flex-1">
+                <div class="flex-1 min-w-0">
                     <p class="text-[10px] font-bold uppercase tracking-widest"
                         :class="needsReview && !matchConfirmed ? 'text-amber-300' : 'text-emerald-400'"
-                        x-text="needsReview && !matchConfirmed ? 'Review printing' : 'Match found'"></p>
+                        x-text="needsReview && !matchConfirmed ? 'Review printing' : (result === 'Manual catalog ID' ? 'Manual selection' : 'Match found')"></p>
                     <p class="text-sm font-black text-on-surface truncate" x-text="detectedCard"></p>
                     <p class="mt-0.5 flex items-baseline gap-1.5 text-[10px] text-white/50">
                         <span class="font-bold uppercase tracking-widest">ID</span>
-                        <span data-testid="detected-card-id" class="font-mono text-on-surface"
-                            x-text="detectedID"></span>
+                        <span data-testid="detected-card-id" class="font-mono text-on-surface" x-text="detectedID"></span>
                     </p>
                     <p class="text-xs font-black text-primary mt-1"
-                        x-text="!isNaN(parseFloat(detectedPrice)) ? '{{ .CurrencySymbol }}' + parseFloat(detectedPrice).toFixed(2) : '--'">
-                    </p>
-                    <p class="text-[10px] text-white/50" x-text="Math.round(confidence) + '% confidence'"></p>
+                        x-text="!isNaN(parseFloat(detectedPrice)) ? '{{ .CurrencySymbol }}' + parseFloat(detectedPrice).toFixed(2) : '--'"></p>
+                    <p x-show="result !== 'Manual catalog ID'" class="text-[10px] text-white/50"
+                        x-text="Math.round(confidence) + '% confidence'"></p>
                 </div>
-                <button @click="addToCollection()" x-show="detectedID" :disabled="adding || (needsReview && !matchConfirmed)"
-                    class="bg-emerald-500 hover:bg-emerald-400 text-dark px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-1.5 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50">
-                    <svg x-show="!adding" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
-                        fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
-                        stroke-linejoin="round">
-                        <path d="M5 12h14" />
-                        <path d="M12 5v14" />
-                    </svg>
-                    <span x-text="adding ? 'SAVING...' : 'ADD'"></span>
+                <button type="button" @click="addToCollection()" x-show="detectedID"
+                    :disabled="adding || added || (needsReview && !matchConfirmed)"
+                    class="bg-emerald-500 hover:bg-emerald-400 text-dark px-4 py-2 rounded-xl text-[10px] font-black transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50">
+                    <span x-text="adding ? 'SAVING…' : (added ? 'ADDED' : 'ADD')"></span>
                 </button>
             </div>
-            <div x-show="needsReview && !matchConfirmed" class="mt-3 space-y-2">
-                <p class="text-xs text-amber-200">The image matches more than one printing. Choose the intended result before adding.</p>
+
+            <fieldset x-show="needsReview && !matchConfirmed" class="mt-3 space-y-2">
+                <legend class="text-xs text-amber-200">Choose the intended printing before adding.</legend>
                 <div class="flex flex-wrap gap-2">
                     <template x-for="match in topMatches" :key="match.id">
-                        <button type="button"
-                            @click="detectedCard = match.name; detectedID = match.id; detectedPrice = match.price; detectedImage = match.image_url; confidence = Number(match.confidence || 0); matchConfirmed = true"
+                        <button type="button" @click="selectMatch(match)"
                             class="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-left text-[10px] text-amber-100">
                             <span class="block font-bold" x-text="match.name"></span>
                             <span class="font-mono opacity-70" x-text="match.id"></span>
                         </button>
                     </template>
                 </div>
-            </div>
+            </fieldset>
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
+        <details class="glass-card p-4 border-white/10">
+            <summary class="cursor-pointer text-xs font-bold text-primary">CAN'T SCAN? USE A CATALOG ID</summary>
+            <div class="mt-4 space-y-3">
+                <label for="manual-card-id" class="block text-[10px] font-bold uppercase tracking-widest text-white/60">Card ID</label>
+                <input id="manual-card-id" x-model.trim="manualCardID" maxlength="128" placeholder="e.g. swsh4-19"
+                    :disabled="scanning" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm">
+                <label for="manual-card-name" class="block text-[10px] font-bold uppercase tracking-widest text-white/60">Card name (optional)</label>
+                <input id="manual-card-name" x-model.trim="manualCardName" maxlength="200" placeholder="Card name"
+                    :disabled="scanning" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm">
+                <button type="button" @click="useManualMatch()" :disabled="scanning"
+                    class="w-full rounded-xl bg-primary/15 py-3 text-xs font-bold text-primary">USE THIS CARD ID</button>
+            </div>
+        </details>
+
+        <div class="grid grid-cols-2 gap-2" aria-label="Centering ratios">
             <div class="glass-card p-2 text-center">
-                <p class="text-[8px] text-white/40 font-bold uppercase tracking-widest mb-0.5">L / R Ratio</p>
+                <p class="text-[9px] text-white/40 font-bold uppercase tracking-widest mb-0.5">L / R Ratio</p>
                 <p class="text-sm font-bold font-mono text-purple-400" x-text="metrics.lr"></p>
             </div>
             <div class="glass-card p-2 text-center">
-                <p class="text-[8px] text-white/40 font-bold uppercase tracking-widest mb-0.5">T / B Ratio</p>
+                <p class="text-[9px] text-white/40 font-bold uppercase tracking-widest mb-0.5">T / B Ratio</p>
                 <p class="text-sm font-bold font-mono text-blue-400" x-text="metrics.tb"></p>
             </div>
         </div>
     </div>
-    <!-- Background CSRF Fallback -->
+
     <input type="hidden" name="gorilla.csrf.Token" :value="csrfToken">
 </div>
 {{end}}

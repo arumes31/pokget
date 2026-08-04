@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "build:static": "node scripts/build-static.mjs",
-    "check:static": "node --check dist/static/js/vault.js && node --check dist/static/js/sw.js && node --check dist/static/sw.js",
-    "test:static": "node --test scripts/build-static.test.mjs"
+    "check:static": "node --check dist/static/js/vault.js && node --check dist/static/js/scanner.js && node --check dist/static/js/sw.js && node --check dist/static/sw.js",
+    "test:static": "node --test scripts/build-static.test.mjs scripts/scanner.test.cjs"
   },
   "dependencies": {
     "tailwindcss": "^4.2.4",
