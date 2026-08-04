@@ -472,8 +472,14 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Award XP
-	_, _, _ = h.Game.AddXP(userID, 100)
+	// Portfolio changes are the badge trigger. Heartbeats and badge rewards only
+	// update XP, avoiding recursive or unbounded background badge checks.
+	if h.Game != nil {
+		if _, _, xpErr := h.Game.AddXP(userID, 100); xpErr != nil {
+			slog.Warn("Failed to award portfolio XP", "user_id", userID, "error", xpErr)
+		}
+		h.Game.CheckForBadges(userID)
+	}
 
 	w.Header().Set("HX-Trigger", `{"notify": {"msg": "Asset Secured: Card added to Vault (+100 XP)", "type": "success"}}`)
 	w.WriteHeader(http.StatusOK)

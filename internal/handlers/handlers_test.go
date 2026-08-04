@@ -723,9 +723,12 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		// BUG-C02 FIX: AddXP now uses atomic UPDATE ... RETURNING instead of SELECT + UPDATE
-		mock.ExpectQuery("UPDATE users SET xp").WithArgs(1, "Novice Collector", "test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"xp", "rank_title"}).AddRow(11, "Novice Collector"))
+		mock.ExpectBegin()
+		mock.ExpectQuery("UPDATE users SET xp").WithArgs(1, "test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"xp"}).AddRow(11))
+		mock.ExpectExec("UPDATE users SET rank_title").WithArgs("Novice Collector", "test-user", 11).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
 
 		h.Heartbeat(rr, req)
 
@@ -864,8 +867,9 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		// BUG-C02 FIX: AddXP now uses atomic UPDATE ... RETURNING instead of SELECT + UPDATE
+		mock.ExpectBegin()
 		mock.ExpectQuery("UPDATE users SET xp").WillReturnError(sql.ErrConnDone)
+		mock.ExpectRollback()
 
 		h.Heartbeat(rr, req)
 
