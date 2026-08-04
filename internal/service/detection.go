@@ -352,14 +352,9 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 
 func (p *DetectionPipeline) applyFingerprintFastPath(result *DetectionResult, fingerprintResult *MatchResult) bool {
 	matches := exactFingerprintMatches(fingerprintResult)
-	if len(matches) == 1 {
+	if len(matches) > 0 {
 		setExactFingerprintResult(result, matches)
 		return true
-	}
-	if len(matches) > 1 {
-		// Visually identical printings need OCR/collector evidence before one ID
-		// can be selected. Preserve all fingerprint candidates for combination.
-		return false
 	}
 
 	highConfidenceThreshold := DefaultPhashThresholdHighConf

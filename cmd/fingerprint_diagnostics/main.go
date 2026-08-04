@@ -27,17 +27,62 @@ type diagnostic struct {
 	Game       string      `json:"game"`
 	Variant    string      `json:"variant"`
 	Expected   string      `json:"expected"`
+	Hash       int64       `json:"hash"`
 	Candidates []candidate `json:"candidates"`
 }
 
 func main() {
 	fixtureDir := flag.String("fixtures", "artifacts/detection/v1-seed-20260804-count-6", "fixture run")
 	variant := flag.String("variant", "", "only inspect one variant")
+	imagePath := flag.String("image", "", "inspect one image instead of a fixture run")
 	flag.Parse()
+	if *imagePath != "" {
+		if err := runImage(*imagePath); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(*fixtureDir, *variant); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func runImage(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	decoded, _, decodeErr := image.Decode(file)
+	closeErr := file.Close()
+	if decodeErr != nil {
+		return decodeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	database, err := db.Connect()
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+	fingerprints := service.NewFingerprintService(database)
+	hash, err := fingerprints.CalculateHash(decoded)
+	if err != nil {
+		return err
+	}
+	row := diagnostic{Variant: filepath.Base(path), Hash: hash}
+	if match := fingerprints.SearchByHash(hash); match != nil {
+		for _, potential := range match.Potential[:min(20, len(match.Potential))] {
+			row.Candidates = append(row.Candidates, candidate{
+				ID: potential.Card.ID, Name: potential.Card.Name, Distance: potential.Distance,
+			})
+		}
+	}
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(row)
 }
 
 func run(fixtureDir, selectedVariant string) error {
