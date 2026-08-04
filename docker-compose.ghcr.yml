@@ -13,6 +13,7 @@ services:
       - DB_NAME=${DB_NAME:-pokget_db}
       - DB_SSLMODE=disable
       - OLLAMA_HOST=pokget_ollama
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-tinyllama}
       - SESSION_KEY=${SESSION_KEY}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -60,7 +61,11 @@ services:
 
   pokget_ollama:
     container_name: pokget_ollama
-    image: ollama/ollama:0.1.32
+    image: ollama/ollama:0.32.3
+    environment:
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+      - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
     ports:
       - "11434:11434"
     volumes:
