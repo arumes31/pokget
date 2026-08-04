@@ -163,9 +163,7 @@ func ConnectWithRetry(
 		select {
 		case <-timer.C:
 		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
+			timer.Stop()
 			return nil, errors.Join(ctx.Err(), errors.Join(connectErrors...))
 		}
 	}
