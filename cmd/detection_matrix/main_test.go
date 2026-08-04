@@ -130,7 +130,7 @@ func TestScanRequiresExplicitNeedsReview(t *testing.T) {
 			defer server.Close()
 
 			imagePath := writeScanInput(t)
-			response, err := scan(t.Context(), server.Client(), server.URL, imagePath)
+			response, err := scan(t.Context(), server.Client(), server.URL, imagePath, "pokemon")
 			if tt.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
 					t.Fatalf("scan() error = %v, want containing %q", err, tt.wantError)

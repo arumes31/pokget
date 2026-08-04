@@ -125,7 +125,13 @@ func run(ctx context.Context, fixtureDir, baseURL string, requestTimeout time.Du
 				ExpectedID: expectedIDs[selected.Card.GameSlug],
 				Expected:   selected.Card.Name,
 			}
-			response, err := scan(ctx, client, baseURL+"/api/scan", filepath.Join(absDir, filepath.FromSlash(artifact.Path)))
+			response, err := scan(
+				ctx,
+				client,
+				baseURL+"/api/scan",
+				filepath.Join(absDir, filepath.FromSlash(artifact.Path)),
+				selected.Card.GameSlug,
+			)
 			if err != nil {
 				result.Error = err.Error()
 			} else {
@@ -288,7 +294,13 @@ func resolveExpectedID(ctx context.Context, database *sql.DB, card detectiontest
 	return ids[0], nil
 }
 
-func scan(ctx context.Context, client *http.Client, endpoint, path string) (scanResponse, error) {
+func scan(
+	ctx context.Context,
+	client *http.Client,
+	endpoint string,
+	path string,
+	game string,
+) (scanResponse, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return scanResponse{}, err
@@ -305,6 +317,9 @@ func scan(ctx context.Context, client *http.Client, endpoint, path string) (scan
 		return scanResponse{}, err
 	}
 	if err := form.WriteField("lang", "eng"); err != nil {
+		return scanResponse{}, err
+	}
+	if err := form.WriteField("game", game); err != nil {
 		return scanResponse{}, err
 	}
 	if err := form.Close(); err != nil {
