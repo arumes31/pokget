@@ -32,8 +32,8 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN go build -o main ./cmd/pokget/main.go && \
-    go build -o catalog ./cmd/catalog/main.go
+RUN go build -o main ./cmd/pokget && \
+	go build -o catalog ./cmd/catalog
 
 # Final stage
 FROM alpine:3.22

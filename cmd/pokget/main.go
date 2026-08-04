@@ -400,7 +400,7 @@ func main() {
 	csrfMiddleware := newCSRFMiddleware(csrfKey, cfg.App.SecureCookies)
 
 	// Static files (Exempt from CSRF)
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	registerStaticRoutes(r)
 
 	registerScanRoute(
 		r,
