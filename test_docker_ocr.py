@@ -4,7 +4,7 @@ import json
 import time
 import base64
 
-API_URL = "http://localhost:8080/api/scan"
+API_URL = "http://localhost:18066/api/scan"
 METADATA_PATH = "test_cards/test_metadata.json"
 
 def run_test():

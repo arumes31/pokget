@@ -1,0 +1,2 @@
+- [pokget test infra](pokget-test-infra.md) — tests need CGO+tesseract (run in Docker); CI has no `go test`; clean main is red
+- [pokget PR triage 2026-06](pokget-pr-triage-2026-06.md) — 44 open PRs triaged into green `pr-triage` branch; 20 integrated, 23 rejected, #27 held

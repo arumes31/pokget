@@ -20,6 +20,7 @@ function initVault() {
 	initHeartbeat();
 	initPullToRefresh();
 	initSwipeToDelete();
+	syncActiveView();
 }
 
 // Use HTMX's afterSettle event when available, fallback to DOMContentLoaded
@@ -29,9 +30,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Re-init rolling numbers after HTMX content swaps (without duplicating haptic listeners)
 if (typeof htmx !== 'undefined') {
-	document.body.addEventListener('htmx:afterSettle', () => {
+	document.body.addEventListener('htmx:afterSettle', (event) => {
 		initRollingNumbers();
+		initSwipeToDelete(event.detail.target || document);
 	});
+	document.body.addEventListener('htmx:historyRestore', syncActiveView);
+}
+
+window.addEventListener('popstate', () => requestAnimationFrame(syncActiveView));
+
+function currentView() {
+	const view = new URLSearchParams(window.location.search).get('view');
+	if (view) return view;
+
+	const pathViews = {
+		'/dashboard': 'home',
+		'/wantlist': 'wantlist',
+		'/binders': 'binders',
+		'/centering': 'scan',
+		'/errors': 'errors',
+		'/trade': 'trade',
+		'/settings': 'settings'
+	};
+	return pathViews[window.location.pathname] || 'home';
+}
+
+function syncActiveView() {
+	window.dispatchEvent(new CustomEvent('pokget-view-change', {
+		detail: { view: currentView() }
+	}));
+}
+
+function currentFragmentPath() {
+	if (window.location.pathname !== '/') return window.location.pathname;
+
+	const params = new URLSearchParams(window.location.search);
+	const view = params.get('view') || 'home';
+	if (view === 'binders' && params.get('binder')) {
+		return '/binders/' + encodeURIComponent(params.get('binder'));
+	}
+
+	const routes = {
+		home: '/dashboard',
+		wantlist: '/wantlist',
+		binders: '/binders',
+		scan: '/centering',
+		errors: '/errors',
+		trade: '/trade',
+		settings: '/settings'
+	};
+	return routes[view] || routes.home;
 }
 
 // Improvement #8: Rolling Number Animation
@@ -154,7 +202,7 @@ function initPullToRefresh() {
 		if (progress >= 1) {
 			// Trigger HTMX refresh on the main content
 			if (typeof htmx !== 'undefined') {
-				htmx.ajax('GET', window.location.pathname, '#main-content');
+				htmx.ajax('GET', currentFragmentPath(), { target: '#main-content', source: document.body });
 				triggerHaptic([10, 30, 10]);
 			}
 		}
@@ -167,9 +215,10 @@ function initPullToRefresh() {
 }
 
 // MOBILE-11: Swipe-to-delete for portfolio items
-function initSwipeToDelete() {
-	const cardItems = document.querySelectorAll('.glass-card.group');
+function initSwipeToDelete(root = document) {
+	const cardItems = root.querySelectorAll('[data-portfolio-item]:not([data-swipe-ready])');
 	cardItems.forEach((item) => {
+		item.dataset.swipeReady = 'true';
 		let startX = 0;
 		let currentX = 0;
 		let swiping = false;
@@ -204,15 +253,43 @@ function initSwipeToDelete() {
 					btn.className = 'swipe-delete-btn';
 					btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px">delete</span>';
 					btn.style.cssText = 'position:absolute;right:-80px;top:0;bottom:0;width:80px;background:#ef4444;color:white;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;';
-					btn.addEventListener('click', () => {
+					btn.setAttribute('aria-label', 'Remove card from vault');
+					btn.addEventListener('click', async () => {
 						triggerHaptic(20);
 						const itemId = item.getAttribute('data-id');
 						if (itemId && typeof htmx !== 'undefined') {
-							htmx.ajax('DELETE', '/portfolio/delete', { values: { item_id: itemId }, target: '#main-content' });
+							const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+							let response;
+							try {
+								response = await fetch('/portfolio/delete', {
+									method: 'POST',
+									headers: {
+										'Content-Type': 'application/x-www-form-urlencoded',
+										'X-CSRF-Token': csrfToken
+									},
+									body: new URLSearchParams({ item_id: itemId })
+								});
+							} catch {
+								window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Network error while removing card', type: 'error' } }));
+								item.style.transform = 'translateX(0)';
+								btn.remove();
+								return;
+							}
+							if (!response.ok) {
+								const message = (await response.text()).trim() || 'Unable to remove card';
+								window.dispatchEvent(new CustomEvent('notify', { detail: { msg: message, type: 'error' } }));
+								item.style.transform = 'translateX(0)';
+								btn.remove();
+								return;
+							}
 							item.style.transform = 'translateX(-120px)';
 							item.style.opacity = '0';
 							item.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
-							setTimeout(() => item.remove(), 300);
+							window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Card removed from vault', type: 'success' } }));
+							setTimeout(() => {
+								item.remove();
+								htmx.ajax('GET', '/dashboard', { target: '#main-content', source: document.body });
+							}, 300);
 						} else {
 							window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Swipe delete triggered', type: 'info' } }));
 							item.style.transform = 'translateX(0)';

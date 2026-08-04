@@ -24,6 +24,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"image"
 	"image/jpeg"
 	"log/slog"
@@ -36,12 +37,18 @@ import (
 
 // ocrCache, ocrCacheEntry, and imageHash are defined in ocr_cache.go (SCAN-06)
 
-func ProcessCardScan(imgBytes []byte, _ []models.Card, lang string, _ *LLMService) (string, string, []byte, error) {
+func ProcessCardScan(imgBytes []byte, cards []models.Card, lang string, _ *LLMService) (string, string, []byte, error) {
+	return ProcessCardScanContext(context.Background(), imgBytes, cards, lang, nil)
+}
+
+func ProcessCardScanContext(ctx context.Context, imgBytes []byte, cards []models.Card, lang string, _ *LLMService) (string, string, []byte, error) {
+	if err := ctx.Err(); err != nil {
+		return "", "", nil, err
+	}
 	slog.Warn("OCR: Tesseract is not available on this platform. Preprocessing ONLY.")
 
 	// SCAN-06: Check OCR cache before processing
-	hash := imageHash(imgBytes)
-	cacheKey := string(hash[:]) + lang
+	cacheKey := makeOCRCacheKey(imgBytes, lang, cards)
 	if cached, ok := ocrCache.Load(cacheKey); ok {
 		entry := cached.(ocrCacheEntry)
 		slog.Info("OCR: Cache hit (stub)", "detected", entry.DetectedCard)
@@ -58,6 +65,9 @@ func ProcessCardScan(imgBytes []byte, _ []models.Card, lang string, _ *LLMServic
 	res = adjust.Contrast(res, 0.7)
 	res = adjust.Brightness(res, 0.1)
 	res = effect.Sharpen(res)
+	if err := ctx.Err(); err != nil {
+		return "", "", nil, err
+	}
 
 	buf := new(bytes.Buffer)
 	_ = jpeg.Encode(buf, res, nil)
@@ -67,7 +77,7 @@ func ProcessCardScan(imgBytes []byte, _ []models.Card, lang string, _ *LLMServic
 	detectedCard := "Unknown Card"
 
 	// SQL-based Trigram matching (High performance)
-	if db.DB != nil {
+	if db.DB != nil && len(cards) == 0 {
 		var name string
 		err := db.DB.QueryRow(`
 		SELECT name FROM cards

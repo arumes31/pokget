@@ -78,8 +78,7 @@
         <span class="font-black text-2xl sm:text-3xl text-on-surface">{{ .BinderCount }}</span>
     </div>
     <!-- Top Performer: Spans 2 cols on small mobile, 1 on larger -->
-    <div
-        class="glass-card p-4 sm:p-5 rounded-3xl flex flex-col gap-1 border border-white/5 bg-white/[0.02] col-span-2 sm:col-span-1">
+    <div class="glass-card p-4 sm:p-5 rounded-3xl flex flex-col gap-1 border border-white/5 bg-white/[0.02] col-span-2 sm:col-span-1">
         <span class="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-40">MVP Card</span>
         <div class="flex items-center gap-2">
             {{ if .Portfolio }}
@@ -98,13 +97,14 @@
     <h2 class="text-xl sm:text-2xl font-black text-on-surface tracking-tight">Main Vault</h2>
     <button
         class="text-[10px] font-black text-primary uppercase tracking-[0.2em] hover:text-primary-fixed transition-colors"
-        hx-get="/binders" hx-target="#main-content">All Archives</button>
+        hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
+        hx-on::before-request="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'binders' } }))">All Archives</button>
 </div>
 
 <!-- Card Collection Grid: Optimized for 2-column mobile and responsive upward -->
 <section class="grid grid-cols-2 gap-3 sm:gap-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 pb-20">
     {{ range .Portfolio }}
-    <div
+    <div data-portfolio-item data-id="{{ .ID }}"
         class="glass-card rounded-[2rem] p-2.5 flex flex-col gap-4 group hover:border-primary/50 transition-all duration-500 cursor-pointer active:scale-[0.98] border-white/5 shadow-lg hover:shadow-primary/10">
         <!-- Image Container -->
         <div class="aspect-[3/4] rounded-3xl overflow-hidden relative shadow-2xl">
@@ -133,8 +133,11 @@
                 </div>
                 <button
                     class="material-symbols-outlined text-lg text-on-surface-variant/30 hover:text-primary transition-colors flex-shrink-0"
-                    onclick="openEditModal('{{ .ID }}', '{{ .Notes }}', '{{ if .CustomPrice }}{{ printf " %.2f"
-                    .GetCustomPrice }}{{ end }}')">more_horiz</button>
+                    aria-label="Edit {{ .Card.Name }}"
+                    data-id="{{ .ID }}" data-notes="{{ .Notes }}"
+                    data-price="{{ if .CustomPrice }}{{ printf "%.2f" .GetCustomPrice }}{{ end }}"
+                    data-grade="{{ .Grade }}" data-public="{{ .IsPublic }}" data-binder-id="{{ .BinderID }}"
+                    onclick="openEditModalFromButton(this)">more_horiz</button>
             </div>
 
             <div class="flex justify-between items-center mt-4 pt-3 border-t border-white/5">

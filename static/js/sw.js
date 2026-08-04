@@ -1,13 +1,13 @@
-const CACHE_NAME = 'pokget-v2';
+const CACHE_NAME = 'pokget-static-v5';
 
 const ASSETS = [
-  '/',
-  '/dashboard',
   '/static/css/styles.css',
   '/static/js/htmx.min.js',
   '/static/js/alpine.min.js',
   '/static/js/vault.js',
-  '/static/img/logo.png'
+  '/static/img/logo.png',
+  '/static/img/icon-192.png',
+  '/static/img/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -33,7 +33,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  if (event.request.method !== 'GET') return;
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
   // Stale-while-revalidate for static assets
   if (url.pathname.startsWith('/static/')) {
@@ -54,22 +54,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first for HTML and API requests
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response.ok) {
-          const resClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, resClone);
-          });
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request).then((cached) => {
-        if (cached) return cached;
-        if (event.request.mode === 'navigate') return caches.match('/dashboard');
-        return new Response('Offline', { status: 503 });
-      }))
-  );
+  // Authenticated HTML and API responses must never be cached. Let the browser
+  // perform a normal network request for every non-static URL.
 });

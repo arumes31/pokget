@@ -42,6 +42,7 @@ func main() {
 		})
 	}
 	llm := service.NewLLMService()
+	go llm.AutoSetup()
 
 	fmt.Println("Waiting for LLM model to be ready...")
 	ready := false

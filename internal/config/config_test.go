@@ -28,6 +28,7 @@ import (
 func TestConfigLoad(t *testing.T) {
 	// Set dummy env
 	os.Setenv("APP_PORT", "9090")
+	os.Setenv("DEBUG", "false")
 	os.Setenv("DB_HOST", "db")
 	os.Setenv("DB_PORT", "5432")
 	os.Setenv("DB_USER", "u")
@@ -35,6 +36,7 @@ func TestConfigLoad(t *testing.T) {
 	os.Setenv("DB_NAME", "n")
 	os.Setenv("SESSION_KEY", "12345678901234567890123456789012")
 	defer os.Unsetenv("APP_PORT")
+	defer os.Unsetenv("DEBUG")
 	defer os.Unsetenv("DB_HOST")
 	defer os.Unsetenv("DB_PORT")
 	defer os.Unsetenv("DB_USER")
@@ -53,18 +55,24 @@ func TestConfigLoad(t *testing.T) {
 	if cfg.DB.Host != "db" {
 		t.Errorf("Expected db host db, got %s", cfg.DB.Host)
 	}
+	if !cfg.Catalog.Enabled || cfg.Catalog.SyncIntervalMins != 360 ||
+		cfg.Catalog.LegacyMetadataSync || !cfg.Catalog.ImagesEnabled ||
+		cfg.Catalog.ImageStore != "data/catalog-images" {
+		t.Errorf("unexpected catalog defaults: %+v", cfg.Catalog)
+	}
 }
 
 func TestConfigLoad_Error(t *testing.T) {
 	// SESSION_KEY is required but we unset it
-	os.Setenv("APP_PORT", "8080")
+	os.Setenv("APP_PORT", "18066")
+	os.Setenv("DEBUG", "false")
 	os.Setenv("DB_HOST", "localhost")
 	os.Setenv("DB_PORT", "5432")
 	os.Setenv("DB_USER", "u")
 	os.Setenv("DB_PASSWORD", "p")
 	os.Setenv("DB_NAME", "n")
 	os.Unsetenv("SESSION_KEY")
-	
+
 	_, err := Load()
 	if err == nil {
 		t.Error("Expected error when SESSION_KEY is missing")

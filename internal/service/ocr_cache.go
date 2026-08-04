@@ -22,6 +22,8 @@ package service
 
 import (
 	"crypto/sha256"
+	"pokget/internal/models"
+	"sort"
 	"sync"
 )
 
@@ -43,6 +45,36 @@ type ocrCacheEntry struct {
 // imageHash computes SHA-256 hash of image bytes for OCR caching (SCAN-06).
 func imageHash(imgBytes []byte) [sha256.Size]byte {
 	return sha256.Sum256(imgBytes)
+}
+
+type ocrCacheKey struct {
+	Image    [sha256.Size]byte
+	Language string
+	Corpus   [sha256.Size]byte
+}
+
+// makeOCRCacheKey includes the candidate corpus because a cached detected card
+// is only valid for the exact set of IDs and names it was matched against.
+func makeOCRCacheKey(imgBytes []byte, lang string, cards []models.Card) ocrCacheKey {
+	keys := make([]string, 0, len(cards))
+	for _, card := range cards {
+		keys = append(keys, card.ID+"\x00"+card.Name+"\x00"+card.Game+"\x00"+card.Language)
+	}
+	sort.Strings(keys)
+
+	corpusHasher := sha256.New()
+	for _, key := range keys {
+		_, _ = corpusHasher.Write([]byte(key))
+		_, _ = corpusHasher.Write([]byte{0xff})
+	}
+	var corpus [sha256.Size]byte
+	copy(corpus[:], corpusHasher.Sum(nil))
+
+	return ocrCacheKey{
+		Image:    imageHash(imgBytes),
+		Language: lang,
+		Corpus:   corpus,
+	}
 }
 
 // clearOCRCache removes all entries from the OCR cache.

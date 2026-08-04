@@ -2,10 +2,16 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"pokget/internal/auth"
+
+	"github.com/gorilla/csrf"
 )
 
 func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +30,7 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		_, err := h.DB.Exec("UPDATE users SET currency = $1 WHERE id = $2", currency, userID)
+		_, err := h.DB.ExecContext(r.Context(), "UPDATE users SET currency = $1 WHERE id = $2", currency, userID)
 		if err != nil {
 			slog.Error("Failed to update user currency", "error", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -37,9 +43,17 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 
 	var email string
 	var currency string
-	err := h.DB.QueryRow("SELECT email, currency FROM users WHERE id = $1", userID).Scan(&email, &currency)
+	var publicSlug string
+	var isPublicProfile bool
+	err := h.DB.QueryRowContext(r.Context(), "SELECT email, COALESCE(currency, 'EUR'), COALESCE(public_slug, ''), COALESCE(is_public_profile, FALSE) FROM users WHERE id = $1", userID).
+		Scan(&email, &currency, &publicSlug, &isPublicProfile)
 	if err != nil {
-		http.Error(w, "User not found", http.StatusNotFound)
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to load settings", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
@@ -48,8 +62,11 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]interface{}{
-		"Email":    email,
-		"Currency": currency,
+		"Email":           email,
+		"Currency":        currency,
+		"CSRFToken":       csrf.Token(r),
+		"PublicSlug":      publicSlug,
+		"IsPublicProfile": isPublicProfile,
 	}
 
 	if r.Header.Get("HX-Request") == "true" {
@@ -63,11 +80,55 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, "settings.html", data)
 }
 
-// BUG-M11 FIX: ChangePassword handler that invalidates the existing session
-// after a successful password change. Previously, when a user changed their
-// password, existing sessions remained valid — a security issue if the account
-// was compromised. Now, all sessions are invalidated by destroying the session
-// cookie, forcing the user to re-authenticate with the new password.
+func (h *Handler) UpdatePublicProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	enabled := r.FormValue("is_public_profile") == "true"
+	var slug string
+	if err := h.DB.QueryRowContext(r.Context(), "SELECT COALESCE(public_slug, '') FROM users WHERE id = $1", userID).Scan(&slug); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to load public profile settings", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if enabled && slug == "" {
+		random := make([]byte, 8)
+		if _, err := rand.Read(random); err != nil {
+			slog.Error("Failed to generate public profile slug", "error", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		slug = "collector-" + hex.EncodeToString(random)
+	}
+	result, err := h.DB.ExecContext(r.Context(), "UPDATE users SET public_slug = NULLIF($1, ''), is_public_profile = $2 WHERE id = $3", slug, enabled, userID)
+	if err != nil {
+		slog.Error("Failed to update public profile", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("HX-Trigger", `{"notify": {"msg": "Public profile updated", "type": "success"}}`)
+	renderRequest := r.Clone(r.Context())
+	renderRequest.Method = http.MethodGet
+	h.Settings(w, renderRequest)
+}
+
+// ChangePassword updates the password, increments the server-side session
+// version, and expires the current browser cookie. Every previously issued
+// cookie then fails session-version validation.
 func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: ChangePassword", "method", r.Method)
 	if r.Method != http.MethodPost {
@@ -95,10 +156,27 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify current password
-	var currentHash string
-	err := h.DB.QueryRow("SELECT password_hash FROM users WHERE id = $1", userID).Scan(&currentHash)
+	tx, err := h.DB.BeginTx(r.Context(), nil)
 	if err != nil {
+		slog.Error("Failed to begin password change", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Lock the account so two concurrent password changes cannot both validate
+	// the same old password and race to install different new credentials.
+	var currentHash string
+	err = tx.QueryRowContext(
+		r.Context(),
+		"SELECT password_hash FROM users WHERE id = $1 FOR UPDATE",
+		userID,
+	).Scan(&currentHash)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		}
 		slog.Error("Failed to fetch user for password change", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
@@ -117,21 +195,46 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update password in database
-	_, err = h.DB.Exec("UPDATE users SET password_hash = $1 WHERE id = $2", newHash, userID)
+	var newSessionVersion int64
+	err = tx.QueryRowContext(
+		r.Context(),
+		`UPDATE users
+		 SET password_hash = $1, session_version = COALESCE(session_version, 0) + 1
+		 WHERE id = $2
+		 RETURNING session_version`,
+		newHash,
+		userID,
+	).Scan(&newSessionVersion)
 	if err != nil {
 		slog.Error("Failed to update password", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
+	if err := tx.Commit(); err != nil {
+		slog.Error("Failed to commit password change", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
 
 	// Invalidate the current session by destroying the session cookie
-	session, _ := auth.Store.Get(r, "session")
+	session, err := auth.Store.Get(r, "session")
+	if err != nil {
+		slog.Error("Failed to load session after password change", "error", err)
+		http.Error(w, "Password changed; please log in again", http.StatusInternalServerError)
+		return
+	}
 	session.Values["user_id"] = ""
 	session.Options.MaxAge = -1
-	_ = session.Save(r, w)
+	if err := session.Save(r, w); err != nil {
+		slog.Error("Failed to invalidate session after password change", "error", err)
+		http.Error(w, "Password changed; please clear your session and log in again", http.StatusInternalServerError)
+		return
+	}
 
-	h.Audit.Log(userID, "PASSWORD_CHANGE", map[string]interface{}{"action": "session_invalidated"})
+	h.Audit.Log(userID, "PASSWORD_CHANGE", map[string]interface{}{
+		"action":          "all_sessions_invalidated",
+		"session_version": newSessionVersion,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("HX-Redirect", "/auth")

@@ -22,6 +22,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image"
 	_ "image/gif"  // Register GIF decoder
@@ -29,10 +30,11 @@ import (
 	_ "image/png"  // Register PNG decoder
 	"log/slog"
 	"pokget/internal/models"
+	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
+	"unicode"
 
 	_ "golang.org/x/image/webp" // Register WebP decoder
 )
@@ -113,8 +115,26 @@ func ocrScoreFromLevenshtein(ocrText, cardName string) float64 {
 	ocrLower := strings.ToLower(ocrText)
 	nameLower := strings.ToLower(cardName)
 
-	// If the card name is found in the OCR text, high confidence
-	if strings.Contains(ocrLower, nameLower) {
+	// Very short Latin names (for example Pokémon "N") must match a complete
+	// token; substring matching would otherwise accept almost any OCR text.
+	// CJK scripts do not generally use whitespace token boundaries, so their
+	// short names still use substring matching.
+	shortLatinName := len([]rune(nameLower)) <= 3
+	for _, r := range nameLower {
+		if unicode.IsLetter(r) && !unicode.In(r, unicode.Latin) {
+			shortLatinName = false
+			break
+		}
+	}
+	if shortLatinName {
+		for _, token := range strings.FieldsFunc(ocrLower, func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+		}) {
+			if token == nameLower {
+				return 95
+			}
+		}
+	} else if strings.Contains(ocrLower, nameLower) {
 		return 95.0
 	}
 
@@ -141,25 +161,36 @@ func ocrScoreFromLevenshtein(ocrText, cardName string) float64 {
 func combineScores(fp *ConfidenceScore, ocr *ConfidenceScore, llm *ConfidenceScore) float64 {
 	totalWeight := 0.0
 	weightedSum := 0.0
+	signalCount := 0
 
 	if fp != nil && fp.Score > 0 {
 		weightedSum += fp.Score * 0.5
 		totalWeight += 0.5
+		signalCount++
 	}
 	if ocr != nil && ocr.Score > 0 {
 		weightedSum += ocr.Score * 0.3
 		totalWeight += 0.3
+		signalCount++
 	}
 	if llm != nil && llm.Score > 0 {
 		weightedSum += llm.Score * 0.2
 		totalWeight += 0.2
+		signalCount++
 	}
 
 	if totalWeight == 0 {
 		return 0
 	}
 
-	return weightedSum / totalWeight
+	// Independent signals agreeing on one candidate corroborate each other, so
+	// compare their weighted average. Keep a lone signal's reliability weight
+	// fixed; renormalizing it made OCR-only and ambiguous fingerprint matches
+	// look definitive.
+	if signalCount > 1 {
+		return weightedSum / totalWeight
+	}
+	return weightedSum
 }
 
 // DetectionPipeline runs the full card detection pipeline with parallel
@@ -179,62 +210,123 @@ func NewDetectionPipeline(fingerprint *FingerprintService, llm *LLMService) *Det
 
 // Detect runs the full detection pipeline on a card image (SCAN-07, SCAN-09, SCAN-16).
 func (p *DetectionPipeline) Detect(imgBytes []byte, cards []models.Card, lang string) *DetectionResult {
+	return p.DetectContext(context.Background(), imgBytes, cards, lang)
+}
+
+// DetectContext runs card detection and stops cancellable OCR/LLM work with ctx.
+func (p *DetectionPipeline) DetectContext(ctx context.Context, imgBytes []byte, cards []models.Card, lang string) *DetectionResult {
 	totalStart := time.Now()
 	result := &DetectionResult{}
+	if err := ctx.Err(); err != nil {
+		result.Metrics.TotalTime = time.Since(totalStart)
+		result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{Name: "context", Error: err})
+		return result
+	}
+	fingerprintCards := slices.Clone(cards)
+	ocrCards := slices.Clone(cards)
 
-	// --- Stage 1: Fingerprint matching (parallel with OCR) ---
+	// --- Stage 1: Fingerprint matching ---
 	var fpResult *MatchResult
 	var fpErr error
-	var fpDuration time.Duration
-
-	// --- Stage 2: OCR (parallel with fingerprint) ---
-	var ocrText string
-	var ocrDetectedCard string
-	var ocrProcessedImg []byte
-	var ocrErr error
-	var ocrDuration time.Duration
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Run fingerprint matching in parallel (SCAN-07)
-	go func() {
-		defer wg.Done()
-		fpStart := time.Now()
-		if p.Fingerprint != nil {
-			img, _, err := image.Decode(bytes.NewReader(imgBytes))
+	fpStart := time.Now()
+	if p.Fingerprint != nil {
+		img, _, err := image.Decode(bytes.NewReader(imgBytes))
+		if err != nil {
+			fpErr = fmt.Errorf("fingerprint: failed to decode image: %w", err)
+		} else {
+			hash, err := p.Fingerprint.CalculateHash(img)
 			if err != nil {
-				fpErr = fmt.Errorf("fingerprint: failed to decode image: %w", err)
+				fpErr = fmt.Errorf("fingerprint: failed to calculate hash: %w", err)
 			} else {
-				hash, err := p.Fingerprint.CalculateHash(img)
-				if err != nil {
-					fpErr = fmt.Errorf("fingerprint: failed to calculate hash: %w", err)
-				} else {
-					fpResult = p.Fingerprint.SearchByHashWithCards(hash, cards)
-				}
+				fpResult = p.Fingerprint.SearchByHashWithCards(hash, fingerprintCards)
 			}
 		}
-		fpDuration = time.Since(fpStart)
-	}()
+	}
+	fpDuration := time.Since(fpStart)
+	result.Metrics.Stages = append(result.Metrics.Stages,
+		DetectionStageMetrics{Name: "fingerprint", Duration: fpDuration, Error: fpErr},
+	)
 
-	// Run OCR in parallel (SCAN-07)
-	go func() {
-		defer wg.Done()
-		ocrStart := time.Now()
-		ocrText, ocrDetectedCard, ocrProcessedImg, ocrErr = ProcessCardScan(imgBytes, cards, lang, p.LLM)
-		ocrDuration = time.Since(ocrStart)
-	}()
+	// An exact pHash match outranks merely nearby hashes. This avoids expensive
+	// OCR when one stored card exactly matches even if visually similar cards are
+	// also inside the relaxed threshold. Multiple exact matches remain ambiguous.
+	if matches := exactFingerprintMatches(fpResult); len(matches) > 0 {
+		needsReview := len(matches) > 1
+		confidence := 100.0
+		if needsReview {
+			confidence = 50
+		}
+		result.TopMatches = make([]CardMatch, 0, len(matches))
+		for _, match := range matches {
+			result.TopMatches = append(result.TopMatches, CardMatch{
+				Card: match.Card,
+				FingerprintScore: &ConfidenceScore{
+					Method: "fingerprint", Score: 100, CardName: match.Card.Name, CardID: match.Card.ID, Distance: 0,
+				},
+				Confidence:  confidence,
+				NeedsReview: needsReview,
+			})
+		}
+		result.Metrics.TotalTime = time.Since(totalStart)
+		if needsReview {
+			slog.Info("Detection: Exact fingerprint collision requires review", "matches", len(matches), "metrics", result.Metrics.Format())
+		} else {
+			slog.Info("Detection: Unique exact fingerprint match", "metrics", result.Metrics.Format(),
+				"top_match", matches[0].Card.Name, "confidence", confidence)
+		}
+		return result
+	}
 
-	wg.Wait()
+	// A unique near match inside the strict visual threshold is deterministic
+	// enough to avoid OCR. Near collisions still need secondary verification.
+	highConfidenceThreshold := DefaultPhashThresholdHighConf
+	if p.Fingerprint != nil {
+		highConfidenceThreshold = p.Fingerprint.PhashHighConf
+	}
+	if exact, distance := uniqueHighConfidenceFingerprint(fpResult, highConfidenceThreshold); exact != nil {
+		confidence := max(75, 100-float64(distance*5))
+		result.TopMatches = []CardMatch{{
+			Card: exact,
+			FingerprintScore: &ConfidenceScore{
+				Method: "fingerprint", Score: confidence, CardName: exact.Name, CardID: exact.ID, Distance: distance,
+			},
+			Confidence: confidence,
+		}}
+		result.Metrics.TotalTime = time.Since(totalStart)
+		slog.Info("Detection: Unique high-confidence fingerprint match", "metrics", result.Metrics.Format(),
+			"top_match", exact.Name, "confidence", confidence, "distance", distance)
+		return result
+	}
+	if matches := ambiguousSameNameFingerprints(fpResult, highConfidenceThreshold); len(matches) > 1 {
+		result.TopMatches = make([]CardMatch, 0, len(matches))
+		for _, match := range matches {
+			confidence := 0.5 * fingerprintScoreFromDistance(match.Distance, p.Fingerprint.PhashHighConf)
+			result.TopMatches = append(result.TopMatches, CardMatch{
+				Card: match.Card,
+				FingerprintScore: &ConfidenceScore{
+					Method: "fingerprint", Score: confidence * 2, CardName: match.Card.Name, CardID: match.Card.ID, Distance: match.Distance,
+				},
+				Confidence:  confidence,
+				NeedsReview: true,
+			})
+		}
+		result.Metrics.TotalTime = time.Since(totalStart)
+		slog.Info("Detection: Ambiguous fingerprint collision requires review", "matches", len(matches), "metrics", result.Metrics.Format())
+		return result
+	}
 
+	// --- Stage 2: OCR for ambiguous or non-exact visual matches ---
+	ocrStart := time.Now()
+	ocrText, ocrDetectedCard, ocrProcessedImg, ocrErr := ProcessCardScanContext(ctx, imgBytes, ocrCards, lang, p.LLM)
+	ocrDuration := time.Since(ocrStart)
 	result.ProcessedImage = ocrProcessedImg
 	result.OCRText = ocrText
 
-	// Record stage metrics (SCAN-16)
-	result.Metrics.Stages = append(result.Metrics.Stages,
-		DetectionStageMetrics{Name: "fingerprint", Duration: fpDuration, Error: fpErr},
-		DetectionStageMetrics{Name: "ocr", Duration: ocrDuration, Error: ocrErr},
-	)
+	result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{Name: "ocr", Duration: ocrDuration, Error: ocrErr})
+	if err := ctx.Err(); err != nil {
+		result.Metrics.TotalTime = time.Since(totalStart)
+		return result
+	}
 
 	// --- Stage 3: Combine results and compute confidence scores (SCAN-09) ---
 	combineStart := time.Now()
@@ -261,7 +353,7 @@ func (p *DetectionPipeline) Detect(imgBytes []byte, cards []models.Card, lang st
 		for _, m := range fpResult.Potential {
 			score := fingerprintScoreFromDistance(m.Distance, p.Fingerprint.PhashPotential)
 			cm := getOrCreateMatch(candidateMap, m.Card)
-			if cm.FingerprintScore == nil || score > cm.FingerprintScore.Score {
+			if cm.FingerprintScore == nil {
 				cm.FingerprintScore = &ConfidenceScore{
 					Method:   "fingerprint",
 					Score:    score,
@@ -275,18 +367,27 @@ func (p *DetectionPipeline) Detect(imgBytes []byte, cards []models.Card, lang st
 
 	// Process OCR result
 	if ocrDetectedCard != "" && ocrDetectedCard != "Unknown Card" {
-		for _, c := range cards {
-			if c.Name == ocrDetectedCard || c.ID == ocrDetectedCard {
-				score := ocrScoreFromLevenshtein(ocrText, c.Name)
-				cm := getOrCreateMatch(candidateMap, &c)
-				cm.OCRScore = &ConfidenceScore{
-					Method:   "ocr",
-					Score:    score,
-					CardName: c.Name,
-					CardID:   c.ID,
-					RawText:  ocrText,
-				}
+		matchingIndexes := make([]int, 0, 1)
+		for i := range cards {
+			if cards[i].ID == ocrDetectedCard {
+				matchingIndexes = []int{i}
 				break
+			}
+			if cards[i].Name == ocrDetectedCard {
+				matchingIndexes = append(matchingIndexes, i)
+			}
+		}
+		// A name-only OCR result cannot select arbitrarily among duplicate printings.
+		if len(matchingIndexes) == 1 {
+			c := &cards[matchingIndexes[0]]
+			score := ocrScoreFromLevenshtein(ocrText, c.Name)
+			cm := getOrCreateMatch(candidateMap, c)
+			cm.OCRScore = &ConfidenceScore{
+				Method:   "ocr",
+				Score:    score,
+				CardName: c.Name,
+				CardID:   c.ID,
+				RawText:  ocrText,
 			}
 		}
 	}
@@ -311,7 +412,7 @@ func (p *DetectionPipeline) Detect(imgBytes []byte, cards []models.Card, lang st
 
 		if !hasHighConf {
 			llmStart := time.Now()
-			llmResp, llmErr := p.LLM.FuzzyMatchCardWithValidation(ocrText, cards)
+			llmResp, llmErr := p.LLM.FuzzyMatchCardWithValidationContext(ctx, ocrText, cards)
 			llmDuration = time.Since(llmStart)
 
 			if llmErr == nil && llmResp != nil && llmResp.CardName != "Unknown Card" {
@@ -347,8 +448,15 @@ func (p *DetectionPipeline) Detect(imgBytes []byte, cards []models.Card, lang st
 		allMatches = append(allMatches, *cm)
 	}
 	sort.Slice(allMatches, func(i, j int) bool {
-		return allMatches[i].Confidence > allMatches[j].Confidence
+		if allMatches[i].Confidence != allMatches[j].Confidence {
+			return allMatches[i].Confidence > allMatches[j].Confidence
+		}
+		return allMatches[i].Card.ID < allMatches[j].Card.ID
 	})
+	if len(allMatches) > 1 && allMatches[0].Confidence-allMatches[1].Confidence <= 5 {
+		allMatches[0].NeedsReview = true
+		allMatches[1].NeedsReview = true
+	}
 
 	if len(allMatches) > 5 {
 		allMatches = allMatches[:5]
@@ -367,6 +475,65 @@ func (p *DetectionPipeline) Detect(imgBytes []byte, cards []models.Card, lang st
 		"top_match", result.BestMatchName(), "confidence", result.BestMatchConfidence())
 
 	return result
+}
+
+func ambiguousSameNameFingerprints(result *MatchResult, threshold int) []FingerprintMatch {
+	if result == nil {
+		return nil
+	}
+	matches := make([]FingerprintMatch, 0, len(result.Potential))
+	name := ""
+	for _, match := range result.Potential {
+		if match.Distance > threshold {
+			break
+		}
+		if name == "" {
+			name = strings.ToLower(strings.TrimSpace(match.Card.Name))
+		}
+		if strings.ToLower(strings.TrimSpace(match.Card.Name)) != name {
+			return nil
+		}
+		matches = append(matches, match)
+	}
+	return matches
+}
+
+func exactFingerprintMatches(result *MatchResult) []FingerprintMatch {
+	if result == nil {
+		return nil
+	}
+	matches := make([]FingerprintMatch, 0, 1)
+	seen := make(map[string]bool)
+	for _, match := range result.Potential {
+		if match.Distance > 0 {
+			break
+		}
+		if match.Card == nil || seen[match.Card.ID] {
+			continue
+		}
+		seen[match.Card.ID] = true
+		matches = append(matches, match)
+	}
+	return matches
+}
+
+func uniqueHighConfidenceFingerprint(result *MatchResult, threshold int) (*models.Card, int) {
+	if result == nil {
+		return nil, 0
+	}
+	var candidate *models.Card
+	distance := 0
+	for _, match := range result.Potential {
+		if match.Distance > threshold {
+			break
+		}
+		if candidate != nil && candidate.ID != match.Card.ID {
+			return nil, 0
+		}
+		candidate = match.Card
+		distance = match.Distance
+	}
+	return candidate, distance
 }
 
 // BestMatchName returns the name of the top match, or "Unknown Card" if none (SCAN-09).

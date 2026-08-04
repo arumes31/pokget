@@ -40,9 +40,11 @@
     </style>
     <script>
         document.addEventListener('htmx:responseError', function (evt) {
-            const errorDiv = document.getElementById('auth-error') || document.getElementById('auth-register-error');
+            const form = evt.detail.elt && evt.detail.elt.closest('form');
+            const errorDiv = form && form.querySelector('[role="alert"]');
             if (errorDiv) {
                 errorDiv.innerText = evt.detail.xhr.responseText;
+                errorDiv.focus();
                 setTimeout(() => errorDiv.innerText = '', 5000);
             }
         });

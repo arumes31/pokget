@@ -24,6 +24,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"image"
@@ -36,6 +37,7 @@ import (
 	"math"
 	"pokget/internal/db"
 	"pokget/internal/models"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -73,12 +75,20 @@ func initOCRClientPool() {
 // acquireOCRClient gets a Tesseract client from the pool (SCAN-03).
 // Returns an error if the pool is exhausted and no client becomes available within 30 seconds.
 func acquireOCRClient() (*gosseract.Client, error) {
+	return acquireOCRClientContext(context.Background())
+}
+
+func acquireOCRClientContext(ctx context.Context) (*gosseract.Client, error) {
 	ocrClientPoolOnce.Do(initOCRClientPool)
+	timer := time.NewTimer(30 * time.Second)
+	defer timer.Stop()
 	select {
 	case client := <-ocrClientPool:
 		return client, nil
-	case <-time.After(30 * time.Second):
+	case <-timer.C:
 		return nil, fmt.Errorf("OCR client pool exhausted: timeout waiting for available client")
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }
 
@@ -467,14 +477,20 @@ func horizontalLineScore(src image.Image) float64 {
 // image preprocessing (SCAN-05), OCR client pool (SCAN-03), OCR caching (SCAN-06),
 // and CJK-aware fallback extraction (SCAN-10).
 func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm *LLMService) (string, string, []byte, error) {
+	return ProcessCardScanContext(context.Background(), imgBytes, mockCards, lang, llm)
+}
+
+func ProcessCardScanContext(ctx context.Context, imgBytes []byte, mockCards []models.Card, lang string, llm *LLMService) (string, string, []byte, error) {
+	if err := ctx.Err(); err != nil {
+		return "", "", nil, err
+	}
 	if lang == "" {
 		lang = "eng+jpn+deu+fra+chi_sim+chi_tra+kor"
 	}
 	slog.Info("OCR: Starting scan...", "lang", lang)
 
 	// SCAN-06: Check OCR cache before processing
-	hash := imageHash(imgBytes)
-	cacheKey := string(hash[:]) + lang
+	cacheKey := makeOCRCacheKey(imgBytes, lang, mockCards)
 	if cached, ok := ocrCache.Load(cacheKey); ok {
 		entry := cached.(ocrCacheEntry)
 		slog.Info("OCR: Cache hit", "detected", entry.DetectedCard)
@@ -547,7 +563,7 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 
 	// 2. Perform OCR using client pool (SCAN-03)
 	slog.Info("OCR: Acquiring Tesseract client from pool...")
-	client, err := acquireOCRClient()
+	client, err := acquireOCRClientContext(ctx)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("failed to acquire OCR client: %w", err)
 	}
@@ -567,6 +583,9 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	if err1 != nil {
 		slog.Error("OCR: Pass 1 failed", "error", err1)
 	}
+	if err := ctx.Err(); err != nil {
+		return "", "", nil, err
+	}
 
 	// Pass 2: Blue Channel Sparse
 	slog.Info("OCR: Executing Tesseract Pass 2 (Blue Channel, Sparse)...")
@@ -578,6 +597,9 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	if err2 != nil {
 		slog.Error("OCR: Pass 2 failed", "error", err2)
 	}
+	if err := ctx.Err(); err != nil {
+		return "", "", nil, err
+	}
 
 	// Pass 3: Preprocessed (SCAN-05)
 	slog.Info("OCR: Executing Tesseract Pass 3 (Preprocessed)...")
@@ -588,6 +610,9 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	text3, err3 := client.Text()
 	if err3 != nil {
 		slog.Error("OCR: Pass 3 failed", "error", err3)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", "", nil, err
 	}
 
 	slog.Info("OCR: Tesseract execution complete")
@@ -606,8 +631,32 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	}
 	slog.Info("OCR: Normalized text", "normalized_text", normalizedText)
 
-	// SQL-based Trigram matching (High performance)
-	if db.DB != nil {
+	// Stage 3.1: SQL-based ID matching (High precision, resolves duplicates)
+	if db.DB != nil && len(mockCards) == 0 {
+		slog.Info("OCR: Attempting SQL ID match", "text", normalizedText)
+		normOCR := strings.ToLower(normalizedText)
+		normOCR = strings.ReplaceAll(normOCR, " ", "")
+		normOCR = strings.ReplaceAll(normOCR, "-", "")
+		normOCR = strings.ReplaceAll(normOCR, "/", "")
+		normOCR = strings.ReplaceAll(normOCR, "_", "")
+		normOCR = strings.ReplaceAll(normOCR, "0", "o")
+
+		var matchedID, matchedName string
+		// Normalize card ID in the same way. Order by length descending to choose the most specific match.
+		err := db.DB.QueryRow(`
+			SELECT id, name FROM cards
+			WHERE $1 LIKE '%' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(id, '-', ''), '/', ''), ' ', ''), '_', ''), '0', 'o')) || '%'
+			ORDER BY LENGTH(id) DESC
+			LIMIT 1`, normOCR).Scan(&matchedID, &matchedName)
+
+		if err == nil && matchedID != "" {
+			slog.Info("OCR: SQL ID match found", "id", matchedID, "name", matchedName)
+			detectedCard = matchedID
+		}
+	}
+
+	// Stage 3.2: SQL-based Trigram matching (High performance fallback by name)
+	if detectedCard == "Unknown Card" && db.DB != nil && len(mockCards) == 0 {
 		var name string
 		slog.Info("OCR: Attempting SQL Trigram match", "text", normalizedText)
 		err := db.DB.QueryRow(`
@@ -627,14 +676,19 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	// Stage 3.5: Local matching with mockCards if provided (useful for tests)
 	if detectedCard == "Unknown Card" && len(mockCards) > 0 {
 		slog.Info("OCR: Attempting local match with mockCards", "count", len(mockCards))
-		for _, c := range mockCards {
-			nameLower := strings.ToLower(c.Name)
+		// Sort a copy by name length descending to ensure longer, more specific names
+		// are matched before their shorter substrings (e.g., "Pikachu VMAX" before "Pikachu").
+		sortedCards := append([]models.Card(nil), mockCards...)
+		sort.Slice(sortedCards, func(i, j int) bool {
+			return len(sortedCards[i].Name) > len(sortedCards[j].Name)
+		})
+		for _, c := range sortedCards {
 			idLower := strings.ToLower(c.ID)
 			textLower := strings.ToLower(normalizedText)
 
-			if strings.Contains(textLower, nameLower) {
+			if fuzzySubstringMatch(normalizedText, c.Name) {
 				detectedCard = c.Name
-				slog.Info("OCR: Local match found by name", "name", c.Name)
+				slog.Info("OCR: Local match found by name (fuzzy)", "name", c.Name)
 				break
 			}
 
@@ -697,7 +751,7 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	// Stage 4: LLM Refinement if still unsure
 	if detectedCard == "Unknown Card" && llm != nil {
 		slog.Info("OCR: Falling back to LLM refinement")
-		match, err := llm.FuzzyMatchCard(normalizedText, mockCards)
+		match, err := llm.FuzzyMatchCardContext(ctx, normalizedText, mockCards)
 		if err == nil && match != "Unknown Card" {
 			slog.Info("OCR: LLM match found", "match", match)
 			detectedCard = match
@@ -709,7 +763,7 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 	// Stage 5: Final fallback extraction logic (SCAN-10: CJK-aware)
 	if detectedCard == "Unknown Card" {
 		slog.Info("OCR: Using fallback extraction")
-		fallbackName, err := fallbackExtract(normalizedText)
+		fallbackName, err := fallbackExtract(text)
 		if err == nil && fallbackName != "Unknown Card" {
 			slog.Info("OCR: Fallback extraction successful", "name", fallbackName)
 			detectedCard = fallbackName

@@ -1,10 +1,10 @@
-const CACHE_NAME = 'pokget-v2';
+const CACHE_NAME = 'pokget-static-v3';
 const ASSETS = [
-    '/',
     '/static/css/styles.css',
     '/static/js/htmx.min.js',
     '/static/js/alpine.min.js',
-    '/static/manifest.json'
+    '/static/js/vault.js',
+    '/static/img/logo.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -30,11 +30,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
-    // Skip non-GET requests and Auth routes
-    if (event.request.method !== 'GET' || url.pathname.startsWith('/auth')) return;
+    if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
     // Stale-while-revalidate for static assets
-    if (url.pathname.startsWith('/static/') || url.pathname.endsWith('.png') || url.pathname.endsWith('.css') || url.pathname.endsWith('.js')) {
+    if (url.pathname.startsWith('/static/')) {
         event.respondWith(
             caches.open(CACHE_NAME).then((cache) => {
                 return cache.match(event.request).then((cachedResponse) => {
@@ -52,21 +51,6 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Network-first for everything else (HTML, API)
-    event.respondWith(
-        fetch(event.request)
-            .then((response) => {
-                if (response.ok) {
-                    const resClone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(event.request, resClone);
-                    });
-                }
-                return response;
-            })
-            .catch(() => caches.match(event.request).then((cached) => {
-                if (cached) return cached;
-                return new Response('Offline', { status: 503 });
-            }))
-    );
+    // Authenticated HTML and API responses must never be cached. Let the
+    // browser perform a normal network request for every non-static URL.
 });

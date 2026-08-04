@@ -1,12 +1,11 @@
-version: '3.8'
-
 services:
   pokget_app:
     container_name: pokget_app
     build: .
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-18066}:${APP_PORT:-18066}"
     environment:
+      - APP_PORT=${APP_PORT:-18066}
       - DB_HOST=pokget_db
       - DB_PORT=5432
       - DB_USER=${DB_USER:-pokget_user}
@@ -22,6 +21,16 @@ services:
       - SMTP_FROM=${SMTP_FROM:-no-reply@pokget.com}
       - TRUST_PROXY=${TRUST_PROXY:-false}
       - TRUST_CLOUDFLARE=${TRUST_CLOUDFLARE:-false}
+      - CATALOG_ENABLED=${CATALOG_ENABLED:-true}
+      - LEGACY_METADATA_SYNC_ENABLED=${LEGACY_METADATA_SYNC_ENABLED:-false}
+      - CATALOG_LANGUAGE=${CATALOG_LANGUAGE:-en}
+      - CATALOG_SYNC_INTERVAL_MINUTES=${CATALOG_SYNC_INTERVAL_MINUTES:-360}
+      - CATALOG_BATCH_SIZE=${CATALOG_BATCH_SIZE:-500}
+      - CATALOG_REQUEST_DELAY_MS=${CATALOG_REQUEST_DELAY_MS:-100}
+      - CATALOG_IMAGES_ENABLED=${CATALOG_IMAGES_ENABLED:-true}
+      - CATALOG_IMAGE_STORE=/app/data/catalog-images
+      - CATALOG_IMAGE_BATCH_SIZE=${CATALOG_IMAGE_BATCH_SIZE:-8}
+      - CATALOG_IMAGE_POLL_INTERVAL_MS=${CATALOG_IMAGE_POLL_INTERVAL_MS:-5000}
     depends_on:
       pokget_db:
         condition: service_healthy
@@ -29,6 +38,7 @@ services:
         condition: service_started
     volumes:
       - ./data/cache:/app/data/cache
+      - ./data/catalog-images:/app/data/catalog-images
 
   pokget_db:
     container_name: pokget_db

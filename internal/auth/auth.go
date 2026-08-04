@@ -25,11 +25,13 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -73,23 +75,114 @@ func CheckPasswordHash(password, hash string) bool {
 // UserContextKey is the key for the user ID in the context
 type UserContextKey struct{}
 
-func Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, err := Store.Get(r, "session")
-		if err != nil {
-			// If session is invalid/tampered, clear it and redirect to auth
-			http.Redirect(w, r, "/auth", http.StatusSeeOther)
-			return
-		}
-		userID, ok := session.Values["user_id"].(string)
-		if !ok || userID == "" {
-			http.Redirect(w, r, "/auth", http.StatusSeeOther)
-			return
-		}
+var errInvalidSession = errors.New("invalid session")
 
-		ctx := context.WithValue(r.Context(), UserContextKey{}, userID)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+func sessionVersion(value interface{}) (int64, bool) {
+	switch version := value.(type) {
+	case nil:
+		// Cookies created before session versioning are version zero.
+		return 0, true
+	case int:
+		return int64(version), true
+	case int32:
+		return int64(version), true
+	case int64:
+		return version, true
+	default:
+		return 0, false
+	}
+}
+
+func authenticateRequest(database *sql.DB, r *http.Request) (string, error) {
+	if database == nil {
+		return "", sql.ErrConnDone
+	}
+
+	session, err := Store.Get(r, "session")
+	if err != nil {
+		return "", errInvalidSession
+	}
+	userID, ok := session.Values["user_id"].(string)
+	if !ok || userID == "" {
+		return "", errInvalidSession
+	}
+	cookieVersion, ok := sessionVersion(session.Values["session_version"])
+	if !ok {
+		return "", errInvalidSession
+	}
+
+	var currentVersion int64
+	err = database.QueryRowContext(
+		r.Context(),
+		"SELECT COALESCE(session_version, 0) FROM users WHERE id = $1",
+		userID,
+	).Scan(&currentVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", errInvalidSession
+	}
+	if err != nil {
+		return "", err
+	}
+	if currentVersion != cookieVersion {
+		return "", errInvalidSession
+	}
+	return userID, nil
+}
+
+func expireSession(w http.ResponseWriter, r *http.Request) {
+	session, err := Store.Get(r, "session")
+	if err != nil {
+		return
+	}
+	session.Values["user_id"] = ""
+	session.Options.MaxAge = -1
+	if err := session.Save(r, w); err != nil {
+		slog.Warn("auth: failed to expire session", "error", err)
+	}
+}
+
+func Middleware(database *sql.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID, err := authenticateRequest(database, r)
+			if errors.Is(err, errInvalidSession) {
+				expireSession(w, r)
+				http.Redirect(w, r, "/auth", http.StatusSeeOther)
+				return
+			}
+			if err != nil {
+				slog.Error("auth: session validation failed", "error", err)
+				http.Error(w, "Authentication service unavailable", http.StatusServiceUnavailable)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), UserContextKey{}, userID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// APIAuthMiddleware validates the same cookie session as Middleware while
+// returning API-appropriate status codes instead of HTML redirects.
+func APIAuthMiddleware(database *sql.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID, err := authenticateRequest(database, r)
+			if errors.Is(err, errInvalidSession) {
+				expireSession(w, r)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			if err != nil {
+				slog.Error("auth: API session validation failed", "error", err)
+				http.Error(w, "Authentication service unavailable", http.StatusServiceUnavailable)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), UserContextKey{}, userID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
 
 // BUG-H08 FIX: Track last access time for each rate limiter entry
@@ -102,6 +195,9 @@ type rateLimiterEntry struct {
 var (
 	limiters = make(map[string]*rateLimiterEntry)
 	mu       sync.Mutex
+
+	scanLimiters = make(map[string]*rateLimiterEntry)
+	scanMu       sync.Mutex
 )
 
 // cleanupInterval controls how often the background cleanup runs.
@@ -130,6 +226,14 @@ func cleanupStaleLimiters() {
 			}
 		}
 		mu.Unlock()
+
+		scanMu.Lock()
+		for ip, entry := range scanLimiters {
+			if now.Sub(entry.lastSeen) > maxLimiterAge {
+				delete(scanLimiters, ip)
+			}
+		}
+		scanMu.Unlock()
 	}
 }
 
@@ -143,12 +247,12 @@ func getLimiter(ip string) *rate.Limiter {
 		burstLimit := 5
 
 		if val := os.Getenv("RATE_LIMIT"); val != "" {
-			if f, err := strconv.ParseFloat(val, 64); err == nil {
+			if f, err := strconv.ParseFloat(val, 64); err == nil && f > 0 {
 				rateLimit = f
 			}
 		}
 		if val := os.Getenv("BURST_LIMIT"); val != "" {
-			if i, err := strconv.Atoi(val); err == nil {
+			if i, err := strconv.Atoi(val); err == nil && i > 0 {
 				burstLimit = i
 			}
 		}
@@ -165,16 +269,68 @@ func getLimiter(ip string) *rate.Limiter {
 	return entry.limiter
 }
 
+func getScanLimiter(ip string) *rate.Limiter {
+	scanMu.Lock()
+	defer scanMu.Unlock()
+
+	entry, exists := scanLimiters[ip]
+	if exists {
+		entry.lastSeen = time.Now()
+		return entry.limiter
+	}
+
+	requestsPerSecond := 0.2
+	burst := 2
+	if value := os.Getenv("SCAN_RATE_LIMIT"); value != "" {
+		if parsed, err := strconv.ParseFloat(value, 64); err == nil && parsed > 0 {
+			requestsPerSecond = parsed
+		}
+	}
+	if value := os.Getenv("SCAN_BURST_LIMIT"); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+			burst = parsed
+		}
+	}
+
+	limiter := rate.NewLimiter(rate.Limit(requestsPerSecond), burst)
+	scanLimiters[ip] = &rateLimiterEntry{limiter: limiter, lastSeen: time.Now()}
+	return limiter
+}
+
+func clientIP(r *http.Request) string {
+	ip := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		return host
+	}
+	return ip
+}
+
 func RateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Normalize r.RemoteAddr to IP-only (strip port) for consistent rate limiting
-		ip := r.RemoteAddr
-		if host, _, err := net.SplitHostPort(ip); err == nil {
-			ip = host
+		if strings.HasPrefix(r.URL.Path, "/static/") {
+			next.ServeHTTP(w, r)
+			return
 		}
+
+		ip := clientIP(r)
 		limiter := getLimiter(ip)
 		if !limiter.Allow() {
 			slog.Warn("auth: rate limit exceeded", "ip", ip)
+			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// ScanRateLimitMiddleware applies a stricter, independent rate limit to the
+// CPU-intensive card scanner.
+func ScanRateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := clientIP(r)
+		if !getScanLimiter(ip).Allow() {
+			slog.Warn("auth: scan rate limit exceeded", "ip", ip)
+			w.Header().Set("Retry-After", "5")
 			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
 			return
 		}
@@ -193,7 +349,7 @@ func AdminMiddleware(database *sql.DB) func(http.Handler) http.Handler {
 			}
 
 			var isAdmin bool
-			err := database.QueryRow("SELECT COALESCE(is_admin, FALSE) FROM users WHERE id = $1", userID).Scan(&isAdmin)
+			err := database.QueryRowContext(r.Context(), "SELECT COALESCE(is_admin, FALSE) FROM users WHERE id = $1", userID).Scan(&isAdmin)
 			if err != nil || !isAdmin {
 				slog.Warn("auth: non-admin user attempted admin action", "user_id", userID)
 				http.Error(w, "Forbidden", http.StatusForbidden)

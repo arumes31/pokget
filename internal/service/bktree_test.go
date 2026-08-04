@@ -693,6 +693,36 @@ func TestFingerprintServiceSearchByHashWithCardsExactMatch(t *testing.T) {
 	}
 }
 
+func TestFingerprintServiceSearchByHashWithCardsFiltersPopulatedTree(t *testing.T) {
+	svc := NewFingerprintService(nil)
+	hash := int64(424242)
+	svc.AddFingerprint(uint64(hash), &models.Card{ID: "pokemon-card", Name: "Shared Image", Game: "pokemon", Phash: &hash})
+	svc.AddFingerprint(uint64(hash), &models.Card{ID: "yugioh-card", Name: "Shared Image", Game: "yugioh", Phash: &hash})
+
+	result := svc.SearchByHashWithCards(hash, []models.Card{{
+		ID: "pokemon-card", Name: "Shared Image", Game: "pokemon", Phash: &hash,
+	}})
+	if len(result.Potential) != 1 {
+		t.Fatalf("expected one in-corpus fingerprint match, got %d", len(result.Potential))
+	}
+	if result.Potential[0].Card.ID != "pokemon-card" {
+		t.Fatalf("expected pokemon-card, got %q", result.Potential[0].Card.ID)
+	}
+}
+
+func TestFingerprintServiceSearchByHashWithCardsExplicitEmptyCorpus(t *testing.T) {
+	t.Parallel()
+
+	svc := NewFingerprintService(nil)
+	global := &models.Card{ID: "pokemon-card", Name: "Pokemon Card"}
+	svc.AddFingerprint(42, global)
+
+	result := svc.SearchByHashWithCards(42, []models.Card{})
+	if result.HighConfidence != nil || len(result.Potential) != 0 {
+		t.Fatalf("explicit empty corpus leaked global match: %+v", result)
+	}
+}
+
 // TestFingerprintServiceRebuildTree verifies that RebuildTree creates
 // a fresh tree.
 func TestFingerprintServiceRebuildTree(t *testing.T) {

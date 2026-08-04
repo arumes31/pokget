@@ -242,7 +242,40 @@ func NewFingerprintService(db *sql.DB) *FingerprintService {
 // loadFingerprintsFromDB loads all stored fingerprints into the BK-tree,
 // supporting multiple fingerprints per card (SCAN-01, SCAN-12).
 func (s *FingerprintService) loadFingerprintsFromDB() {
-	rows, err := s.db.Query("SELECT id, name, set_name, price_usd, price_eur, image_url, variant, change_24h, phash, game FROM cards WHERE phash IS NOT NULL")
+	rows, err := s.db.Query(`
+		SELECT id, name, set_name, price_usd, price_eur, image_url, variant,
+		       change_24h, phash, game, language, rarity
+		FROM (
+		    SELECT card.id, card.name, card.set_name,
+		           COALESCE(card.price_usd, 0) AS price_usd,
+		           COALESCE(card.price_eur, 0) AS price_eur,
+		           COALESCE(card.image_url, '') AS image_url,
+		           COALESCE(card.variant, '') AS variant,
+		           COALESCE(card.change_24h, 0) AS change_24h,
+		           card.phash AS phash,
+		           COALESCE(card.game, '') AS game,
+		           COALESCE(card.language, '') AS language,
+		           COALESCE(card.rarity, '') AS rarity
+		    FROM cards AS card
+		    WHERE card.phash IS NOT NULL
+		      AND card.superseded_by_card_id IS NULL
+		      AND (card.source_id IS NULL OR card.catalog_active = TRUE)
+
+		    UNION ALL
+
+		    SELECT card.id, card.name, card.set_name, COALESCE(card.price_usd, 0), COALESCE(card.price_eur, 0),
+		           COALESCE(card.image_url, ''), COALESCE(card.variant, ''), COALESCE(card.change_24h, 0), fingerprint.hash,
+		           COALESCE(card.game, '') AS game,
+		           COALESCE(card.language, '') AS language,
+		           COALESCE(card.rarity, '') AS rarity
+		    FROM card_fingerprints AS fingerprint
+		    JOIN card_images AS image ON image.id = fingerprint.image_id
+		    JOIN cards AS card ON card.id = image.card_id
+		    WHERE card.catalog_active = TRUE
+		      AND image.status = 'ready'
+		      AND fingerprint.algorithm = 'phash64'
+		      AND fingerprint.algorithm_version = 1
+	) AS stored_fingerprints`)
 	if err != nil {
 		slog.Error("Fingerprint: Failed to load fingerprints from DB", "error", err)
 		return
@@ -253,7 +286,7 @@ func (s *FingerprintService) loadFingerprintsFromDB() {
 	for rows.Next() {
 		var c models.Card
 		var phash sql.NullInt64
-		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &phash, &c.Game); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &phash, &c.Game, &c.Language, &c.Rarity); err != nil {
 			slog.Warn("Failed to scan fingerprint row, skipping", "error", err)
 			continue
 		}
@@ -269,6 +302,8 @@ func (s *FingerprintService) loadFingerprintsFromDB() {
 // AddFingerprint adds a new fingerprint for a card to the BK-tree (SCAN-12).
 // This allows multiple fingerprints per card (e.g., different art variants).
 func (s *FingerprintService) AddFingerprint(hash uint64, card *models.Card) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	s.tree.Insert(hash, card)
 }
 
@@ -344,16 +379,12 @@ type MatchResult struct {
 func (s *FingerprintService) SearchByHash(hashVal int64) *MatchResult {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.searchByHashLocked(hashVal)
+}
+
+func (s *FingerprintService) searchByHashLocked(hashVal int64) *MatchResult {
 
 	query := uint64(hashVal) // #nosec G115
-
-	// SCAN-14: Check for exact match first (instant return)
-	if exact := s.tree.SearchExact(query); exact != nil {
-		return &MatchResult{
-			HighConfidence: exact.Card,
-			BestDistance:   0,
-		}
-	}
 
 	// Search with relaxed threshold for potential matches
 	potential := s.tree.Search(query, s.PhashPotential)
@@ -388,7 +419,37 @@ func (s *FingerprintService) SearchByHashWithCards(hashVal int64, cards []models
 
 	// Try BK-tree first
 	if s.tree.count > 0 {
-		return s.SearchByHash(hashVal)
+		indexed := s.searchByHashLocked(hashVal)
+		if cards == nil {
+			return indexed
+		}
+
+		allowed := make(map[string]*models.Card, len(cards))
+		for i := range cards {
+			allowed[cards[i].ID] = &cards[i]
+		}
+		filtered := &MatchResult{BestDistance: 64}
+		for _, match := range indexed.Potential {
+			card, ok := allowed[match.Card.ID]
+			if !ok {
+				continue
+			}
+			match.Card = card
+			filtered.Potential = append(filtered.Potential, match)
+			if match.Distance < filtered.BestDistance {
+				filtered.BestDistance = match.Distance
+			}
+			if match.Distance <= s.PhashHighConf && filtered.HighConfidence == nil {
+				filtered.HighConfidence = card
+			}
+		}
+		sort.Slice(filtered.Potential, func(i, j int) bool {
+			if filtered.Potential[i].Distance != filtered.Potential[j].Distance {
+				return filtered.Potential[i].Distance < filtered.Potential[j].Distance
+			}
+			return filtered.Potential[i].Card.ID < filtered.Potential[j].Card.ID
+		})
+		return filtered
 	}
 
 	// Fallback to linear scan
@@ -412,14 +473,6 @@ func (s *FingerprintService) SearchByHashWithCards(hashVal int64, cards []models
 			continue
 		}
 
-		// SCAN-14: Early termination on exact match
-		if distance == 0 {
-			return &MatchResult{
-				HighConfidence: &c,
-				BestDistance:   0,
-			}
-		}
-
 		// Keep best distance per card (SCAN-12)
 		if existing, ok := bestByCard[c.ID]; !ok || distance < existing {
 			bestByCard[c.ID] = distance
@@ -434,7 +487,10 @@ func (s *FingerprintService) SearchByHashWithCards(hashVal int64, cards []models
 
 	// Sort potential matches by distance
 	sort.Slice(result.Potential, func(i, j int) bool {
-		return result.Potential[i].Distance < result.Potential[j].Distance
+		if result.Potential[i].Distance != result.Potential[j].Distance {
+			return result.Potential[i].Distance < result.Potential[j].Distance
+		}
+		return result.Potential[i].Card.ID < result.Potential[j].Card.ID
 	})
 
 	// Deduplicate

@@ -29,7 +29,7 @@ import (
 type Config struct {
 	App struct {
 		Name          string `env:"APP_NAME" env-default:"Pokget"`
-		Port          string `env:"APP_PORT" env-default:"8080"`
+		Port          string `env:"APP_PORT" env-default:"18066"`
 		Debug         bool   `env:"DEBUG" env-default:"false"`
 		SecureCookies bool   `env:"SECURE_COOKIES" env-default:"true"` // BUG-C03: Configurable Secure flag for session cookies
 		WriteTimeout  int    `env:"WRITE_TIMEOUT" env-default:"120"`   // BUG-C05: Configurable write timeout in seconds
@@ -63,6 +63,19 @@ type Config struct {
 		PhashPotential int `env:"SCAN_PHASH_POTENTIAL" env-default:"10"` // SCAN-02: Relaxed pHash threshold
 		OCRPoolSize    int `env:"SCAN_OCR_POOL_SIZE" env-default:"3"`    // SCAN-03: Number of concurrent Tesseract clients
 	} `yaml:"scan"`
+	Catalog struct {
+		Enabled             bool   `env:"CATALOG_ENABLED" env-default:"true"`
+		LegacyMetadataSync  bool   `env:"LEGACY_METADATA_SYNC_ENABLED" env-default:"false"`
+		Language            string `env:"CATALOG_LANGUAGE" env-default:"en"`
+		SyncIntervalMins    int    `env:"CATALOG_SYNC_INTERVAL_MINUTES" env-default:"360"`
+		BatchSize           int    `env:"CATALOG_BATCH_SIZE" env-default:"500"`
+		RequestDelayMS      int    `env:"CATALOG_REQUEST_DELAY_MS" env-default:"100"`
+		WeissMaxPages       int    `env:"CATALOG_WEISS_MAX_PAGES" env-default:"0"`
+		ImagesEnabled       bool   `env:"CATALOG_IMAGES_ENABLED" env-default:"true"`
+		ImageStore          string `env:"CATALOG_IMAGE_STORE" env-default:"data/catalog-images"`
+		ImageBatchSize      int    `env:"CATALOG_IMAGE_BATCH_SIZE" env-default:"8"`
+		ImagePollIntervalMS int    `env:"CATALOG_IMAGE_POLL_INTERVAL_MS" env-default:"5000"`
+	} `yaml:"catalog"`
 }
 
 func Load() (*Config, error) {

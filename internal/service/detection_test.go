@@ -22,6 +22,8 @@ package service
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -111,7 +113,7 @@ func TestCombineScores(t *testing.T) {
 			&ConfidenceScore{Method: "fingerprint", Score: 100},
 			nil,
 			nil,
-			100.0, // (100*0.5) / 0.5 = 100
+			50.0,
 		},
 		{
 			"No scores",
@@ -145,6 +147,47 @@ func TestCombineScores(t *testing.T) {
 	}
 }
 
+func TestOCRScoreShortNameRequiresWholeToken(t *testing.T) {
+	if score := ocrScoreFromLevenshtein("TRAINER", "N"); score >= 90 {
+		t.Fatalf("embedded one-letter name received false high confidence: %f", score)
+	}
+	if score := ocrScoreFromLevenshtein("TRAINER N 123", "N"); score != 95 {
+		t.Fatalf("whole-token short name score = %f, want 95", score)
+	}
+}
+
+func TestDetectionSameNameFingerprintCollisionRequiresReview(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 64, 96))
+	draw.Draw(img, img.Bounds(), &image.Uniform{C: color.RGBA{R: 80, G: 120, B: 180, A: 255}}, image.Point{}, draw.Src)
+	var payload bytes.Buffer
+	if err := png.Encode(&payload, img); err != nil {
+		t.Fatal(err)
+	}
+
+	fingerprint := NewFingerprintService(nil)
+	hash, err := fingerprint.CalculateHash(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cards := []models.Card{
+		{ID: "printing-a", Name: "Shared Card", Game: "pokemon", Phash: &hash},
+		{ID: "printing-b", Name: "Shared Card", Game: "pokemon", Phash: &hash},
+	}
+	for i := range cards {
+		fingerprint.AddFingerprint(uint64(hash), &cards[i])
+	}
+
+	result := NewDetectionPipeline(fingerprint, nil).Detect(payload.Bytes(), cards, "eng")
+	if len(result.TopMatches) != 2 {
+		t.Fatalf("expected both ambiguous printings, got %d", len(result.TopMatches))
+	}
+	for _, match := range result.TopMatches {
+		if !match.NeedsReview {
+			t.Fatalf("ambiguous printing %q was marked actionable", match.Card.ID)
+		}
+	}
+}
+
 func TestCombineScoresWeights(t *testing.T) {
 	// Verify that fingerprint has the highest weight
 	fp := &ConfidenceScore{Method: "fingerprint", Score: 100}
@@ -152,9 +195,8 @@ func TestCombineScoresWeights(t *testing.T) {
 	llm := &ConfidenceScore{Method: "llm", Score: 0}
 
 	result := combineScores(fp, ocr, llm)
-	// With only fingerprint contributing: (100*0.5) / 0.5 = 100
-	if result != 100.0 {
-		t.Errorf("Expected 100 with only fingerprint, got %f", result)
+	if result != 50.0 {
+		t.Errorf("Expected 50 with only fingerprint, got %f", result)
 	}
 }
 
@@ -346,6 +388,20 @@ func TestNewDetectionPipelineNilServices(t *testing.T) {
 	}
 }
 
+func TestDetectionPipelineCanceledContextStopsBeforeWork(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	result := NewDetectionPipeline(nil, nil).DetectContext(ctx, []byte("not an image"), nil, "eng")
+	if result == nil {
+		t.Fatal("DetectContext returned nil")
+	}
+	if len(result.Metrics.Stages) != 1 || !errors.Is(result.Metrics.Stages[0].Error, context.Canceled) {
+		t.Fatalf("stages = %+v, want context cancellation", result.Metrics.Stages)
+	}
+}
+
 // Helper for string containment check
 func containsStr(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))
@@ -366,11 +422,11 @@ func containsSubstr(s, substr string) bool {
 // produces scores in the 85-100% range.
 func TestFingerprintScoreHighConfidence(t *testing.T) {
 	tests := []struct {
-		name          string
-		distance      int
-		threshold     int
-		minScore      float64
-		maxScore      float64
+		name      string
+		distance  int
+		threshold int
+		minScore  float64
+		maxScore  float64
 	}{
 		{"Distance 0 — exact match", 0, 10, 100.0, 100.0},
 		{"Distance 1 — near exact", 1, 10, 85.0, 100.0},
@@ -628,38 +684,35 @@ func TestDeduplicationSameCardDifferentMethods(t *testing.T) {
 }
 
 // TestCombineScoresOnlyFingerprint verifies that when only fingerprint
-// score is available, the combined score equals the fingerprint score.
+// score is available, the fixed fingerprint reliability weight is retained.
 func TestCombineScoresOnlyFingerprint(t *testing.T) {
 	fp := &ConfidenceScore{Method: "fingerprint", Score: 85}
 	result := combineScores(fp, nil, nil)
 
-	// (85*0.5) / 0.5 = 85
-	if result != 85.0 {
-		t.Errorf("Expected 85 with only fingerprint, got %f", result)
+	if result != 42.5 {
+		t.Errorf("Expected 42.5 with only fingerprint, got %f", result)
 	}
 }
 
 // TestCombineScoresOnlyOCR verifies that when only OCR score is available,
-// the combined score equals the OCR score.
+// the fixed OCR reliability weight is retained.
 func TestCombineScoresOnlyOCR(t *testing.T) {
 	ocr := &ConfidenceScore{Method: "ocr", Score: 75}
 	result := combineScores(nil, ocr, nil)
 
-	// (75*0.3) / 0.3 = 75
-	if result != 75.0 {
-		t.Errorf("Expected 75 with only OCR, got %f", result)
+	if result != 22.5 {
+		t.Errorf("Expected 22.5 with only OCR, got %f", result)
 	}
 }
 
 // TestCombineScoresOnlyLLM verifies that when only LLM score is available,
-// the combined score equals the LLM score.
+// the fixed LLM reliability weight is retained.
 func TestCombineScoresOnlyLLM(t *testing.T) {
 	llm := &ConfidenceScore{Method: "llm", Score: 60}
 	result := combineScores(nil, nil, llm)
 
-	// (60*0.2) / 0.2 = 60
-	if result != 60.0 {
-		t.Errorf("Expected 60 with only LLM, got %f", result)
+	if result != 12.0 {
+		t.Errorf("Expected 12 with only LLM, got %f", result)
 	}
 }
 
@@ -951,6 +1004,110 @@ func TestPipelineWithFingerprintMatch(t *testing.T) {
 	// Metrics should be recorded
 	if result.Metrics.TotalTime == 0 {
 		t.Error("Expected non-zero total time")
+	}
+}
+
+func TestPipelineUniqueExactFingerprintSkipsOCR(t *testing.T) {
+	t.Parallel()
+
+	fingerprint := NewFingerprintService(nil)
+	imageValue := image.NewRGBA(image.Rect(0, 0, 80, 110))
+	draw.Draw(imageValue, imageValue.Bounds(), &image.Uniform{color.RGBA{R: 20, G: 100, B: 220, A: 255}}, image.Point{}, draw.Src)
+	var payload bytes.Buffer
+	if err := png.Encode(&payload, imageValue); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := fingerprint.CalculateHash(imageValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	card := &models.Card{ID: "exact-card", Name: "Exact Card"}
+	fingerprint.AddFingerprint(uint64(hash), card)
+
+	result := NewDetectionPipeline(fingerprint, nil).Detect(payload.Bytes(), []models.Card{*card}, "eng")
+	if result.BestMatchCard() == nil || result.BestMatchCard().ID != card.ID {
+		t.Fatalf("best match = %+v", result.BestMatchCard())
+	}
+	if result.BestMatchConfidence() != 100 || result.BestMatchNeedsReview() {
+		t.Fatalf("confidence/review = %v/%v", result.BestMatchConfidence(), result.BestMatchNeedsReview())
+	}
+	if len(result.Metrics.Stages) != 1 || result.Metrics.Stages[0].Name != "fingerprint" {
+		t.Fatalf("stages = %+v, want fingerprint-only fast path", result.Metrics.Stages)
+	}
+}
+
+func TestPipelineUniqueExactFingerprintBeatsNearCollision(t *testing.T) {
+	t.Parallel()
+
+	fingerprint := NewFingerprintService(nil)
+	imageValue := image.NewRGBA(image.Rect(0, 0, 80, 110))
+	draw.Draw(imageValue, imageValue.Bounds(), &image.Uniform{color.RGBA{R: 80, G: 30, B: 190, A: 255}}, image.Point{}, draw.Src)
+	var payload bytes.Buffer
+	if err := png.Encode(&payload, imageValue); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := fingerprint.CalculateHash(imageValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exact := &models.Card{ID: "exact-card", Name: "Exact Card"}
+	near := &models.Card{ID: "near-card", Name: "Different Near Card"}
+	fingerprint.AddFingerprint(uint64(hash), exact)
+	fingerprint.AddFingerprint(uint64(hash)^1, near)
+
+	result := NewDetectionPipeline(fingerprint, nil).Detect(
+		payload.Bytes(),
+		[]models.Card{*exact, *near},
+		"eng",
+	)
+	if result.BestMatchCard() == nil || result.BestMatchCard().ID != exact.ID {
+		t.Fatalf("best match = %+v, want exact card", result.BestMatchCard())
+	}
+	if result.BestMatchConfidence() != 100 || result.BestMatchNeedsReview() {
+		t.Fatalf("confidence/review = %v/%v", result.BestMatchConfidence(), result.BestMatchNeedsReview())
+	}
+	if len(result.Metrics.Stages) != 1 || result.Metrics.Stages[0].Name != "fingerprint" {
+		t.Fatalf("stages = %+v, want fingerprint-only fast path", result.Metrics.Stages)
+	}
+}
+
+func TestExactFingerprintMatchesPreserveRealCollisions(t *testing.T) {
+	t.Parallel()
+
+	result := &MatchResult{Potential: []FingerprintMatch{
+		{Card: &models.Card{ID: "exact-one"}, Distance: 0},
+		{Card: &models.Card{ID: "exact-two"}, Distance: 0},
+		{Card: &models.Card{ID: "near"}, Distance: 1},
+	}}
+	matches := exactFingerprintMatches(result)
+	if len(matches) != 2 || matches[0].Card.ID != "exact-one" || matches[1].Card.ID != "exact-two" {
+		t.Fatalf("exactFingerprintMatches() = %+v", matches)
+	}
+}
+
+func TestUniqueHighConfidenceFingerprintRejectsCollision(t *testing.T) {
+	t.Parallel()
+
+	result := &MatchResult{Potential: []FingerprintMatch{
+		{Card: &models.Card{ID: "one"}, Distance: 0},
+		{Card: &models.Card{ID: "two"}, Distance: 0},
+	}}
+	if got, _ := uniqueHighConfidenceFingerprint(result, 5); got != nil {
+		t.Fatalf("uniqueHighConfidenceFingerprint() = %+v, want nil for collision", got)
+	}
+}
+
+func TestUniqueHighConfidenceFingerprintAcceptsSingleNearMatch(t *testing.T) {
+	t.Parallel()
+
+	card := &models.Card{ID: "near"}
+	result := &MatchResult{Potential: []FingerprintMatch{
+		{Card: card, Distance: 3},
+		{Card: &models.Card{ID: "potential"}, Distance: 8},
+	}}
+	got, distance := uniqueHighConfidenceFingerprint(result, 5)
+	if got != card || distance != 3 {
+		t.Fatalf("uniqueHighConfidenceFingerprint() = %+v/%d, want near/3", got, distance)
 	}
 }
 

@@ -1,9 +1,18 @@
 {
   "name": "pokget-css",
   "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:static": "node scripts/build-static.mjs",
+    "check:static": "node --check dist/static/js/vault.js && node --check dist/static/js/sw.js && node --check dist/static/sw.js",
+    "test:static": "node --test scripts/build-static.test.mjs"
+  },
   "dependencies": {
     "tailwindcss": "^4.2.4",
     "@tailwindcss/forms": "^0.5.9",
     "@tailwindcss/container-queries": "^0.1.1"
+  },
+  "devDependencies": {
+    "terser": "5.49.0"
   }
 }

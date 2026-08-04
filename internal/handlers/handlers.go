@@ -26,6 +26,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"image"
@@ -35,7 +36,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +74,10 @@ type Handler struct {
 	SecureCookies bool // BUG-C03: Configurable Secure flag for session cookies
 }
 
+// scanDetectionSlots bounds native OCR work that cannot be interrupted while a
+// Tesseract call is in progress. Context-aware LLM and pool waits stop promptly.
+var scanDetectionSlots = make(chan struct{}, 3)
+
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
 	if data == nil {
 		data = make(map[string]interface{})
@@ -93,7 +98,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 		var xp int
 		var rankTitle string
 		var currency string
-		if err := h.DB.QueryRow("SELECT xp, rank_title, currency FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle, &currency); err != nil {
+		if err := h.DB.QueryRowContext(r.Context(), "SELECT xp, rank_title, currency FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle, &currency); err != nil {
 			slog.Warn("Failed to fetch user gamification data for render", "user_id", userID, "error", err)
 		}
 
@@ -115,9 +120,14 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 		}
 	}
 
-	if err := h.Templates.ExecuteTemplate(w, name, data); err != nil {
+	var output bytes.Buffer
+	if err := h.Templates.ExecuteTemplate(&output, name, data); err != nil {
 		slog.Error("Template execution failed", "template", name, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if _, err := output.WriteTo(w); err != nil {
+		slog.Error("Template response write failed", "template", name, "error", err)
 	}
 }
 
@@ -133,34 +143,92 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 	// BUG-M02 FIX: Query the user's actual portfolio instead of using MockCards.
 	// Previously, the index page displayed mock/seed cards instead of the
 	// authenticated user's real portfolio data.
-	var userCurrency string
-	_ = h.DB.QueryRow("SELECT currency FROM users WHERE id = $1", userID).Scan(&userCurrency)
+	var currency sql.NullString
+	if err := h.DB.QueryRowContext(r.Context(), "SELECT currency FROM users WHERE id = $1", userID).Scan(&currency); err != nil {
+		slog.Error("Failed to load currency for index", "user_id", userID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	userCurrency := currency.String
 	if userCurrency == "" {
 		userCurrency = "EUR"
 	}
 
-	rows, err := h.DB.Query(`
-		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.price_eur, c.game
+	rows, err := h.DB.QueryContext(r.Context(), `
+		SELECT p.id, p.condition, p.custom_price, COALESCE(p.notes, ''), COALESCE(p.grade, ''), p.is_public,
+		       COALESCE(p.binder_id::text, ''),
+		       c.id, c.name, c.set_name, COALESCE(c.image_url, ''), COALESCE(c.price_usd, 0),
+		       COALESCE(c.price_eur, 0), COALESCE(c.game, '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1`, userID)
+	if err != nil {
+		slog.Error("Failed to query portfolio for index", "user_id", userID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
 
 	portfolio := make([]models.PortfolioItem, 0, 64)
+	for rows.Next() {
+		var p models.PortfolioItem
+		if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Notes, &p.Grade, &p.IsPublic, &p.BinderID,
+			&p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
+			slog.Error("Failed to scan portfolio row for index", "user_id", userID, "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		portfolio = append(portfolio, p)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("Failed while reading portfolio for index", "user_id", userID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	initialView := r.URL.Query().Get("view")
+	viewPaths := map[string]string{
+		"home": "/dashboard", "wantlist": "/wantlist", "binders": "/binders",
+		"scan": "/centering", "errors": "/errors", "trade": "/trade",
+		"settings": "/settings",
+	}
+	initialPath, ok := viewPaths[initialView]
+	if !ok {
+		initialView = "home"
+		initialPath = viewPaths[initialView]
+	}
+	if initialView == "binders" {
+		if binderID := strings.TrimSpace(r.URL.Query().Get("binder")); binderID != "" {
+			initialPath = "/binders/" + url.PathEscape(binderID)
+		}
+	}
+
+	binders := make([]Binder, 0, 8)
+	binderRows, err := h.DB.QueryContext(
+		r.Context(),
+		"SELECT id, name FROM binders WHERE user_id = $1 ORDER BY is_default DESC, created_at DESC",
+		userID,
+	)
 	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var p models.PortfolioItem
-			if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
-				slog.Warn("Failed to scan row in dashboard query", "error", err)
-			} else {
-				portfolio = append(portfolio, p)
+		defer binderRows.Close()
+		for binderRows.Next() {
+			var binder Binder
+			if err := binderRows.Scan(&binder.ID, &binder.Name); err != nil {
+				slog.Warn("Failed to scan binder for portfolio editor", "error", err)
+				continue
 			}
+			binders = append(binders, binder)
+		}
+		if err := binderRows.Err(); err != nil {
+			slog.Warn("Failed while reading binders for portfolio editor", "error", err)
 		}
 	}
 
 	h.render(w, r, "index.html", map[string]interface{}{
-		"Portfolio": portfolio,
-		"Currency":  userCurrency,
+		"Portfolio":   portfolio,
+		"Binders":     binders,
+		"Currency":    userCurrency,
+		"InitialView": initialView,
+		"InitialPath": initialPath,
 	})
 }
 
@@ -172,7 +240,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	var currency string
 	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
 	if ok {
-		_ = h.DB.QueryRow("SELECT currency FROM users WHERE id = $1", userID).Scan(&currency)
+		_ = h.DB.QueryRowContext(r.Context(), "SELECT currency FROM users WHERE id = $1", userID).Scan(&currency)
 	}
 	if currency == "" {
 		currency = "EUR"
@@ -196,7 +264,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	// so that owned_cards only counts the current user's portfolio items.
 	// Previously, the JOIN matched all users' portfolio items, returning
 	// combined completion across ALL users.
-	rows, err := h.DB.Query(`
+	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT
 			c.set_name,
 			COUNT(DISTINCT c.id) FILTER (WHERE p.id IS NOT NULL) as owned_cards,
@@ -230,12 +298,18 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch Portfolio with multipliers
-	rowsPortfolio, err := h.DB.Query(`
-		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.price_eur, c.game
+	rowsPortfolio, err := h.DB.QueryContext(r.Context(), `
+		SELECT p.id, p.condition, p.custom_price, COALESCE(p.notes, ''), COALESCE(p.grade, ''), p.is_public,
+		       COALESCE(p.binder_id::text, ''),
+		       c.id, c.name, c.set_name, COALESCE(c.image_url, ''), COALESCE(c.price_usd, 0),
+		       COALESCE(c.price_eur, 0), COALESCE(c.game, '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1`, userID)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
 		slog.Error("Failed to query portfolio for dashboard", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -245,7 +319,8 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	defer rowsPortfolio.Close()
 	for rowsPortfolio.Next() {
 		var p models.PortfolioItem
-		if err := rowsPortfolio.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
+		if err := rowsPortfolio.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Notes, &p.Grade, &p.IsPublic, &p.BinderID,
+			&p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
 			slog.Warn("Failed to scan row in dashboard query", "error", err)
 		} else {
 			portfolio = append(portfolio, p)
@@ -257,7 +332,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	var multipliers map[string]float64
 	var multStr string
 	var userCurrency string
-	_ = h.DB.QueryRow("SELECT condition_multipliers, currency FROM users WHERE id = $1", userID).Scan(&multStr, &userCurrency)
+	_ = h.DB.QueryRowContext(r.Context(), "SELECT condition_multipliers, currency FROM users WHERE id = $1", userID).Scan(&multStr, &userCurrency)
 	if err := json.Unmarshal([]byte(multStr), &multipliers); err != nil {
 		slog.Warn("Failed to parse condition multipliers, using defaults", "error", err)
 	}
@@ -284,19 +359,19 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	// Fetch User XP and Rank
 	var xp int
 	var rankTitle string
-	_ = h.DB.QueryRow("SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle)
+	_ = h.DB.QueryRowContext(r.Context(), "SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle)
 
 	rank := h.Game.GetUserRank(xp)
 	_, _, xpPercent := h.Game.GetProgressToNextRank(xp)
 
 	// Fetch Binder Count
 	var binderCount int
-	_ = h.DB.QueryRow("SELECT COUNT(*) FROM binders WHERE user_id = $1", userID).Scan(&binderCount)
+	_ = h.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM binders WHERE user_id = $1", userID).Scan(&binderCount)
 
 	// Fetch 24h Change
 	var change24h float64
 	var oldValuation float64
-	err = h.DB.QueryRow(`
+	err = h.DB.QueryRowContext(r.Context(), `
 		SELECT valuation 
 		FROM portfolio_history 
 		WHERE user_id = $1 AND recorded_at <= NOW() - INTERVAL '24 hours'
@@ -341,38 +416,51 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 
 	// Verify the card actually exists in the database
 	var exists bool
-	err := h.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1)", cardID).Scan(&exists)
+	err := h.DB.QueryRowContext(r.Context(), "SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1)", cardID).Scan(&exists)
 	if err != nil || !exists {
 		http.Error(w, "Invalid card_id: card not found", http.StatusBadRequest)
 		return
 	}
 	notes := r.FormValue("notes")
 	customPriceStr := r.FormValue("custom_price")
-	var customPrice *float64
-	if customPriceStr != "" {
-		val, err := strconv.ParseFloat(customPriceStr, 64)
-		if err != nil {
-			http.Error(w, "Invalid custom price", http.StatusBadRequest)
-			return
-		}
-		if val < 0 {
-			http.Error(w, "Custom price must be non-negative", http.StatusBadRequest)
-			return
-		}
-		customPrice = &val
+	customPrice, err := parseOptionalPrice(customPriceStr)
+	if err != nil {
+		http.Error(w, "Invalid custom price", http.StatusBadRequest)
+		return
 	}
 	binderID := r.FormValue("binder_id")
 
-	// If binderID is empty, try to find the default binder
-	if binderID == "" {
-		err := h.DB.QueryRow("SELECT id FROM binders WHERE user_id = $1 AND is_default = TRUE", userID).Scan(&binderID)
+	if binderID != "" {
+		var ownsBinder bool
+		err := h.DB.QueryRowContext(
+			r.Context(),
+			"SELECT EXISTS(SELECT 1 FROM binders WHERE id = $1 AND user_id = $2)",
+			binderID,
+			userID,
+		).Scan(&ownsBinder)
 		if err != nil {
+			slog.Error("Failed to validate portfolio binder", "error", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		if !ownsBinder {
+			http.Error(w, "Binder not found", http.StatusNotFound)
+			return
+		}
+	} else {
+		// If binderID is empty, try to find the caller's default binder.
+		err := h.DB.QueryRowContext(r.Context(), "SELECT id FROM binders WHERE user_id = $1 AND is_default = TRUE", userID).Scan(&binderID)
+		if errors.Is(err, sql.ErrNoRows) {
 			slog.Warn("No default binder found for user, using NULL", "user_id", userID)
 			binderID = "" // This will result in a NULL binder_id in the DB
+		} else if err != nil {
+			slog.Error("Failed to load default binder", "user_id", userID, "error", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
 		}
 	}
 
-	_, err = h.DB.Exec(`
+	_, err = h.DB.ExecContext(r.Context(), `
 		INSERT INTO portfolio (user_id, card_id, binder_id, notes, custom_price, condition, format)
 		VALUES ($1, $2, NULLIF($3, '')::UUID, $4, $5, $6, $7)`,
 		userID, cardID, binderID, notes, customPrice, "Near Mint", "Raw")
@@ -441,38 +529,17 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the portfolio item belongs to the current user
-	var ownerID string
-	err := h.DB.QueryRow("SELECT user_id FROM portfolio WHERE id = $1", itemID).Scan(&ownerID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "Portfolio item not found", http.StatusNotFound)
-			return
-		}
-		slog.Error("Failed to verify portfolio item ownership", "error", err)
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-	if ownerID != userID {
-		http.Error(w, "Forbidden: you do not own this portfolio item", http.StatusForbidden)
-		return
-	}
-
 	notes := r.FormValue("notes")
 	grade := r.FormValue("grade")
 	customPriceStr := r.FormValue("custom_price")
-	var customPrice *float64
-	if customPriceStr != "" {
-		val, err := strconv.ParseFloat(customPriceStr, 64)
-		if err != nil {
-			http.Error(w, "Invalid custom price", http.StatusBadRequest)
-			return
-		}
-		customPrice = &val
+	customPrice, err := parseOptionalPrice(customPriceStr)
+	if err != nil {
+		http.Error(w, "Invalid custom price", http.StatusBadRequest)
+		return
 	}
 	isPublic := r.FormValue("is_public") == "true"
 
-	_, err = h.DB.Exec(`
+	result, err := h.DB.ExecContext(r.Context(), `
 		UPDATE portfolio
 		SET notes = $1, grade = $2, custom_price = $3, is_public = $4
 		WHERE id = $5 AND user_id = $6`,
@@ -480,6 +547,10 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("Failed to edit portfolio item", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		http.Error(w, "Portfolio item not found", http.StatusNotFound)
 		return
 	}
 
@@ -495,6 +566,7 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 
 	// BUG-M09 FIX: Set Content-Type header for API responses.
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("HX-Trigger", `{"notify":{"msg":"Card details saved","type":"success"}}`)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Item updated successfully!"))
 }
@@ -521,27 +593,14 @@ func (h *Handler) DeletePortfolioItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the portfolio item belongs to the current user
-	var ownerID string
-	err := h.DB.QueryRow("SELECT user_id FROM portfolio WHERE id = $1", itemID).Scan(&ownerID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "Portfolio item not found", http.StatusNotFound)
-			return
-		}
-		slog.Error("Failed to verify portfolio item ownership", "error", err)
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-	if ownerID != userID {
-		http.Error(w, "Forbidden: you do not own this portfolio item", http.StatusForbidden)
-		return
-	}
-
-	_, err = h.DB.Exec("DELETE FROM portfolio WHERE id = $1 AND user_id = $2", itemID, userID)
+	result, err := h.DB.ExecContext(r.Context(), "DELETE FROM portfolio WHERE id = $1 AND user_id = $2", itemID, userID)
 	if err != nil {
 		slog.Error("Failed to delete portfolio item", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		http.Error(w, "Portfolio item not found", http.StatusNotFound)
 		return
 	}
 
@@ -549,8 +608,75 @@ func (h *Handler) DeletePortfolioItem(w http.ResponseWriter, r *http.Request) {
 
 	// BUG-M09 FIX: Set Content-Type header for API responses.
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("HX-Trigger", `{"notify":{"msg":"Card removed from vault","type":"success"}}`)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Item deleted successfully!"))
+}
+
+func (h *Handler) UpdatePortfolioBinder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	itemID := strings.TrimSpace(r.FormValue("item_id"))
+	if itemID == "" {
+		http.Error(w, "item_id is required", http.StatusBadRequest)
+		return
+	}
+
+	binderID := strings.TrimSpace(r.FormValue("binder_id"))
+	if binderID != "" {
+		var owned bool
+		err := h.DB.QueryRowContext(
+			r.Context(),
+			"SELECT EXISTS(SELECT 1 FROM binders WHERE id::text = $1 AND user_id = $2)",
+			binderID,
+			userID,
+		).Scan(&owned)
+		if err != nil {
+			slog.Error("Failed to validate binder ownership", "error", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		if !owned {
+			http.Error(w, "Binder not found", http.StatusNotFound)
+			return
+		}
+	}
+
+	result, err := h.DB.ExecContext(
+		r.Context(),
+		"UPDATE portfolio SET binder_id = NULLIF($1, '')::UUID WHERE id = $2 AND user_id = $3",
+		binderID,
+		itemID,
+		userID,
+	)
+	if err != nil {
+		slog.Error("Failed to update portfolio binder", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		http.Error(w, "Portfolio item not found", http.StatusNotFound)
+		return
+	}
+
+	h.Audit.Log(userID, "update_portfolio_binder", map[string]interface{}{
+		"item_id":   itemID,
+		"binder_id": binderID,
+	})
+	w.Header().Set(
+		"HX-Trigger",
+		`{"notify":{"msg":"Card moved to selected archive","type":"success"}}`,
+	)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
@@ -575,7 +701,7 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 
 	// Verify the binder belongs to the current user
 	var ownerID string
-	err := h.DB.QueryRow("SELECT user_id FROM binders WHERE id = $1", binderID).Scan(&ownerID)
+	err := h.DB.QueryRowContext(r.Context(), "SELECT user_id FROM binders WHERE id = $1", binderID).Scan(&ownerID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Binder not found", http.StatusNotFound)
@@ -591,7 +717,7 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch cards in binder
-	rows, err := h.DB.Query(`
+	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT c.name
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
@@ -612,8 +738,21 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 			cards = append(cards, c)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		slog.Error("Failed while reading binder cards", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if len(cards) == 0 {
+		http.Error(w, "Add cards before generating a binder name", http.StatusBadRequest)
+		return
+	}
 
 	llm := h.LLM
+	if llm == nil {
+		http.Error(w, "AI naming is unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	newName, err := llm.GenerateBinderName(cards)
 	if err != nil {
 		slog.Error("LLM: Failed to generate binder name", "error", err)
@@ -621,9 +760,13 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.DB.Exec("UPDATE binders SET name = $1 WHERE id = $2 AND user_id = $3", newName, binderID, userID)
+	result, err := h.DB.ExecContext(r.Context(), "UPDATE binders SET name = $1 WHERE id = $2 AND user_id = $3", newName, binderID, userID)
 	if err != nil {
 		http.Error(w, "Failed to update binder", http.StatusInternalServerError)
+		return
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		http.Error(w, "Binder not found", http.StatusNotFound)
 		return
 	}
 
@@ -655,27 +798,37 @@ func (h *Handler) Binders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := h.DB.Query(`
-		SELECT b.id, b.name, b.description, b.created_at, COUNT(p.id) as card_count
+	rows, err := h.DB.QueryContext(r.Context(), `
+		SELECT b.id, b.name, COALESCE(b.description, ''), b.created_at, COUNT(p.id) as card_count
 		FROM binders b
 		LEFT JOIN portfolio p ON b.id = p.binder_id
 		WHERE b.user_id = $1
 		GROUP BY b.id, b.name, b.description, b.created_at
 		ORDER BY b.created_at DESC`, userID)
 
+	if err != nil {
+		slog.Error("Failed to load binders", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
 	binders := make([]Binder, 0, 8) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var b Binder
-			var createdAt string
-			if err := rows.Scan(&b.ID, &b.Name, &b.Description, &createdAt, &b.CardCount); err != nil {
-				slog.Warn("Failed to scan row in dashboard query", "error", err)
-			} else {
-				b.UpdatedAt = createdAt // Simple assignment for now
-				binders = append(binders, b)
-			}
+	for rows.Next() {
+		var b Binder
+		var createdAt string
+		if err := rows.Scan(&b.ID, &b.Name, &b.Description, &createdAt, &b.CardCount); err != nil {
+			slog.Error("Failed to scan binder", "error", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
 		}
+		b.UpdatedAt = createdAt // Simple assignment for now
+		binders = append(binders, b)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("Failed while reading binders", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
 	}
 
 	h.render(w, r, "binders.html", map[string]interface{}{
@@ -702,7 +855,7 @@ func (h *Handler) CreateBinder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.DB.Exec("INSERT INTO binders (user_id, name, description) VALUES ($1, $2, $3)", userID, name, description)
+	_, err := h.DB.ExecContext(r.Context(), "INSERT INTO binders (user_id, name, description) VALUES ($1, $2, $3)", userID, name, description)
 	if err != nil {
 		slog.Error("Failed to create binder", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -726,30 +879,51 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch binder info
 	var binder Binder
-	err := h.DB.QueryRow("SELECT id, name, description FROM binders WHERE id = $1 AND user_id = $2", binderID, userID).Scan(&binder.ID, &binder.Name, &binder.Description)
+	err := h.DB.QueryRowContext(
+		r.Context(),
+		"SELECT id, name, COALESCE(description, '') FROM binders WHERE id = $1 AND user_id = $2",
+		binderID,
+		userID,
+	).Scan(&binder.ID, &binder.Name, &binder.Description)
 	if err != nil {
-		http.Error(w, "Binder not found", http.StatusNotFound)
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Binder not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to load binder", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
 	// Fetch cards in binder
-	rows, err := h.DB.Query(`
-		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name, c.image_url, c.price_usd, c.price_eur, c.game
+	rows, err := h.DB.QueryContext(r.Context(), `
+		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name,
+		       COALESCE(c.image_url, ''), COALESCE(c.price_usd, 0), COALESCE(c.price_eur, 0), COALESCE(c.game, '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.binder_id = $1 AND p.user_id = $2`, binderID, userID)
 
+	if err != nil {
+		slog.Error("Failed to load binder cards", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
 	cards := make([]models.PortfolioItem, 0, 64) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var p models.PortfolioItem
-			if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
-				slog.Warn("Failed to scan row in dashboard query", "error", err)
-			} else {
-				cards = append(cards, p)
-			}
+	for rows.Next() {
+		var p models.PortfolioItem
+		if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
+			slog.Error("Failed to scan binder card", "error", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
 		}
+		cards = append(cards, p)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("Failed while reading binder cards", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
 	}
 
 	h.render(w, r, "binder_detail.html", map[string]interface{}{
@@ -760,7 +934,38 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Trade", "method", r.Method, "url", r.URL.String())
-	h.render(w, r, "trade.html", nil)
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	rows, err := h.DB.QueryContext(r.Context(), `
+		SELECT p.id, p.condition, c.id, c.name, c.set_name,
+		       COALESCE(c.price_usd, 0), COALESCE(c.price_eur, 0)
+		FROM portfolio p JOIN cards c ON c.id = p.card_id
+		WHERE p.user_id = $1 ORDER BY c.name`, userID)
+	if err != nil {
+		slog.Error("Failed to load trade portfolio", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	items := make([]models.PortfolioItem, 0, 64)
+	for rows.Next() {
+		var item models.PortfolioItem
+		if err := rows.Scan(&item.ID, &item.Condition, &item.Card.ID, &item.Card.Name, &item.Card.Set, &item.Card.PriceUSD, &item.Card.PriceEUR); err != nil {
+			slog.Error("Failed to scan trade portfolio", "error", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("Failed while reading trade portfolio", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	h.render(w, r, "trade.html", map[string]interface{}{"Portfolio": items})
 }
 
 func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
@@ -780,7 +985,7 @@ func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ReloadCardsCache() (int, error) {
-	rows, err := h.DB.Query("SELECT id, name, set_name, price_usd, price_eur, image_url, variant, change_24h, phash FROM cards")
+	rows, err := h.DB.Query("SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash, COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, '') FROM cards WHERE superseded_by_card_id IS NULL")
 	if err != nil {
 		return 0, err
 	}
@@ -789,10 +994,13 @@ func (h *Handler) ReloadCardsCache() (int, error) {
 	allCards := make([]models.Card, 0, 1024) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations for cache reload
 	for rows.Next() {
 		var c models.Card
-		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash, &c.Game, &c.Language, &c.Rarity); err != nil {
 			continue
 		}
 		allCards = append(allCards, c)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
 	}
 
 	h.CardsMu.Lock()
@@ -837,6 +1045,19 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	slog.Info("APIScan: Received image", "filename", header.Filename, "size", header.Size)
 
 	lang := r.FormValue("lang")
+	game := models.NormalizeGame(r.FormValue("game"))
+	if game != "" {
+		var valid bool
+		cards, valid = filterCardsByGame(cards, game)
+		if !valid {
+			http.Error(w, "Unsupported TCG", http.StatusBadRequest)
+			return
+		}
+		if len(cards) == 0 {
+			http.Error(w, "No cards are available for the selected TCG", http.StatusUnprocessableEntity)
+			return
+		}
+	}
 
 	imgBytes, err := io.ReadAll(file)
 	if err != nil {
@@ -854,7 +1075,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	// Get user currency preference
 	var userCurrency string
 	if userID, ok := r.Context().Value(auth.UserContextKey{}).(string); ok {
-		_ = h.DB.QueryRow("SELECT currency FROM users WHERE id = $1", userID).Scan(&userCurrency)
+		_ = h.DB.QueryRowContext(r.Context(), "SELECT currency FROM users WHERE id = $1", userID).Scan(&userCurrency)
 	}
 	if userCurrency == "" {
 		userCurrency = "EUR"
@@ -879,7 +1100,24 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 
 	// SCAN-07, SCAN-09, SCAN-16: Use detection pipeline if available
 	if h.Detection != nil {
-		result := h.Detection.Detect(imgBytes, cards, lang)
+		select {
+		case scanDetectionSlots <- struct{}{}:
+		case <-ctx.Done():
+			http.Error(w, "Scan timed out while waiting for detector capacity", http.StatusRequestTimeout)
+			return
+		}
+		resultCh := make(chan *service.DetectionResult, 1)
+		go func() {
+			defer func() { <-scanDetectionSlots }()
+			resultCh <- h.Detection.DetectContext(ctx, imgBytes, cards, lang)
+		}()
+		var result *service.DetectionResult
+		select {
+		case result = <-resultCh:
+		case <-ctx.Done():
+			http.Error(w, "Scan timed out; try a clearer image or another language", http.StatusRequestTimeout)
+			return
+		}
 		text = result.OCRText
 		processedImg = result.ProcessedImage
 
@@ -967,7 +1205,7 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	if detectedCard == "" {
 		slog.Info("APIScan: Fingerprint missed, falling back to OCR")
 		var ocrMatch string
-		text, ocrMatch, processedImg, err = service.ProcessCardScan(imgBytes, cards, lang, h.LLM)
+		text, ocrMatch, processedImg, err = service.ProcessCardScanContext(ctx, imgBytes, cards, lang, h.LLM)
 		if err != nil {
 			slog.Error("OCR: Failed to process scan", "error", err)
 			http.Error(w, "Detection failed", http.StatusInternalServerError)
@@ -1008,4 +1246,22 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		slog.Error("Failed to encode JSON response", "error", err)
 	}
+}
+
+func filterCardsByGame(cards []models.Card, game string) ([]models.Card, bool) {
+	validGames := map[string]struct{}{
+		"pokemon": {}, "magic": {}, "one_piece": {}, "lorcana": {}, "weiss_schwarz": {}, "yugioh": {},
+	}
+	game = models.NormalizeGame(game)
+	if _, ok := validGames[game]; !ok {
+		return nil, false
+	}
+
+	filtered := make([]models.Card, 0, len(cards))
+	for _, card := range cards {
+		if models.NormalizeGame(card.Game) == game {
+			filtered = append(filtered, card)
+		}
+	}
+	return filtered, true
 }

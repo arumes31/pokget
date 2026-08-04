@@ -1,81 +1,70 @@
-<div class="flex flex-col h-full space-y-6" 
-     x-data="{ 
-        myOffer: 150, 
-        theirOffer: 165,
-        loading: false,
-        async generateLog() {
-            this.loading = true;
-            await new Promise(r => setTimeout(r, 1000));
-            this.loading = false;
-            $dispatch('notify', { msg: 'Trade log generated and saved!', type: 'success' });
+<div class="flex flex-col space-y-6"
+    x-data="{
+        myOffer: 0,
+        myCard: '',
+        myPortfolioId: '',
+        theirOffer: 0,
+        theirCards: '',
+        downloadLog() {
+            const difference = Number(this.theirOffer || 0) - Number(this.myOffer || 0);
+            const text = [
+                'Pokget Trade Log',
+                'Generated: ' + new Date().toISOString(),
+                'My card: ' + this.myCard,
+                'Portfolio item: ' + this.myPortfolioId,
+                'My offer: {{ .CurrencySymbol }}' + Number(this.myOffer || 0).toFixed(2),
+                'Their offer: {{ .CurrencySymbol }}' + Number(this.theirOffer || 0).toFixed(2),
+                'Difference: {{ .CurrencySymbol }}' + difference.toFixed(2),
+                'Their cards / notes: ' + (this.theirCards || 'Not specified'),
+                'This log is downloaded locally and is not stored by Pokget.'
+            ].join('\n');
+            const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'pokget-trade-' + new Date().toISOString().slice(0, 10) + '.txt';
+            link.click();
+            URL.revokeObjectURL(url);
+            $dispatch('notify', { msg: 'Trade log downloaded', type: 'success' });
         }
-     }">
-    <div class="flex items-center justify-between px-1">
-        <h2 class="text-lg font-bold">Trade Analyzer</h2>
-        <button class="glass-button p-2 rounded-lg text-white/40 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500/50" aria-label="Add card to trade">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+    }">
+    <div>
+        <h2 class="text-xl font-bold">Trade Analyzer</h2>
+        <p class="mt-1 text-xs text-white/50">Compare current market values and download a private, non-persisted trade log.</p>
+    </div>
+
+    <div class="glass-card space-y-4 rounded-2xl p-5 border-emerald-500/20">
+        <label for="my-trade-card" class="block text-[10px] font-bold uppercase tracking-widest text-emerald-300">My card</label>
+        <select id="my-trade-card" x-model="myPortfolioId"
+            @change="myOffer = Number($event.target.selectedOptions[0].dataset.price || 0); myCard = $event.target.selectedOptions[0].dataset.label || ''"
+            class="w-full rounded-xl border border-white/10 bg-surface px-4 py-3 text-sm">
+            <option value="" data-price="0" data-label="">Select from your collection</option>
+            {{ range .Portfolio }}
+            <option value="{{ .ID }}"
+                data-price="{{ if eq $.UserCurrency "EUR" }}{{ .Card.PriceEUR }}{{ else }}{{ .Card.PriceUSD }}{{ end }}"
+                data-label="{{ .Card.Name }} — {{ .Card.Set }} ({{ .Condition }})">
+                {{ .Card.Name }} — {{ .Card.Set }} ({{ .Condition }})
+            </option>
+            {{ end }}
+        </select>
+        <p class="text-right text-lg font-bold text-emerald-300" x-text="'{{ .CurrencySymbol }}' + Number(myOffer).toFixed(2)"></p>
+    </div>
+
+    <div class="glass-card space-y-4 rounded-2xl p-5 border-blue-500/20">
+        <label for="their-offer" class="block text-[10px] font-bold uppercase tracking-widest text-blue-300">Their offer value</label>
+        <input id="their-offer" type="number" min="0" step="0.01" x-model.number="theirOffer"
+            class="w-full rounded-xl border border-white/10 bg-surface px-4 py-3 text-sm">
+        <label for="their-cards" class="block text-[10px] font-bold uppercase tracking-widest text-blue-300">Cards / notes</label>
+        <textarea id="their-cards" rows="3" x-model="theirCards" placeholder="Card names, conditions, or deal notes"
+            class="w-full rounded-xl border border-white/10 bg-surface px-4 py-3 text-sm"></textarea>
+    </div>
+
+    <div class="glass-card rounded-2xl p-6" role="region" aria-labelledby="trade-verdict-title">
+        <h3 id="trade-verdict-title" class="text-sm font-bold">Trade Verdict</h3>
+        <p class="mt-3 text-sm text-white/70"
+            x-text="Number(theirOffer) === Number(myOffer) ? 'Even market value' : (Number(theirOffer) > Number(myOffer) ? 'In your favor by ' : 'Against you by ') + '{{ .CurrencySymbol }}' + Math.abs(Number(theirOffer) - Number(myOffer)).toFixed(2)"></p>
+        <button type="button" @click="downloadLog()" :disabled="!myPortfolioId || Number(myOffer) <= 0 || Number(theirOffer) <= 0"
+            class="mt-5 w-full rounded-xl bg-primary py-3 text-xs font-bold text-on-primary disabled:cursor-not-allowed disabled:opacity-40">
+            DOWNLOAD TRADE LOG
         </button>
-    </div>
-
-    <!-- My Side -->
-    <div class="space-y-3">
-        <div class="flex items-center justify-between px-1">
-            <span class="text-[10px] font-bold text-white/40 uppercase tracking-wider">My Offer</span>
-            <span class="text-sm font-bold text-emerald-400" x-text="'{{ .CurrencySymbol }}' + myOffer.toFixed(2)"></span>
-        </div>
-        <button class="w-full glass-card p-4 flex items-center justify-between border-emerald-500/20 text-left hover:border-emerald-500/50 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/50" aria-label="Charizard VMAX from Shining Fates, valued at {{ .CurrencySymbol }}150.00">
-            <div class="flex items-center gap-3">
-                <img src="https://images.pokemontcg.io/swsh45/19_hires.png" alt="Charizard VMAX" class="w-10 h-14 object-contain">
-                <div>
-                    <p class="text-xs font-bold">Charizard VMAX</p>
-                    <p class="text-[10px] text-white/40">Shining Fates</p>
-                </div>
-            </div>
-            <span class="text-xs font-bold text-white/60">{{ .CurrencySymbol }}150.00</span>
-        </button>
-    </div>
-
-    <!-- Swap Icon -->
-    <div class="flex justify-center -my-3 z-10">
-        <div class="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center border-4 border-[#0a0a0a] shadow-lg shadow-purple-600/20" aria-hidden="true">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
-        </div>
-    </div>
-
-    <!-- Their Side -->
-    <div class="space-y-3">
-        <div class="flex items-center justify-between px-1">
-            <span class="text-[10px] font-bold text-white/40 uppercase tracking-wider">Their Offer</span>
-            <span class="text-sm font-bold text-blue-400" x-text="'{{ .CurrencySymbol }}' + theirOffer.toFixed(2)"></span>
-        </div>
-        <button class="w-full glass-card p-4 flex items-center justify-between border-blue-500/20 text-left hover:border-blue-500/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50" aria-label="Lugia V from Silver Tempest, valued at {{ .CurrencySymbol }}165.00">
-            <div class="flex items-center gap-3">
-                <img src="https://images.pokemontcg.io/swsh12/186_hires.png" alt="Lugia V" class="w-10 h-14 object-contain">
-                <div>
-                    <p class="text-xs font-bold">Lugia V</p>
-                    <p class="text-[10px] text-white/40">Silver Tempest</p>
-                </div>
-            </div>
-            <span class="text-xs font-bold text-white/60">{{ .CurrencySymbol }}165.00</span>
-        </button>
-    </div>
-
-    <!-- Analysis -->
-    <div class="mt-auto pt-6">
-        <div class="glass-card p-6 border-t-4 border-blue-500/50" role="region" aria-labelledby="verdict-title">
-            <div class="flex items-center justify-between mb-4">
-                <h3 id="verdict-title" class="text-sm font-bold">Trade Verdict</h3>
-                <span class="bg-blue-500/20 text-blue-400 px-2 py-1 rounded text-[10px] font-bold uppercase" x-text="'+' + (((theirOffer/myOffer)-1)*100).toFixed(0) + '% Value'"></span>
-            </div>
-            <p class="text-xs text-white/60 leading-relaxed">
-                This trade is <span class="text-blue-400 font-bold">in your favor</span>. You are gaining roughly <span class="text-white font-bold" x-text="'{{ .CurrencySymbol }}' + (theirOffer - myOffer).toFixed(2)"></span> in market value.
-            </p>
-            <button @click="generateLog" 
-                    :disabled="loading"
-                    class="w-full bg-white/10 hover:bg-white/20 py-3 rounded-xl font-bold text-xs mt-6 transition-all focus:outline-none focus:ring-2 focus:ring-white/20 disabled:opacity-50">
-                <span x-show="!loading">GENERATE TRADE LOG</span>
-                <span x-show="loading">Generating...</span>
-            </button>
-        </div>
     </div>
 </div>

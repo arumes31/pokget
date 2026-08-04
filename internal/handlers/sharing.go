@@ -22,6 +22,7 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
 	"log/slog"
 	"net/http"
 	"pokget/internal/auth"
@@ -40,15 +41,16 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	var email string
 	var rank string
 	var xp int
+	var currency string
 
-	err := h.DB.QueryRow(`
-		SELECT id, email, rank_title, xp 
+	err := h.DB.QueryRowContext(r.Context(), `
+		SELECT id, email, COALESCE(rank_title, ''), COALESCE(xp, 0), COALESCE(currency, 'EUR')
 		FROM users 
 		WHERE public_slug = $1 AND is_public_profile = TRUE`,
-		slug).Scan(&userID, &email, &rank, &xp)
+		slug).Scan(&userID, &email, &rank, &xp, &currency)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			slog.Warn("PublicVault: Vault not found", "slug", slug)
 			http.Error(w, "Vault not found", http.StatusNotFound)
 		} else {
@@ -59,9 +61,10 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch public portfolio items
-	rows, err := h.DB.Query(`
+	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT p.id, p.condition, p.format, p.grade, p.grading_company, p.notes, 
-		       c.name, c.set_name, c.price_usd, c.price_eur, c.image_url, c.game
+		       c.name, c.set_name, COALESCE(c.price_usd, 0), COALESCE(c.price_eur, 0),
+		       COALESCE(c.image_url, ''), COALESCE(c.game, '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1 AND p.is_public = TRUE`, userID)
@@ -76,23 +79,41 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	portfolio := make([]models.PortfolioItem, 0, 64) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
 	for rows.Next() {
 		var p models.PortfolioItem
-		if err := rows.Scan(&p.ID, &p.Condition, &p.Format, &p.Grade, &p.GradingCompany, &p.Notes,
-			&p.Card.Name, &p.Card.Set, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.ImageURL, &p.Card.Game); err == nil {
-			portfolio = append(portfolio, p)
+		var grade, gradingCompany, notes sql.NullString
+		if err := rows.Scan(&p.ID, &p.Condition, &p.Format, &grade, &gradingCompany, &notes,
+			&p.Card.Name, &p.Card.Set, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.ImageURL, &p.Card.Game); err != nil {
+			slog.Error("Failed to scan public vault item", "error", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
 		}
+		p.Grade = grade.String
+		p.GradingCompany = gradingCompany.String
+		p.Notes = notes.String
+		portfolio = append(portfolio, p)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("Failed while reading public vault", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
 	}
 	// BOLT OPTIMIZATION: Use strings.IndexByte for more efficient string extraction (one less allocation than Split)
 	username := email
 	if idx := strings.IndexByte(email, '@'); idx != -1 {
 		username = email[:idx]
 	}
+	currencySymbol := "€"
+	if currency == "USD" {
+		currencySymbol = "$"
+	}
 
 	h.render(w, r, "public_vault.html", map[string]interface{}{
-		"Username":  username,
-		"Portfolio": portfolio,
-		"Rank":      rank,
-		"XP":        xp,
-		"IsPublic":  true,
+		"Username":       username,
+		"Portfolio":      portfolio,
+		"Rank":           rank,
+		"XP":             xp,
+		"IsPublic":       true,
+		"UserCurrency":   currency,
+		"CurrencySymbol": currencySymbol,
 	})
 }
 
@@ -109,11 +130,19 @@ func (h *Handler) ToggleVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	itemID := r.FormValue("item_id")
+	if itemID == "" {
+		http.Error(w, "item_id is required", http.StatusBadRequest)
+		return
+	}
 	isPublic := r.FormValue("is_public") == "true"
 
-	_, err := h.DB.Exec("UPDATE portfolio SET is_public = $1 WHERE id = $2 AND user_id = $3", isPublic, itemID, userID)
+	result, err := h.DB.ExecContext(r.Context(), "UPDATE portfolio SET is_public = $1 WHERE id = $2 AND user_id = $3", isPublic, itemID, userID)
 	if err != nil {
 		http.Error(w, "Failed to update visibility", http.StatusInternalServerError)
+		return
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		http.Error(w, "Portfolio item not found", http.StatusNotFound)
 		return
 	}
 

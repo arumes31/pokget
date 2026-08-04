@@ -24,6 +24,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -32,7 +33,7 @@ import (
 func TestConnect_MissingEnv(t *testing.T) {
 	// Clear env
 	os.Setenv("DB_HOST", "")
-	
+
 	_, err := Connect()
 	if err == nil {
 		t.Error("Expected error when env vars are missing")
@@ -110,12 +111,22 @@ func TestSeedDatabase_Error(t *testing.T) {
 
 func TestInitDB_ConnectionError(t *testing.T) {
 	// Set env but invalid connection string (postgres will fail to open or ping)
-	os.Setenv("DB_HOST", "localhost")
-	os.Setenv("DB_PORT", "1") // Invalid port
-	os.Setenv("DB_USER", "user")
-	os.Setenv("DB_NAME", "name")
-	defer os.Unsetenv("DB_HOST")
-	
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_PORT", "1") // Invalid port
+	t.Setenv("DB_USER", "user")
+	t.Setenv("DB_PASSWORD", "")
+	t.Setenv("DB_NAME", "name")
+
+	staleDB, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create stale database: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = staleDB.Close()
+		DB = nil
+	})
+	DB = staleDB
+
 	InitDB()
 
 	if DB != nil {
@@ -134,30 +145,43 @@ func TestRunMigrations_NilDB(t *testing.T) {
 func TestApplyMigrations_NoDir(t *testing.T) {
 	db, _, _ := sqlmock.New()
 	defer db.Close()
-	
+
 	err := ApplyMigrations(db, "/non/existent/path")
 	if err == nil {
 		t.Error("Expected error for non-existent migration directory")
 	}
 }
 
-type mockMigrator struct {
-	err error
+func TestApplyMigrations_NilDatabase(t *testing.T) {
+	err := ApplyMigrations(nil, t.TempDir())
+	if err == nil {
+		t.Fatal("ApplyMigrations() error = nil, want uninitialized database error")
+	}
+	if !strings.Contains(err.Error(), "database connection is not initialized") {
+		t.Fatalf("ApplyMigrations() error = %q, want uninitialized database error", err)
+	}
 }
-func (m *mockMigrator) Up() error { return m.err }
-func (m *mockMigrator) Force(_ int) error { return nil }
-func (m *mockMigrator) Version() (uint, bool, error) { return 0, false, nil }
+
+type mockMigrator struct {
+	err        error
+	version    uint
+	dirty      bool
+	versionErr error
+	forced     bool
+	closed     bool
+}
+
+func (m *mockMigrator) Up() error                    { return m.err }
+func (m *mockMigrator) Force(_ int) error            { m.forced = true; return nil }
+func (m *mockMigrator) Version() (uint, bool, error) { return m.version, m.dirty, m.versionErr }
+func (m *mockMigrator) Close() (error, error)        { m.closed = true; return nil, nil }
 
 func TestApplyMigrations_Success(t *testing.T) {
 	dbMock, _, _ := sqlmock.New()
 	defer dbMock.Close()
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(_ *sql.DB, _ string) (interface {
-		Up() error
-		Force(int) error
-		Version() (uint, bool, error)
-	}, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (migrationRunner, error) {
 		return &mockMigrator{err: nil}, nil
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
@@ -175,11 +199,7 @@ func TestApplyMigrations_ErrorNew(t *testing.T) {
 	defer dbMock.Close()
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(_ *sql.DB, _ string) (interface {
-		Up() error
-		Force(int) error
-		Version() (uint, bool, error)
-	}, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (migrationRunner, error) {
 		return nil, fmt.Errorf("new fail")
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
@@ -196,11 +216,7 @@ func TestApplyMigrations_ErrorUp(t *testing.T) {
 	defer dbMock.Close()
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(_ *sql.DB, _ string) (interface {
-		Up() error
-		Force(int) error
-		Version() (uint, bool, error)
-	}, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (migrationRunner, error) {
 		return &mockMigrator{err: fmt.Errorf("up fail")}, nil
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
@@ -212,24 +228,46 @@ func TestApplyMigrations_ErrorUp(t *testing.T) {
 	}
 }
 
+func TestApplyMigrations_DirtyStateRequiresManualRecovery(t *testing.T) {
+	dbMock, _, _ := sqlmock.New()
+	defer dbMock.Close()
+
+	dirtyMigrator := &mockMigrator{
+		err:     fmt.Errorf("partial migration failure"),
+		version: 7,
+		dirty:   true,
+	}
+	oldNewMigrator := NewMigrator
+	NewMigrator = func(_ *sql.DB, _ string) (migrationRunner, error) {
+		return dirtyMigrator, nil
+	}
+	defer func() { NewMigrator = oldNewMigrator }()
+
+	err := ApplyMigrations(dbMock, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "manual recovery") {
+		t.Fatalf("ApplyMigrations() error = %v, want manual recovery error", err)
+	}
+	if dirtyMigrator.forced {
+		t.Fatal("ApplyMigrations() forced a dirty migration version")
+	}
+	if !dirtyMigrator.closed {
+		t.Fatal("ApplyMigrations() did not close the migration drivers")
+	}
+}
+
 func TestRunMigrations_Success(t *testing.T) {
 	dbMock, _, _ := sqlmock.New()
 	defer dbMock.Close()
 	DB = dbMock
+	t.Cleanup(func() { DB = nil })
 
 	oldNewMigrator := NewMigrator
-	NewMigrator = func(_ *sql.DB, _ string) (interface {
-		Up() error
-		Force(int) error
-		Version() (uint, bool, error)
-	}, error) {
+	NewMigrator = func(_ *sql.DB, _ string) (migrationRunner, error) {
 		return &mockMigrator{err: nil}, nil
 	}
 	defer func() { NewMigrator = oldNewMigrator }()
 
-	// Create temporary migrations directory
-	_ = os.Mkdir("migrations", 0755)
-	defer os.RemoveAll("migrations")
+	t.Setenv("MIGRATIONS_PATH", t.TempDir())
 
 	err := RunMigrations()
 	if err != nil {
@@ -260,6 +298,9 @@ func TestConnect_Success(t *testing.T) {
 	}
 	if db != dbMock {
 		t.Error("Expected mocked DB instance")
+	}
+	if got := db.Stats().MaxOpenConnections; got != maxOpenConnections {
+		t.Errorf("MaxOpenConnections = %d, want %d", got, maxOpenConnections)
 	}
 }
 
@@ -295,18 +336,12 @@ func TestInitDB(t *testing.T) {
 		defer func() { sqlOpen = oldSQLOpen }()
 
 		oldNewMigrator := NewMigrator
-		NewMigrator = func(_ *sql.DB, _ string) (interface {
-			Up() error
-			Force(int) error
-			Version() (uint, bool, error)
-		}, error) {
+		NewMigrator = func(_ *sql.DB, _ string) (migrationRunner, error) {
 			return &mockMigrator{err: nil}, nil
 		}
 		defer func() { NewMigrator = oldNewMigrator }()
 
-		// Create temporary migrations directory
-		_ = os.Mkdir("migrations", 0755)
-		defer os.RemoveAll("migrations")
+		t.Setenv("MIGRATIONS_PATH", t.TempDir())
 
 		os.Setenv("DB_HOST", "localhost")
 		os.Setenv("DB_PORT", "5432")

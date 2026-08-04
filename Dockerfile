@@ -1,4 +1,16 @@
-# Build stage
+# Static asset stage
+FROM node:24-alpine AS static-assets
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+
+COPY scripts ./scripts
+COPY static ./static
+RUN npm run build:static && npm run check:static
+
+# Go build stage
 FROM golang:1.26.4-alpine AS builder
 
 # Install Tesseract OCR dependencies
@@ -20,7 +32,8 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN go build -o main ./cmd/pokget/main.go
+RUN go build -o main ./cmd/pokget/main.go && \
+    go build -o catalog ./cmd/catalog/main.go
 
 # Final stage
 FROM alpine:latest
@@ -48,12 +61,13 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/main .
+COPY --from=builder /app/catalog .
 COPY --from=builder /app/templates ./templates
-COPY --from=builder /app/static ./static
+COPY --from=static-assets /app/dist/static ./static
 COPY --from=builder /app/migrations ./migrations
 
 # Expose port
-EXPOSE 8080
+EXPOSE 18066
 
 # Run the binary
 CMD ["./main"]

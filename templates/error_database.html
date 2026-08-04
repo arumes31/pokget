@@ -1,20 +1,28 @@
-<div class="space-y-lg animate-in">
-    <div class="flex flex-col gap-xs">
-        <h2 class="font-h2 text-2xl font-bold text-on-surface">Misprint Encyclopedia</h2>
-        <p class="text-on-surface-variant text-sm opacity-60">A community-driven database of known errors, miscuts, and holoshifts.</p>
+<div class="space-y-lg animate-in" x-data="{ showSubmitErrorModal: false, submitError: '' }">
+    <div class="flex items-start justify-between gap-4">
+        <div class="flex flex-col gap-xs">
+            <h2 class="font-h2 text-2xl font-bold text-on-surface">Misprint Encyclopedia</h2>
+            <p class="text-on-surface-variant text-sm opacity-60">A community-driven database of known errors, miscuts, and holoshifts.</p>
+        </div>
+        {{ if .CanSubmit }}
+        <button type="button" x-ref="submitErrorTrigger" @click="submitError = ''; showSubmitErrorModal = true; $nextTick(() => $refs.errorCardId.focus())"
+            class="bg-primary text-on-primary px-4 py-3 rounded-xl text-xs font-bold">SUBMIT ENTRY</button>
+        {{ else }}
+        <a href="/auth" class="bg-primary/10 text-primary px-4 py-3 rounded-xl text-xs font-bold">SIGN IN TO CONTRIBUTE</a>
+        {{ end }}
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-lg">
         {{ range .Errors }}
         <div class="glass-card rounded-xl p-md flex gap-md relative group hover:border-primary/40 transition-all">
             <div class="w-32 aspect-[3/4] rounded-lg overflow-hidden flex-shrink-0 shadow-xl bg-surface">
-                <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover">
+                <img src="{{ .ImageURL }}" alt="{{ .CardName }}" class="w-full h-full object-cover">
             </div>
             <div class="flex flex-col justify-between py-xs">
                 <div>
                     <span class="px-2 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-wider">{{ .ErrorType }}</span>
-                    <h3 class="font-bold text-on-surface mt-2">{{ .Card.Name }}</h3>
-                    <p class="text-[10px] text-on-surface-variant uppercase tracking-widest opacity-60">{{ .Card.Set }}</p>
+                    <h3 class="font-bold text-on-surface mt-2">{{ .CardName }}</h3>
+                    <p class="text-[10px] text-on-surface-variant uppercase tracking-widest opacity-60">{{ .SetName }}</p>
                 </div>
                 <div class="space-y-sm">
                     <p class="text-xs text-on-surface-variant line-clamp-3">"{{ .Description }}"</p>
@@ -31,8 +39,46 @@
                 <span class="material-symbols-outlined text-4xl">find_in_page</span>
             </div>
             <p class="font-label-md uppercase tracking-widest opacity-40 text-sm">No errors documented yet</p>
-            <button class="mt-8 bg-primary text-on-primary px-8 py-3 rounded-xl text-xs font-bold shadow-2xl shadow-primary/20 hover:scale-105 transition-transform" onclick="openSubmitErrorModal()">SUBMIT FIRST ENTRY</button>
+            {{ if .CanSubmit }}
+            <button type="button" class="mt-8 bg-primary text-on-primary px-8 py-3 rounded-xl text-xs font-bold shadow-2xl shadow-primary/20 hover:scale-105 transition-transform" @click="submitError = ''; showSubmitErrorModal = true; $nextTick(() => $refs.errorCardId.focus())">SUBMIT FIRST ENTRY</button>
+            {{ end }}
         </div>
         {{ end }}
     </div>
+
+    {{ if .CanSubmit }}
+    <div x-show="showSubmitErrorModal" x-cloak @keydown.escape.window="if (showSubmitErrorModal) { showSubmitErrorModal = false; $nextTick(() => $refs.submitErrorTrigger?.focus()) }"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-5" role="dialog" aria-modal="true" aria-labelledby="submit-error-title">
+        <div class="glass-card w-full max-w-md rounded-2xl p-6" @click.outside="showSubmitErrorModal = false">
+            <div class="flex items-center justify-between">
+                <h3 id="submit-error-title" class="text-xl font-bold">Submit a misprint</h3>
+                <button type="button" @click="showSubmitErrorModal = false; $nextTick(() => $refs.submitErrorTrigger?.focus())" aria-label="Close submission dialog"
+                    class="material-symbols-outlined text-white/50">close</button>
+            </div>
+            <form hx-post="/errors/submit" hx-swap="none" @htmx:before-request="submitError = ''"
+                @htmx:after-request="if ($event.detail.successful) { showSubmitErrorModal = false; htmx.ajax('GET', '/errors', { target: '#main-content', source: document.body }); $nextTick(() => $refs.submitErrorTrigger?.focus()) } else { submitError = $event.detail.xhr.responseText.trim() || 'Unable to submit misprint' }"
+                class="mt-5 space-y-4">
+                <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+                <p x-show="submitError" x-text="submitError" role="alert" aria-live="assertive"
+                    class="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400"></p>
+                <label class="block text-xs font-bold">Card ID
+                    <input x-ref="errorCardId" name="card_id" required class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                </label>
+                <label class="block text-xs font-bold">Error type
+                    <input name="error_type" required placeholder="Miscut, ink error, holoshift…"
+                        class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                </label>
+                <label class="block text-xs font-bold">Description
+                    <textarea name="description" required rows="3"
+                        class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3"></textarea>
+                </label>
+                <label class="block text-xs font-bold">Estimated market multiplier
+                    <input type="number" name="multiplier" value="1" min="0.01" max="100" step="0.01" required
+                        class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                </label>
+                <button type="submit" class="w-full rounded-xl bg-primary py-3 font-bold text-on-primary">SUBMIT FOR REVIEW</button>
+            </form>
+        </div>
+    </div>
+    {{ end }}
 </div>

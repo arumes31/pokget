@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/anthonynsimon/bild v0.15.0
 	github.com/chromedp/chromedp v0.15.1
 	github.com/corona10/goimagehash v1.1.0
@@ -25,7 +26,6 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
-	github.com/PuerkitoBio/goquery v1.12.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/antchfx/htmlquery v1.3.6 // indirect
 	github.com/antchfx/xmlquery v1.5.1 // indirect

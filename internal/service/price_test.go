@@ -20,7 +20,110 @@
 
 package service
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"pokget/internal/models"
+)
+
+func TestPriceGameMappings(t *testing.T) {
+	tests := []struct {
+		game       string
+		cardmarket string
+		tcgplayer  string
+	}{
+		{game: "Pokémon", cardmarket: "Pokemon", tcgplayer: "pokemon"},
+		{game: "mtg", cardmarket: "Magic", tcgplayer: "magic"},
+		{game: "one_piece", cardmarket: "OnePiece", tcgplayer: "one-piece-card-game"},
+		{game: "Weiss Schwarz", cardmarket: "WeissSchwarz", tcgplayer: "weiss-schwarz"},
+		{game: "lorcana", cardmarket: "Lorcana", tcgplayer: "lorcana"},
+		{game: "Yu-Gi-Oh!", cardmarket: "YuGiOh", tcgplayer: "yugioh"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.game, func(t *testing.T) {
+			cardmarket, err := cardmarketGameSegment(tt.game)
+			if err != nil {
+				t.Fatalf("cardmarketGameSegment(%q): %v", tt.game, err)
+			}
+			if cardmarket != tt.cardmarket {
+				t.Fatalf("cardmarketGameSegment(%q) = %q, want %q", tt.game, cardmarket, tt.cardmarket)
+			}
+
+			tcgplayer, err := tcgPlayerProduct(tt.game)
+			if err != nil {
+				t.Fatalf("tcgPlayerProduct(%q): %v", tt.game, err)
+			}
+			if tcgplayer != tt.tcgplayer {
+				t.Fatalf("tcgPlayerProduct(%q) = %q, want %q", tt.game, tcgplayer, tt.tcgplayer)
+			}
+		})
+	}
+
+	if _, err := cardmarketGameSegment(""); err == nil {
+		t.Fatal("empty game unexpectedly defaulted to a Cardmarket product")
+	}
+}
+
+func TestCardmarketScrapeContextCancelsRequest(t *testing.T) {
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		close(started)
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+
+	scraper := &CardmarketScraper{BaseURL: server.URL}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := scraper.ScrapeContext(ctx, models.Card{Name: "Card", Set: "Set", Game: "pokemon"})
+		done <- err
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("Cardmarket request did not start")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("ScrapeContext() returned nil after cancellation")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ScrapeContext() did not stop after cancellation")
+	}
+}
+
+func TestCardmarketForbiddenOpensCircuitBreaker(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		http.Error(writer, "forbidden", http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	scraper := &CardmarketScraper{BaseURL: server.URL}
+	card := models.Card{Name: "Card", Set: "Set", Game: "pokemon"}
+	for attempt := 0; attempt < 2; attempt++ {
+		_, err := scraper.ScrapeWithRetryContext(context.Background(), card, 0)
+		if !errors.Is(err, ErrPriceSourceBlocked) {
+			t.Fatalf("attempt %d error = %v, want ErrPriceSourceBlocked", attempt+1, err)
+		}
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("Cardmarket requests = %d, want 1 after circuit breaker opens", got)
+	}
+}
 
 func TestParseCardmarketPrice(t *testing.T) {
 	tests := []struct {

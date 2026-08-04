@@ -21,16 +21,19 @@
 package db
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file" // Register file source for migrations
-	_ "github.com/lib/pq"                                // Register PostgreSQL driver
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+	_ "github.com/lib/pq" // Register PostgreSQL driver
 )
 
 // DB is the global database connection pool used throughout the application.
@@ -46,6 +49,10 @@ var DB *sql.DB
 func InitDB() {
 	db, err := Connect()
 	if err != nil {
+		// Never leave a stale connection visible after a failed initialization.
+		// This matters for retrying startup in-process and keeps callers from
+		// mistaking a previous pool for the newly requested connection.
+		DB = nil
 		slog.Error("Database connection failed", "error", err)
 		return
 	}
@@ -57,6 +64,13 @@ func InitDB() {
 }
 
 var sqlOpen = sql.Open
+
+const (
+	maxOpenConnections = 20
+	maxIdleConnections = 5
+	connectionLifetime = 30 * time.Minute
+	connectionIdleTime = 5 * time.Minute
+)
 
 func Connect() (*sql.DB, error) {
 	host := os.Getenv("DB_HOST")
@@ -84,6 +98,10 @@ func Connect() (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error opening database: %w", err)
 	}
+	db.SetMaxOpenConns(maxOpenConnections)
+	db.SetMaxIdleConns(maxIdleConnections)
+	db.SetConnMaxLifetime(connectionLifetime)
+	db.SetConnMaxIdleTime(connectionIdleTime)
 
 	if err = db.Ping(); err != nil {
 		_ = db.Close()
@@ -99,26 +117,53 @@ func RunMigrations() error {
 		return fmt.Errorf("database connection is not initialized")
 	}
 
-	absPath, err := filepath.Abs("migrations")
+	migrationsPath := os.Getenv("MIGRATIONS_PATH")
+	if migrationsPath == "" {
+		migrationsPath = "migrations"
+	}
+
+	absPath, err := filepath.Abs(migrationsPath)
 	if err != nil {
 		return err
 	}
 	return ApplyMigrations(DB, absPath)
 }
 
-var NewMigrator = func(db *sql.DB, absPath string) (interface {
+type migrationRunner interface {
 	Up() error
-	Force(int) error
 	Version() (uint, bool, error)
-}, error) {
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	Close() (sourceErr, databaseErr error)
+}
+
+var NewMigrator = func(db *sql.DB, absPath string) (migrationRunner, error) {
+	sourceDriver, err := iofs.New(os.DirFS(absPath), ".")
 	if err != nil {
 		return nil, err
 	}
-	return migrate.NewWithDatabaseInstance("file://"+absPath, "postgres", driver)
+
+	// The migration driver owns and closes its connection. Give it a dedicated
+	// connection from the application pool rather than the pool itself;
+	// postgres.WithInstance would close the shared *sql.DB when m.Close runs.
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		_ = sourceDriver.Close()
+		return nil, err
+	}
+	databaseDriver, err := postgres.WithConnection(context.Background(), conn, &postgres.Config{})
+	if err != nil {
+		_ = conn.Close()
+		_ = sourceDriver.Close()
+		return nil, err
+	}
+
+	return migrate.NewWithInstance("iofs", sourceDriver, "postgres", databaseDriver)
 }
 
-func ApplyMigrations(db *sql.DB, absPath string) error {
+func ApplyMigrations(db *sql.DB, absPath string) (retErr error) {
+	if db == nil {
+		return fmt.Errorf("database connection is not initialized")
+	}
+
 	// Verify migrations directory exists
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
 		return fmt.Errorf("migrations directory not found at: %s", absPath)
@@ -128,6 +173,12 @@ func ApplyMigrations(db *sql.DB, absPath string) error {
 	if err != nil {
 		return fmt.Errorf("could not create migration instance: %w", err)
 	}
+	defer func() {
+		sourceErr, databaseErr := m.Close()
+		if closeErr := errors.Join(sourceErr, databaseErr); closeErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("could not close migration drivers: %w", closeErr))
+		}
+	}()
 
 	err = m.Up()
 	if err != nil && err != migrate.ErrNoChange {
@@ -137,17 +188,13 @@ func ApplyMigrations(db *sql.DB, absPath string) error {
 		}
 
 		if dirty {
-			slog.Warn("Database is dirty, attempting to force version and retry", "version", version)
-			if fErr := m.Force(int(version)); fErr != nil { // nolint:gosec // version is expected to be within int range
-				return fmt.Errorf("could not force version %d after dirty state: %w", version, fErr)
-			}
-			// Retry Up after forcing
-			if retryErr := m.Up(); retryErr != nil && retryErr != migrate.ErrNoChange {
-				return fmt.Errorf("could not apply migrations after forcing: %w", retryErr)
-			}
-		} else {
-			return fmt.Errorf("could not apply migrations: %w", err)
+			return fmt.Errorf(
+				"database migration version %d is dirty; manual recovery is required before restart: %w",
+				version,
+				err,
+			)
 		}
+		return fmt.Errorf("could not apply migrations: %w", err)
 	}
 
 	slog.Info("Database migrations applied successfully")

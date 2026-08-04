@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -52,8 +53,15 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 	}
 
 	// Validate Content-Security-Policy
-	if got := rr.Header().Get("Content-Security-Policy"); !strings.Contains(got, "default-src 'self'") {
-		t.Errorf("Expected Content-Security-Policy to contain \"default-src 'self'\", got %q", got)
+	csp := rr.Header().Get("Content-Security-Policy")
+	for _, directive := range []string{
+		"default-src 'self'",
+		"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+		"font-src 'self' https://fonts.gstatic.com",
+	} {
+		if !strings.Contains(csp, directive) {
+			t.Errorf("Content-Security-Policy does not contain %q: %q", directive, csp)
+		}
 	}
 
 	// Validate Referrer-Policy
@@ -61,8 +69,45 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 		t.Errorf("Expected Referrer-Policy: strict-origin-when-cross-origin, got %q", got)
 	}
 
-	// Validate Permissions-Policy
-	if got := rr.Header().Get("Permissions-Policy"); !strings.Contains(got, "camera=()") {
-		t.Errorf("Expected Permissions-Policy to contain \"camera=()\", got %q", got)
+	// The scanner is a same-origin feature, so camera access must be available to
+	// this application while remaining disabled for embedded cross-origin pages.
+	if got := rr.Header().Get("Permissions-Policy"); !strings.Contains(got, "camera=(self)") {
+		t.Errorf("Expected Permissions-Policy to contain \"camera=(self)\", got %q", got)
+	}
+}
+
+func TestConcurrentLimitMiddlewareRejectsExcessWork(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	firstStatus := make(chan int, 1)
+	handler := ConcurrentLimitMiddleware(1)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(entered)
+		<-release
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/scan", nil))
+		firstStatus <- response.Code
+	}()
+	<-entered
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/scan", nil))
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want %d", response.Code, http.StatusTooManyRequests)
+	}
+	if response.Header().Get("Retry-After") == "" {
+		t.Fatal("busy response is missing Retry-After")
+	}
+
+	close(release)
+	wg.Wait()
+	if status := <-firstStatus; status != http.StatusNoContent {
+		t.Fatalf("first status = %d, want %d", status, http.StatusNoContent)
 	}
 }

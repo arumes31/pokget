@@ -21,6 +21,7 @@
 package service
 
 import (
+	"pokget/internal/models"
 	"testing"
 )
 
@@ -143,6 +144,29 @@ func TestOCRCacheDifferentLanguages(t *testing.T) {
 	}
 	if entryJpn.DetectedCard != "ピカチュウ" {
 		t.Errorf("Expected Japanese card 'ピカチュウ', got %q", entryJpn.DetectedCard)
+	}
+}
+
+func TestOCRCacheKeyIncludesCandidateCorpus(t *testing.T) {
+	imageBytes := []byte("same image")
+	one := []models.Card{{ID: "one", Name: "Pikachu", Game: "pokemon", Language: "en"}}
+	two := []models.Card{{ID: "two", Name: "Charizard", Game: "pokemon", Language: "en"}}
+
+	if makeOCRCacheKey(imageBytes, "eng", one) == makeOCRCacheKey(imageBytes, "eng", two) {
+		t.Fatal("cache keys must change when the candidate corpus changes")
+	}
+	if makeOCRCacheKey(imageBytes, "eng", one) != makeOCRCacheKey(imageBytes, "eng", append([]models.Card(nil), one...)) {
+		t.Fatal("equivalent candidate corpora must produce stable cache keys")
+	}
+}
+
+func TestOCRCacheKeyIgnoresCandidateOrder(t *testing.T) {
+	imageBytes := []byte("same image")
+	first := []models.Card{{ID: "one", Name: "Pikachu"}, {ID: "two", Name: "Charizard"}}
+	second := []models.Card{first[1], first[0]}
+
+	if makeOCRCacheKey(imageBytes, "eng", first) != makeOCRCacheKey(imageBytes, "eng", second) {
+		t.Fatal("candidate ordering must not invalidate the OCR cache")
 	}
 }
 

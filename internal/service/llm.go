@@ -22,6 +22,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -53,21 +54,38 @@ func NewLLMService() *LLMService {
 		host = "pokget_ollama"
 	}
 	url := fmt.Sprintf("http://%s:11434", host)
-	svc := &LLMService{
+	return &LLMService{
 		BaseURL:    url,
 		Model:      "tinyllama", // Extremely fast on CPU
 		HTTPClient: &http.Client{Timeout: 5 * time.Minute},
 	}
-	go svc.AutoSetup()
-	return svc
 }
 
 func (s *LLMService) AutoSetup() {
+	s.AutoSetupContext(context.Background())
+}
+
+// AutoSetupContext ensures the configured Ollama model is available. Callers
+// choose when to start it so service configuration is complete before a
+// background goroutine reads it, and shutdown can cancel in-flight requests.
+func (s *LLMService) AutoSetupContext(ctx context.Context) {
 	slog.Info("LLM: Auto-setup started")
+	baseURL, model, client := s.BaseURL, s.Model, s.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
 
 	// 1. Check if model exists
-	resp, err := s.HTTPClient.Get(s.BaseURL + "/api/tags")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/tags", nil)
 	if err != nil {
+		slog.Error("LLM: Failed to create model check request", "error", err)
+		return
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
 		slog.Error("LLM: Failed to check models", "error", err)
 		return
 	}
@@ -90,28 +108,37 @@ func (s *LLMService) AutoSetup() {
 
 	exists := false
 	for _, m := range tagsResp.Models {
-		if strings.HasPrefix(m.Name, s.Model) {
+		if strings.HasPrefix(m.Name, model) {
 			exists = true
 			break
 		}
 	}
 
 	if exists {
-		slog.Info("LLM: Model already exists", "model", s.Model)
+		slog.Info("LLM: Model already exists", "model", model)
 		return
 	}
 
 	// 2. Pull model if not exists
-	slog.Info("LLM: Model not found, pulling...", "model", s.Model)
+	slog.Info("LLM: Model not found, pulling...", "model", model)
 	payload := map[string]interface{}{
-		"model":  s.Model,
+		"model":  model,
 		"stream": false,
 	}
 	jsonData, _ := json.Marshal(payload)
 
 	pullClient := &http.Client{Timeout: 15 * time.Minute} // Pulling models can take a long time
-	resp, err = pullClient.Post(s.BaseURL+"/api/pull", "application/json", bytes.NewBuffer(jsonData))
+	req, err = http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/pull", bytes.NewBuffer(jsonData))
 	if err != nil {
+		slog.Error("LLM: Failed to create model pull request", "error", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = pullClient.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
 		slog.Error("LLM: Failed to pull model", "error", err)
 		return
 	}
@@ -123,10 +150,14 @@ func (s *LLMService) AutoSetup() {
 		return
 	}
 
-	slog.Info("LLM: Model pulled successfully", "model", s.Model)
+	slog.Info("LLM: Model pulled successfully", "model", model)
 }
 
 func (s *LLMService) queryLLM(prompt string) (string, error) {
+	return s.queryLLMContext(context.Background(), prompt)
+}
+
+func (s *LLMService) queryLLMContext(ctx context.Context, prompt string) (string, error) {
 	payload := map[string]interface{}{
 		"model":  s.Model,
 		"prompt": prompt,
@@ -138,7 +169,12 @@ func (s *LLMService) queryLLM(prompt string) (string, error) {
 		return "", fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	resp, err := s.HTTPClient.Post(s.BaseURL+"/api/generate", "application/json", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.BaseURL+"/api/generate", bytes.NewReader(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create LLM request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.HTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("LLM request failed: %w", err)
 	}
@@ -205,6 +241,11 @@ func sanitizeOCRText(text string) string {
 // FuzzyMatchCard sends OCR text to the LLM for fuzzy matching against known cards.
 // SCAN-08: Only sends a shortlist of candidate cards instead of all 15K+ names.
 func (s *LLMService) FuzzyMatchCard(ocrText string, knownCards []models.Card) (string, error) {
+	return s.FuzzyMatchCardContext(context.Background(), ocrText, knownCards)
+}
+
+// FuzzyMatchCardContext matches OCR text while honoring request cancellation.
+func (s *LLMService) FuzzyMatchCardContext(ctx context.Context, ocrText string, knownCards []models.Card) (string, error) {
 	// SCAN-08: Create a shortlist of top candidates instead of sending all cards
 	shortlist := buildShortlist(ocrText, knownCards, 30)
 
@@ -235,7 +276,7 @@ Which of these card names is the most likely match?
 Known cards: %s.
 Respond ONLY with the card name. If no match is found, respond with "Unknown Card".`, sanitizedOCR, cardListStr)
 
-	response, err := s.queryLLM(prompt)
+	response, err := s.queryLLMContext(ctx, prompt)
 	if err != nil {
 		return "", err
 	}
@@ -268,6 +309,11 @@ Respond ONLY with the card name. If no match is found, respond with "Unknown Car
 // FuzzyMatchCardWithValidation sends OCR text to the LLM and validates the
 // response format and card existence (SCAN-15).
 func (s *LLMService) FuzzyMatchCardWithValidation(ocrText string, knownCards []models.Card) (*LLMCardResponse, error) {
+	return s.FuzzyMatchCardWithValidationContext(context.Background(), ocrText, knownCards)
+}
+
+// FuzzyMatchCardWithValidationContext validates an LLM match while honoring cancellation.
+func (s *LLMService) FuzzyMatchCardWithValidationContext(ctx context.Context, ocrText string, knownCards []models.Card) (*LLMCardResponse, error) {
 	shortlist := buildShortlist(ocrText, knownCards, 30)
 
 	cardNames := make([]string, 0, len(shortlist))
@@ -282,7 +328,7 @@ Known cards: %s.
 Respond in JSON format: {"card_name": "the card name", "confidence": 0.9}
 If no match is found, respond with: {"card_name": "Unknown Card", "confidence": 0.0}`, sanitizedOCR, strings.Join(cardNames, ", "))
 
-	response, err := s.queryLLM(prompt)
+	response, err := s.queryLLMContext(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("LLM query failed: %w", err)
 	}
@@ -377,7 +423,7 @@ func (s *LLMService) validatePlainTextResponse(text string, allCards []models.Ca
 }
 
 // buildShortlist creates a shortlist of candidate cards for LLM disambiguation (SCAN-08).
-// Uses Levenshtein distance to rank cards by similarity to the OCR text.
+// It scores cards based on card ID matching, exact name substring matching, CJK-aware normalized matching, and word overlap ratio.
 func buildShortlist(ocrText string, cards []models.Card, maxCandidates int) []models.Card {
 	if len(cards) == 0 {
 		return nil
@@ -398,17 +444,65 @@ func buildShortlist(ocrText string, cards []models.Card, maxCandidates int) []mo
 
 	for _, c := range cards {
 		nameLower := strings.ToLower(c.Name)
-		// Use Levenshtein distance as score (lower is better)
+		idLower := strings.ToLower(c.ID)
+
+		score := 0
+
+		// 1. Match card ID (very strong signal)
+		if idLower != "" && len(idLower) >= 3 {
+			if strings.Contains(ocrLower, idLower) {
+				score += 500
+			} else {
+				// Normalize O vs 0 and check
+				normOCR := strings.ReplaceAll(ocrLower, "0", "o")
+				normID := strings.ReplaceAll(idLower, "0", "o")
+				if strings.Contains(normOCR, normID) {
+					score += 400
+				}
+			}
+		}
+
+		// 2. Match card name exactly as substring
+		if strings.Contains(ocrLower, nameLower) {
+			score += 300 + len(nameLower)
+		} else {
+			// Check CJK normalized match (remove spaces/newlines)
+			ocrNoSpaces := strings.ReplaceAll(ocrLower, " ", "")
+			ocrNoSpaces = strings.ReplaceAll(ocrNoSpaces, "\n", "")
+			nameNoSpaces := strings.ReplaceAll(nameLower, " ", "")
+			if nameNoSpaces != "" && strings.Contains(ocrNoSpaces, nameNoSpaces) {
+				score += 250 + len(nameNoSpaces)
+			} else {
+				// 3. Word overlap score
+				nameWords := strings.Fields(nameLower)
+				matchedWords := 0
+				for _, w := range nameWords {
+					if len(w) >= 2 && strings.Contains(ocrLower, w) {
+						matchedWords++
+					}
+				}
+				if len(nameWords) > 0 {
+					ratio := float64(matchedWords) / float64(len(nameWords))
+					if ratio > 0.3 {
+						score += int(ratio * 150)
+					}
+				}
+			}
+		}
+
+		// 4. Tie-breaker: use negative Levenshtein distance as a penalization,
+		// so that closer matches are preferred among equal scores.
 		dist := levenshtein(ocrLower, nameLower)
-		scored = append(scored, scoredCard{card: c, score: dist})
+		finalScore := score*100 - dist
+
+		scored = append(scored, scoredCard{card: c, score: finalScore})
 	}
 
-	// Sort by score (ascending = best matches first)
+	// Sort by score descending (highest score first)
 	sort.Slice(scored, func(i, j int) bool {
-		return scored[i].score < scored[j].score
+		return scored[i].score > scored[j].score
 	})
 
-	// Return top maxCandidates
 	limit := maxCandidates
 	if limit > len(scored) {
 		limit = len(scored)

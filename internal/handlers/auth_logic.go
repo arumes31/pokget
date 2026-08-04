@@ -53,7 +53,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Check if user exists and is verified before expensive hashing
 	var existingVerified bool
-	err := h.DB.QueryRow("SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
+	err := h.DB.QueryRowContext(r.Context(), "SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
 	if err == nil && existingVerified {
 		// Return success to avoid email enumeration — user already exists and is verified
 		// Do not reveal whether the email is registered
@@ -82,7 +82,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if err == sql.ErrNoRows {
 		// New user
-		_, err = h.DB.Exec("INSERT INTO users (email, password_hash, verification_token, last_email_sent_at) VALUES ($1, $2, $3, NOW())", email, hash, token)
+		_, err = h.DB.ExecContext(r.Context(), "INSERT INTO users (email, password_hash, verification_token, last_email_sent_at) VALUES ($1, $2, $3, NOW())", email, hash, token)
 	}
 
 	if err != nil {
@@ -122,7 +122,7 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 	var lastSent sql.NullTime
 	var token string
 	var isVerified bool
-	err := h.DB.QueryRow("SELECT last_email_sent_at, verification_token, is_verified FROM users WHERE email = $1", email).Scan(&lastSent, &token, &isVerified)
+	err := h.DB.QueryRowContext(r.Context(), "SELECT last_email_sent_at, verification_token, is_verified FROM users WHERE email = $1", email).Scan(&lastSent, &token, &isVerified)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// Don't leak email existence, just return OK but don't send
@@ -145,7 +145,7 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update last sent time
-	_, err = h.DB.Exec("UPDATE users SET last_email_sent_at = NOW() WHERE email = $1", email)
+	_, err = h.DB.ExecContext(r.Context(), "UPDATE users SET last_email_sent_at = NOW() WHERE email = $1", email)
 	if err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
@@ -175,7 +175,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var u models.User
-	err := h.DB.QueryRow("SELECT id, email, password_hash, is_verified FROM users WHERE email = $1", email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified)
+	var sessionVersion int64
+	err := h.DB.QueryRowContext(
+		r.Context(),
+		"SELECT id, email, password_hash, is_verified, COALESCE(session_version, 0) FROM users WHERE email = $1",
+		email,
+	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified, &sessionVersion)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
@@ -204,6 +209,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session.Values["user_id"] = u.ID
+	session.Values["session_version"] = sessionVersion
 
 	if remember {
 		session.Options.MaxAge = 86400 * 30 // 30 days
@@ -259,7 +265,7 @@ func (h *Handler) ProcessConfirmEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.DB.Exec("UPDATE users SET is_verified = TRUE, verification_token = NULL WHERE verification_token = $1", token)
+	res, err := h.DB.ExecContext(r.Context(), "UPDATE users SET is_verified = TRUE, verification_token = NULL WHERE verification_token = $1", token)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -290,6 +296,10 @@ func generateToken() (string, error) {
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	session, _ := auth.Store.Get(r, "session")
 	session.Values["user_id"] = ""
 	session.Options.MaxAge = -1

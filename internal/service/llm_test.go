@@ -21,13 +21,16 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"pokget/internal/models"
 	"strings"
 	"testing"
+	"time"
 )
 
 // --- SCAN-08: LLM candidate shortlisting tests ---
@@ -267,5 +270,73 @@ func TestLLMCardResponseConfidenceClamping(t *testing.T) {
 				t.Errorf("Expected clamped confidence %f, got %f", tt.wantClamped, result.Confidence)
 			}
 		})
+	}
+}
+
+func TestFuzzyMatchCardWithValidationContextCancelsRequest(t *testing.T) {
+	t.Parallel()
+
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+		select {
+		case <-r.Context().Done():
+		case <-releaseRequest:
+		}
+	}))
+	defer server.Close()
+	defer close(releaseRequest)
+
+	service := &LLMService{BaseURL: server.URL, Model: "test-model", HTTPClient: server.Client()}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	startedAt := time.Now()
+	_, err := service.FuzzyMatchCardWithValidationContext(
+		ctx,
+		"Pikachu",
+		[]models.Card{{ID: "pikachu", Name: "Pikachu"}},
+	)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want context deadline exceeded", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("canceled LLM request returned after %s", elapsed)
+	}
+	select {
+	case <-requestStarted:
+	default:
+		t.Fatal("LLM request never reached test server")
+	}
+}
+
+func TestLLMAutoSetupContextCancelsRequest(t *testing.T) {
+	t.Parallel()
+
+	requestStarted := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		close(requestStarted)
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+
+	service := &LLMService{
+		BaseURL:    server.URL,
+		Model:      "test-model",
+		HTTPClient: server.Client(),
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	startedAt := time.Now()
+	service.AutoSetupContext(ctx)
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("canceled model setup returned after %s", elapsed)
+	}
+	select {
+	case <-requestStarted:
+	default:
+		t.Fatal("model setup request never reached test server")
 	}
 }

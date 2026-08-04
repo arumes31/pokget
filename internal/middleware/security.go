@@ -36,10 +36,10 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 
 		// Content-Security-Policy — allows inline scripts/styles for HTMX/Alpine.js
 		// and connects to self for XHR. Adjust as needed for production.
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; connect-src 'self'; font-src 'self' https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("Permissions-Policy", "camera=(self), microphone=(), geolocation=()")
 
 		next.ServeHTTP(w, r)
 	})
@@ -64,6 +64,29 @@ func MaxBytesMiddlewareWithLimit(maxBytes int64) func(http.Handler) http.Handler
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// ConcurrentLimitMiddleware rejects work when all slots are occupied. It is
+// intended for expensive endpoints where queueing unbounded requests would
+// merely move a denial of service from CPU to memory and open connections.
+func ConcurrentLimitMiddleware(maxConcurrent int) func(http.Handler) http.Handler {
+	if maxConcurrent < 1 {
+		maxConcurrent = 1
+	}
+	slots := make(chan struct{}, maxConcurrent)
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+				next.ServeHTTP(w, r)
+			default:
+				w.Header().Set("Retry-After", "1")
+				http.Error(w, "Scanner is busy; retry shortly", http.StatusTooManyRequests)
+			}
 		})
 	}
 }
