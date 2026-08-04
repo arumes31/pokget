@@ -144,3 +144,18 @@ func TestCardFailureDoesNotStoreSensitiveProviderData(t *testing.T) {
 		t.Fatalf("unexpected failure record: %+v", record)
 	}
 }
+
+func TestCleanupPriceHistoryUsesConfiguredRetention(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	mock.ExpectExec("DELETE FROM price_history").WithArgs(30).
+		WillReturnResult(sqlmock.NewResult(0, 4))
+	worker := &DataSyncWorker{db: database, historyRetention: 30 * 24 * time.Hour}
+	worker.cleanupPriceHistory(context.Background())
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

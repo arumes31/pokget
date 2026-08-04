@@ -45,6 +45,7 @@ func newDataSyncWorker(
 			CircuitFailures:   cfg.Worker.CircuitFailures,
 			CircuitCooldown:   time.Duration(cfg.Worker.CircuitCooldownSec) * time.Second,
 			MaxPriceRatio:     cfg.Worker.MaxPriceRatio,
+			HistoryRetention:  time.Duration(cfg.Worker.HistoryRetentionDays) * 24 * time.Hour,
 			FailureSink:       failureSink,
 			Lease:             worker.NewPostgresAdvisoryLease(database),
 		},

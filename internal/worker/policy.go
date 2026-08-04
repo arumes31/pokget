@@ -161,6 +161,7 @@ type DataSyncConfig struct {
 	CircuitFailures   int
 	CircuitCooldown   time.Duration
 	MaxPriceRatio     float64
+	HistoryRetention  time.Duration
 	FailureSink       FailureSink
 	Lease             CycleLease
 }
@@ -186,6 +187,9 @@ func (c DataSyncConfig) validate() error {
 	}
 	if c.MaxPriceRatio != 0 && c.MaxPriceRatio <= 1 {
 		return errors.New("worker: maximum price ratio must exceed one")
+	}
+	if c.HistoryRetention < 0 {
+		return errors.New("worker: history retention cannot be negative")
 	}
 	for _, target := range c.MetadataTargets {
 		if strings.TrimSpace(target.Game) == "" || strings.TrimSpace(target.Language) == "" {

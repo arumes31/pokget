@@ -37,30 +37,31 @@ import (
 )
 
 type DataSyncWorker struct {
-	db              *sql.DB
-	priceClient     service.PriceClient
-	priceClients    map[string][]service.PriceClient
-	metadataClient  service.MetadataClient
-	metadataService *service.MetadataService
-	interval        time.Duration
-	metadataTargets []MetadataTarget
-	limiter         interface{ Wait(context.Context) error }
-	retryAttempts   int
-	retryBaseDelay  time.Duration
-	circuitFailures int
-	circuitCooldown time.Duration
-	maxPriceRatio   float64
-	failureSink     FailureSink
-	lease           CycleLease
-	circuitMu       sync.Mutex
-	circuits        map[string]providerCircuit
-	repairMu        sync.Mutex
-	repairAfterID   string
-	stop            chan struct{}
-	done            chan struct{}
-	stopOnce        sync.Once
-	tasks           sync.WaitGroup
-	OnSyncComplete  func()
+	db               *sql.DB
+	priceClient      service.PriceClient
+	priceClients     map[string][]service.PriceClient
+	metadataClient   service.MetadataClient
+	metadataService  *service.MetadataService
+	interval         time.Duration
+	metadataTargets  []MetadataTarget
+	limiter          interface{ Wait(context.Context) error }
+	retryAttempts    int
+	retryBaseDelay   time.Duration
+	circuitFailures  int
+	circuitCooldown  time.Duration
+	maxPriceRatio    float64
+	historyRetention time.Duration
+	failureSink      FailureSink
+	lease            CycleLease
+	circuitMu        sync.Mutex
+	circuits         map[string]providerCircuit
+	repairMu         sync.Mutex
+	repairAfterID    string
+	stop             chan struct{}
+	done             chan struct{}
+	stopOnce         sync.Once
+	tasks            sync.WaitGroup
+	OnSyncComplete   func()
 }
 
 func NewDataSyncWorker(db *sql.DB, pc service.PriceClient, mc service.MetadataClient, ms *service.MetadataService, interval time.Duration) *DataSyncWorker {
@@ -93,24 +94,25 @@ func NewConfiguredDataSyncWorker(
 		priceClients[models.NormalizeGame(game)] = slices.Clone(clients)
 	}
 	return &DataSyncWorker{
-		db:              db,
-		priceClient:     pc,
-		priceClients:    priceClients,
-		metadataClient:  mc,
-		metadataService: ms,
-		interval:        config.Interval,
-		metadataTargets: slices.Clone(config.MetadataTargets),
-		limiter:         newRequestLimiter(config.RequestsPerSecond, config.RequestBurst),
-		retryAttempts:   config.RetryAttempts,
-		retryBaseDelay:  config.RetryBaseDelay,
-		circuitFailures: config.CircuitFailures,
-		circuitCooldown: config.CircuitCooldown,
-		maxPriceRatio:   config.MaxPriceRatio,
-		failureSink:     config.FailureSink,
-		lease:           config.Lease,
-		circuits:        make(map[string]providerCircuit),
-		stop:            make(chan struct{}),
-		done:            make(chan struct{}),
+		db:               db,
+		priceClient:      pc,
+		priceClients:     priceClients,
+		metadataClient:   mc,
+		metadataService:  ms,
+		interval:         config.Interval,
+		metadataTargets:  slices.Clone(config.MetadataTargets),
+		limiter:          newRequestLimiter(config.RequestsPerSecond, config.RequestBurst),
+		retryAttempts:    config.RetryAttempts,
+		retryBaseDelay:   config.RetryBaseDelay,
+		circuitFailures:  config.CircuitFailures,
+		circuitCooldown:  config.CircuitCooldown,
+		maxPriceRatio:    config.MaxPriceRatio,
+		historyRetention: config.HistoryRetention,
+		failureSink:      config.FailureSink,
+		lease:            config.Lease,
+		circuits:         make(map[string]providerCircuit),
+		stop:             make(chan struct{}),
+		done:             make(chan struct{}),
 	}, nil
 }
 
@@ -450,8 +452,13 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 			UNION
 			SELECT card_id FROM price_alerts WHERE is_active = TRUE
 		  )
-		ORDER BY last_updated ASC NULLS FIRST,
+		ORDER BY CASE
+		           WHEN id IN (SELECT card_id FROM price_alerts WHERE is_active = TRUE) THEN 0
+		           WHEN id IN (SELECT card_id FROM portfolio) THEN 1
+		           ELSE 2
+		         END,
 		         GREATEST(COALESCE(price_usd, 0), COALESCE(price_eur, 0)) DESC,
+		         last_updated ASC NULLS FIRST,
 		         id
 		LIMIT 100`)
 	if err != nil {
@@ -540,9 +547,28 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 	if err := rows.Err(); err != nil {
 		slog.Error("Sync: Failed while reading cards", "error", err)
 	}
+	w.cleanupPriceHistory(ctx)
 	slog.Info("Price synchronization cycle completed")
 	if updated && w.OnSyncComplete != nil {
 		w.OnSyncComplete()
+	}
+}
+
+func (w *DataSyncWorker) cleanupPriceHistory(ctx context.Context) {
+	if w.historyRetention <= 0 || ctx.Err() != nil {
+		return
+	}
+	days := int(math.Ceil(w.historyRetention.Hours() / 24))
+	result, err := w.db.ExecContext(ctx, `
+		DELETE FROM price_history
+		WHERE recorded_at < NOW() - ($1 * INTERVAL '1 day')`, days)
+	if err != nil {
+		slog.Warn("Sync: Failed to apply price-history retention", "error", err)
+		return
+	}
+	deleted, err := result.RowsAffected()
+	if err == nil && deleted > 0 {
+		slog.Info("Sync: Removed expired price history", "rows", deleted, "retention_days", days)
 	}
 }
 

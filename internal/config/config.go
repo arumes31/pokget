@@ -77,16 +77,17 @@ type Config struct {
 		ImagePollIntervalMS int    `env:"CATALOG_IMAGE_POLL_INTERVAL_MS" env-default:"5000"`
 	} `yaml:"catalog"`
 	Worker struct {
-		PriceSyncMinutes   int     `env:"PRICE_SYNC_INTERVAL_MINUTES" env-default:"60"`
-		MetadataTargets    string  `env:"METADATA_TARGETS" env-default:"pokemon:en"`
-		RequestsPerSecond  float64 `env:"WORKER_REQUESTS_PER_SECOND" env-default:"0.5"`
-		RequestBurst       int     `env:"WORKER_REQUEST_BURST" env-default:"1"`
-		RetryAttempts      int     `env:"WORKER_RETRY_ATTEMPTS" env-default:"3"`
-		RetryBaseDelayMS   int     `env:"WORKER_RETRY_BASE_DELAY_MS" env-default:"1000"`
-		CircuitFailures    int     `env:"WORKER_CIRCUIT_FAILURES" env-default:"3"`
-		CircuitCooldownSec int     `env:"WORKER_CIRCUIT_COOLDOWN_SECONDS" env-default:"300"`
-		MaxPriceRatio      float64 `env:"WORKER_MAX_PRICE_RATIO" env-default:"5"`
-		FailurePath        string  `env:"WORKER_FAILURE_PATH" env-default:"data/worker-failures.jsonl"`
+		PriceSyncMinutes     int     `env:"PRICE_SYNC_INTERVAL_MINUTES" env-default:"60"`
+		MetadataTargets      string  `env:"METADATA_TARGETS" env-default:"pokemon:en"`
+		RequestsPerSecond    float64 `env:"WORKER_REQUESTS_PER_SECOND" env-default:"0.5"`
+		RequestBurst         int     `env:"WORKER_REQUEST_BURST" env-default:"1"`
+		RetryAttempts        int     `env:"WORKER_RETRY_ATTEMPTS" env-default:"3"`
+		RetryBaseDelayMS     int     `env:"WORKER_RETRY_BASE_DELAY_MS" env-default:"1000"`
+		CircuitFailures      int     `env:"WORKER_CIRCUIT_FAILURES" env-default:"3"`
+		CircuitCooldownSec   int     `env:"WORKER_CIRCUIT_COOLDOWN_SECONDS" env-default:"300"`
+		MaxPriceRatio        float64 `env:"WORKER_MAX_PRICE_RATIO" env-default:"5"`
+		HistoryRetentionDays int     `env:"PRICE_HISTORY_RETENTION_DAYS" env-default:"730"`
+		FailurePath          string  `env:"WORKER_FAILURE_PATH" env-default:"data/worker-failures.jsonl"`
 	} `yaml:"worker"`
 }
 
