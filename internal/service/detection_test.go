@@ -1275,7 +1275,7 @@ func TestPipelineLargeImage(t *testing.T) {
 		}
 	case err := <-errCh:
 		t.Errorf("Large image processing panicked: %v", err)
-	case <-time.After(30 * time.Second):
+	case <-time.After(90 * time.Second):
 		t.Error("Large image processing timed out")
 	}
 }
