@@ -171,6 +171,37 @@ func TestDetectScopedFingerprintFastPathCancelsSlowOCR(t *testing.T) {
 	awaitSignal(t, ocrCanceled, "OCR cancellation")
 }
 
+func TestDetectScopedExactFingerprintCollisionUsesOCR(t *testing.T) {
+	t.Parallel()
+
+	cards := []models.Card{
+		{ID: "printing-a", Name: "Shared Art", Game: "pokemon", Language: "en"},
+		{ID: "printing-b", Name: "Shared Art", Game: "pokemon", Language: "en"},
+	}
+	pipeline := NewDetectionPipeline(nil, nil)
+	pipeline.fingerprintRunner = func(_ context.Context, _ []byte, cards []models.Card, _ *ScanScope) (*MatchResult, error) {
+		return &MatchResult{Potential: []FingerprintMatch{
+			{Card: &cards[0], Distance: 0},
+			{Card: &cards[1], Distance: 0},
+		}}, nil
+	}
+	pipeline.ocrRunner = func(context.Context, []byte, []models.Card, string) (string, string, []byte, error) {
+		return "Shared Art printing-b", "printing-b", nil, nil
+	}
+
+	result, err := pipeline.DetectScoped(context.Background(), DetectionRequest{
+		Image: []byte("image"), Cards: cards,
+		Scope: ScanScope{TCG: models.TCGPokemon, Language: models.LanguageEnglish},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.BestMatchID() != "printing-b" || result.BestMatchNeedsReview() {
+		t.Fatalf("collision result = ID %q, confidence %.2f, review %t",
+			result.BestMatchID(), result.BestMatchConfidence(), result.BestMatchNeedsReview())
+	}
+}
+
 func TestDetectScopedCancellationStopsIndependentStages(t *testing.T) {
 	t.Parallel()
 
