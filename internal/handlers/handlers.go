@@ -1017,7 +1017,7 @@ func (h *Handler) ReloadCardsCache() (int, error) {
 	return len(allCards), nil
 }
 
-func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	// REFACTOR(step 2): move scan request parsing and response encoding into
 	// scan_handler.go before changing the scan contract.
 	slog.Debug("Action: APIScan", "method", r.Method, "url", r.URL.String())
@@ -1028,12 +1028,18 @@ func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
 	copy(cards, h.MockCards)
 	h.CardsMu.RUnlock()
 
-	// Limit request body to 10MB to prevent memory exhaustion
-	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
-	err := r.ParseMultipartForm(10 << 20) // #nosec G120 - bounded by MaxBytesReader
+	err := r.ParseMultipartForm(maxScanRequestBytes) // #nosec G120 - bounded by MaxBytesReader
 	if err != nil {
-		http.Error(w, "Failed to parse form or file too large", http.StatusBadRequest)
+		status := http.StatusBadRequest
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			status = http.StatusRequestEntityTooLarge
+		}
+		http.Error(w, "Failed to parse form or file too large", status)
 		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
 	}
 
 	file, header, err := r.FormFile("card_image")
