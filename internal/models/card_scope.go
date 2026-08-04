@@ -42,6 +42,7 @@ type Language string
 
 const (
 	LanguageUnknown            Language = ""
+	LanguageAny                Language = "any"
 	LanguageEnglish            Language = "en"
 	LanguageJapanese           Language = "ja"
 	LanguageGerman             Language = "de"
@@ -54,7 +55,7 @@ const (
 // Valid reports whether l identifies a supported card language.
 func (l Language) Valid() bool {
 	switch l {
-	case LanguageEnglish, LanguageJapanese, LanguageGerman, LanguageFrench,
+	case LanguageAny, LanguageEnglish, LanguageJapanese, LanguageGerman, LanguageFrench,
 		LanguageChineseSimplified, LanguageChineseTraditional, LanguageKorean:
 		return true
 	default:
@@ -69,6 +70,8 @@ func ParseLanguage(value string) (Language, error) {
 
 	var language Language
 	switch normalized {
+	case "any", "auto", "eng+jpn+deu+fra+chi-sim+chi-tra+kor":
+		language = LanguageAny
 	case "en", "eng", "english":
 		language = LanguageEnglish
 	case "ja", "jp", "jpn", "japanese":
@@ -92,6 +95,8 @@ func ParseLanguage(value string) (Language, error) {
 // TesseractCode returns the language data code used by the OCR implementation.
 func (l Language) TesseractCode() string {
 	switch l {
+	case LanguageAny:
+		return "eng+jpn+deu+fra+chi_sim+chi_tra+kor"
 	case LanguageEnglish:
 		return "eng"
 	case LanguageJapanese:
@@ -114,5 +119,5 @@ func (l Language) TesseractCode() string {
 // Matches reports whether a catalog language label identifies l.
 func (l Language) Matches(value string) bool {
 	parsed, err := ParseLanguage(value)
-	return err == nil && parsed == l
+	return err == nil && (l == LanguageAny || parsed == l)
 }

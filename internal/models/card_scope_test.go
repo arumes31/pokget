@@ -58,6 +58,24 @@ func TestParseLanguageAndTesseractCode(t *testing.T) {
 	}
 }
 
+func TestParseLanguageAutoDetect(t *testing.T) {
+	for _, input := range []string{"auto", "any", "eng+jpn+deu+fra+chi_sim+chi_tra+kor"} {
+		language, err := ParseLanguage(input)
+		if err != nil {
+			t.Fatalf("ParseLanguage(%q): %v", input, err)
+		}
+		if language != LanguageAny {
+			t.Errorf("ParseLanguage(%q) = %q, want %q", input, language, LanguageAny)
+		}
+	}
+	if got := LanguageAny.TesseractCode(); got != "eng+jpn+deu+fra+chi_sim+chi_tra+kor" {
+		t.Errorf("LanguageAny.TesseractCode() = %q", got)
+	}
+	if !LanguageAny.Matches("jpn") || !LanguageAny.Matches("de") {
+		t.Error("LanguageAny must match every supported catalog language")
+	}
+}
+
 func TestCardIsCatalogActive(t *testing.T) {
 	t.Parallel()
 

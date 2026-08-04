@@ -58,6 +58,47 @@ func TestDetectScopedFiltersTCGLanguageAndInactiveCards(t *testing.T) {
 	}
 }
 
+func TestDetectScopedAutoLanguageKeepsTCGBoundary(t *testing.T) {
+	t.Parallel()
+
+	cards := []models.Card{
+		{ID: "pokemon-en", Name: "Pikachu", Game: "pokemon", Language: "en"},
+		{ID: "pokemon-ja", Name: "Pikachu", Game: "pokemon", Language: "ja"},
+		{ID: "magic-en", Name: "Pikachu", Game: "magic", Language: "en"},
+	}
+	pipeline := NewDetectionPipeline(nil, nil)
+	pipeline.fingerprintRunner = func(_ context.Context, _ []byte, scopedCards []models.Card, scope *ScanScope) (*MatchResult, error) {
+		if scope == nil || scope.TCG != models.TCGPokemon || scope.Language != models.LanguageAny {
+			t.Fatalf("fingerprint scope = %+v", scope)
+		}
+		if got := cardIDs(scopedCards); !slices.Equal(got, []string{"pokemon-en", "pokemon-ja"}) {
+			t.Fatalf("fingerprint cards = %v", got)
+		}
+		return nil, nil
+	}
+	pipeline.ocrRunner = func(_ context.Context, _ []byte, scopedCards []models.Card, language string) (string, string, []byte, error) {
+		if got := cardIDs(scopedCards); !slices.Equal(got, []string{"pokemon-en", "pokemon-ja"}) {
+			t.Fatalf("OCR cards = %v", got)
+		}
+		if language != models.LanguageAny.TesseractCode() {
+			t.Fatalf("OCR language = %q", language)
+		}
+		return "", "Unknown Card", nil, nil
+	}
+
+	result, err := pipeline.DetectScoped(context.Background(), DetectionRequest{
+		Image: []byte("image"),
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGPokemon, Language: models.LanguageAny},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != DetectionStatusNoMatch {
+		t.Fatalf("status = %q, want %q", result.Status, DetectionStatusNoMatch)
+	}
+}
+
 func TestDetectScopedRunsFingerprintAndOCRConcurrently(t *testing.T) {
 	t.Parallel()
 

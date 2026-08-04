@@ -387,7 +387,8 @@ func (s *FingerprintService) AddFingerprintScoped(scope FingerprintIndexScope, h
 	if cardTCG := tcgForCard(*card); cardTCG != models.TCGUnknown && cardTCG != scope.TCG {
 		return fmt.Errorf("fingerprint: card TCG %q does not match index TCG %q", cardTCG, scope.TCG)
 	}
-	if cardLanguage, err := models.ParseLanguage(card.Language); err == nil && cardLanguage != scope.Language {
+	if cardLanguage, err := models.ParseLanguage(card.Language); err == nil &&
+		scope.Language != models.LanguageAny && cardLanguage != scope.Language {
 		return fmt.Errorf("fingerprint: card language %q does not match index language %q", cardLanguage, scope.Language)
 	}
 	s.mu.Lock()
