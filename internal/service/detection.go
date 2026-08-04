@@ -254,6 +254,15 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 		select {
 		case fingerprintOutput = <-fingerprintChannel:
 			fingerprintChannel = nil
+			if p.applyFingerprintFastPath(result, fingerprintOutput.result) {
+				cancel()
+				result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{
+					Name: "fingerprint", Duration: fingerprintOutput.duration, Error: fingerprintOutput.err,
+				})
+				result.Metrics.TotalTime = time.Since(totalStart)
+				setDetectionStatus(result)
+				return result, nil
+			}
 		case ocrOutput = <-ocrChannel:
 			ocrChannel = nil
 		case <-ctx.Done():
@@ -277,46 +286,6 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 	}
 
 	fingerprintResult := fingerprintOutput.result
-	if matches := exactFingerprintMatches(fingerprintResult); len(matches) > 0 {
-		setExactFingerprintResult(result, matches)
-		result.Metrics.TotalTime = time.Since(totalStart)
-		setDetectionStatus(result)
-		return result, nil
-	}
-
-	highConfidenceThreshold := DefaultPhashThresholdHighConf
-	if p.Fingerprint != nil {
-		highConfidenceThreshold = p.Fingerprint.PhashHighConf
-	}
-	if exact, distance := uniqueHighConfidenceFingerprint(fingerprintResult, highConfidenceThreshold); exact != nil {
-		confidence := max(75, 100-float64(distance*5))
-		result.TopMatches = []CardMatch{{
-			Card: exact,
-			FingerprintScore: &ConfidenceScore{
-				Method: "fingerprint", Score: confidence, CardName: exact.Name, CardID: exact.ID, Distance: distance,
-			},
-			Confidence: confidence,
-		}}
-		result.Metrics.TotalTime = time.Since(totalStart)
-		setDetectionStatus(result)
-		return result, nil
-	}
-	if matches := ambiguousSameNameFingerprints(fingerprintResult, highConfidenceThreshold); len(matches) > 1 {
-		for _, match := range matches {
-			confidence := 0.5 * fingerprintScoreFromDistance(match.Distance, highConfidenceThreshold)
-			result.TopMatches = append(result.TopMatches, CardMatch{
-				Card: match.Card,
-				FingerprintScore: &ConfidenceScore{
-					Method: "fingerprint", Score: confidence * 2, CardName: match.Card.Name,
-					CardID: match.Card.ID, Distance: match.Distance,
-				},
-				Confidence: confidence, NeedsReview: true,
-			})
-		}
-		result.Metrics.TotalTime = time.Since(totalStart)
-		setDetectionStatus(result)
-		return result, nil
-	}
 
 	combineStart := time.Now()
 	candidateMap := make(map[string]*CardMatch)
@@ -379,6 +348,44 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 	slog.Info("Detection: Pipeline complete", "status", result.Status, "metrics", result.Metrics.Format(),
 		"top_match_id", result.BestMatchID(), "confidence", result.BestMatchConfidence())
 	return result, nil
+}
+
+func (p *DetectionPipeline) applyFingerprintFastPath(result *DetectionResult, fingerprintResult *MatchResult) bool {
+	if matches := exactFingerprintMatches(fingerprintResult); len(matches) > 0 {
+		setExactFingerprintResult(result, matches)
+		return true
+	}
+
+	highConfidenceThreshold := DefaultPhashThresholdHighConf
+	if p.Fingerprint != nil {
+		highConfidenceThreshold = p.Fingerprint.PhashHighConf
+	}
+	if exact, distance := uniqueHighConfidenceFingerprint(fingerprintResult, highConfidenceThreshold); exact != nil {
+		confidence := max(75, 100-float64(distance*5))
+		result.TopMatches = []CardMatch{{
+			Card: exact,
+			FingerprintScore: &ConfidenceScore{
+				Method: "fingerprint", Score: confidence, CardName: exact.Name, CardID: exact.ID, Distance: distance,
+			},
+			Confidence: confidence,
+		}}
+		return true
+	}
+	if matches := ambiguousSameNameFingerprints(fingerprintResult, highConfidenceThreshold); len(matches) > 1 {
+		for _, match := range matches {
+			confidence := 0.5 * fingerprintScoreFromDistance(match.Distance, highConfidenceThreshold)
+			result.TopMatches = append(result.TopMatches, CardMatch{
+				Card: match.Card,
+				FingerprintScore: &ConfidenceScore{
+					Method: "fingerprint", Score: confidence * 2, CardName: match.Card.Name,
+					CardID: match.Card.ID, Distance: match.Distance,
+				},
+				Confidence: confidence, NeedsReview: true,
+			})
+		}
+		return true
+	}
+	return false
 }
 
 func (p *DetectionPipeline) runFingerprintStage(ctx context.Context, imageBytes []byte, cards []models.Card, scope *ScanScope) (*MatchResult, error) {

@@ -22,11 +22,13 @@ func TestDetectScopedFiltersTCGLanguageAndInactiveCards(t *testing.T) {
 	}
 	pipeline := NewDetectionPipeline(nil, nil)
 	var fingerprintIDs, ocrIDs []string
+	ocrStarted := make(chan struct{})
 	pipeline.fingerprintRunner = func(_ context.Context, _ []byte, scopedCards []models.Card, scope *ScanScope) (*MatchResult, error) {
 		fingerprintIDs = cardIDs(scopedCards)
 		if scope == nil || scope.TCG != models.TCGPokemon || scope.Language != models.LanguageEnglish {
 			t.Errorf("fingerprint scope = %+v", scope)
 		}
+		<-ocrStarted
 		return &MatchResult{
 			HighConfidence: &scopedCards[0], BestDistance: 0,
 			Potential: []FingerprintMatch{{Card: &scopedCards[0], Distance: 0}},
@@ -34,6 +36,7 @@ func TestDetectScopedFiltersTCGLanguageAndInactiveCards(t *testing.T) {
 	}
 	pipeline.ocrRunner = func(_ context.Context, _ []byte, scopedCards []models.Card, language string) (string, string, []byte, error) {
 		ocrIDs = cardIDs(scopedCards)
+		close(ocrStarted)
 		if language != "eng" {
 			t.Errorf("OCR language = %q, want eng", language)
 		}
@@ -53,8 +56,8 @@ func TestDetectScopedFiltersTCGLanguageAndInactiveCards(t *testing.T) {
 	if result.Status != DetectionStatusMatched || result.BestMatchID() != "pokemon-en" {
 		t.Fatalf("result = status %q, ID %q", result.Status, result.BestMatchID())
 	}
-	if len(result.Metrics.Stages) != 2 {
-		t.Fatalf("stages = %+v, want concurrent fingerprint and OCR metrics", result.Metrics.Stages)
+	if len(result.Metrics.Stages) != 1 || result.Metrics.Stages[0].Name != "fingerprint" {
+		t.Fatalf("stages = %+v, want fingerprint fast-path metric", result.Metrics.Stages)
 	}
 }
 
@@ -136,6 +139,36 @@ func TestDetectScopedRunsFingerprintAndOCRConcurrently(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestDetectScopedFingerprintFastPathCancelsSlowOCR(t *testing.T) {
+	t.Parallel()
+
+	ocrStarted := make(chan struct{})
+	ocrCanceled := make(chan struct{})
+	pipeline := NewDetectionPipeline(nil, nil)
+	pipeline.fingerprintRunner = func(_ context.Context, _ []byte, cards []models.Card, _ *ScanScope) (*MatchResult, error) {
+		<-ocrStarted
+		return &MatchResult{
+			HighConfidence: &cards[0], BestDistance: 0,
+			Potential: []FingerprintMatch{{Card: &cards[0], Distance: 0}},
+		}, nil
+	}
+	pipeline.ocrRunner = func(ctx context.Context, _ []byte, _ []models.Card, _ string) (string, string, []byte, error) {
+		close(ocrStarted)
+		<-ctx.Done()
+		close(ocrCanceled)
+		return "", "", nil, ctx.Err()
+	}
+
+	result, err := pipeline.DetectScoped(context.Background(), validScopedDetectionRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.BestMatchID() != "pikachu-025" || len(result.Metrics.Stages) != 1 {
+		t.Fatalf("fast-path result = %+v", result)
+	}
+	awaitSignal(t, ocrCanceled, "OCR cancellation")
 }
 
 func TestDetectScopedCancellationStopsIndependentStages(t *testing.T) {

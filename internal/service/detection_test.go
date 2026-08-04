@@ -1007,7 +1007,7 @@ func TestPipelineWithFingerprintMatch(t *testing.T) {
 	}
 }
 
-func TestPipelineUniqueExactFingerprintWinsAfterConcurrentOCR(t *testing.T) {
+func TestPipelineUniqueExactFingerprintUsesFastPath(t *testing.T) {
 	t.Parallel()
 
 	fingerprint := NewFingerprintService(nil)
@@ -1031,8 +1031,8 @@ func TestPipelineUniqueExactFingerprintWinsAfterConcurrentOCR(t *testing.T) {
 	if result.BestMatchConfidence() != 100 || result.BestMatchNeedsReview() {
 		t.Fatalf("confidence/review = %v/%v", result.BestMatchConfidence(), result.BestMatchNeedsReview())
 	}
-	if len(result.Metrics.Stages) != 2 || result.Metrics.Stages[0].Name != "fingerprint" || result.Metrics.Stages[1].Name != "ocr" {
-		t.Fatalf("stages = %+v, want independent fingerprint and OCR stages", result.Metrics.Stages)
+	if len(result.Metrics.Stages) != 1 || result.Metrics.Stages[0].Name != "fingerprint" {
+		t.Fatalf("stages = %+v, want fingerprint fast-path metric", result.Metrics.Stages)
 	}
 }
 
@@ -1066,8 +1066,8 @@ func TestPipelineUniqueExactFingerprintBeatsNearCollision(t *testing.T) {
 	if result.BestMatchConfidence() != 100 || result.BestMatchNeedsReview() {
 		t.Fatalf("confidence/review = %v/%v", result.BestMatchConfidence(), result.BestMatchNeedsReview())
 	}
-	if len(result.Metrics.Stages) != 2 || result.Metrics.Stages[0].Name != "fingerprint" || result.Metrics.Stages[1].Name != "ocr" {
-		t.Fatalf("stages = %+v, want independent fingerprint and OCR stages", result.Metrics.Stages)
+	if len(result.Metrics.Stages) != 1 || result.Metrics.Stages[0].Name != "fingerprint" {
+		t.Fatalf("stages = %+v, want fingerprint fast-path metric", result.Metrics.Stages)
 	}
 }
 
