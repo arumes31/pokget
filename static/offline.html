@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ddb7ff">
+  <title>Pokget is offline</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 1.5rem; color: #f5eff7; background: radial-gradient(circle at top, #3b1857 0, #171218 42%, #0e0e0f 100%); }
+    main { width: min(100%, 28rem); padding: 2rem; text-align: center; border: 1px solid rgba(221, 183, 255, .2); border-radius: 2rem; background: rgba(28, 27, 28, .82); box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, .35); }
+    img { width: 4.5rem; height: 4.5rem; object-fit: contain; }
+    h1 { margin: 1rem 0 .5rem; font-size: 1.5rem; }
+    p { margin: 0 auto 1.5rem; max-width: 22rem; color: #cfc3d3; line-height: 1.55; }
+    button { min-height: 3rem; padding: .75rem 1.25rem; border: 0; border-radius: 1rem; color: #24132c; background: #ddb7ff; font: inherit; font-weight: 800; cursor: pointer; }
+    button:focus-visible { outline: .2rem solid #fff; outline-offset: .2rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/static/img/logo.png" alt="Pokget">
+    <h1>You’re offline</h1>
+    <p>Pokget keeps the app shell available, but scanning and your private vault need a network connection.</p>
+    <button type="button" onclick="location.reload()">Try again</button>
+  </main>
+</body>
+</html>

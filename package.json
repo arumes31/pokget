@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "build:static": "node scripts/build-static.mjs",
-    "check:static": "node --check dist/static/js/vault.js && node --check dist/static/js/scanner.js && node --check dist/static/js/sw.js && node --check dist/static/sw.js",
-    "test:static": "node --test scripts/build-static.test.mjs scripts/scanner.test.cjs"
+    "check:static": "node --check dist/static/js/vault.js && node --check dist/static/js/scanner.js && node --check dist/static/js/sw.js && node -e \"const fs=require('node:fs');fs.accessSync('dist/static/offline.html');if(fs.existsSync('dist/static/sw.js'))process.exit(1)\"",
+    "test:static": "node --test scripts/build-static.test.mjs scripts/scanner.test.cjs scripts/pwa-template.test.cjs"
   },
   "dependencies": {
     "tailwindcss": "^4.2.4",
