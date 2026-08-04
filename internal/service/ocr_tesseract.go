@@ -481,6 +481,8 @@ func ProcessCardScan(imgBytes []byte, mockCards []models.Card, lang string, llm 
 }
 
 func ProcessCardScanContext(ctx context.Context, imgBytes []byte, mockCards []models.Card, lang string, llm *LLMService) (string, string, []byte, error) {
+	// REFACTOR(step 2): separate decoding/preprocessing, Tesseract execution,
+	// and candidate matching before introducing typed scan options.
 	if err := ctx.Err(); err != nil {
 		return "", "", nil, err
 	}

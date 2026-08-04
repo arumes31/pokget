@@ -1018,6 +1018,8 @@ func (h *Handler) ReloadCardsCache() (int, error) {
 }
 
 func (h *Handler) APIScan(w http.ResponseWriter, r *http.Request) {
+	// REFACTOR(step 2): move scan request parsing and response encoding into
+	// scan_handler.go before changing the scan contract.
 	slog.Debug("Action: APIScan", "method", r.Method, "url", r.URL.String())
 
 	// Snapshot MockCards under read lock to avoid races with reloadCards

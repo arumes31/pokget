@@ -137,6 +137,8 @@ func canonicalFragmentRedirectMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
+	// REFACTOR(step 4): extract application composition, routes, workers, and
+	// server lifecycle into focused same-package files.
 	// Load Configuration
 	cfg, err := config.Load()
 	if err != nil {

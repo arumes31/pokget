@@ -46,6 +46,9 @@ import (
 // is nil (e.g. startup failure), handlers must check and return 503.
 var DB *sql.DB
 
+// REFACTOR(step 5): remove this compatibility global after all application,
+// handler, OCR, and command callers receive an injected database handle.
+
 func InitDB() {
 	db, err := Connect()
 	if err != nil {

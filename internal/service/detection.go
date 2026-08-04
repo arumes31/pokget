@@ -196,6 +196,8 @@ func combineScores(fp *ConfidenceScore, ocr *ConfidenceScore, llm *ConfidenceSco
 // DetectionPipeline runs the full card detection pipeline with parallel
 // fingerprint + OCR, confidence scoring, and metrics (SCAN-07, SCAN-09, SCAN-16).
 type DetectionPipeline struct {
+	// REFACTOR(step 3): migrate callers to a typed scan request while retaining
+	// the current Detect and DetectContext compatibility methods.
 	Fingerprint *FingerprintService
 	LLM         *LLMService
 }
