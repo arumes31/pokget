@@ -75,6 +75,9 @@ COPY --chown=pokget:pokget --from=builder /app/migrations ./migrations
 # Expose port
 EXPOSE 18066
 
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+  CMD wget -q --spider "http://127.0.0.1:${APP_PORT:-18066}/health/ready" || exit 1
+
 USER pokget
 
 # Run the binary

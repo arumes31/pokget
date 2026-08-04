@@ -21,11 +21,13 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
@@ -37,6 +39,31 @@ func TestConnect_MissingEnv(t *testing.T) {
 	_, err := Connect()
 	if err == nil {
 		t.Error("Expected error when env vars are missing")
+	}
+}
+
+func TestConnectWithRetryHonorsCancellation(t *testing.T) {
+	t.Setenv("DB_HOST", "")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	started := time.Now()
+	_, err := ConnectWithRetry(ctx, 5, time.Minute)
+	if err == nil {
+		t.Fatal("ConnectWithRetry() error = nil, want cancellation")
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("ConnectWithRetry() ignored cancellation for %v", elapsed)
+	}
+}
+
+func TestConnectRejectsUnknownSSLMode(t *testing.T) {
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_PORT", "5432")
+	t.Setenv("DB_USER", "user")
+	t.Setenv("DB_NAME", "database")
+	t.Setenv("DB_SSLMODE", "prefer options=-c-dangerous")
+	if _, err := Connect(); err == nil {
+		t.Fatal("Connect() accepted an unknown SSL mode")
 	}
 }
 

@@ -314,6 +314,7 @@ func TestScraperPriceClient(t *testing.T) {
 
 		scraper := NewScraperPriceClient()
 		scraper.Cardmarket.BaseURL = server.URL
+		scraper.TCGPlayer = nil
 
 		card := models.Card{Name: "Charizard", Set: "Base", Game: "Pokemon"}
 		_, eur, err := scraper.FetchPrice(card)
@@ -334,6 +335,7 @@ func TestScraperPriceClient(t *testing.T) {
 
 		scraper := NewScraperPriceClient()
 		scraper.Cardmarket.BaseURL = server.URL
+		scraper.TCGPlayer = nil
 
 		card := models.Card{Name: "Charizard", Set: "Base"}
 		_, _, err := scraper.FetchPrice(card)
@@ -352,6 +354,7 @@ func TestScraperPriceClient(t *testing.T) {
 
 		scraper := NewScraperPriceClient()
 		scraper.Cardmarket.BaseURL = server.URL
+		scraper.TCGPlayer = nil
 
 		for _, game := range games {
 			card := models.Card{Name: "N", Set: "S", Game: game}

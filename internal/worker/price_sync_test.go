@@ -297,6 +297,8 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 			AddRow(1, "user-1", decimal.NewFromFloat(200.0))
 		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").WithArgs(card.ID).
 			WillReturnRows(alertRows)
+		mock.ExpectExec("UPDATE price_alerts").WithArgs(1).
+			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
 		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)

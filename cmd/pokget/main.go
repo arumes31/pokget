@@ -145,6 +145,10 @@ func main() {
 		slog.Error("Failed to load configuration", "error", err)
 		os.Exit(1)
 	}
+	if err := validateWorkerConfig(cfg); err != nil {
+		slog.Error("Invalid worker configuration", "error", err)
+		os.Exit(1)
+	}
 	// Initialize Structured Logger
 	logLevel := slog.LevelInfo
 	if cfg.App.Debug {
@@ -156,12 +160,13 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	database, err := db.Connect()
+	startupCtx, startupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	database, err := db.ConnectWithRetry(startupCtx, 5, time.Second)
+	startupCancel()
 	if err != nil {
 		slog.Error("Database connection failed", "error", err)
 		os.Exit(1)
 	}
-	db.DB = database
 	defer func() {
 		if err := database.Close(); err != nil {
 			slog.Error("Failed to close database connection", "error", err)
@@ -184,33 +189,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	if db.DB != nil {
-		fingerprintSvc = service.NewFingerprintService(db.DB)
+	if database != nil {
+		fingerprintSvc = service.NewFingerprintService(database)
 		// SCAN-02: Apply configurable pHash thresholds from config
 		fingerprintSvc.PhashHighConf = cfg.Scan.PhashHighConf
 		fingerprintSvc.PhashPotential = cfg.Scan.PhashPotential
 		// SCAN-03: Set OCR pool size from config
 		service.OCRPoolSize = cfg.Scan.OCRPoolSize
-		auditSvc = service.NewAuditService(db.DB)
+		auditSvc = service.NewAuditService(database)
 
-		if err := db.SeedDatabase(db.DB); err != nil {
+		if err := db.SeedDatabase(database); err != nil {
 			slog.Error("Database seeding failed", "error", err)
 		}
 
-		// Start Data Sync Worker after DB is ready
-		scraperPriceClient := service.NewScraperPriceClient()
-		priceClient := &service.DefaultPriceClient{Scraper: scraperPriceClient}
-		var metadataClient service.MetadataClient
-		var metadataSvc *service.MetadataService
-		if !cfg.Catalog.Enabled && cfg.Catalog.LegacyMetadataSync {
-			metadataClient = service.NewTCGDexClient()
-			metadataSvc = service.NewMetadataService(fingerprintSvc)
+		dataWorker, err = newDataSyncWorker(database, cfg, fingerprintSvc)
+		if err != nil {
+			slog.Error("Data sync worker initialization failed", "error", err)
+			os.Exit(1)
 		}
 
-		dataWorker = worker.NewDataSyncWorker(db.DB, priceClient, metadataClient, metadataSvc, 1*time.Hour)
-
 		if cfg.Catalog.Enabled || cfg.Catalog.ImagesEnabled {
-			catalogRepository, err := catalog.NewPostgresRepository(db.DB)
+			catalogRepository, err := catalog.NewPostgresRepository(database)
 			if err != nil {
 				slog.Error("Catalog initialization failed", "error", err)
 				os.Exit(1)
@@ -263,8 +262,8 @@ func main() {
 
 	// Fetch all cards from DB for handlers (caching in memory for fast scanning)
 	var allCards []models.Card
-	if db.DB != nil {
-		rows, err := db.DB.Query("SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash, COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, '') FROM cards WHERE superseded_by_card_id IS NULL")
+	if database != nil {
+		rows, err := database.Query("SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash, COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, '') FROM cards WHERE superseded_by_card_id IS NULL")
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -330,10 +329,10 @@ func main() {
 		Detection:     detectionPipeline,
 		Audit:         auditSvc,
 		Crypto:        cryptoSvc,
-		Game:          service.NewGamificationService(db.DB),
+		Game:          service.NewGamificationService(database),
 		LLM:           llmSvc,
 		PriceClient:   service.NewScraperPriceClient(),
-		DB:            db.DB,
+		DB:            database,
 		BuildVersion:  buildVersion,
 		SecureCookies: cfg.App.SecureCookies, // BUG-C03: Wire up configurable Secure flag
 	}
@@ -394,6 +393,7 @@ func main() {
 
 	r := mux.NewRouter()
 	useGlobalMiddleware(r)
+	registerHealthRoutes(r, database)
 
 	// CSRF Protection
 	csrfKey := deriveKey(cfg.Auth.SessionKey, "pokget:csrf:auth")
@@ -404,7 +404,7 @@ func main() {
 
 	registerScanRoute(
 		r,
-		db.DB,
+		database,
 		csrfMiddleware,
 		cfg.Scan.OCRPoolSize,
 		http.HandlerFunc(h.APIScan),
@@ -416,7 +416,7 @@ func main() {
 	web.Use(csrfMiddleware)
 
 	// Public Web Routes
-	web.Handle("/", auth.Middleware(db.DB)(http.HandlerFunc(h.Index))).Methods("GET")
+	web.Handle("/", auth.Middleware(database)(http.HandlerFunc(h.Index))).Methods("GET")
 	web.HandleFunc("/auth", h.Auth).Methods("GET")
 	web.HandleFunc("/auth/register", h.Register).Methods("POST")
 	web.HandleFunc("/auth/login", h.Login).Methods("POST")
@@ -429,7 +429,7 @@ func main() {
 
 	// Protected Routes (Require Authentication + CSRF)
 	protected := web.PathPrefix("/").Subrouter()
-	protected.Use(auth.Middleware(db.DB))
+	protected.Use(auth.Middleware(database))
 	protected.Use(canonicalFragmentRedirectMiddleware)
 	protected.HandleFunc("/dashboard", h.Dashboard).Methods("GET")
 	protected.HandleFunc("/centering", h.Centering).Methods("GET")
@@ -456,7 +456,7 @@ func main() {
 
 	// Admin Routes (Require Authentication + Admin Role + CSRF)
 	admin := protected.PathPrefix("/api/admin").Subrouter()
-	admin.Use(auth.AdminMiddleware(db.DB))
+	admin.Use(auth.AdminMiddleware(database))
 	admin.HandleFunc("/refresh-cache", h.RefreshCache).Methods("POST")
 
 	slog.Info("Server starting", "port", cfg.App.Port)
@@ -507,6 +507,11 @@ func main() {
 	case <-workersDone:
 	case <-ctx.Done():
 		slog.Warn("Background workers did not stop before shutdown deadline", "error", ctx.Err())
+	}
+	if dataWorker != nil {
+		if err := dataWorker.Close(); err != nil {
+			slog.Warn("Data sync providers did not close cleanly", "error", err)
+		}
 	}
 	if auditSvc != nil {
 		// Drain queued audit records while the database pool is still open.

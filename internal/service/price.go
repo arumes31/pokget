@@ -309,8 +309,55 @@ func waitForCardmarketRequest(ctx context.Context) error {
 	return nil
 }
 
-// TCGPlayerScraper handles headless scraping for TCGPlayer.com
-type TCGPlayerScraper struct{}
+// TCGPlayerScraper keeps one Chrome process alive and opens a bounded number of
+// isolated tabs. This avoids launching a new browser process for every card.
+type TCGPlayerScraper struct {
+	initOnce   sync.Once
+	slotOnce   sync.Once
+	closeOnce  sync.Once
+	rootCtx    context.Context
+	rootCancel context.CancelFunc
+	initErr    error
+	slots      chan struct{}
+}
+
+func NewTCGPlayerScraper(maxConcurrent int) *TCGPlayerScraper {
+	if maxConcurrent < 1 {
+		maxConcurrent = 1
+	}
+	return &TCGPlayerScraper{slots: make(chan struct{}, maxConcurrent)}
+}
+
+func (s *TCGPlayerScraper) initialize() error {
+	s.initOnce.Do(func() {
+		allocatorCtx, allocatorCancel := chromedp.NewExecAllocator(
+			context.Background(),
+			chromedp.DefaultExecAllocatorOptions[:]...,
+		)
+		browserCtx, browserCancel := chromedp.NewContext(allocatorCtx)
+		if err := chromedp.Run(browserCtx); err != nil {
+			browserCancel()
+			allocatorCancel()
+			s.initErr = fmt.Errorf("starting TCGPlayer browser: %w", err)
+			return
+		}
+		s.rootCtx = browserCtx
+		s.rootCancel = func() {
+			browserCancel()
+			allocatorCancel()
+		}
+	})
+	return s.initErr
+}
+
+func (s *TCGPlayerScraper) Close() error {
+	s.closeOnce.Do(func() {
+		if s.rootCancel != nil {
+			s.rootCancel()
+		}
+	})
+	return nil
+}
 
 // Scrape fetches the current price from TCGPlayer using headless browser
 func (s *TCGPlayerScraper) Scrape(card models.Card) (float64, error) {
@@ -318,17 +365,35 @@ func (s *TCGPlayerScraper) Scrape(card models.Card) (float64, error) {
 }
 
 func (s *TCGPlayerScraper) ScrapeContext(parent context.Context, card models.Card) (float64, error) {
-	ctx, cancel := chromedp.NewContext(parent)
+	if s == nil {
+		return 0, errors.New("nil TCGPlayer scraper")
+	}
+	product, err := tcgPlayerProduct(card.Game)
+	if err != nil {
+		return 0, err
+	}
+	s.slotOnce.Do(func() {
+		if s.slots == nil {
+			s.slots = make(chan struct{}, 1)
+		}
+	})
+	select {
+	case s.slots <- struct{}{}:
+		defer func() { <-s.slots }()
+	case <-parent.Done():
+		return 0, parent.Err()
+	}
+	if err := s.initialize(); err != nil {
+		return 0, err
+	}
+
+	ctx, cancel := chromedp.NewContext(s.rootCtx)
 	defer cancel()
 
 	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	var priceStr string
-	product, err := tcgPlayerProduct(card.Game)
-	if err != nil {
-		return 0, err
-	}
 	targetURL := fmt.Sprintf(
 		"https://www.tcgplayer.com/search/%s/product?q=%s",
 		product,
@@ -400,8 +465,15 @@ func NewScraperPriceClient() *ScraperPriceClient {
 		Cardmarket: &CardmarketScraper{
 			BaseURL: "https://www.cardmarket.com",
 		},
-		TCGPlayer: &TCGPlayerScraper{},
+		TCGPlayer: NewTCGPlayerScraper(1),
 	}
+}
+
+func (s *ScraperPriceClient) Close() error {
+	if s == nil || s.TCGPlayer == nil {
+		return nil
+	}
+	return s.TCGPlayer.Close()
 }
 
 // FetchPrice fetches prices from multiple sources and returns them.
@@ -410,23 +482,29 @@ func (s *ScraperPriceClient) FetchPrice(card models.Card) (float64, float64, err
 }
 
 func (s *ScraperPriceClient) FetchPriceContext(ctx context.Context, card models.Card) (float64, float64, error) {
-	if s.Cardmarket == nil || s.TCGPlayer == nil {
-		return 0, 0, fmt.Errorf("scraper client not properly initialized")
+	if s.Cardmarket == nil && s.TCGPlayer == nil {
+		return 0, 0, errors.New("no price scraper configured")
 	}
 
-	eur, scrapeErr := s.Cardmarket.ScrapeContext(ctx, card)
-	if err := ctx.Err(); err != nil {
-		return 0, 0, err
-	}
-	if errors.Is(scrapeErr, ErrPriceSourceBlocked) {
-		return 0, 0, scrapeErr
+	var eur float64
+	var scrapeErr error
+	if s.Cardmarket != nil {
+		eur, scrapeErr = s.Cardmarket.ScrapeContext(ctx, card)
+		if err := ctx.Err(); err != nil {
+			return 0, 0, err
+		}
+		if errors.Is(scrapeErr, ErrPriceSourceBlocked) {
+			return 0, 0, scrapeErr
+		}
 	}
 
 	var usd float64
-	// TCGPlayer Scrape (USD)
-	usd, err := s.TCGPlayer.ScrapeContext(ctx, card)
-	if err != nil {
-		slog.Warn("Scraper: TCGPlayer scrape failed", "card", card.Name, "error", err)
+	if s.TCGPlayer != nil {
+		var err error
+		usd, err = s.TCGPlayer.ScrapeContext(ctx, card)
+		if err != nil {
+			slog.Warn("Scraper: TCGPlayer scrape failed", "card", card.Name, "error", err)
+		}
 	}
 
 	return usd, eur, scrapeErr
@@ -454,6 +532,13 @@ func (s *ScraperPriceClient) ApplyMultiplier(price float64, condition string, mu
 // DefaultPriceClient for production (can choose between Scraper or API)
 type DefaultPriceClient struct {
 	Scraper *ScraperPriceClient
+}
+
+func (d *DefaultPriceClient) Close() error {
+	if d == nil || d.Scraper == nil {
+		return nil
+	}
+	return d.Scraper.Close()
 }
 
 func (d *DefaultPriceClient) FetchPrice(card models.Card) (float64, float64, error) {

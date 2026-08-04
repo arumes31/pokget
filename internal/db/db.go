@@ -26,6 +26,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -93,11 +95,23 @@ func Connect() (*sql.DB, error) {
 	if sslmode == "" {
 		sslmode = "prefer"
 	}
+	if !validSSLMode(sslmode) {
+		return nil, fmt.Errorf("unsupported DB_SSLMODE %q", sslmode)
+	}
 
-	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		host, port, user, password, dbname, sslmode)
+	connectionURL := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(user, password),
+		Host:   net.JoinHostPort(host, port),
+		Path:   "/" + dbname,
+	}
+	query := connectionURL.Query()
+	query.Set("sslmode", sslmode)
+	query.Set("connect_timeout", "5")
+	query.Set("application_name", "pokget")
+	connectionURL.RawQuery = query.Encode()
 
-	db, err := sqlOpen("postgres", psqlInfo)
+	db, err := sqlOpen("postgres", connectionURL.String())
 	if err != nil {
 		return nil, fmt.Errorf("error opening database: %w", err)
 	}
@@ -113,6 +127,49 @@ func Connect() (*sql.DB, error) {
 
 	slog.Info("Successfully connected to PostgreSQL")
 	return db, nil
+}
+
+func validSSLMode(mode string) bool {
+	switch mode {
+	case "disable", "allow", "prefer", "require", "verify-ca", "verify-full":
+		return true
+	default:
+		return false
+	}
+}
+
+// ConnectWithRetry tolerates a database container starting shortly after the
+// application while keeping startup bounded and cancellation-aware.
+func ConnectWithRetry(
+	ctx context.Context,
+	attempts int,
+	baseDelay time.Duration,
+) (*sql.DB, error) {
+	if attempts < 1 {
+		return nil, errors.New("database connection attempts must be positive")
+	}
+	var connectErrors []error
+	for attempt := 0; attempt < attempts; attempt++ {
+		database, err := Connect()
+		if err == nil {
+			return database, nil
+		}
+		connectErrors = append(connectErrors, err)
+		if attempt+1 == attempts {
+			break
+		}
+		delay := baseDelay * time.Duration(1<<min(attempt, 6))
+		timer := time.NewTimer(delay)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return nil, errors.Join(ctx.Err(), errors.Join(connectErrors...))
+		}
+	}
+	return nil, fmt.Errorf("database connection failed after %d attempts: %w", attempts, errors.Join(connectErrors...))
 }
 
 func RunMigrations() error {
