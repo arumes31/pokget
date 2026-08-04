@@ -145,7 +145,7 @@ func main() {
 		slog.Error("Failed to load configuration", "error", err)
 		os.Exit(1)
 	}
-	if err := validateWorkerConfig(cfg); err != nil {
+	if err := validateRuntimeConfig(cfg); err != nil {
 		slog.Error("Invalid worker configuration", "error", err)
 		os.Exit(1)
 	}
@@ -263,12 +263,12 @@ func main() {
 	// Fetch all cards from DB for handlers (caching in memory for fast scanning)
 	var allCards []models.Card
 	if database != nil {
-		rows, err := database.Query("SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash, COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, '') FROM cards WHERE superseded_by_card_id IS NULL")
+		rows, err := database.Query("SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash, COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, ''), COALESCE(set_code, ''), COALESCE(collector_number, ''), catalog_active FROM cards WHERE superseded_by_card_id IS NULL AND (source_id IS NULL OR catalog_active = TRUE)")
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var c models.Card
-				if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash, &c.Game, &c.Language, &c.Rarity); err == nil {
+				if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash, &c.Game, &c.Language, &c.Rarity, &c.SetCode, &c.CollectorNumber, &c.CatalogActive); err == nil {
 					allCards = append(allCards, c)
 				}
 			}
@@ -334,6 +334,7 @@ func main() {
 		PriceClient:   service.NewScraperPriceClient(),
 		DB:            database,
 		BuildVersion:  buildVersion,
+		ScanTimeout:   time.Duration(cfg.Scan.TimeoutSeconds) * time.Second,
 		SecureCookies: cfg.App.SecureCookies, // BUG-C03: Wire up configurable Secure flag
 	}
 

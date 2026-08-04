@@ -625,7 +625,7 @@ func TestHandlers(t *testing.T) {
 		}
 	})
 
-	t.Run("APIScan_BadFile", func(t *testing.T) {
+	t.Run("APIScan_InvalidImage", func(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
@@ -641,8 +641,8 @@ func TestHandlers(t *testing.T) {
 
 		h.APIScan(rr, req)
 
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("Expected status 500 (decode fail), got %d", rr.Code)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400 (invalid image), got %d", rr.Code)
 		}
 	})
 
@@ -1165,7 +1165,7 @@ func TestHandlers(t *testing.T) {
 		}
 	})
 
-	t.Run("APIScan_Success", func(t *testing.T) {
+	t.Run("APIScan_OCRUnavailable", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
@@ -1187,8 +1187,8 @@ func TestHandlers(t *testing.T) {
 
 		h.APIScan(rr, req)
 
-		if rr.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", rr.Code)
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Errorf("Expected status %d, got %d", http.StatusServiceUnavailable, rr.Code)
 		}
 	})
 

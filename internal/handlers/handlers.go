@@ -71,6 +71,7 @@ type Handler struct {
 	PriceClient   *service.ScraperPriceClient
 	DB            *sql.DB
 	BuildVersion  string
+	ScanTimeout   time.Duration
 	SecureCookies bool // BUG-C03: Configurable Secure flag for session cookies
 }
 
@@ -985,7 +986,7 @@ func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ReloadCardsCache() (int, error) {
-	rows, err := h.DB.Query("SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash, COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, '') FROM cards WHERE superseded_by_card_id IS NULL")
+	rows, err := h.DB.Query("SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash, COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, ''), COALESCE(set_code, ''), COALESCE(collector_number, ''), catalog_active FROM cards WHERE superseded_by_card_id IS NULL AND (source_id IS NULL OR catalog_active = TRUE)")
 	if err != nil {
 		return 0, err
 	}
@@ -994,7 +995,7 @@ func (h *Handler) ReloadCardsCache() (int, error) {
 	allCards := make([]models.Card, 0, 1024) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations for cache reload
 	for rows.Next() {
 		var c models.Card
-		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash, &c.Game, &c.Language, &c.Rarity); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash, &c.Game, &c.Language, &c.Rarity, &c.SetCode, &c.CollectorNumber, &c.CatalogActive); err != nil {
 			continue
 		}
 		allCards = append(allCards, c)
@@ -1018,8 +1019,6 @@ func (h *Handler) ReloadCardsCache() (int, error) {
 }
 
 func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
-	// REFACTOR(step 2): move scan request parsing and response encoding into
-	// scan_handler.go before changing the scan contract.
 	slog.Debug("Action: APIScan", "method", r.Method, "url", r.URL.String())
 
 	// Snapshot MockCards under read lock to avoid races with reloadCards
@@ -1054,7 +1053,14 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 
 	lang := r.FormValue("lang")
 	game := models.NormalizeGame(r.FormValue("game"))
+	diagnostics := strings.EqualFold(r.FormValue("diagnostics"), "true")
+	var scanScope *service.ScanScope
 	if game != "" {
+		tcg, parseErr := models.ParseTCG(game)
+		if parseErr != nil {
+			http.Error(w, "Unsupported TCG", http.StatusBadRequest)
+			return
+		}
 		var valid bool
 		cards, valid = filterCardsByGame(cards, game)
 		if !valid {
@@ -1065,6 +1071,12 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "No cards are available for the selected TCG", http.StatusUnprocessableEntity)
 			return
 		}
+		language, parseErr := models.ParseLanguage(lang)
+		if parseErr != nil {
+			http.Error(w, "Unsupported card language", http.StatusBadRequest)
+			return
+		}
+		scanScope = &service.ScanScope{TCG: tcg, Language: language}
 	}
 
 	imgBytes, err := io.ReadAll(file)
@@ -1090,8 +1102,19 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a context with timeout for OCR
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	scanTimeout := h.ScanTimeout
+	if scanTimeout <= 0 {
+		scanTimeout = 75 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), scanTimeout)
 	defer cancel()
+	if game != "" {
+		ctx = service.WithOCRScanConfig(ctx, service.OCRScanConfig{
+			Game:          game,
+			MaxInputBytes: int(maxScanRequestBytes),
+			UseLayoutROIs: true,
+		})
+	}
 
 	// Check context before starting
 	if ctx.Err() != nil {
@@ -1114,16 +1137,39 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Scan timed out while waiting for detector capacity", http.StatusRequestTimeout)
 			return
 		}
-		resultCh := make(chan *service.DetectionResult, 1)
+		type detectionOutcome struct {
+			result *service.DetectionResult
+			err    error
+		}
+		resultCh := make(chan detectionOutcome, 1)
 		go func() {
 			defer func() { <-scanDetectionSlots }()
-			resultCh <- h.Detection.DetectContext(ctx, imgBytes, cards, lang)
+			if scanScope != nil {
+				result, detectErr := h.Detection.DetectScoped(ctx, service.DetectionRequest{
+					Image: imgBytes,
+					Cards: cards,
+					Scope: *scanScope,
+				})
+				resultCh <- detectionOutcome{result: result, err: detectErr}
+				return
+			}
+			resultCh <- detectionOutcome{result: h.Detection.DetectContext(ctx, imgBytes, cards, lang)}
 		}()
-		var result *service.DetectionResult
+		var outcome detectionOutcome
 		select {
-		case result = <-resultCh:
+		case outcome = <-resultCh:
 		case <-ctx.Done():
 			http.Error(w, "Scan timed out; try a clearer image or another language", http.StatusRequestTimeout)
+			return
+		}
+		if outcome.err != nil {
+			slog.Warn("APIScan: Scoped detection failed", "error", outcome.err)
+			writeDetectionError(w, outcome.err)
+			return
+		}
+		result := outcome.result
+		if result == nil {
+			http.Error(w, "Detection failed", http.StatusInternalServerError)
 			return
 		}
 		text = result.OCRText
@@ -1160,17 +1206,19 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 		resp := map[string]interface{}{
-			"text":             strings.ReplaceAll(text, "\n", " "),
-			"detected":         detectedCard,
-			"id":               detectedID,
-			"price":            detectedPrice,
-			"image_url":        detectedImage,
-			"confidence":       result.BestMatchConfidence(),
-			"needs_review":     result.BestMatchNeedsReview(),
-			"top_matches":      topMatches,
-			"pipeline_metrics": result.Metrics.Format(), // SCAN-16
+			"text":         strings.ReplaceAll(text, "\n", " "),
+			"detected":     detectedCard,
+			"id":           detectedID,
+			"price":        detectedPrice,
+			"image_url":    detectedImage,
+			"confidence":   result.BestMatchConfidence(),
+			"needs_review": result.BestMatchNeedsReview(),
+			"top_matches":  topMatches,
 		}
-		if processedImg != nil {
+		if diagnostics {
+			resp["pipeline_metrics"] = result.Metrics.Format()
+		}
+		if diagnostics && processedImg != nil {
 			resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
@@ -1216,7 +1264,7 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		text, ocrMatch, processedImg, err = service.ProcessCardScanContext(ctx, imgBytes, cards, lang, h.LLM)
 		if err != nil {
 			slog.Error("OCR: Failed to process scan", "error", err)
-			http.Error(w, "Detection failed", http.StatusInternalServerError)
+			writeDetectionError(w, err)
 			return
 		}
 		if ocrMatch != "Unknown Card" {
@@ -1248,7 +1296,7 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		"price":     detectedPrice,
 		"image_url": detectedImage,
 	}
-	if processedImg != nil {
+	if diagnostics && processedImg != nil {
 		resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
 	}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {

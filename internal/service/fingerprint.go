@@ -292,7 +292,8 @@ func NewFingerprintService(db *sql.DB) *FingerprintService {
 func (s *FingerprintService) loadFingerprintsFromDB() {
 	rows, err := s.db.Query(`
 		SELECT id, name, set_name, price_usd, price_eur, image_url, variant,
-		       change_24h, phash, game, language, rarity
+		       change_24h, phash, game, language, rarity, set_code,
+		       collector_number, catalog_active
 		FROM (
 		    SELECT card.id, card.name, card.set_name,
 		           COALESCE(card.price_usd, 0) AS price_usd,
@@ -303,7 +304,10 @@ func (s *FingerprintService) loadFingerprintsFromDB() {
 		           card.phash AS phash,
 		           COALESCE(card.game, '') AS game,
 		           COALESCE(card.language, '') AS language,
-		           COALESCE(card.rarity, '') AS rarity
+		           COALESCE(card.rarity, '') AS rarity,
+		           COALESCE(card.set_code, '') AS set_code,
+		           COALESCE(card.collector_number, '') AS collector_number,
+		           card.catalog_active AS catalog_active
 		    FROM cards AS card
 		    WHERE card.phash IS NOT NULL
 		      AND card.superseded_by_card_id IS NULL
@@ -315,7 +319,10 @@ func (s *FingerprintService) loadFingerprintsFromDB() {
 		           COALESCE(card.image_url, ''), COALESCE(card.variant, ''), COALESCE(card.change_24h, 0), fingerprint.hash,
 		           COALESCE(card.game, '') AS game,
 		           COALESCE(card.language, '') AS language,
-		           COALESCE(card.rarity, '') AS rarity
+		           COALESCE(card.rarity, '') AS rarity,
+		           COALESCE(card.set_code, '') AS set_code,
+		           COALESCE(card.collector_number, '') AS collector_number,
+		           card.catalog_active AS catalog_active
 		    FROM card_fingerprints AS fingerprint
 		    JOIN card_images AS image ON image.id = fingerprint.image_id
 		    JOIN cards AS card ON card.id = image.card_id
@@ -334,7 +341,7 @@ func (s *FingerprintService) loadFingerprintsFromDB() {
 	for rows.Next() {
 		var c models.Card
 		var phash sql.NullInt64
-		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &phash, &c.Game, &c.Language, &c.Rarity); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &phash, &c.Game, &c.Language, &c.Rarity, &c.SetCode, &c.CollectorNumber, &c.CatalogActive); err != nil {
 			slog.Warn("Failed to scan fingerprint row, skipping", "error", err)
 			continue
 		}

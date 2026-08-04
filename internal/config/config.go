@@ -62,6 +62,7 @@ type Config struct {
 		PhashHighConf  int `env:"SCAN_PHASH_HIGH_CONF" env-default:"5"`  // SCAN-02: Strict pHash threshold
 		PhashPotential int `env:"SCAN_PHASH_POTENTIAL" env-default:"10"` // SCAN-02: Relaxed pHash threshold
 		OCRPoolSize    int `env:"SCAN_OCR_POOL_SIZE" env-default:"3"`    // SCAN-03: Number of concurrent Tesseract clients
+		TimeoutSeconds int `env:"SCAN_TIMEOUT_SECONDS" env-default:"75"`
 	} `yaml:"scan"`
 	Catalog struct {
 		Enabled             bool   `env:"CATALOG_ENABLED" env-default:"true"`

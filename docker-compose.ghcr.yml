@@ -14,6 +14,7 @@ services:
       - DB_SSLMODE=disable
       - OLLAMA_HOST=pokget_ollama
       - OLLAMA_MODEL=${OLLAMA_MODEL:-tinyllama}
+      - SCAN_TIMEOUT_SECONDS=${SCAN_TIMEOUT_SECONDS:-75}
       - SESSION_KEY=${SESSION_KEY}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}

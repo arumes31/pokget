@@ -67,7 +67,10 @@ func parseMetadataTargets(value string) []worker.MetadataTarget {
 	return targets
 }
 
-func validateWorkerConfig(cfg *config.Config) error {
+func validateRuntimeConfig(cfg *config.Config) error {
+	if cfg.Scan.TimeoutSeconds < 1 {
+		return fmt.Errorf("SCAN_TIMEOUT_SECONDS must be positive")
+	}
 	if cfg.Worker.PriceSyncMinutes < 1 {
 		return fmt.Errorf("PRICE_SYNC_INTERVAL_MINUTES must be positive")
 	}

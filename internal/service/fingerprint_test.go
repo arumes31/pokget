@@ -120,9 +120,10 @@ func TestFingerprintServiceLoadsLegacyAndCatalogFingerprints(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "name", "set_name", "price_usd", "price_eur", "image_url",
 			"variant", "change_24h", "phash", "game", "language", "rarity",
+			"set_code", "collector_number", "catalog_active",
 		}).
-			AddRow("legacy", "Legacy", "Set", "1.00", "2.00", "", "Normal", 0.0, int64(11), "pokemon", "en", "Rare").
-			AddRow("catalog", "Catalog", "Set", "1.00", "2.00", "", "Normal", 0.0, int64(22), "magic", "en", "Mythic"))
+			AddRow("legacy", "Legacy", "Set", "1.00", "2.00", "", "Normal", 0.0, int64(11), "pokemon", "en", "Rare", "base", "1", true).
+			AddRow("catalog", "Catalog", "Set", "1.00", "2.00", "", "Normal", 0.0, int64(22), "magic", "en", "Mythic", "vma", "4", true))
 
 	service := NewFingerprintService(db)
 	if service.tree.count != 2 {
