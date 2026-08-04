@@ -206,7 +206,7 @@ func TestLLMService(t *testing.T) {
 	t.Run("FuzzyMatchCard_Success", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"response": "id-123"}`))
+			_, _ = w.Write([]byte(`{"response":"{\"card_id\":\"id-123\",\"confidence\":0.9,\"abstain\":false}"}`))
 		}))
 		defer server.Close()
 
@@ -231,7 +231,7 @@ func TestLLMService(t *testing.T) {
 		s.BaseURL = server.URL
 		s.HTTPClient = server.Client()
 
-		_, err := s.FuzzyMatchCard("Chrizard", []models.Card{{Name: "Charizard"}})
+		_, err := s.FuzzyMatchCard("Chrizard", []models.Card{{ID: "charizard", Name: "Charizard"}})
 		if err == nil {
 			t.Error("Expected error for 500 response")
 		}
@@ -247,7 +247,7 @@ func TestLLMService(t *testing.T) {
 		s.BaseURL = server.URL
 		s.HTTPClient = server.Client()
 
-		_, err := s.FuzzyMatchCard("Chrizard", []models.Card{{Name: "Charizard"}})
+		_, err := s.FuzzyMatchCard("Chrizard", []models.Card{{ID: "charizard", Name: "Charizard"}})
 		if err == nil {
 			t.Error("Expected error for malformed JSON")
 		}

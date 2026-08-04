@@ -1,6 +1,7 @@
 package service
 
 import (
+	"sort"
 	"strings"
 	"unicode"
 
@@ -104,6 +105,9 @@ func ambiguousSameNameFingerprints(result *MatchResult, threshold int) []Fingerp
 		if match.Distance > threshold {
 			break
 		}
+		if match.Card == nil {
+			continue
+		}
 		if name == "" {
 			name = strings.ToLower(strings.TrimSpace(match.Card.Name))
 		}
@@ -131,6 +135,7 @@ func exactFingerprintMatches(result *MatchResult) []FingerprintMatch {
 		seen[match.Card.ID] = true
 		matches = append(matches, match)
 	}
+	sort.Slice(matches, func(i, j int) bool { return matches[i].Card.ID < matches[j].Card.ID })
 	return matches
 }
 
@@ -144,6 +149,9 @@ func uniqueHighConfidenceFingerprint(result *MatchResult, threshold int) (*model
 		if match.Distance > threshold {
 			break
 		}
+		if match.Card == nil {
+			continue
+		}
 		if candidate != nil && candidate.ID != match.Card.ID {
 			return nil, 0
 		}
@@ -154,6 +162,9 @@ func uniqueHighConfidenceFingerprint(result *MatchResult, threshold int) (*model
 }
 
 func getOrCreateMatch(m map[string]*CardMatch, card *models.Card) *CardMatch {
+	if card == nil || card.ID == "" {
+		return nil
+	}
 	if cm, ok := m[card.ID]; ok {
 		return cm
 	}

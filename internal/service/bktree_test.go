@@ -22,10 +22,82 @@ package service
 
 import (
 	"fmt"
-	"pokget/internal/models"
+	"sync"
 	"testing"
 	"time"
+
+	"pokget/internal/models"
 )
+
+func TestFingerprintServiceScopedIndexIsolation(t *testing.T) {
+	t.Parallel()
+
+	service := NewFingerprintService(nil)
+	cards := []models.Card{
+		{ID: "pokemon-en", Name: "Shared", Game: "pokemon", Language: "en"},
+		{ID: "pokemon-de", Name: "Shared", Game: "pokemon", Language: "de"},
+		{ID: "magic-en", Name: "Shared", Game: "magic", Language: "en"},
+	}
+	for index := range cards {
+		service.AddFingerprint(42, &cards[index])
+	}
+
+	result := service.SearchByHashWithScope(42, FingerprintIndexScope{
+		TCG: models.TCGPokemon, Language: models.LanguageEnglish,
+	}, cards)
+	if len(result.Potential) != 1 || result.Potential[0].Card.ID != "pokemon-en" {
+		t.Fatalf("scoped matches = %+v, want only pokemon-en", result.Potential)
+	}
+}
+
+func TestFingerprintServiceAlgorithmVersionIsolation(t *testing.T) {
+	t.Parallel()
+
+	service := NewFingerprintService(nil)
+	card := &models.Card{ID: "pokemon-v2", Name: "Versioned", Game: "pokemon", Language: "en"}
+	scopeV2 := FingerprintIndexScope{
+		TCG: models.TCGPokemon, Language: models.LanguageEnglish,
+		Algorithm: "phash64", Version: 2,
+	}
+	if err := service.AddFingerprintScoped(scopeV2, 77, card); err != nil {
+		t.Fatal(err)
+	}
+	if got := service.SearchByHashWithScope(77, scopeV2, []models.Card{*card}); len(got.Potential) != 1 {
+		t.Fatalf("version 2 matches = %+v", got.Potential)
+	}
+	scopeV1 := scopeV2
+	scopeV1.Version = 1
+	if got := service.SearchByHashWithScope(77, scopeV1, []models.Card{*card}); len(got.Potential) != 0 {
+		t.Fatalf("version 1 leaked version 2 match: %+v", got.Potential)
+	}
+}
+
+func TestFingerprintServiceConcurrentIndexAccess(t *testing.T) {
+	service := NewFingerprintService(nil)
+	scope := FingerprintIndexScope{TCG: models.TCGPokemon, Language: models.LanguageEnglish}
+	var waitGroup sync.WaitGroup
+	for worker := 0; worker < 8; worker++ {
+		waitGroup.Add(1)
+		go func(worker int) {
+			defer waitGroup.Done()
+			for index := 0; index < 100; index++ {
+				card := &models.Card{
+					ID: fmt.Sprintf("%d-%d", worker, index), Game: "pokemon", Language: "en",
+				}
+				if err := service.AddFingerprintScoped(scope, uint64(worker*100+index), card); err != nil {
+					t.Errorf("AddFingerprintScoped: %v", err)
+					return
+				}
+				_ = service.SearchByHashWithScope(int64(index), scope, []models.Card{*card})
+				_ = service.SearchByHashWithCards(int64(index), []models.Card{*card})
+			}
+		}(worker)
+	}
+	waitGroup.Wait()
+	if got, want := service.tree.Len(), 800; got != want {
+		t.Fatalf("global index length = %d, want %d", got, want)
+	}
+}
 
 // --- SCAN-01: BK-tree tests ---
 
