@@ -178,3 +178,53 @@ func TestOCRPoolSizeDefault(t *testing.T) {
 		t.Errorf("Expected default OCRPoolSize 3, got %d", OCRPoolSize)
 	}
 }
+
+func TestBoundedOCRCacheEvictsLeastRecentlyUsed(t *testing.T) {
+	cache := newBoundedOCRCache(2)
+	cache.Store("first", ocrCacheEntry{Text: "first"})
+	cache.Store("second", ocrCacheEntry{Text: "second"})
+	if _, ok := cache.Load("first"); !ok {
+		t.Fatal("expected first entry")
+	}
+	cache.Store("third", ocrCacheEntry{Text: "third"})
+	if _, ok := cache.Load("second"); ok {
+		t.Fatal("least recently used entry was not evicted")
+	}
+	if cache.Len() != 2 {
+		t.Fatalf("cache length = %d, want 2", cache.Len())
+	}
+}
+
+func TestBoundedOCRCacheDefensivelyCopiesProcessedImage(t *testing.T) {
+	cache := newBoundedOCRCache(1)
+	processed := []byte{1, 2, 3}
+	cache.Store("key", ocrCacheEntry{ProcessedImage: processed})
+	processed[0] = 9
+
+	loaded, ok := cache.Load("key")
+	if !ok {
+		t.Fatal("expected cache hit")
+	}
+	entry := loaded.(ocrCacheEntry)
+	if entry.ProcessedImage[0] != 1 {
+		t.Fatal("store retained caller-owned image buffer")
+	}
+	entry.ProcessedImage[0] = 8
+	loaded, _ = cache.Load("key")
+	if loaded.(ocrCacheEntry).ProcessedImage[0] != 1 {
+		t.Fatal("load returned cache-owned image buffer")
+	}
+}
+
+func TestOCRCacheKeyIncludesPreprocessingOptions(t *testing.T) {
+	data := []byte("same image")
+	cards := []models.Card{{ID: "sv1-001", Name: "Example", Game: "pokemon"}}
+	defaultKey := makeOCRCacheKeyWithConfig(data, "eng", cards, OCRScanConfig{})
+	gameKey := makeOCRCacheKeyWithConfig(data, "eng", cards, OCRScanConfig{Game: "pokemon", UseLayoutROIs: true})
+	cropKey := makeOCRCacheKeyWithConfig(data, "eng", cards, OCRScanConfig{
+		GuideCrop: &OCRNormalizedRect{MinX: 0.1, MinY: 0.1, MaxX: 0.9, MaxY: 0.9},
+	})
+	if defaultKey == gameKey || defaultKey == cropKey || gameKey == cropKey {
+		t.Fatal("preprocessing options must be part of the cache key")
+	}
+}
