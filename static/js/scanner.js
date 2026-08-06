@@ -22,6 +22,7 @@
   const MIN_SOURCE_DIMENSION = 180;
   const MAX_OUTPUT_DIMENSION = 1800;
   const REQUEST_TIMEOUT_MS = 90000;
+  const SCAN_PROGRESS_STEPS = 5;
   const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
   const LANGUAGE_OPTIONS = Object.freeze({
@@ -316,6 +317,10 @@
       scanStatus: '',
       scanStep: 0,
       scanError: '',
+      scanStartedAt: 0,
+      scanElapsedSeconds: 0,
+      scanTimer: null,
+      scanReturnFocus: null,
       lines: cloneDefaultLines(),
       metrics: centeringMetrics(DEFAULT_LINES),
       dragging: null,
@@ -354,6 +359,30 @@
         return languagesForGame(this.game);
       },
 
+      get scanProgressPercent() {
+        return [0, 12, 45, 75, 90, 100][clamp(Math.round(this.scanStep), 0, SCAN_PROGRESS_STEPS)];
+      },
+
+      get scanElapsedLabel() {
+        const seconds = Math.max(0, Math.floor(this.scanElapsedSeconds));
+        const minutes = Math.floor(seconds / 60);
+        return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+      },
+
+      get scanProgressDetail() {
+        if (this.scanStep <= 1) return 'Preparing the image on this device.';
+        if (this.scanStep === 2 && this.scanElapsedSeconds < 15) {
+          return 'Uploading securely, then running OCR and scoped card matching.';
+        }
+        if (this.scanStep === 2) {
+          return 'Still processing. Detailed or multilingual cards can take up to 75 seconds.';
+        }
+        if (this.scanStep === 3) return 'The server replied. Checking the response now.';
+        if (this.scanStep === 4) return 'Validating the best printing and confidence.';
+        if (this.scanStep >= 5) return 'Match ready.';
+        return 'Starting the scanner.';
+      },
+
       init() {
         const storedGame = storageGet(STORAGE_KEYS.game);
         this.game = LANGUAGE_OPTIONS[storedGame]
@@ -373,6 +402,7 @@
 
       destroy() {
         this.cancelScan('destroyed');
+        this.setScanning(false);
         stopStream(this.activeStream);
         this.activeStream = null;
         if (this.previewURL) URL.revokeObjectURL(this.previewURL);
@@ -388,7 +418,46 @@
 
       setStatus(message, step) {
         this.scanStatus = message;
-        this.scanStep = step;
+        this.scanStep = clamp(Number(step) || 0, 0, SCAN_PROGRESS_STEPS);
+      },
+
+      setScanning(active) {
+        const next = Boolean(active);
+        if (this.scanning === next) return;
+        this.scanning = next;
+
+        if (next) {
+          this.scanStartedAt = Date.now();
+          this.scanElapsedSeconds = 0;
+          if (this.scanTimer !== null) clearInterval(this.scanTimer);
+          this.scanTimer = setInterval(() => {
+            this.scanElapsedSeconds = Math.floor((Date.now() - this.scanStartedAt) / 1000);
+          }, 1000);
+          if (typeof document !== 'undefined') {
+            this.scanReturnFocus = document.activeElement;
+            document.documentElement.classList.add('scan-progress-open');
+          }
+          const focusCancel = () => {
+            if (!this.scanning || typeof document === 'undefined') return;
+            const control = document.querySelector('[data-testid="scan-progress-cancel"]');
+            if (control && control.getClientRects().length > 0) control.focus({ preventScroll: true });
+          };
+          if (typeof this.$nextTick === 'function') {
+            this.$nextTick(focusCancel);
+          }
+          setTimeout(focusCancel, 0);
+          setTimeout(focusCancel, 50);
+          setTimeout(focusCancel, 250);
+          return;
+        }
+
+        if (this.scanTimer !== null) clearInterval(this.scanTimer);
+        this.scanTimer = null;
+        if (typeof document !== 'undefined') {
+          document.documentElement.classList.remove('scan-progress-open');
+          if (this.scanReturnFocus?.isConnected) this.scanReturnFocus.focus?.();
+        }
+        this.scanReturnFocus = null;
       },
 
       resetResult() {
@@ -543,7 +612,7 @@
 
         this.resetResult();
         const operationID = ++this.operationID;
-        this.scanning = true;
+        this.setScanning(true);
         this.setStatus('Preparing the guide crop…', 1);
         try {
           const rect = this.$refs.container.getBoundingClientRect();
@@ -579,7 +648,7 @@
 
         let decoded;
         const operationID = ++this.operationID;
-        this.scanning = true;
+        this.setScanning(true);
         this.setStatus('Preparing a private local preview…', 1);
         try {
           decoded = await decodeImage(file);
@@ -613,7 +682,7 @@
         } finally {
           decoded?.close();
           if (operationID === this.operationID) {
-            this.scanning = false;
+            this.setScanning(false);
             this.scanStatus = '';
             this.scanStep = 0;
           }
@@ -624,7 +693,7 @@
         if (!this.pendingFile || this.scanning) return;
         let decoded;
         const operationID = ++this.operationID;
-        this.scanning = true;
+        this.setScanning(true);
         this.setStatus('Rotating the local preview…', 1);
         try {
           decoded = await decodeImage(this.pendingFile);
@@ -646,7 +715,7 @@
         } finally {
           decoded?.close();
           if (operationID === this.operationID) {
-            this.scanning = false;
+            this.setScanning(false);
             this.scanStatus = '';
             this.scanStep = 0;
           }
@@ -671,7 +740,7 @@
         if (!this.previewBlob || this.scanning) return;
         this.resetResult();
         const operationID = ++this.operationID;
-        this.scanning = true;
+        this.setScanning(true);
         this.setStatus('Preparing the guide crop…', 1);
         let decoded;
         try {
@@ -708,7 +777,7 @@
           this.lastScanName = filename;
         }
 
-        this.scanning = true;
+        this.setScanning(true);
         this.scanError = '';
         const requestID = ++this.requestID;
         const controller = new AbortController();
@@ -767,7 +836,7 @@
           clearTimeout(timeout);
           if (requestID === this.requestID) {
             this.abortController = null;
-            this.scanning = false;
+            this.setScanning(false);
           }
         }
       },
@@ -777,7 +846,7 @@
           this.scanError = '';
           this.scanStatus = '';
           this.scanStep = 0;
-          this.scanning = false;
+          this.setScanning(false);
           return;
         }
         if (error?.name === 'AbortError') {
@@ -789,7 +858,7 @@
         }
         this.scanStatus = '';
         this.scanStep = 0;
-        this.scanning = false;
+        this.setScanning(false);
         this.notify(this.scanError, abortReason === 'cancelled' ? 'info' : 'error');
       },
 
@@ -803,7 +872,7 @@
           controller.abort();
         }
         if (!this.scanning) return;
-        this.scanning = false;
+        this.setScanning(false);
         this.scanStatus = '';
         this.scanStep = 0;
         if (reason === 'cancelled') {

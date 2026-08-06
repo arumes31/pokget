@@ -725,3 +725,240 @@ label {
     scrollbar-width: thin;
   }
 }
+
+.sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+html.scan-progress-open,
+html.scan-progress-open body {
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+
+.scan-progress-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    width: 100vw;
+    min-height: 100vh;
+    height: 100dvh;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    overscroll-behavior: none;
+    padding:
+        max(1rem, env(safe-area-inset-top))
+        max(1rem, env(safe-area-inset-right))
+        max(1rem, env(safe-area-inset-bottom))
+        max(1rem, env(safe-area-inset-left));
+    background:
+        radial-gradient(circle at 50% 22%, rgba(168, 85, 247, 0.24), transparent 38%),
+        linear-gradient(165deg, #160c21 0%, #09070d 54%, #050506 100%);
+    color: #f8f4fb;
+    isolation: isolate;
+}
+
+.scan-progress-glow {
+    position: absolute;
+    width: min(92vw, 34rem);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: repeating-radial-gradient(circle, rgba(221, 183, 255, 0.08) 0 1px, transparent 1px 38px);
+    mask-image: radial-gradient(circle, black 0 44%, transparent 72%);
+    opacity: 0.8;
+    animation: scan-progress-breathe 4s ease-in-out infinite;
+}
+
+.scan-progress-card {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 28rem);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+    padding: clamp(1.25rem, 5vw, 2rem);
+    border: 1px solid rgba(221, 183, 255, 0.2);
+    border-radius: 1.75rem;
+    background: rgba(20, 15, 25, 0.88);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.52), 0 0 48px rgba(168, 85, 247, 0.1);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+}
+
+.scan-progress-mark {
+    position: relative;
+    width: 5rem;
+    height: 5rem;
+    display: grid;
+    place-items: center;
+    align-self: center;
+    margin-bottom: 1.25rem;
+    border-radius: 1.4rem;
+    color: #ddb7ff;
+    background: linear-gradient(145deg, rgba(183, 109, 255, 0.2), rgba(76, 215, 246, 0.06));
+    border: 1px solid rgba(221, 183, 255, 0.24);
+}
+
+.scan-progress-mark svg {
+    width: 2.25rem;
+    height: 2.25rem;
+}
+
+.scan-progress-orbit {
+    position: absolute;
+    inset: -0.45rem;
+    border-radius: 1.7rem;
+    border: 2px solid transparent;
+    border-top-color: #ddb7ff;
+    border-right-color: rgba(76, 215, 246, 0.7);
+    animation: scan-progress-spin 1.35s linear infinite;
+}
+
+.scan-progress-kicker {
+    margin-bottom: 0.45rem;
+    color: #c993ff;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.scan-progress-title {
+    color: #fff;
+    font-size: clamp(1.55rem, 7vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.1;
+}
+
+.scan-progress-status {
+    min-height: 2.7em;
+    margin-top: 0.8rem;
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 0.9rem;
+    font-weight: 650;
+    line-height: 1.35;
+}
+
+.scan-progress-track {
+    width: 100%;
+    height: 0.5rem;
+    margin-top: 1.25rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.09);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.scan-progress-fill {
+    position: relative;
+    height: 100%;
+    min-width: 0.45rem;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #a855f7, #ddb7ff 55%, #4cd7f6);
+    box-shadow: 0 0 18px rgba(221, 183, 255, 0.55);
+    transition: width 350ms ease;
+}
+
+.scan-progress-fill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: 42%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.52), transparent);
+    animation: scan-progress-sweep 1.8s ease-in-out infinite;
+}
+
+.scan-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.65rem;
+    color: rgba(255, 255, 255, 0.52);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.scan-progress-detail {
+    min-height: 3em;
+    margin: 1rem auto 0;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.scan-progress-cancel {
+    width: 100%;
+    min-height: 3rem;
+    margin-top: 1.25rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.9rem;
+    color: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.07);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    touch-action: manipulation;
+}
+
+.scan-progress-cancel:hover {
+    border-color: rgba(221, 183, 255, 0.52);
+    background: rgba(221, 183, 255, 0.12);
+}
+
+.scan-progress-cancel:focus-visible {
+    outline: 3px solid #4cd7f6;
+    outline-offset: 3px;
+}
+
+.scan-progress-note {
+    margin-top: 0.7rem;
+    color: rgba(255, 255, 255, 0.42);
+    font-size: 0.68rem;
+    line-height: 1.4;
+}
+
+@keyframes scan-progress-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes scan-progress-sweep {
+    from { transform: translateX(-125%); }
+    to { transform: translateX(340%); }
+}
+
+@keyframes scan-progress-breathe {
+    0%, 100% { transform: scale(0.94); opacity: 0.48; }
+    50% { transform: scale(1.04); opacity: 0.82; }
+}
+
+@media (max-height: 620px) {
+    .scan-progress-card { padding: 1rem 1.2rem; }
+    .scan-progress-mark { width: 3.75rem; height: 3.75rem; margin-bottom: 0.8rem; }
+    .scan-progress-status { margin-top: 0.55rem; min-height: auto; }
+    .scan-progress-track { margin-top: 0.8rem; }
+    .scan-progress-detail { min-height: auto; margin-top: 0.65rem; }
+    .scan-progress-cancel { margin-top: 0.8rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .scan-progress-orbit,
+    .scan-progress-fill::after,
+    .scan-progress-glow {
+        animation: none;
+    }
+}

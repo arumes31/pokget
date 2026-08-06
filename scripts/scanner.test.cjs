@@ -117,6 +117,25 @@ test('cancel invalidates active work and leaves the prepared crop retryable', ()
   assert.match(notification, /prepared image is still available/i);
 });
 
+test('full-screen progress exposes stages, elapsed time, and long-running reassurance', () => {
+  const component = scanner.createCardScanner();
+
+  component.setScanning(true);
+  component.setStatus('Uploading the crop and running detection…', 2);
+  component.scanElapsedSeconds = 16;
+
+  assert.equal(component.scanning, true);
+  assert.equal(component.scanProgressPercent, 45);
+  assert.equal(component.scanElapsedLabel, '0:16');
+  assert.match(component.scanProgressDetail, /Still processing/);
+
+  component.setStatus('Validating the match…', 4);
+  assert.equal(component.scanProgressPercent, 90);
+  assert.match(component.scanProgressDetail, /Validating/);
+  component.setScanning(false);
+  assert.equal(component.scanTimer, null);
+});
+
 test('one submission pipeline sends the selected TCG and language', async () => {
   const originalFetch = global.fetch;
   let request;

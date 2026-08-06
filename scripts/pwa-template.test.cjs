@@ -22,6 +22,18 @@ test('scanner template loads one external Alpine controller before Alpine', () =
   assert.match(scannerTemplate, /RETRY LAST CROP/);
   assert.match(scannerTemplate, /USE A CATALOG ID/);
   assert.match(scannerTemplate, /Only\s*the area inside the guides is uploaded/);
+  assert.match(scannerTemplate, /data-testid="scan-progress-overlay"/);
+  assert.match(scannerTemplate, /role="dialog" aria-modal="true"/);
+  assert.match(scannerTemplate, /data-testid="scan-progress-elapsed"/);
+  assert.match(scannerTemplate, /data-testid="scan-progress-cancel"/);
+  assert.match(scannerTemplate, /:inert="scanning"/);
+  assert.match(scannerTemplate, /aria-live="polite"/);
+
+  const styles = read('static/css/styles.css');
+  assert.match(styles, /\.scan-progress-overlay\s*\{/);
+  assert.match(styles, /height:\s*100dvh/);
+  assert.match(styles, /safe-area-inset-bottom/);
+  assert.match(styles, /prefers-reduced-motion:\s*reduce/);
 });
 
 test('PWA uses one root-scoped worker and a non-sensitive offline fallback', () => {

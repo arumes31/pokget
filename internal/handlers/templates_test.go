@@ -103,6 +103,25 @@ func TestCenteringToolRendersDetectedCardID(t *testing.T) {
 	}
 }
 
+func TestCenteringToolRendersAccessibleFullScreenProgress(t *testing.T) {
+	t.Parallel()
+
+	templates := parseApplicationTemplates(t)
+	output := executeApplicationTemplate(t, templates, "centering_tool.html")
+	for _, expected := range []string{
+		`data-testid="scan-progress-overlay"`,
+		`role="dialog"`,
+		`aria-modal="true"`,
+		`data-testid="scan-progress-elapsed"`,
+		`data-testid="scan-progress-cancel"`,
+		`:inert="scanning"`,
+	} {
+		if !strings.Contains(output, expected) {
+			t.Errorf("centering_tool.html does not contain %q", expected)
+		}
+	}
+}
+
 func TestPortfolioWorkflowTemplatesExposeSafeActions(t *testing.T) {
 	t.Parallel()
 
