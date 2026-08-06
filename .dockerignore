@@ -8,6 +8,8 @@ artifacts
 test_cards
 graphify-out
 .kimi-code
+.jules
+ocr_sandbox
 node_modules
 dist
 npm-debug.log*

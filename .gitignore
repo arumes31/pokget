@@ -1,41 +1,50 @@
+# Local configuration and agent metadata
 .env
-main
-tailwind.exe
-postgres_data/
-ollama_data/
-vendor/
+/.claudeignore
+/.kimi-code/
+/.jules/
+
+# Local executables and Go build output
+/main
+/all
+/auth
+/coverage
+/tailwind.exe
 *.exe
 *.test
+!/Dockerfile.test
 *.out
-node_modules/
-dist/
-test_cards/
+
+# Dependencies and generated frontend output
+/postgres_data/
+/ollama_data/
+/vendor/
+/node_modules/
+/dist/
+
+# Local fixtures, user data, and generated analysis
+/test_cards/
+/data/
+/test/
+/graphify-out/
+/artifacts/
+/scratch/
+/plans/
+/ocr_sandbox/
+/test_results.json
+/NotoSansCJKjp-Regular.otf
 
 # Debug and coverage data
-all
-auth
-coverage
-test_results.txt
-test_ocr.go*
-test.html
-test.json
-test.png
-test.webp
-test_cat.json
-test_ddg.html
-test_search.json
-media__*.jpg
-ocr_tester_linux
-ocr_tester_linux_cgo
-static/img/debug/
-
-# User data and tests
-data/
-test/
-graphify-out/
-artifacts/
-scratch/
-plans/
-
-.claudeignore
-.kimi-code/
+/test_results.txt
+/test_ocr.go*
+/test.html
+/test.json
+/test.png
+/test.webp
+/test_cat.json
+/test_ddg.html
+/test_search.json
+/media__*.jpg
+/ocr_tester_linux
+/ocr_tester_linux_cgo
+/static/img/debug/
