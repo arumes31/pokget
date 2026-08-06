@@ -21,8 +21,10 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -30,22 +32,29 @@ import (
 
 // AuditService handles application audit logging.
 type AuditService struct {
-	db    *sql.DB
-	logCh chan auditEntry
-	wg    sync.WaitGroup
+	db      *sql.DB
+	logCh   chan auditEntry
+	wg      sync.WaitGroup
+	ctx     context.Context
+	cancel  context.CancelFunc
+	closeMu sync.RWMutex
+	closed  bool
 }
 
 type auditEntry struct {
-	userID   string
-	action   string
-	metadata map[string]interface{}
+	userID       string
+	action       string
+	metadataJSON string
 }
 
 // NewAuditService creates a new AuditService.
 func NewAuditService(db *sql.DB) *AuditService {
+	ctx, cancel := context.WithCancel(context.Background())
 	s := &AuditService{
-		db:    db,
-		logCh: make(chan auditEntry, 256),
+		db:     db,
+		logCh:  make(chan auditEntry, 256),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 	s.wg.Add(1)
 	go s.processLogs()
@@ -54,26 +63,50 @@ func NewAuditService(db *sql.DB) *AuditService {
 
 func (s *AuditService) processLogs() {
 	defer s.wg.Done()
-	for entry := range s.logCh {
-		metadataJSON, err := json.Marshal(entry.metadata)
-		if err != nil {
-			slog.Error("Failed to marshal audit log metadata", "user_id", entry.userID, "action", entry.action, "error", err)
-			metadataJSON = []byte(fmt.Sprintf(`{"error":"marshal failed","action":%q}`, entry.action))
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case entry, ok := <-s.logCh:
+			if !ok {
+				return
+			}
+			s.writeLog(entry)
 		}
-		_, err = s.db.Exec(
-			"INSERT INTO audit_logs (user_id, action, metadata, created_at) VALUES ($1, $2, $3, NOW())",
-			entry.userID, entry.action, string(metadataJSON),
-		)
-		if err != nil {
-			slog.Error("Failed to write audit log", "user_id", entry.userID, "action", entry.action, "error", err)
+	}
+}
+
+func (s *AuditService) writeLog(entry auditEntry) {
+	_, err := s.db.ExecContext(
+		s.ctx,
+		"INSERT INTO audit_logs (user_id, action, metadata, created_at) VALUES ($1, $2, $3, NOW())",
+		entry.userID, entry.action, entry.metadataJSON,
+	)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
 		}
+		slog.Error("Failed to write audit log", "user_id", entry.userID, "action", entry.action, "error", err)
 	}
 }
 
 // Log records an audit entry asynchronously.
 func (s *AuditService) Log(userID, action string, metadata map[string]interface{}) {
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		slog.Error("Failed to marshal audit log metadata", "user_id", userID, "action", action, "error", err)
+		metadataJSON = []byte(fmt.Sprintf(`{"error":"marshal failed","action":%q}`, action))
+	}
+
+	s.closeMu.RLock()
+	defer s.closeMu.RUnlock()
+	if s.closed {
+		slog.Warn("Audit service closed, dropping entry", "user_id", userID, "action", action)
+		return
+	}
+
 	select {
-	case s.logCh <- auditEntry{userID: userID, action: action, metadata: metadata}:
+	case s.logCh <- auditEntry{userID: userID, action: action, metadataJSON: string(metadataJSON)}:
 	default:
 		slog.Warn("Audit log channel full, dropping entry", "user_id", userID, "action", action)
 	}
@@ -81,6 +114,32 @@ func (s *AuditService) Log(userID, action string, metadata map[string]interface{
 
 // Close stops the background log processor.
 func (s *AuditService) Close() {
-	close(s.logCh)
-	s.wg.Wait()
+	_ = s.CloseContext(context.Background())
+}
+
+// CloseContext drains queued audit records until ctx expires. Once the
+// deadline is reached, any in-flight database write is cancelled so shutdown
+// cannot block indefinitely on an unavailable database.
+func (s *AuditService) CloseContext(ctx context.Context) error {
+	s.closeMu.Lock()
+	if !s.closed {
+		s.closed = true
+		close(s.logCh)
+	}
+	s.closeMu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		s.cancel()
+		return nil
+	case <-ctx.Done():
+		s.cancel()
+		return ctx.Err()
+	}
 }

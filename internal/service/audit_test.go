@@ -23,79 +23,68 @@ package service
 import (
 	"database/sql"
 	"testing"
-	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestAuditService(t *testing.T) {
+	tests := []struct {
+		name        string
+		metadata    map[string]interface{}
+		insertError error
+	}{
+		{name: "Log_Success", metadata: map[string]interface{}{"ip": "1.2.3.4"}},
+		{name: "Log_Success_NoMetadata"},
+		{name: "Log_Error_NoMetadata", insertError: sql.ErrConnDone},
+		{name: "Log_Error", metadata: map[string]interface{}{"ip": "1.2.3.4"}, insertError: sql.ErrConnDone},
+		{name: "Log_JSON_Marshal_Error", metadata: map[string]interface{}{"error": make(chan int)}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("open mock database: %v", err)
+			}
+			defer db.Close()
+
+			expectation := mock.ExpectExec("INSERT INTO audit_logs").
+				WithArgs("user-1", "LOGIN", sqlmock.AnyArg())
+			if tt.insertError != nil {
+				expectation.WillReturnError(tt.insertError)
+			} else {
+				expectation.WillReturnResult(sqlmock.NewResult(1, 1))
+			}
+
+			service := NewAuditService(db)
+			service.Log("user-1", "LOGIN", tt.metadata)
+			service.Close()
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("audit insert expectation: %v", err)
+			}
+		})
+	}
+}
+
+func TestAuditServiceCloseFlushesAndIsIdempotent(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
-		t.Fatalf("Failed to open mock db: %v", err)
+		t.Fatalf("open mock database: %v", err)
 	}
 	defer db.Close()
 
-	s := NewAuditService(db)
-	defer s.Close()
+	mock.ExpectExec("INSERT INTO audit_logs").
+		WithArgs("user-1", "SHUTDOWN_TEST", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	t.Run("Log_Success", func(t *testing.T) {
-		mock.ExpectExec("INSERT INTO audit_logs").WithArgs("user-1", "LOGIN", sqlmock.AnyArg()).
-			WillReturnResult(sqlmock.NewResult(1, 1))
+	service := NewAuditService(db)
+	service.Log("user-1", "SHUTDOWN_TEST", nil)
+	service.Close()
+	service.Close()
+	service.Log("user-1", "AFTER_CLOSE", nil)
 
-		s.Log("user-1", "LOGIN", map[string]interface{}{"ip": "1.2.3.4"})
-
-		// Wait for async goroutine to process the entry
-		time.Sleep(50 * time.Millisecond)
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("Expectations not met: %v", err)
-		}
-	})
-
-	t.Run("Log_Success_NoMetadata", func(t *testing.T) {
-		mock.ExpectExec("INSERT INTO audit_logs").WithArgs("user-1", "LOGIN", sqlmock.AnyArg()).
-			WillReturnResult(sqlmock.NewResult(1, 1))
-
-		s.Log("user-1", "LOGIN", nil)
-
-		// Wait for async goroutine to process the entry
-		time.Sleep(50 * time.Millisecond)
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("Expectations not met: %v", err)
-		}
-	})
-
-	t.Run("Log_Error_NoMetadata", func(_ *testing.T) {
-		mock.ExpectExec("INSERT INTO audit_logs").WillReturnError(sql.ErrConnDone)
-		// Should not panic, just log the error
-		s.Log("user-1", "LOGIN", nil)
-
-		// Wait for async goroutine to process the entry
-		time.Sleep(50 * time.Millisecond)
-	})
-
-	t.Run("Log_Error", func(_ *testing.T) {
-		mock.ExpectExec("INSERT INTO audit_logs").WillReturnError(sql.ErrConnDone)
-		// Should not panic, just log the error
-		s.Log("user-1", "LOGIN", map[string]interface{}{"ip": "1.2.3.4"})
-
-		// Wait for async goroutine to process the entry
-		time.Sleep(50 * time.Millisecond)
-	})
-
-	t.Run("Log_JSON_Marshal_Error", func(t *testing.T) {
-		mock.ExpectExec("INSERT INTO audit_logs").WithArgs("user-1", "LOGIN", sqlmock.AnyArg()).
-			WillReturnResult(sqlmock.NewResult(1, 1))
-
-		// Channels cannot be marshaled to JSON
-		s.Log("user-1", "LOGIN", map[string]interface{}{"error": make(chan int)})
-
-		// Wait for async goroutine to process the entry
-		time.Sleep(50 * time.Millisecond)
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("Expectations not met: %v", err)
-		}
-	})
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("Close() did not flush the queued audit record: %v", err)
+	}
 }

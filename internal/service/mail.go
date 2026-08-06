@@ -54,7 +54,7 @@ type MailService struct {
 func NewMailService(cfgSMTPPort ...string) *MailService {
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
-		baseURL = "http://localhost:8080"
+		baseURL = "http://localhost:18066"
 	}
 	baseURL = strings.TrimSuffix(baseURL, "/")
 

@@ -21,6 +21,8 @@
 package service
 
 import (
+	"crypto/sha256"
+	"pokget/internal/models"
 	"testing"
 )
 
@@ -44,8 +46,8 @@ func TestImageHash(t *testing.T) {
 
 	// Empty input should still produce a valid hash
 	emptyHash := imageHash([]byte{})
-	if len(emptyHash) != 32 { // SHA-256 produces 32 bytes
-		t.Errorf("Expected 32-byte hash, got %d bytes", len(emptyHash))
+	if expected := sha256.Sum256(nil); emptyHash != expected {
+		t.Errorf("empty image hash = %x, want %x", emptyHash, expected)
 	}
 }
 
@@ -146,11 +148,84 @@ func TestOCRCacheDifferentLanguages(t *testing.T) {
 	}
 }
 
+func TestOCRCacheKeyIncludesCandidateCorpus(t *testing.T) {
+	imageBytes := []byte("same image")
+	one := []models.Card{{ID: "one", Name: "Pikachu", Game: "pokemon", Language: "en"}}
+	two := []models.Card{{ID: "two", Name: "Charizard", Game: "pokemon", Language: "en"}}
+
+	if makeOCRCacheKey(imageBytes, "eng", one) == makeOCRCacheKey(imageBytes, "eng", two) {
+		t.Fatal("cache keys must change when the candidate corpus changes")
+	}
+	if makeOCRCacheKey(imageBytes, "eng", one) != makeOCRCacheKey(imageBytes, "eng", append([]models.Card(nil), one...)) {
+		t.Fatal("equivalent candidate corpora must produce stable cache keys")
+	}
+}
+
+func TestOCRCacheKeyIgnoresCandidateOrder(t *testing.T) {
+	imageBytes := []byte("same image")
+	first := []models.Card{{ID: "one", Name: "Pikachu"}, {ID: "two", Name: "Charizard"}}
+	second := []models.Card{first[1], first[0]}
+
+	if makeOCRCacheKey(imageBytes, "eng", first) != makeOCRCacheKey(imageBytes, "eng", second) {
+		t.Fatal("candidate ordering must not invalidate the OCR cache")
+	}
+}
+
 // --- SCAN-03: OCR pool size test ---
 
 func TestOCRPoolSizeDefault(t *testing.T) {
 	// Verify default pool size
 	if OCRPoolSize != 3 {
 		t.Errorf("Expected default OCRPoolSize 3, got %d", OCRPoolSize)
+	}
+}
+
+func TestBoundedOCRCacheEvictsLeastRecentlyUsed(t *testing.T) {
+	cache := newBoundedOCRCache(2)
+	cache.Store("first", ocrCacheEntry{Text: "first"})
+	cache.Store("second", ocrCacheEntry{Text: "second"})
+	if _, ok := cache.Load("first"); !ok {
+		t.Fatal("expected first entry")
+	}
+	cache.Store("third", ocrCacheEntry{Text: "third"})
+	if _, ok := cache.Load("second"); ok {
+		t.Fatal("least recently used entry was not evicted")
+	}
+	if cache.Len() != 2 {
+		t.Fatalf("cache length = %d, want 2", cache.Len())
+	}
+}
+
+func TestBoundedOCRCacheDefensivelyCopiesProcessedImage(t *testing.T) {
+	cache := newBoundedOCRCache(1)
+	processed := []byte{1, 2, 3}
+	cache.Store("key", ocrCacheEntry{ProcessedImage: processed})
+	processed[0] = 9
+
+	loaded, ok := cache.Load("key")
+	if !ok {
+		t.Fatal("expected cache hit")
+	}
+	entry := loaded.(ocrCacheEntry)
+	if entry.ProcessedImage[0] != 1 {
+		t.Fatal("store retained caller-owned image buffer")
+	}
+	entry.ProcessedImage[0] = 8
+	loaded, _ = cache.Load("key")
+	if loaded.(ocrCacheEntry).ProcessedImage[0] != 1 {
+		t.Fatal("load returned cache-owned image buffer")
+	}
+}
+
+func TestOCRCacheKeyIncludesPreprocessingOptions(t *testing.T) {
+	data := []byte("same image")
+	cards := []models.Card{{ID: "sv1-001", Name: "Example", Game: "pokemon"}}
+	defaultKey := makeOCRCacheKeyWithConfig(data, "eng", cards, OCRScanConfig{})
+	gameKey := makeOCRCacheKeyWithConfig(data, "eng", cards, OCRScanConfig{Game: "pokemon", UseLayoutROIs: true})
+	cropKey := makeOCRCacheKeyWithConfig(data, "eng", cards, OCRScanConfig{
+		GuideCrop: &OCRNormalizedRect{MinX: 0.1, MinY: 0.1, MaxX: 0.9, MaxY: 0.9},
+	})
+	if defaultKey == gameKey || defaultKey == cropKey || gameKey == cropKey {
+		t.Fatal("preprocessing options must be part of the cache key")
 	}
 }

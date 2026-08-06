@@ -25,15 +25,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	_ "image/jpeg"
-	_ "image/png"
+	_ "image/jpeg" // Register JPEG decoding with image.Decode.
+	_ "image/png"  // Register PNG decoding with image.Decode.
 	"log/slog"
 	"net/http"
 	"pokget/internal/models"
 	"strings"
 	"time"
 
-	_ "golang.org/x/image/webp"
+	_ "golang.org/x/image/webp" // Register WebP decoding with image.Decode.
 )
 
 type MetadataClient interface {

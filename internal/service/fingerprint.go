@@ -22,12 +22,15 @@ package service
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"image"
 	"log/slog"
-	"pokget/internal/models"
 	"sort"
+	"strings"
 	"sync"
+
+	"pokget/internal/models"
 
 	"github.com/corona10/goimagehash"
 )
@@ -73,6 +76,9 @@ func NewBKTree() *BKTree {
 
 // Insert adds a hash with associated card info into the BK-tree (SCAN-01, SCAN-12).
 func (t *BKTree) Insert(hash uint64, card *models.Card) {
+	if card == nil {
+		return
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -106,6 +112,14 @@ func (t *BKTree) Insert(hash uint64, card *models.Card) {
 			return
 		}
 	}
+}
+
+// Len returns the number of indexed fingerprints without racing concurrent
+// Insert calls.
+func (t *BKTree) Len() int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.count
 }
 
 // Search returns all hashes within the given radius from the query hash (SCAN-01).
@@ -184,6 +198,9 @@ func (t *BKTree) searchNode(node *bkNode, query uint64, radius int, results *[]F
 func deduplicateByCard(matches []FingerprintMatch) []FingerprintMatch {
 	best := make(map[string]FingerprintMatch)
 	for _, m := range matches {
+		if m.Card == nil || m.Card.ID == "" {
+			continue
+		}
 		if existing, ok := best[m.Card.ID]; !ok || m.Distance < existing.Distance {
 			best[m.Card.ID] = m
 		}
@@ -194,12 +211,41 @@ func deduplicateByCard(matches []FingerprintMatch) []FingerprintMatch {
 		result = append(result, m)
 	}
 
-	// Sort by distance (best first)
+	// Sort by distance and stable printing ID for deterministic ties.
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Distance < result[j].Distance
+		if result[i].Distance != result[j].Distance {
+			return result[i].Distance < result[j].Distance
+		}
+		return result[i].Card.ID < result[j].Card.ID
 	})
 
 	return result
+}
+
+const (
+	defaultFingerprintAlgorithm = "phash64"
+	defaultFingerprintVersion   = 1
+)
+
+// FingerprintIndexScope identifies an algorithm-version index for one TCG.
+// The TCG is mandatory in typed matching paths, preventing cross-catalog hash
+// collisions from becoming candidates.
+type FingerprintIndexScope struct {
+	TCG       models.TCG
+	Language  models.Language
+	Algorithm string
+	Version   int
+}
+
+func (scope FingerprintIndexScope) normalized() FingerprintIndexScope {
+	scope.Algorithm = strings.ToLower(strings.TrimSpace(scope.Algorithm))
+	if scope.Algorithm == "" {
+		scope.Algorithm = defaultFingerprintAlgorithm
+	}
+	if scope.Version == 0 {
+		scope.Version = defaultFingerprintVersion
+	}
+	return scope
 }
 
 // hammingDistance computes the Hamming distance between two uint64 hashes.
@@ -217,6 +263,7 @@ func hammingDistance(a, b uint64) int {
 type FingerprintService struct {
 	db             *sql.DB
 	tree           *BKTree
+	scopedTrees    map[FingerprintIndexScope]*BKTree
 	mu             sync.RWMutex
 	PhashHighConf  int // Strict threshold for high-confidence matches (SCAN-02)
 	PhashPotential int // Relaxed threshold for potential matches (SCAN-02)
@@ -228,6 +275,7 @@ func NewFingerprintService(db *sql.DB) *FingerprintService {
 	svc := &FingerprintService{
 		db:             db,
 		tree:           NewBKTree(),
+		scopedTrees:    make(map[FingerprintIndexScope]*BKTree),
 		PhashHighConf:  DefaultPhashThresholdHighConf,
 		PhashPotential: DefaultPhashThresholdPotential,
 	}
@@ -242,7 +290,47 @@ func NewFingerprintService(db *sql.DB) *FingerprintService {
 // loadFingerprintsFromDB loads all stored fingerprints into the BK-tree,
 // supporting multiple fingerprints per card (SCAN-01, SCAN-12).
 func (s *FingerprintService) loadFingerprintsFromDB() {
-	rows, err := s.db.Query("SELECT id, name, set_name, price_usd, price_eur, image_url, variant, change_24h, phash, game FROM cards WHERE phash IS NOT NULL")
+	rows, err := s.db.Query(`
+		SELECT id, name, set_name, price_usd, price_eur, image_url, variant,
+		       change_24h, phash, game, language, rarity, set_code,
+		       collector_number, catalog_active
+		FROM (
+		    SELECT card.id, card.name, card.set_name,
+		           COALESCE(card.price_usd, 0) AS price_usd,
+		           COALESCE(card.price_eur, 0) AS price_eur,
+		           COALESCE(card.image_url, '') AS image_url,
+		           COALESCE(card.variant, '') AS variant,
+		           COALESCE(card.change_24h, 0) AS change_24h,
+		           card.phash AS phash,
+		           COALESCE(card.game, '') AS game,
+		           COALESCE(card.language, '') AS language,
+		           COALESCE(card.rarity, '') AS rarity,
+		           COALESCE(card.set_code, '') AS set_code,
+		           COALESCE(card.collector_number, '') AS collector_number,
+		           card.catalog_active AS catalog_active
+		    FROM cards AS card
+		    WHERE card.phash IS NOT NULL
+		      AND card.superseded_by_card_id IS NULL
+		      AND (card.source_id IS NULL OR card.catalog_active = TRUE)
+
+		    UNION ALL
+
+		    SELECT card.id, card.name, card.set_name, COALESCE(card.price_usd, 0), COALESCE(card.price_eur, 0),
+		           COALESCE(card.image_url, ''), COALESCE(card.variant, ''), COALESCE(card.change_24h, 0), fingerprint.hash,
+		           COALESCE(card.game, '') AS game,
+		           COALESCE(card.language, '') AS language,
+		           COALESCE(card.rarity, '') AS rarity,
+		           COALESCE(card.set_code, '') AS set_code,
+		           COALESCE(card.collector_number, '') AS collector_number,
+		           card.catalog_active AS catalog_active
+		    FROM card_fingerprints AS fingerprint
+		    JOIN card_images AS image ON image.id = fingerprint.image_id
+		    JOIN cards AS card ON card.id = image.card_id
+		    WHERE card.catalog_active = TRUE
+		      AND image.status = 'ready'
+		      AND fingerprint.algorithm = 'phash64'
+		      AND fingerprint.algorithm_version = 1
+	) AS stored_fingerprints`)
 	if err != nil {
 		slog.Error("Fingerprint: Failed to load fingerprints from DB", "error", err)
 		return
@@ -253,15 +341,18 @@ func (s *FingerprintService) loadFingerprintsFromDB() {
 	for rows.Next() {
 		var c models.Card
 		var phash sql.NullInt64
-		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &phash, &c.Game); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &phash, &c.Game, &c.Language, &c.Rarity, &c.SetCode, &c.CollectorNumber, &c.CatalogActive); err != nil {
 			slog.Warn("Failed to scan fingerprint row, skipping", "error", err)
 			continue
 		}
 		if phash.Valid {
 			c.Phash = &phash.Int64
-			s.tree.Insert(uint64(phash.Int64), &c) // #nosec G115
+			s.addFingerprintLocked(fingerprintScopeForCard(c), uint64(phash.Int64), &c) // #nosec G115
 			loaded++
 		}
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("Fingerprint: Failed while reading stored fingerprints", "error", err)
 	}
 	slog.Info("Fingerprint: Loaded fingerprints into BK-tree", "count", loaded)
 }
@@ -269,7 +360,60 @@ func (s *FingerprintService) loadFingerprintsFromDB() {
 // AddFingerprint adds a new fingerprint for a card to the BK-tree (SCAN-12).
 // This allows multiple fingerprints per card (e.g., different art variants).
 func (s *FingerprintService) AddFingerprint(hash uint64, card *models.Card) {
-	s.tree.Insert(hash, card)
+	if card == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.addFingerprintLocked(fingerprintScopeForCard(*card), hash, card)
+}
+
+// AddFingerprintScoped indexes a fingerprint in the global compatibility tree
+// and an explicit TCG/algorithm/version tree.
+func (s *FingerprintService) AddFingerprintScoped(scope FingerprintIndexScope, hash uint64, card *models.Card) error {
+	if card == nil || card.ID == "" {
+		return errors.New("fingerprint: card and stable card ID are required")
+	}
+	scope = scope.normalized()
+	if !scope.TCG.Valid() {
+		return errors.New("fingerprint: valid TCG scope is required")
+	}
+	if !scope.Language.Valid() {
+		return errors.New("fingerprint: valid language scope is required")
+	}
+	if scope.Version < 1 {
+		return errors.New("fingerprint: algorithm version must be positive")
+	}
+	if cardTCG := tcgForCard(*card); cardTCG != models.TCGUnknown && cardTCG != scope.TCG {
+		return fmt.Errorf("fingerprint: card TCG %q does not match index TCG %q", cardTCG, scope.TCG)
+	}
+	if cardLanguage, err := models.ParseLanguage(card.Language); err == nil &&
+		scope.Language != models.LanguageAny && cardLanguage != scope.Language {
+		return fmt.Errorf("fingerprint: card language %q does not match index language %q", cardLanguage, scope.Language)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.addFingerprintLocked(scope, hash, card)
+	return nil
+}
+
+func (s *FingerprintService) addFingerprintLocked(scope FingerprintIndexScope, hash uint64, card *models.Card) {
+	if card == nil {
+		return
+	}
+	scope = scope.normalized()
+	if scope.Algorithm == defaultFingerprintAlgorithm && scope.Version == defaultFingerprintVersion {
+		s.tree.Insert(hash, card)
+	}
+	if !scope.TCG.Valid() || !scope.Language.Valid() {
+		return
+	}
+	tree := s.scopedTrees[scope]
+	if tree == nil {
+		tree = NewBKTree()
+		s.scopedTrees[scope] = tree
+	}
+	tree.Insert(hash, card)
 }
 
 // RebuildTree reloads all fingerprints from the database and rebuilds the BK-tree.
@@ -277,6 +421,7 @@ func (s *FingerprintService) RebuildTree() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.tree = NewBKTree()
+	s.scopedTrees = make(map[FingerprintIndexScope]*BKTree)
 	if s.db != nil {
 		s.loadFingerprintsFromDB()
 	}
@@ -344,39 +489,29 @@ type MatchResult struct {
 func (s *FingerprintService) SearchByHash(hashVal int64) *MatchResult {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.searchByHashLocked(hashVal)
+}
 
-	query := uint64(hashVal) // #nosec G115
+func (s *FingerprintService) searchByHashLocked(hashVal int64) *MatchResult {
+	return s.searchTree(s.tree, hashVal)
+}
 
-	// SCAN-14: Check for exact match first (instant return)
-	if exact := s.tree.SearchExact(query); exact != nil {
-		return &MatchResult{
-			HighConfidence: exact.Card,
-			BestDistance:   0,
+func (s *FingerprintService) searchTree(tree *BKTree, hashVal int64) *MatchResult {
+	potential := tree.Search(uint64(hashVal), s.PhashPotential) // #nosec G115
+	return s.resultFromPotential(potential)
+}
+
+func (s *FingerprintService) resultFromPotential(potential []FingerprintMatch) *MatchResult {
+	potential = deduplicateByCard(potential)
+	result := &MatchResult{Potential: potential, BestDistance: 64}
+	for _, match := range potential {
+		if match.Distance < result.BestDistance {
+			result.BestDistance = match.Distance
+		}
+		if match.Distance <= s.PhashHighConf && result.HighConfidence == nil {
+			result.HighConfidence = match.Card
 		}
 	}
-
-	// Search with relaxed threshold for potential matches
-	potential := s.tree.Search(query, s.PhashPotential)
-
-	result := &MatchResult{
-		Potential:    potential,
-		BestDistance: 64,
-	}
-
-	// Find best high-confidence match
-	for _, m := range potential {
-		if m.Distance < result.BestDistance {
-			result.BestDistance = m.Distance
-		}
-		if m.Distance <= s.PhashHighConf && result.HighConfidence == nil {
-			result.HighConfidence = m.Card
-		}
-	}
-
-	if len(potential) == 0 {
-		result.BestDistance = 64
-	}
-
 	return result
 }
 
@@ -387,72 +522,91 @@ func (s *FingerprintService) SearchByHashWithCards(hashVal int64, cards []models
 	defer s.mu.RUnlock()
 
 	// Try BK-tree first
-	if s.tree.count > 0 {
-		return s.SearchByHash(hashVal)
+	if s.tree.Len() > 0 {
+		indexed := s.searchByHashLocked(hashVal)
+		if cards == nil {
+			return indexed
+		}
+		return s.filterIndexedMatches(indexed, cards)
 	}
+	return s.linearSearch(hashVal, cards)
+}
 
-	// Fallback to linear scan
-	result := &MatchResult{
-		BestDistance: 64,
+func (s *FingerprintService) filterIndexedMatches(indexed *MatchResult, cards []models.Card) *MatchResult {
+	allowed := make(map[string]*models.Card, len(cards))
+	for index := range cards {
+		if cards[index].ID != "" {
+			allowed[cards[index].ID] = &cards[index]
+		}
 	}
+	potential := make([]FingerprintMatch, 0, len(indexed.Potential))
+	for _, match := range indexed.Potential {
+		if match.Card == nil {
+			continue
+		}
+		card, ok := allowed[match.Card.ID]
+		if !ok {
+			continue
+		}
+		potential = append(potential, FingerprintMatch{Card: card, Distance: match.Distance})
+	}
+	return s.resultFromPotential(potential)
+}
 
+func (s *FingerprintService) linearSearch(hashVal int64, cards []models.Card) *MatchResult {
 	targetHash := goimagehash.NewImageHash(uint64(hashVal), goimagehash.PHash) // #nosec G115
-
-	// Track best distance per card for dedup (SCAN-12)
-	bestByCard := make(map[string]int)
-
-	for _, c := range cards {
-		if c.Phash == nil {
+	potential := make([]FingerprintMatch, 0)
+	for index := range cards {
+		card := &cards[index]
+		if card.ID == "" || card.Phash == nil {
 			continue
 		}
-
-		storedHash := goimagehash.NewImageHash(uint64(*c.Phash), goimagehash.PHash) // #nosec G115
+		storedHash := goimagehash.NewImageHash(uint64(*card.Phash), goimagehash.PHash) // #nosec G115
 		distance, err := targetHash.Distance(storedHash)
-		if err != nil {
+		if err != nil || distance > s.PhashPotential {
 			continue
 		}
+		potential = append(potential, FingerprintMatch{Card: card, Distance: distance})
+	}
+	return s.resultFromPotential(potential)
+}
 
-		// SCAN-14: Early termination on exact match
-		if distance == 0 {
-			return &MatchResult{
-				HighConfidence: &c,
-				BestDistance:   0,
-			}
-		}
-
-		// Keep best distance per card (SCAN-12)
-		if existing, ok := bestByCard[c.ID]; !ok || distance < existing {
-			bestByCard[c.ID] = distance
-			if distance <= s.PhashPotential {
-				result.Potential = append(result.Potential, FingerprintMatch{
-					Card:     &c,
-					Distance: distance,
-				})
-			}
+// SearchByHashWithScope searches only the selected TCG and fingerprint index.
+// The supplied cards are filtered again so callers cannot accidentally admit a
+// cross-TCG, wrong-language, or inactive printing through a populated index.
+func (s *FingerprintService) SearchByHashWithScope(hashVal int64, scope FingerprintIndexScope, cards []models.Card) *MatchResult {
+	scope = scope.normalized()
+	if !scope.TCG.Valid() || !scope.Language.Valid() {
+		return &MatchResult{BestDistance: 64}
+	}
+	allowedCards := make([]models.Card, 0, len(cards))
+	for index := range cards {
+		if cards[index].IsCatalogActive() && tcgForCard(cards[index]) == scope.TCG && scope.Language.Matches(cards[index].Language) {
+			allowedCards = append(allowedCards, cards[index])
 		}
 	}
 
-	// Sort potential matches by distance
-	sort.Slice(result.Potential, func(i, j int) bool {
-		return result.Potential[i].Distance < result.Potential[j].Distance
-	})
-
-	// Deduplicate
-	result.Potential = deduplicateByCard(result.Potential)
-
-	// Find best high-confidence match
-	for _, m := range result.Potential {
-		if m.Distance < result.BestDistance {
-			result.BestDistance = m.Distance
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	tree := s.scopedTrees[scope]
+	if tree == nil || tree.Len() == 0 {
+		if scope.Algorithm != defaultFingerprintAlgorithm || scope.Version != defaultFingerprintVersion {
+			return &MatchResult{BestDistance: 64}
 		}
-		if m.Distance <= s.PhashHighConf && result.HighConfidence == nil {
-			result.HighConfidence = m.Card
-		}
+		return s.linearSearch(hashVal, allowedCards)
 	}
+	return s.filterIndexedMatches(s.searchTree(tree, hashVal), allowedCards)
+}
 
-	if len(result.Potential) == 0 {
-		result.BestDistance = 64
+func tcgForCard(card models.Card) models.TCG {
+	tcg, err := models.ParseTCG(card.Game)
+	if err != nil {
+		return models.TCGUnknown
 	}
+	return tcg
+}
 
-	return result
+func fingerprintScopeForCard(card models.Card) FingerprintIndexScope {
+	language, _ := models.ParseLanguage(card.Language)
+	return FingerprintIndexScope{TCG: tcgForCard(card), Language: language}
 }

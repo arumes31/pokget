@@ -1,12 +1,11 @@
-version: '3.8'
-
 services:
   pokget_app:
     container_name: pokget_app
     image: ghcr.io/arumes31/pokget:latest
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-18066}:${APP_PORT:-18066}"
     environment:
+      - APP_PORT=${APP_PORT:-18066}
       - DB_HOST=pokget_db
       - DB_PORT=5432
       - DB_USER=${DB_USER:-pokget_user}
@@ -14,6 +13,16 @@ services:
       - DB_NAME=${DB_NAME:-pokget_db}
       - DB_SSLMODE=disable
       - OLLAMA_HOST=pokget_ollama
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma3:270m}
+      - OLLAMA_TEMPERATURE=${OLLAMA_TEMPERATURE:-0}
+      - OLLAMA_SEED=${OLLAMA_SEED:-42}
+      - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-32}
+      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-2048}
+      - OLLAMA_NUM_THREAD=${OLLAMA_NUM_THREAD:-8}
+      - OLLAMA_MAX_CANDIDATES=${OLLAMA_MAX_CANDIDATES:-20}
+      - OLLAMA_MIN_EVIDENCE=${OLLAMA_MIN_EVIDENCE:-180}
+      - OLLAMA_MIN_CONFIDENCE=${OLLAMA_MIN_CONFIDENCE:-0.55}
+      - SCAN_TIMEOUT_SECONDS=${SCAN_TIMEOUT_SECONDS:-75}
       - SESSION_KEY=${SESSION_KEY}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -22,6 +31,27 @@ services:
       - SMTP_FROM=${SMTP_FROM:-no-reply@pokget.com}
       - TRUST_PROXY=${TRUST_PROXY:-false}
       - TRUST_CLOUDFLARE=${TRUST_CLOUDFLARE:-false}
+      - CATALOG_ENABLED=${CATALOG_ENABLED:-true}
+      - LEGACY_METADATA_SYNC_ENABLED=${LEGACY_METADATA_SYNC_ENABLED:-false}
+      - CATALOG_LANGUAGE=${CATALOG_LANGUAGE:-en}
+      - CATALOG_SYNC_INTERVAL_MINUTES=${CATALOG_SYNC_INTERVAL_MINUTES:-360}
+      - CATALOG_BATCH_SIZE=${CATALOG_BATCH_SIZE:-500}
+      - CATALOG_REQUEST_DELAY_MS=${CATALOG_REQUEST_DELAY_MS:-100}
+      - CATALOG_IMAGES_ENABLED=${CATALOG_IMAGES_ENABLED:-true}
+      - CATALOG_IMAGE_STORE=/app/data/catalog-images
+      - CATALOG_IMAGE_BATCH_SIZE=${CATALOG_IMAGE_BATCH_SIZE:-8}
+      - CATALOG_IMAGE_POLL_INTERVAL_MS=${CATALOG_IMAGE_POLL_INTERVAL_MS:-5000}
+      - PRICE_SYNC_INTERVAL_MINUTES=${PRICE_SYNC_INTERVAL_MINUTES:-60}
+      - METADATA_TARGETS=${METADATA_TARGETS:-pokemon:en}
+      - WORKER_REQUESTS_PER_SECOND=${WORKER_REQUESTS_PER_SECOND:-0.5}
+      - WORKER_REQUEST_BURST=${WORKER_REQUEST_BURST:-1}
+      - WORKER_RETRY_ATTEMPTS=${WORKER_RETRY_ATTEMPTS:-3}
+      - WORKER_RETRY_BASE_DELAY_MS=${WORKER_RETRY_BASE_DELAY_MS:-1000}
+      - WORKER_CIRCUIT_FAILURES=${WORKER_CIRCUIT_FAILURES:-3}
+      - WORKER_CIRCUIT_COOLDOWN_SECONDS=${WORKER_CIRCUIT_COOLDOWN_SECONDS:-300}
+      - WORKER_MAX_PRICE_RATIO=${WORKER_MAX_PRICE_RATIO:-5}
+      - PRICE_HISTORY_RETENTION_DAYS=${PRICE_HISTORY_RETENTION_DAYS:-730}
+      - WORKER_FAILURE_PATH=/app/data/cache/worker-failures.jsonl
     depends_on:
       pokget_db:
         condition: service_healthy
@@ -29,6 +59,7 @@ services:
         condition: service_started
     volumes:
       - ./data/cache:/app/data/cache
+      - ./data/catalog-images:/app/data/catalog-images
 
   pokget_db:
     container_name: pokget_db
@@ -50,7 +81,11 @@ services:
 
   pokget_ollama:
     container_name: pokget_ollama
-    image: ollama/ollama:0.1.32
+    image: ollama/ollama:0.32.3
+    environment:
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+      - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
     ports:
       - "11434:11434"
     volumes:

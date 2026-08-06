@@ -161,8 +161,12 @@ func (s *ImageCacheService) GetImagePath(cardID string, remoteURL string) (strin
 	}
 	if limitedReader.N <= 0 {
 		// The reader hit the 10MB limit — the downloaded image is truncated
-		out.Close()
-		os.Remove(localPath)
+		if closeErr := out.Close(); closeErr != nil {
+			slog.Warn("ImageCache: Failed to close truncated image", "path", localPath, "error", closeErr)
+		}
+		if removeErr := os.Remove(localPath); removeErr != nil {
+			slog.Warn("ImageCache: Failed to remove truncated image", "path", localPath, "error", removeErr)
+		}
 		return "", fmt.Errorf("image exceeded 10MB limit and was truncated")
 	}
 	return localPath, nil

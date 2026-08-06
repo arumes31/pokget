@@ -22,10 +22,82 @@ package service
 
 import (
 	"fmt"
-	"pokget/internal/models"
+	"sync"
 	"testing"
 	"time"
+
+	"pokget/internal/models"
 )
+
+func TestFingerprintServiceScopedIndexIsolation(t *testing.T) {
+	t.Parallel()
+
+	service := NewFingerprintService(nil)
+	cards := []models.Card{
+		{ID: "pokemon-en", Name: "Shared", Game: "pokemon", Language: "en"},
+		{ID: "pokemon-de", Name: "Shared", Game: "pokemon", Language: "de"},
+		{ID: "magic-en", Name: "Shared", Game: "magic", Language: "en"},
+	}
+	for index := range cards {
+		service.AddFingerprint(42, &cards[index])
+	}
+
+	result := service.SearchByHashWithScope(42, FingerprintIndexScope{
+		TCG: models.TCGPokemon, Language: models.LanguageEnglish,
+	}, cards)
+	if len(result.Potential) != 1 || result.Potential[0].Card.ID != "pokemon-en" {
+		t.Fatalf("scoped matches = %+v, want only pokemon-en", result.Potential)
+	}
+}
+
+func TestFingerprintServiceAlgorithmVersionIsolation(t *testing.T) {
+	t.Parallel()
+
+	service := NewFingerprintService(nil)
+	card := &models.Card{ID: "pokemon-v2", Name: "Versioned", Game: "pokemon", Language: "en"}
+	scopeV2 := FingerprintIndexScope{
+		TCG: models.TCGPokemon, Language: models.LanguageEnglish,
+		Algorithm: "phash64", Version: 2,
+	}
+	if err := service.AddFingerprintScoped(scopeV2, 77, card); err != nil {
+		t.Fatal(err)
+	}
+	if got := service.SearchByHashWithScope(77, scopeV2, []models.Card{*card}); len(got.Potential) != 1 {
+		t.Fatalf("version 2 matches = %+v", got.Potential)
+	}
+	scopeV1 := scopeV2
+	scopeV1.Version = 1
+	if got := service.SearchByHashWithScope(77, scopeV1, []models.Card{*card}); len(got.Potential) != 0 {
+		t.Fatalf("version 1 leaked version 2 match: %+v", got.Potential)
+	}
+}
+
+func TestFingerprintServiceConcurrentIndexAccess(t *testing.T) {
+	service := NewFingerprintService(nil)
+	scope := FingerprintIndexScope{TCG: models.TCGPokemon, Language: models.LanguageEnglish}
+	var waitGroup sync.WaitGroup
+	for worker := 0; worker < 8; worker++ {
+		waitGroup.Add(1)
+		go func(worker int) {
+			defer waitGroup.Done()
+			for index := 0; index < 100; index++ {
+				card := &models.Card{
+					ID: fmt.Sprintf("%d-%d", worker, index), Game: "pokemon", Language: "en",
+				}
+				if err := service.AddFingerprintScoped(scope, nonNegativeTestHash(worker*100+index), card); err != nil {
+					t.Errorf("AddFingerprintScoped: %v", err)
+					return
+				}
+				_ = service.SearchByHashWithScope(int64(index), scope, []models.Card{*card})
+				_ = service.SearchByHashWithCards(int64(index), []models.Card{*card})
+			}
+		}(worker)
+	}
+	waitGroup.Wait()
+	if got, want := service.tree.Len(), 800; got != want {
+		t.Fatalf("global index length = %d, want %d", got, want)
+	}
+}
 
 // --- SCAN-01: BK-tree tests ---
 
@@ -213,7 +285,7 @@ func TestBKTreeLargeDataset(t *testing.T) {
 	// Insert 1000 cards with varying hashes
 	for i := 0; i < 1000; i++ {
 		card := &models.Card{ID: fmt.Sprintf("card-%d", i), Name: fmt.Sprintf("Card %d", i)}
-		tree.Insert(uint64(i*7+3), card) // Spread hashes
+		tree.Insert(nonNegativeTestHash(i*7+3), card) // Spread hashes
 	}
 
 	if tree.count != 1000 {
@@ -262,11 +334,11 @@ func TestBKTreeSearchRadiusCorrectness(t *testing.T) {
 	// Insert 50 cards with known hashes
 	for i := 0; i < 50; i++ {
 		card := &models.Card{ID: fmt.Sprintf("card-%d", i), Name: fmt.Sprintf("Card %d", i)}
-		tree.Insert(uint64(i*1234567+42), card)
+		tree.Insert(nonNegativeTestHash(i*1234567+42), card)
 	}
 
 	// Search with various radii and verify all results are within radius
-	query := uint64(42*1234567 + 42) // Exact match for card-42
+	const query uint64 = 42*1234567 + 42 // Exact match for card-42
 	for _, radius := range []int{0, 3, 5, 10, 20} {
 		results := tree.Search(query, radius)
 		for _, r := range results {
@@ -339,11 +411,11 @@ func TestBKTreeSearchExactReturnsImmediately(t *testing.T) {
 	// Insert many cards
 	for i := 0; i < 100; i++ {
 		card := &models.Card{ID: fmt.Sprintf("card-%d", i), Name: fmt.Sprintf("Card %d", i)}
-		tree.Insert(uint64(i*1000+7), card)
+		tree.Insert(nonNegativeTestHash(i*1000+7), card)
 	}
 
 	// Search for exact match of card-50
-	targetHash := uint64(50*1000 + 7)
+	const targetHash uint64 = 50*1000 + 7
 	exact := tree.SearchExact(targetHash)
 	if exact == nil {
 		t.Fatal("Expected exact match for card-50, got nil")
@@ -525,7 +597,7 @@ func TestBKTreeLargePerformance(t *testing.T) {
 	// Insert 1500 fingerprints
 	for i := 0; i < 1500; i++ {
 		card := &models.Card{ID: fmt.Sprintf("perf-card-%d", i), Name: fmt.Sprintf("PerfCard %d", i)}
-		tree.Insert(uint64(i*31+17), card)
+		tree.Insert(nonNegativeTestHash(i*31+17), card)
 	}
 
 	if tree.count != 1500 {
@@ -535,7 +607,7 @@ func TestBKTreeLargePerformance(t *testing.T) {
 	// Search should complete in <10ms
 	start := time.Now()
 	for i := 0; i < 100; i++ {
-		tree.Search(uint64(i*31+17), 5)
+		tree.Search(nonNegativeTestHash(i*31+17), 5)
 	}
 	elapsed := time.Since(start)
 	avgPerSearch := elapsed / 100
@@ -553,7 +625,7 @@ func TestBKTreeAllZerosFingerprint(t *testing.T) {
 	// Insert cards with non-zero hashes
 	for i := 1; i <= 10; i++ {
 		card := &models.Card{ID: fmt.Sprintf("nz-card-%d", i), Name: fmt.Sprintf("NonZero %d", i)}
-		tree.Insert(uint64(i*1000), card)
+		tree.Insert(nonNegativeTestHash(i*1000), card)
 	}
 
 	// Search with all-zeros hash and small radius
@@ -602,13 +674,13 @@ func TestBKTreeMaxHammingDistance(t *testing.T) {
 
 // TestBKTreeConcurrentAccess verifies that concurrent reads and writes
 // don't cause data races or panics.
-func TestBKTreeConcurrentAccess(t *testing.T) {
+func TestBKTreeConcurrentAccess(_ *testing.T) {
 	tree := NewBKTree()
 
 	// Pre-populate
 	for i := 0; i < 100; i++ {
 		card := &models.Card{ID: fmt.Sprintf("init-card-%d", i), Name: fmt.Sprintf("Init %d", i)}
-		tree.Insert(uint64(i*100), card)
+		tree.Insert(nonNegativeTestHash(i*100), card)
 	}
 
 	done := make(chan bool)
@@ -619,7 +691,7 @@ func TestBKTreeConcurrentAccess(t *testing.T) {
 			for i := 0; i < 50; i++ {
 				card := &models.Card{ID: fmt.Sprintf("writer-%d-card-%d", offset, i),
 					Name: fmt.Sprintf("Writer %d Card %d", offset, i)}
-				tree.Insert(uint64(offset*10000+i*7), card)
+				tree.Insert(nonNegativeTestHash(offset*10000+i*7), card)
 			}
 			done <- true
 		}(g)
@@ -629,8 +701,8 @@ func TestBKTreeConcurrentAccess(t *testing.T) {
 	for g := 0; g < 5; g++ {
 		go func(offset int) {
 			for i := 0; i < 50; i++ {
-				tree.Search(uint64(offset*10000+i*7), 5)
-				tree.SearchExact(uint64(offset*10000 + i*7))
+				tree.Search(nonNegativeTestHash(offset*10000+i*7), 5)
+				tree.SearchExact(nonNegativeTestHash(offset*10000 + i*7))
 			}
 			done <- true
 		}(g)
@@ -690,6 +762,36 @@ func TestFingerprintServiceSearchByHashWithCardsExactMatch(t *testing.T) {
 	}
 	if result.HighConfidence == nil || result.HighConfidence.ID != "card-1" {
 		t.Error("Expected high-confidence exact match for card-1")
+	}
+}
+
+func TestFingerprintServiceSearchByHashWithCardsFiltersPopulatedTree(t *testing.T) {
+	svc := NewFingerprintService(nil)
+	hash := int64(424242)
+	svc.AddFingerprint(fingerprintHashBits(hash), &models.Card{ID: "pokemon-card", Name: "Shared Image", Game: "pokemon", Phash: &hash})
+	svc.AddFingerprint(fingerprintHashBits(hash), &models.Card{ID: "yugioh-card", Name: "Shared Image", Game: "yugioh", Phash: &hash})
+
+	result := svc.SearchByHashWithCards(hash, []models.Card{{
+		ID: "pokemon-card", Name: "Shared Image", Game: "pokemon", Phash: &hash,
+	}})
+	if len(result.Potential) != 1 {
+		t.Fatalf("expected one in-corpus fingerprint match, got %d", len(result.Potential))
+	}
+	if result.Potential[0].Card.ID != "pokemon-card" {
+		t.Fatalf("expected pokemon-card, got %q", result.Potential[0].Card.ID)
+	}
+}
+
+func TestFingerprintServiceSearchByHashWithCardsExplicitEmptyCorpus(t *testing.T) {
+	t.Parallel()
+
+	svc := NewFingerprintService(nil)
+	global := &models.Card{ID: "pokemon-card", Name: "Pokemon Card"}
+	svc.AddFingerprint(42, global)
+
+	result := svc.SearchByHashWithCards(42, []models.Card{})
+	if result.HighConfidence != nil || len(result.Potential) != 0 {
+		t.Fatalf("explicit empty corpus leaked global match: %+v", result)
 	}
 }
 
@@ -761,4 +863,15 @@ func TestBKTreeSearchResultsSortedByDistance(t *testing.T) {
 	if len(results) > 0 && results[0].Distance != 0 {
 		t.Errorf("Expected first result distance 0, got %d", results[0].Distance)
 	}
+}
+
+func nonNegativeTestHash(value int) uint64 {
+	if value < 0 {
+		panic("test fingerprint hash must not be negative")
+	}
+	return uint64(value) // #nosec G115 -- the test helper rejects negative values.
+}
+
+func fingerprintHashBits(value int64) uint64 {
+	return uint64(value) // #nosec G115 -- pHashes preserve the signed BIGINT's raw 64 bits.
 }

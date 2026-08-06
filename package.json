@@ -1,9 +1,18 @@
 {
   "name": "pokget-css",
   "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:static": "node scripts/build-static.mjs",
+    "check:static": "node --check dist/static/js/vault.js && node --check dist/static/js/scanner.js && node --check dist/static/js/sw.js && node -e \"const fs=require('node:fs');fs.accessSync('dist/static/offline.html');if(fs.existsSync('dist/static/sw.js'))process.exit(1)\"",
+    "test:static": "node --test scripts/build-static.test.mjs scripts/scanner.test.cjs scripts/pwa-template.test.cjs"
+  },
   "dependencies": {
     "tailwindcss": "^4.2.4",
     "@tailwindcss/forms": "^0.5.9",
     "@tailwindcss/container-queries": "^0.1.1"
+  },
+  "devDependencies": {
+    "terser": "5.49.0"
   }
 }

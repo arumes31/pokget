@@ -1,75 +1,85 @@
-const CACHE_NAME = 'pokget-v2';
+'use strict';
 
-const ASSETS = [
-  '/',
-  '/dashboard',
+const CACHE_PREFIX = 'pokget-';
+const CACHE_NAME = `${CACHE_PREFIX}shell-v6`;
+const OFFLINE_URL = '/static/offline.html';
+const PRECACHE_URLS = [
+  OFFLINE_URL,
+  '/static/css/tailwind.css',
   '/static/css/styles.css',
   '/static/js/htmx.min.js',
   '/static/js/alpine.min.js',
   '/static/js/vault.js',
-  '/static/img/logo.png'
+  '/static/js/scanner.js',
+  '/static/img/logo.png',
+  '/static/img/icon-192.png',
+  '/static/img/icon-512.png',
+  '/static/manifest.json',
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS);
-    })
-  );
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(PRECACHE_URLS);
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))
-      );
-    })
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames
+      .filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
+      .map((name) => caches.delete(name)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const { request } = event;
+  const url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  if (event.request.method !== 'GET') return;
-
-  // Stale-while-revalidate for static assets
-  if (url.pathname.startsWith('/static/')) {
-    event.respondWith(
-      caches.open(CACHE_NAME).then((cache) => {
-        return cache.match(event.request).then((cachedResponse) => {
-          const fetchPromise = fetch(event.request).then((networkResponse) => {
-            if (networkResponse.ok) {
-              cache.put(event.request, networkResponse.clone());
-            }
-            return networkResponse;
-          }).catch(() => cachedResponse || new Response('Offline', { status: 503 }));
-
-          return cachedResponse || fetchPromise;
+  if (request.mode === 'navigate') {
+    event.respondWith(fetch(request).catch(async () => {
+      const cache = await caches.open(CACHE_NAME);
+      return cache.match(OFFLINE_URL)
+        || new Response('Pokget is offline.', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
         });
-      })
-    );
+    }));
     return;
   }
 
-  // Network-first for HTML and API requests
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response.ok) {
-          const resClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, resClone);
-          });
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request).then((cached) => {
-        if (cached) return cached;
-        if (event.request.mode === 'navigate') return caches.match('/dashboard');
-        return new Response('Offline', { status: 503 });
-      }))
-  );
+  if (!url.pathname.startsWith('/static/')) return;
+
+  const cacheKey = url.pathname;
+  const cachePromise = caches.open(CACHE_NAME);
+  const networkPromise = fetch(request).then(async (response) => {
+    if (response.ok) {
+      const cache = await cachePromise;
+      await cache.put(cacheKey, response.clone());
+    }
+    return response;
+  });
+
+  event.waitUntil(networkPromise.then(() => undefined).catch(() => undefined));
+  event.respondWith((async () => {
+    const cache = await cachePromise;
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
+    try {
+      return await networkPromise;
+    } catch {
+      return new Response('Static asset unavailable while offline.', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    }
+  })());
 });

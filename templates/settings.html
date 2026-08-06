@@ -5,6 +5,7 @@
         <p class="text-xs text-on-surface-variant mb-6 leading-relaxed">Select your primary currency for market valuations and price display. This affects all portfolios and binders.</p>
         
         <form hx-post="/settings" hx-target="#settings-content" hx-swap="outerHTML" class="space-y-4">
+            <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
             <div class="grid grid-cols-2 gap-4">
                 <label class="relative cursor-pointer group">
                     <input type="radio" name="currency" value="EUR" class="peer sr-only" {{ if eq .Currency "EUR" }}checked{{ end }}>
@@ -40,11 +41,46 @@
     </div>
 
     <div class="glass-card p-6 border-white/5">
+        <h2 class="text-lg font-bold text-on-surface mb-2">Public Vault</h2>
+        <p class="text-xs text-on-surface-variant mb-4">Share only portfolio cards you explicitly mark public.</p>
+        <form hx-post="/settings/public-profile" hx-target="#settings-content" hx-swap="outerHTML" class="space-y-4">
+            <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+            <label class="flex items-center gap-3 text-sm font-bold cursor-pointer">
+                <input type="checkbox" name="is_public_profile" value="true" {{ if .IsPublicProfile }}checked{{ end }}
+                    class="h-5 w-5 rounded border-white/20 bg-white/5 text-primary">
+                Enable public profile
+            </label>
+            {{ if .PublicSlug }}
+            <div class="flex items-center gap-2">
+                <input readonly value="/vault/{{ .PublicSlug }}" aria-label="Public vault URL"
+                    class="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-mono">
+                <a href="/vault/{{ .PublicSlug }}" target="_blank" rel="noopener" class="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">OPEN</a>
+            </div>
+            {{ end }}
+            <button type="submit" class="w-full rounded-xl bg-primary/15 py-3 text-sm font-bold text-primary">Save sharing settings</button>
+        </form>
+    </div>
+
+    <div class="glass-card p-6 border-white/5">
         <h2 class="text-lg font-bold text-on-surface mb-2">Account Node</h2>
         <p class="text-xs text-on-surface-variant mb-4">Managed via encrypted session: {{ .Email }}</p>
-        <button class="text-xs font-bold text-red-400 hover:text-red-300 transition-colors" @click="$dispatch('notify', { msg: 'Password reset coming soon!', type: 'info' })">
-            Request Password Reset
-        </button>
+        <form hx-post="/settings/change-password" hx-swap="none" class="space-y-3"
+            hx-on::response-error="this.querySelector('[role=alert]').textContent = event.detail.xhr.responseText">
+            <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+            <label for="current-password" class="block text-xs font-bold text-on-surface-variant">Current password</label>
+            <input id="current-password" type="password" name="current_password" autocomplete="current-password" required
+                class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+            <label for="new-password" class="block text-xs font-bold text-on-surface-variant">New password</label>
+            <input id="new-password" type="password" name="new_password" autocomplete="new-password" required
+                class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+            <label for="confirm-password" class="block text-xs font-bold text-on-surface-variant">Confirm new password</label>
+            <input id="confirm-password" type="password" name="confirm_password" autocomplete="new-password" required
+                class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+            <p role="alert" aria-live="assertive" class="text-xs text-red-400"></p>
+            <button type="submit" class="w-full bg-red-500/15 text-red-300 border border-red-500/30 font-bold py-3 rounded-xl">
+                Change Password
+            </button>
+        </form>
     </div>
 </div>
 {{ end }}
@@ -77,7 +113,7 @@
     </div>
 
     <!-- Notifications Container -->
-    <div x-data="{ toasts: [] }" 
+    <div x-data="{ toasts: [] }" role="status" aria-live="polite" aria-atomic="true"
          @notify.window="toasts.push({ id: Date.now(), msg: $event.detail.msg, type: $event.detail.type }); setTimeout(() => toasts.shift(), 3000)"
          class="fixed bottom-6 right-6 z-[100] space-y-3 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">

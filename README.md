@@ -66,16 +66,54 @@ The Pokget vault is hardened using industry standards:
 | `internal/auth` | Middleware, Hashing, Rate Limiting, Session Management. |
 | `internal/service` | OCR Engine, pHash matching, LLM integration, Mailer, Crypto. |
 | `internal/handlers` | HTMX-driven logic for Dashboard, APIScan, and Sharing. |
-| `internal/worker` | Background tasks for periodic price synchronization. |
+| `internal/catalog` | Versioned multi-TCG catalog, reference-image storage, and fingerprints. |
+| `internal/worker` | Background catalog, image, and price synchronization. |
 | `internal/db` | Interface-based SQL management and automated migrations. |
 
 ---
 
-## 🚀 Reaching 100% Coverage
-The project maintains a rigorous testing standard:
-*   **Mocks Everywhere**: Custom `MockMailer`, `MockLLMClient`, and `redismock` ensure tests run without external dependencies.
-*   **Fuzzing**: Algorithmic components (Levenshtein distance, XP calculation) are verified for all edge cases.
-*   **Static Analysis**: Zero warnings from `golangci-lint`, `govulncheck`, and `gosec`.
+## 📚 Card Reference Catalog
+
+Pokget maintains a local, versioned card catalog without API keys or paid services. Scheduled full and incremental imports cover:
+
+| Game | Primary source |
+| :--- | :--- |
+| Pokémon | [TCGdex](https://tcgdex.dev/rest) |
+| Magic: The Gathering | [Scryfall bulk data](https://scryfall.com/docs/api/bulk-data) |
+| One Piece | [Official English card list](https://en.onepiece-cardgame.com/cardlist/) |
+| Disney Lorcana | [LorcanaJSON](https://lorcanajson.org/) |
+| Weiss Schwarz | [Official English card search](https://en.ws-tcg.com/cardlist/searchresults/) |
+| Yu-Gi-Oh! | [YGOPRODeck](https://ygoprodeck.com/api-guide/) |
+
+Imports retain source provenance and sync history. A successful full snapshot deactivates records no longer present; failed, incremental, and unchanged runs never remove active records. Reference images are downloaded through an exact hostname allowlist, content-addressed by SHA-256, and indexed with perceptual hashes for the original and small rotations.
+
+The application performs scheduled updates automatically. Operators can also run:
+
+```bash
+go run ./cmd/catalog sync --game all --mode full
+go run ./cmd/catalog status
+go run ./cmd/catalog verify
+go run ./cmd/catalog images
+```
+
+The first full import can take substantial time and disk space because it downloads large catalogs and reference images. Public sources can change or be temporarily unavailable, and no free public source can guarantee every language, promotional printing, or future physical variant. Sync history and verification commands make such gaps visible.
+
+### 🧪 Detection Acceptance Tests
+
+The versioned acceptance pool contains four independently sourced cards for each supported TCG. A seed reproducibly selects one card per game, downloads and hash-verifies its reference image, then produces seven artifacts: source, clean, blur, resize, 3° rotation, brightness, and JPEG degradation. The resulting 42-case matrix requires the exact canonical card ID and name plus an explicit `needs_review: false` response.
+
+```bash
+go run ./cmd/detection_fixtures
+go run ./cmd/detection_seed
+go run ./cmd/detection_matrix --base-url http://localhost:18066
+go run ./cmd/ui_scan_test --base-url http://localhost:18066 \
+  --fixture <captured-card-image> \
+  --expected-id <canonical-card-id> \
+  --expected-name <exact-card-name>
+```
+
+Use a different `--seed` to select a different card from each game's pool. “100%” refers specifically to a reproducible seeded 42-case acceptance matrix; it is not a claim that every possible camera, blur level, crop, language, or newly released card will always match. Add captured failure cases to the pool before changing thresholds.
+
 
 ---
 
@@ -85,9 +123,9 @@ The project maintains a rigorous testing standard:
 ```powershell
 docker-compose up --build
 ```
-*   **App**: `http://localhost:8080`
+*   **App**: `http://localhost:18066`
 *   **Database**: Postgres 15
-*   **Cache**: Redis 7
+*   **Reference images**: `./data/catalog-images`
 
 ### 🔨 Manual Setup
 1.  **Dependencies**: Install `tesseract-ocr`.

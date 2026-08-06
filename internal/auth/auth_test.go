@@ -21,10 +21,13 @@
 package auth
 
 import (
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestInitStore(t *testing.T) {
@@ -68,6 +71,12 @@ func TestPasswordHashing(t *testing.T) {
 }
 
 func TestMiddleware(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Context().Value(UserContextKey{})
 		if userID == nil {
@@ -79,7 +88,7 @@ func TestMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := Middleware(nextHandler)
+	middleware := Middleware(database)(nextHandler)
 
 	t.Run("NoSession", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
@@ -101,6 +110,7 @@ func TestMiddleware(t *testing.T) {
 
 		session, _ := Store.Get(req, "session")
 		session.Values["user_id"] = "test-user"
+		session.Values["session_version"] = int64(4)
 		err := session.Save(req, rr)
 		if err != nil {
 			t.Fatalf("Failed to save session: %v", err)
@@ -109,11 +119,75 @@ func TestMiddleware(t *testing.T) {
 		// Use the cookie from the recorder in the next request
 		req.Header.Set("Cookie", rr.Header().Get("Set-Cookie"))
 		rr = httptest.NewRecorder()
+		mock.ExpectQuery("SELECT COALESCE\\(session_version, 0\\)").
+			WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"session_version"}).AddRow(4))
 
 		middleware.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+	})
+
+	t.Run("LegacyVersionZeroSession", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		cookieResponse := httptest.NewRecorder()
+		session, _ := Store.Get(req, "session")
+		session.Values["user_id"] = "test-user"
+		if err := session.Save(req, cookieResponse); err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Cookie", cookieResponse.Header().Get("Set-Cookie"))
+		mock.ExpectQuery("SELECT COALESCE\\(session_version, 0\\)").
+			WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"session_version"}).AddRow(0))
+
+		response := httptest.NewRecorder()
+		middleware.ServeHTTP(response, req)
+		if response.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("RevokedSession", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		cookieResponse := httptest.NewRecorder()
+		session, _ := Store.Get(req, "session")
+		session.Values["user_id"] = "test-user"
+		session.Values["session_version"] = int64(2)
+		if err := session.Save(req, cookieResponse); err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Cookie", cookieResponse.Header().Get("Set-Cookie"))
+		mock.ExpectQuery("SELECT COALESCE\\(session_version, 0\\)").
+			WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"session_version"}).AddRow(3))
+
+		response := httptest.NewRecorder()
+		middleware.ServeHTTP(response, req)
+		if response.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusSeeOther)
+		}
+	})
+
+	t.Run("DatabaseUnavailable", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		cookieResponse := httptest.NewRecorder()
+		session, _ := Store.Get(req, "session")
+		session.Values["user_id"] = "test-user"
+		if err := session.Save(req, cookieResponse); err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Cookie", cookieResponse.Header().Get("Set-Cookie"))
+		mock.ExpectQuery("SELECT COALESCE\\(session_version, 0\\)").
+			WithArgs("test-user").
+			WillReturnError(sql.ErrConnDone)
+
+		response := httptest.NewRecorder()
+		middleware.ServeHTTP(response, req)
+		if response.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
 		}
 	})
 
@@ -164,6 +238,27 @@ func TestMiddleware(t *testing.T) {
 			t.Errorf("Expected status 303 for empty user ID, got %d", rr.Code)
 		}
 	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAPIAuthMiddlewareRejectsMissingSession(t *testing.T) {
+	database, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	handler := APIAuthMiddleware(database)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/scan", nil))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
 }
 
 func TestHashPassword_Error(t *testing.T) {
@@ -275,7 +370,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 	t.Run("RateLimited", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
 		req.RemoteAddr = "1.2.3.4"
-		
+
 		// Fill the bucket (limit is 5 requests per second per IP)
 		for i := 0; i < 5; i++ {
 			rr := httptest.NewRecorder()

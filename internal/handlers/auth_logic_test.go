@@ -100,8 +100,8 @@ func TestLogin_Failures(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		hash, _ := auth.HashPassword("correct")
-		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
-			AddRow("u1", "test@example.com", hash, true)
+		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("u1", "test@example.com", hash, true, 0)
 		mock.ExpectQuery("SELECT id, email").WillReturnRows(rows)
 
 		h.Login(rr, req)
@@ -116,8 +116,8 @@ func TestLogin_Failures(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		hash, _ := auth.HashPassword("correct")
-		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
-			AddRow("u1", "test@example.com", hash, false)
+		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("u1", "test@example.com", hash, false, 0)
 		mock.ExpectQuery("SELECT id, email").WillReturnRows(rows)
 
 		h.Login(rr, req)
@@ -216,5 +216,14 @@ func TestResendVerification_RateLimited(t *testing.T) {
 
 	if rr.Code != http.StatusTooManyRequests {
 		t.Errorf("Expected 429, got %d", rr.Code)
+	}
+}
+
+func TestLogoutRejectsGET(t *testing.T) {
+	handler := &Handler{}
+	response := httptest.NewRecorder()
+	handler.Logout(response, httptest.NewRequest(http.MethodGet, "/auth/logout", nil))
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusMethodNotAllowed)
 	}
 }

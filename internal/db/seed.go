@@ -22,8 +22,8 @@ package db
 
 import (
 	"database/sql"
-	"pokget/internal/models"
 	"log/slog"
+	"pokget/internal/models"
 
 	"github.com/shopspring/decimal"
 )
@@ -44,10 +44,10 @@ func SeedDatabase(db *sql.DB) error {
 	}
 
 	mockCards := []models.Card{
-		{ID: "swsh45-19", Name: "Charizard VMAX", Set: "Shining Fates", PriceUSD: decimal.NewFromFloat(120.50), PriceEUR: decimal.NewFromFloat(110.00), ImageURL: "https://images.pokemontcg.io/swsh45/19_hires.png", Variant: "Holo", Game: "Pokemon"},
-		{ID: "swsh7-215", Name: "Umbreon VMAX", Set: "Evolving Skies", PriceUSD: decimal.NewFromFloat(650.00), PriceEUR: decimal.NewFromFloat(600.00), ImageURL: "https://images.pokemontcg.io/swsh7/215_hires.png", Variant: "Alt Art", Game: "Pokemon"},
-		{ID: "op01-016", Name: "Nami", Set: "Romance Dawn", PriceUSD: decimal.NewFromFloat(15.00), PriceEUR: decimal.NewFromFloat(14.00), ImageURL: "https://example.com/op01-016.png", Variant: "Parallel", Game: "One Piece"},
-		{ID: "op01-120", Name: "Shanks", Set: "Romance Dawn", PriceUSD: decimal.NewFromFloat(250.00), PriceEUR: decimal.NewFromFloat(230.00), ImageURL: "https://example.com/op01-120.png", Variant: "SEC", Game: "One Piece"},
+		{ID: "swsh45-19", Name: "Charizard VMAX", Set: "Shining Fates", PriceUSD: decimal.NewFromFloat(120.50), PriceEUR: decimal.NewFromFloat(110.00), ImageURL: "https://images.pokemontcg.io/swsh45/19_hires.png", Variant: "Holo", Game: "pokemon"},
+		{ID: "swsh7-215", Name: "Umbreon VMAX", Set: "Evolving Skies", PriceUSD: decimal.NewFromFloat(650.00), PriceEUR: decimal.NewFromFloat(600.00), ImageURL: "https://images.pokemontcg.io/swsh7/215_hires.png", Variant: "Alt Art", Game: "pokemon"},
+		{ID: "op01-016", Name: "Nami", Set: "Romance Dawn", PriceUSD: decimal.NewFromFloat(15.00), PriceEUR: decimal.NewFromFloat(14.00), ImageURL: "https://example.com/op01-016.png", Variant: "Parallel", Game: "one_piece"},
+		{ID: "op01-120", Name: "Shanks", Set: "Romance Dawn", PriceUSD: decimal.NewFromFloat(250.00), PriceEUR: decimal.NewFromFloat(230.00), ImageURL: "https://example.com/op01-120.png", Variant: "SEC", Game: "one_piece"},
 	}
 
 	tx, err := db.Begin()

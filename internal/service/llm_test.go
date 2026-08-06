@@ -21,13 +21,16 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"pokget/internal/models"
 	"strings"
 	"testing"
+	"time"
 )
 
 // --- SCAN-08: LLM candidate shortlisting tests ---
@@ -148,14 +151,8 @@ func TestValidatePlainTextResponse(t *testing.T) {
 
 	// Test matching against shortlist
 	resp, err := llm.validatePlainTextResponse("I think it's Pikachu", allCards, shortlist)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-	if resp.CardName != "Pikachu" {
-		t.Errorf("Expected 'Pikachu', got %q", resp.CardName)
-	}
-	if resp.Confidence != 0.7 {
-		t.Errorf("Expected confidence 0.7 for shortlist match, got %f", resp.Confidence)
+	if !errors.Is(err, ErrInvalidLLMResponse) || resp != nil {
+		t.Fatalf("plain-text response = (%+v, %v), want strict rejection", resp, err)
 	}
 }
 
@@ -171,14 +168,8 @@ func TestValidatePlainTextResponseAllCards(t *testing.T) {
 
 	// Test matching against all cards (not in shortlist)
 	resp, err := llm.validatePlainTextResponse("I think it's Charizard", allCards, shortlist)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-	if resp.CardName != "Charizard" {
-		t.Errorf("Expected 'Charizard', got %q", resp.CardName)
-	}
-	if resp.Confidence != 0.5 {
-		t.Errorf("Expected confidence 0.5 for non-shortlist match, got %f", resp.Confidence)
+	if !errors.Is(err, ErrInvalidLLMResponse) || resp != nil {
+		t.Fatalf("full-corpus plain-text response = (%+v, %v), want strict rejection", resp, err)
 	}
 }
 
@@ -192,11 +183,8 @@ func TestValidatePlainTextResponseNoMatch(t *testing.T) {
 	}
 
 	resp, err := llm.validatePlainTextResponse("Some random text with no card name", allCards, shortlist)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-	if resp.Confidence != 0.1 {
-		t.Errorf("Expected confidence 0.1 for no match, got %f", resp.Confidence)
+	if !errors.Is(err, ErrInvalidLLMResponse) || resp != nil {
+		t.Fatalf("arbitrary plain-text response = (%+v, %v), want strict rejection", resp, err)
 	}
 }
 
@@ -223,12 +211,7 @@ func TestFuzzyMatchCardWithValidationJSONExtraction(t *testing.T) {
 	}
 }
 
-func TestLLMCardResponseConfidenceClamping(t *testing.T) {
-	// Test that FuzzyMatchCardWithValidation clamps out-of-range confidence
-	// values returned by the LLM, rather than manually replicating the clamping
-	// logic here. Uses a test HTTP server that returns JSON with invalid
-	// confidence values.
-
+func TestLLMCardResponseConfidenceUsesDeterministicEvidence(t *testing.T) {
 	knownCards := []models.Card{
 		{ID: "test-1", Name: "Pikachu"},
 	}
@@ -236,20 +219,19 @@ func TestLLMCardResponseConfidenceClamping(t *testing.T) {
 	tests := []struct {
 		name          string
 		llmConfidence float64
-		wantClamped   float64
 	}{
-		{"negative confidence clamped to 0", -0.5, 0},
-		{"confidence > 1 clamped to 1", 1.5, 1},
+		{"negative self-report ignored", -0.5},
+		{"inflated self-report ignored", 1.5},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up a test HTTP server that returns an LLM response with
-			// the specified out-of-range confidence value.
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				llmJSON := fmt.Sprintf(`{"card_name": "Pikachu", "confidence": %f}`, tt.llmConfidence)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				llmJSON := fmt.Sprintf(`{"card_id": "test-1", "confidence": %f, "abstain": false}`, tt.llmConfidence)
 				resp := map[string]string{"response": llmJSON}
-				json.NewEncoder(w).Encode(resp)
+				if err := json.NewEncoder(w).Encode(resp); err != nil {
+					t.Errorf("encode LLM response: %v", err)
+				}
 			}))
 			defer srv.Close()
 
@@ -263,9 +245,216 @@ func TestLLMCardResponseConfidenceClamping(t *testing.T) {
 			if err != nil {
 				t.Fatalf("FuzzyMatchCardWithValidation returned error: %v", err)
 			}
-			if result.Confidence != tt.wantClamped {
-				t.Errorf("Expected clamped confidence %f, got %f", tt.wantClamped, result.Confidence)
+			want := llmEvidenceConfidence(scoreCandidate("pikachu", "pikachu", []string{"pikachu"}, knownCards[0]).Score)
+			if result.Confidence != want {
+				t.Errorf("confidence = %f, want deterministic evidence confidence %f", result.Confidence, want)
 			}
 		})
+	}
+}
+
+func TestFuzzyMatchCardWithValidationContextCancelsRequest(t *testing.T) {
+	t.Parallel()
+
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+		select {
+		case <-r.Context().Done():
+		case <-releaseRequest:
+		}
+	}))
+	defer server.Close()
+	defer close(releaseRequest)
+
+	service := &LLMService{BaseURL: server.URL, Model: "test-model", HTTPClient: server.Client()}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	startedAt := time.Now()
+	_, err := service.FuzzyMatchCardWithValidationContext(
+		ctx,
+		"Pikachu",
+		[]models.Card{{ID: "pikachu", Name: "Pikachu"}},
+	)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want context deadline exceeded", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("canceled LLM request returned after %s", elapsed)
+	}
+	select {
+	case <-requestStarted:
+	default:
+		t.Fatal("LLM request never reached test server")
+	}
+}
+
+func TestLLMAutoSetupContextCancelsRequest(t *testing.T) {
+	t.Parallel()
+
+	requestStarted := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		close(requestStarted)
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+
+	service := &LLMService{
+		BaseURL:    server.URL,
+		Model:      "test-model",
+		HTTPClient: server.Client(),
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	startedAt := time.Now()
+	service.AutoSetupContext(ctx)
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("canceled model setup returned after %s", elapsed)
+	}
+	select {
+	case <-requestStarted:
+	default:
+		t.Fatal("model setup request never reached test server")
+	}
+}
+
+func TestLLMStrictMatchSendsOnlyEvidenceBackedShortlist(t *testing.T) {
+	t.Parallel()
+
+	var requestPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if err := json.NewDecoder(request.Body).Decode(&requestPayload); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"response": `{"card_id":"pikachu-025","confidence":0.92,"abstain":false}`,
+		})
+	}))
+	defer server.Close()
+
+	service := &LLMService{
+		BaseURL: server.URL, Model: "test-model", HTTPClient: server.Client(),
+		Seed: 7, NumPredict: 48, NumContext: 1024, NumThread: 4,
+		MaxCandidates: 5, MinEvidence: 180, MinConfidence: 0.6,
+	}
+	inactive := false
+	response, err := service.FuzzyMatchCardScopedContext(context.Background(), "Pikachu 025", []models.Card{
+		{ID: "pikachu-025", Name: "Pikachu", CollectorNumber: "025", Game: "pokemon", Language: "en"},
+		{ID: "charizard-006", Name: "Charizard", CollectorNumber: "006", Game: "pokemon", Language: "en"},
+		{ID: "inactive-pikachu", Name: "Pikachu", CollectorNumber: "025", CatalogActive: &inactive},
+		{ID: "magic-pikachu", Name: "Pikachu", CollectorNumber: "025", Game: "magic", Language: "en"},
+		{ID: "german-pikachu", Name: "Pikachu", CollectorNumber: "025", Game: "pokemon", Language: "de"},
+	}, ScanScope{TCG: models.TCGPokemon, Language: models.LanguageEnglish})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.CardID != "pikachu-025" || response.CardName != "Pikachu" || response.Abstained {
+		t.Fatalf("strict response = %+v", response)
+	}
+	format, ok := requestPayload["format"].(map[string]any)
+	if !ok || format["type"] != "object" || format["additionalProperties"] != false {
+		t.Fatalf("format = %#v, want strict object schema", requestPayload["format"])
+	}
+	properties, ok := format["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema properties = %#v", format["properties"])
+	}
+	cardID, ok := properties["card_id"].(map[string]any)
+	if !ok || !jsonArrayContains(cardID["enum"], "") || !jsonArrayContains(cardID["enum"], "pikachu-025") {
+		t.Fatalf("card_id schema = %#v", properties["card_id"])
+	}
+	options, ok := requestPayload["options"].(map[string]any)
+	if !ok || options["seed"] != float64(7) || options["num_predict"] != float64(48) ||
+		options["num_ctx"] != float64(1024) || options["num_thread"] != float64(4) {
+		t.Fatalf("options = %#v", requestPayload["options"])
+	}
+	prompt, _ := requestPayload["prompt"].(string)
+	if !strings.Contains(prompt, "pikachu-025") {
+		t.Fatalf("prompt omitted shortlisted printing ID: %s", prompt)
+	}
+	if strings.Contains(prompt, "charizard-006") || strings.Contains(prompt, "inactive-pikachu") ||
+		strings.Contains(prompt, "magic-pikachu") || strings.Contains(prompt, "german-pikachu") {
+		t.Fatalf("prompt leaked non-evidence or inactive corpus entries: %s", prompt)
+	}
+}
+
+func jsonArrayContains(value any, wanted string) bool {
+	values, ok := value.([]any)
+	if !ok {
+		return false
+	}
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func TestLLMStrictMatchRejectsArbitraryAndOutsideShortlistOutput(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"card name instead of ID": `{"card_name":"Pikachu","confidence":0.9}`,
+		"ID outside shortlist":    `{"card_id":"charizard-006","confidence":0.9,"abstain":false}`,
+		"plain text ID":           `pikachu-025`,
+	}
+	for name, modelResponse := range tests {
+		modelResponse := modelResponse
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]string{"response": modelResponse})
+			}))
+			defer server.Close()
+			service := &LLMService{BaseURL: server.URL, Model: "test", HTTPClient: server.Client()}
+			response, err := service.FuzzyMatchCardWithValidation("Pikachu 025", []models.Card{
+				{ID: "pikachu-025", Name: "Pikachu", CollectorNumber: "025"},
+				{ID: "charizard-006", Name: "Charizard", CollectorNumber: "006"},
+			})
+			if !errors.Is(err, ErrInvalidLLMResponse) || response != nil {
+				t.Fatalf("response = (%+v, %v), want strict rejection", response, err)
+			}
+		})
+	}
+}
+
+func TestLLMStrictMatchAbstains(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"response": `{"card_id":"","confidence":0,"abstain":true}`,
+		})
+	}))
+	defer server.Close()
+	service := &LLMService{BaseURL: server.URL, Model: "test", HTTPClient: server.Client()}
+	response, err := service.FuzzyMatchCardWithValidation("Pikachu", []models.Card{{ID: "pikachu", Name: "Pikachu"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !response.Abstained || response.CardID != "" || response.CardName != "Unknown Card" {
+		t.Fatalf("abstention = %+v", response)
+	}
+}
+
+func TestNewLLMServiceWithConfigNormalizesHostAndOptions(t *testing.T) {
+	t.Parallel()
+
+	service, err := NewLLMServiceWithConfig(LLMConfig{
+		BaseURL: "ollama.internal", Model: "qwen-test", Temperature: 0.2,
+		Seed: 99, NumPredict: 64, MaxCandidates: 12, MinEvidence: 250, MinConfidence: 0.7,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service.BaseURL != "http://ollama.internal:11434" || service.Model != "qwen-test" {
+		t.Fatalf("service endpoint/model = %q/%q", service.BaseURL, service.Model)
+	}
+	if service.Seed != 99 || service.NumPredict != 64 || service.MaxCandidates != 12 || service.MinEvidence != 250 || service.MinConfidence != 0.7 {
+		t.Fatalf("service options = %+v", service)
 	}
 }

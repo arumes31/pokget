@@ -24,14 +24,17 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"pokget/internal/models"
 	"testing"
+
+	"pokget/internal/models"
+
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
 func createTestImage(c color.Color, pattern string) image.Image {
 	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
 	draw.Draw(img, img.Bounds(), &image.Uniform{color.White}, image.Point{}, draw.Src)
-	
+
 	if pattern == "circle" {
 		// Draw a simple "circle" (square in the middle)
 		draw.Draw(img, image.Rect(25, 25, 75, 75), &image.Uniform{c}, image.Point{}, draw.Src)
@@ -102,5 +105,35 @@ func TestMetadataServiceProcessing(t *testing.T) {
 	// For now, let's just ensure NewMetadataService works.
 	if mSvc == nil {
 		t.Fatal("Expected MetadataService to be initialized")
+	}
+}
+
+func TestFingerprintServiceLoadsLegacyAndCatalogFingerprints(t *testing.T) {
+	t.Parallel()
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectQuery("FROM card_fingerprints AS fingerprint").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "name", "set_name", "price_usd", "price_eur", "image_url",
+			"variant", "change_24h", "phash", "game", "language", "rarity",
+			"set_code", "collector_number", "catalog_active",
+		}).
+			AddRow("legacy", "Legacy", "Set", "1.00", "2.00", "", "Normal", 0.0, int64(11), "pokemon", "en", "Rare", "base", "1", true).
+			AddRow("catalog", "Catalog", "Set", "1.00", "2.00", "", "Normal", 0.0, int64(22), "magic", "en", "Mythic", "vma", "4", true))
+
+	service := NewFingerprintService(db)
+	if service.tree.count != 2 {
+		t.Fatalf("loaded fingerprint count = %d, want 2", service.tree.count)
+	}
+	match := service.SearchByHash(22)
+	if match == nil || match.HighConfidence == nil || match.HighConfidence.ID != "catalog" {
+		t.Fatalf("catalog fingerprint match = %+v", match)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

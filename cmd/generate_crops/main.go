@@ -26,12 +26,12 @@ func main() {
 		outDir = os.Args[2]
 	}
 
-	if err := os.MkdirAll(outDir, 0755); err != nil {
+	if err := os.MkdirAll(outDir, 0o750); err != nil { // #nosec G703 -- this developer CLI intentionally accepts an operator-selected output directory.
 		fmt.Printf("Error creating output directory: %v\n", err)
 		return
 	}
 
-	imgFile, err := os.Open(imgPath)
+	imgFile, err := os.Open(imgPath) // #nosec G304,G703 -- this developer CLI intentionally accepts an operator-selected input file.
 	if err != nil {
 		fmt.Println("Failed to open image:", err)
 		return
@@ -66,7 +66,7 @@ func main() {
 				bounds := img.Bounds()
 				cropRect := image.Rect(int(float64(bounds.Dx())*0.6), int(float64(bounds.Dy())*0.8), bounds.Dx(), bounds.Dy())
 				res := transform.Crop(img, cropRect)
-				
+
 				res2 := transform.Resize(res, res.Bounds().Dx()*4, res.Bounds().Dy()*4, transform.Lanczos)
 				res3 := channel.Extract(res2, channel.Blue)
 				res4 := adjust.Contrast(res3, 0.99)
@@ -99,18 +99,22 @@ func main() {
 	for i, p := range pipelines {
 		fmt.Println("Processing:", p.name)
 		processed := p.fn(src)
-		
+
 		outPath := filepath.Join(outDir, fmt.Sprintf("pipeline_%d.jpg", i+1))
-		out, err := os.Create(outPath)
+		out, err := os.Create(outPath) // #nosec G304,G703 -- outPath stays inside the operator-selected output directory.
 		if err != nil {
 			fmt.Printf("Error creating file %s: %v\n", outPath, err)
 			continue
 		}
-		
-		err = jpeg.Encode(out, processed, &jpeg.Options{Quality: 90})
-		out.Close()
-		if err != nil {
-			fmt.Println("Error encoding:", err)
+
+		encodeErr := jpeg.Encode(out, processed, &jpeg.Options{Quality: 90})
+		closeErr := out.Close()
+		if encodeErr != nil {
+			fmt.Println("Error encoding:", encodeErr)
+			continue
+		}
+		if closeErr != nil {
+			fmt.Printf("Error closing file %s: %v\n", outPath, closeErr)
 		}
 	}
 }

@@ -54,6 +54,7 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 		{{define "binders.html"}}binders{{end}}
 		{{define "trade.html"}}trade{{end}}
 		{{define "error_database.html"}}error_db{{end}}
+		{{define "error_database_page.html"}}error_db_page{{end}}
 		{{define "wantlist.html"}}wantlist{{end}}
 		{{define "public_vault.html"}}public_vault{{end}}
 		{{define "confirm_email.html"}}confirm_email{{end}}
@@ -75,7 +76,10 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 		DB:          dbMock,
 	}
 
-	return h, mock, func() { dbMock.Close() }
+	return h, mock, func() {
+		h.Audit.Close()
+		_ = dbMock.Close()
+	}
 }
 
 func TestHandlers(t *testing.T) {
@@ -94,7 +98,7 @@ func TestHandlers(t *testing.T) {
 	})
 
 	t.Run("Index_Authenticated", func(t *testing.T) {
-		h, _, cleanup := setupTestHandler(t)
+		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/", nil)
@@ -106,6 +110,15 @@ func TestHandlers(t *testing.T) {
 
 		req.Header.Set("Cookie", rr.Header().Get("Set-Cookie"))
 		rr = httptest.NewRecorder()
+		mock.ExpectQuery("SELECT currency").
+			WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"currency"}).AddRow("EUR"))
+		mock.ExpectQuery("SELECT p.id").
+			WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{
+				"id", "condition", "custom_price", "notes", "grade", "is_public", "binder_id",
+				"card_id", "name", "set_name", "image_url", "price_usd", "price_eur", "game",
+			}))
 
 		h.Index(rr, req)
 
@@ -147,8 +160,13 @@ func TestHandlers(t *testing.T) {
 		mock.ExpectQuery("SELECT").WithArgs("test-user").WillReturnRows(rowsSet)
 
 		// 2. Fetch Portfolio
-		rowsPortfolio := sqlmock.NewRows([]string{"id", "cond", "price", "cid", "name", "set", "url", "p_usd", "p_eur", "game"}).
-			AddRow("p1", "NM", 0.0, "c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon")
+		rowsPortfolio := sqlmock.NewRows([]string{
+			"id", "condition", "custom_price", "notes", "grade", "is_public", "binder_id",
+			"card_id", "name", "set", "url", "price_usd", "price_eur", "game",
+		}).AddRow(
+			"p1", "NM", 0.0, "", "", false, "binder-1",
+			"c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon",
+		)
 		mock.ExpectQuery("SELECT").WithArgs("test-user").WillReturnRows(rowsPortfolio)
 
 		// 3. Fetch multipliers and currency
@@ -178,6 +196,24 @@ func TestHandlers(t *testing.T) {
 		}
 	})
 
+	t.Run("Dashboard_ClientCancellation", func(t *testing.T) {
+		h, _, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+		req = req.WithContext(ctx)
+		recorder := httptest.NewRecorder()
+
+		h.Dashboard(recorder, req)
+
+		if recorder.Body.Len() != 0 {
+			t.Fatalf("canceled dashboard request wrote a response: %q", recorder.Body.String())
+		}
+	})
+
 	t.Run("AddCardToPortfolio_DBError", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
@@ -191,6 +227,7 @@ func TestHandlers(t *testing.T) {
 		// BUG-H01 FIX: Card existence check is now performed before INSERT
 		mock.ExpectQuery("SELECT EXISTS").WithArgs("test-id").WillReturnRows(
 			sqlmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectQuery("SELECT id FROM binders").WithArgs("test-user").WillReturnError(sql.ErrNoRows)
 		mock.ExpectExec("INSERT INTO portfolio").WillReturnError(sql.ErrConnDone)
 
 		h.AddCardToPortfolio(rr, req)
@@ -208,7 +245,7 @@ func TestHandlers(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"slug": "notfound"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("notfound").WillReturnError(sql.ErrNoRows)
+		mock.ExpectQuery("SELECT id, email").WithArgs("notfound").WillReturnError(sql.ErrNoRows)
 
 		h.PublicVault(rr, req)
 
@@ -341,8 +378,8 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		passHash, _ := auth.HashPassword("pass")
-		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
-			AddRow("user-123", "test@example.com", passHash, false)
+		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("user-123", "test@example.com", passHash, false, 0)
 		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 
 		h.Login(rr, req)
@@ -361,8 +398,8 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		passHash, _ := auth.HashPassword("pass")
-		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
-			AddRow("user-123", "test@example.com", passHash, true)
+		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("user-123", "test@example.com", passHash, true, 0)
 		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 
 		h.Login(rr, req)
@@ -460,8 +497,8 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		passHash, _ := auth.HashPassword("pass")
-		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
-			AddRow("user-123", "test@example.com", passHash, true)
+		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("user-123", "test@example.com", passHash, true, 0)
 		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 		mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -482,8 +519,8 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		passHash, _ := auth.HashPassword("pass")
-		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
-			AddRow("user-123", "test@example.com", passHash, true)
+		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("user-123", "test@example.com", passHash, true, 0)
 		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 		mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -507,8 +544,8 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		passHash, _ := auth.HashPassword("pass")
-		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
-			AddRow("user-123", "test@example.com", passHash, true)
+		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("user-123", "test@example.com", passHash, true, 0)
 		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 		mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -588,7 +625,7 @@ func TestHandlers(t *testing.T) {
 		}
 	})
 
-	t.Run("APIScan_BadFile", func(t *testing.T) {
+	t.Run("APIScan_InvalidImage", func(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
 
@@ -604,8 +641,8 @@ func TestHandlers(t *testing.T) {
 
 		h.APIScan(rr, req)
 
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("Expected status 500 (decode fail), got %d", rr.Code)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400 (invalid image), got %d", rr.Code)
 		}
 	})
 
@@ -634,8 +671,8 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
-			AddRow("user-123", "test@example.com", "invalid-hash", true)
+		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("user-123", "test@example.com", "invalid-hash", true, 0)
 		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 
 		h.Login(rr, req)
@@ -686,9 +723,12 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		// BUG-C02 FIX: AddXP now uses atomic UPDATE ... RETURNING instead of SELECT + UPDATE
-		mock.ExpectQuery("UPDATE users SET xp").WithArgs(1, "Novice Collector", "test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"xp", "rank_title"}).AddRow(11, "Novice Collector"))
+		mock.ExpectBegin()
+		mock.ExpectQuery("UPDATE users SET xp").WithArgs(1, "test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"xp"}).AddRow(11))
+		mock.ExpectExec("UPDATE users SET rank_title").WithArgs("Novice Collector", "test-user", 11).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
 
 		h.Heartbeat(rr, req)
 
@@ -707,9 +747,6 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		// BUG-H05 FIX: Ownership check is now performed before UPDATE
-		mock.ExpectQuery("SELECT user_id FROM portfolio").WithArgs("123").
-			WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow("test-user"))
 		mock.ExpectExec("UPDATE portfolio").WithArgs("updated", "10", 50.0, true, "123", "test-user").
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -729,15 +766,14 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		// 1. Fetch user info
-		rowsUser := sqlmock.NewRows([]string{"id", "email", "rank_title", "xp"}).
-			AddRow("test-user-id", "test@example.com", "Hobbyist", 1600)
-		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
-			WillReturnRows(rowsUser)
+		mock.ExpectQuery("SELECT id, email").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "email", "rank_title", "xp", "currency"}).
+				AddRow("test-user-id", "test@example.com", "Hobbyist", 1600, "EUR"))
 
 		// 2. Fetch public portfolio items
 		mock.ExpectQuery("SELECT p.id").WithArgs("test-user-id").
-			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "fmt", "gr", "comp", "notes", "name", "set", "price", "url", "game"}).
-				AddRow("1", "NM", "Raw", 0, "", "note", "Charizard", "Base", 100.0, "url", "Pokemon"))
+			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "fmt", "gr", "comp", "notes", "name", "set", "price_usd", "price_eur", "url", "game"}).
+				AddRow("1", "NM", "Raw", "", "", "note", "Charizard", "Base", 100.0, 90.0, "url", "Pokemon"))
 
 		h.PublicVault(rr, req)
 
@@ -776,8 +812,8 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		mock.ExpectQuery("SELECT").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"id", "card_id", "tp", "notes", "name", "set", "price", "url"}).
-				AddRow("1", "c1", 10.0, "note", "Mew", "151", 15.0, "url"))
+			WillReturnRows(sqlmock.NewRows([]string{"id", "card_id", "tp", "notes", "name", "set", "price_usd", "price_eur", "url"}).
+				AddRow("1", "c1", 10.0, "note", "Mew", "151", 15.0, 14.0, "url"))
 
 		h.Wantlist(rr, req)
 
@@ -797,8 +833,6 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		// BUG-H05 FIX: Ownership check is now performed before UPDATE
-		mock.ExpectQuery("SELECT user_id FROM portfolio").WithArgs("123").
-			WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow("test-user"))
 		mock.ExpectExec("UPDATE portfolio").WillReturnError(sql.ErrConnDone)
 
 		h.EditPortfolioItem(rr, req)
@@ -833,8 +867,9 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		// BUG-C02 FIX: AddXP now uses atomic UPDATE ... RETURNING instead of SELECT + UPDATE
+		mock.ExpectBegin()
 		mock.ExpectQuery("UPDATE users SET xp").WillReturnError(sql.ErrConnDone)
+		mock.ExpectRollback()
 
 		h.Heartbeat(rr, req)
 
@@ -851,7 +886,7 @@ func TestHandlers(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
+		mock.ExpectQuery("SELECT id, email").WithArgs("test-user").
 			WillReturnError(sql.ErrNoRows)
 
 		h.PublicVault(rr, req)
@@ -869,7 +904,7 @@ func TestHandlers(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
+		mock.ExpectQuery("SELECT id, email").WithArgs("test-user").
 			WillReturnError(errors.New("db error"))
 
 		h.PublicVault(rr, req)
@@ -930,13 +965,15 @@ func TestHandlers(t *testing.T) {
 	})
 
 	t.Run("Trade", func(t *testing.T) {
-		h, _, cleanup := setupTestHandler(t)
+		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
 		req := httptest.NewRequest("GET", "/trade", nil)
 		ctx := context.WithValue(req.Context(), auth.UserContextKey{}, "test-user")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
+		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "condition", "card_id", "name", "set", "price_usd", "price_eur"}))
 
 		h.Trade(rr, req)
 
@@ -1045,13 +1082,18 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("INSERT INTO error_cards").WithArgs("c1", "Miscut", "offcenter", "1.5", "test-user").
+		mock.ExpectQuery("SELECT EXISTS").WithArgs("c1").
+			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectExec("INSERT INTO error_cards").WithArgs("c1", "Miscut", "offcenter", 1.5, "test-user").
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.SubmitError(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Header().Get("HX-Trigger"), "Misprint submitted") {
+			t.Errorf("Expected submission notification trigger, got %q", rr.Header().Get("HX-Trigger"))
 		}
 	})
 
@@ -1077,7 +1119,7 @@ func TestHandlers(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email, rank_title, xp").WithArgs("test-user").
+		mock.ExpectQuery("SELECT id, email").WithArgs("test-user").
 			WillReturnError(sql.ErrNoRows)
 
 		h.PublicVault(rr, req)
@@ -1116,6 +1158,8 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
+		mock.ExpectQuery("SELECT EXISTS").WithArgs("c1").
+			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 		mock.ExpectExec("INSERT INTO wantlist").WillReturnError(sql.ErrConnDone)
 
 		h.AddToWantlist(rr, req)
@@ -1125,7 +1169,7 @@ func TestHandlers(t *testing.T) {
 		}
 	})
 
-	t.Run("APIScan_Success", func(t *testing.T) {
+	t.Run("APIScan_OCRUnavailable", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
@@ -1147,8 +1191,8 @@ func TestHandlers(t *testing.T) {
 
 		h.APIScan(rr, req)
 
-		if rr.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", rr.Code)
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Errorf("Expected status %d, got %d", http.StatusServiceUnavailable, rr.Code)
 		}
 	})
 
@@ -1172,8 +1216,8 @@ func TestHandlers(t *testing.T) {
 				rr := httptest.NewRecorder()
 
 				passHash, _ := auth.HashPassword("pass")
-				rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
-					AddRow("user-123", "test@example.com", passHash, true)
+				rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+					AddRow("user-123", "test@example.com", passHash, true, 0)
 				mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 				mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -1197,8 +1241,8 @@ func TestHandlers(t *testing.T) {
 				rr := httptest.NewRecorder()
 
 				passHash, _ := auth.HashPassword("pass")
-				rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified"}).
-					AddRow("user-123", "test@example.com", passHash, true)
+				rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+					AddRow("user-123", "test@example.com", passHash, true, 0)
 				mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
 				mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -1256,8 +1300,8 @@ func TestHandlers(t *testing.T) {
 
 		h.ErrorDatabase(rr, req)
 
-		if rr.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", rr.Code)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", rr.Code)
 		}
 	})
 
@@ -1325,5 +1369,71 @@ func TestGenerateToken_Error(t *testing.T) {
 	_, err := generateToken()
 	if err == nil {
 		t.Errorf("Expected error from generateToken, got nil")
+	}
+}
+
+func TestUpdatePortfolioBinder(t *testing.T) {
+	tests := []struct {
+		name       string
+		form       string
+		prepare    func(sqlmock.Sqlmock)
+		wantStatus int
+	}{
+		{
+			name: "assign owned binder",
+			form: "item_id=item-1&binder_id=binder-1",
+			prepare: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery("SELECT EXISTS").WithArgs("binder-1", "test-user").
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+				mock.ExpectExec("UPDATE portfolio SET binder_id").WithArgs("binder-1", "item-1", "test-user").
+					WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec("INSERT INTO audit_logs").WithArgs("test-user", "update_portfolio_binder", sqlmock.AnyArg()).
+					WillReturnResult(sqlmock.NewResult(0, 1))
+			},
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name: "reject another users binder",
+			form: "item_id=item-1&binder_id=binder-2",
+			prepare: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery("SELECT EXISTS").WithArgs("binder-2", "test-user").
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+			},
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "move to unfiled vault",
+			form: "item_id=item-1&binder_id=",
+			prepare: func(mock sqlmock.Sqlmock) {
+				mock.ExpectExec("UPDATE portfolio SET binder_id").WithArgs("", "item-1", "test-user").
+					WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec("INSERT INTO audit_logs").WithArgs("test-user", "update_portfolio_binder", sqlmock.AnyArg()).
+					WillReturnResult(sqlmock.NewResult(0, 1))
+			},
+			wantStatus: http.StatusNoContent,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, mock, cleanup := setupTestHandler(t)
+			defer cleanup()
+			defer h.Audit.Close()
+			tt.prepare(mock)
+
+			req := httptest.NewRequest(http.MethodPost, "/portfolio/binder", strings.NewReader(tt.form))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey{}, "test-user"))
+			rr := httptest.NewRecorder()
+
+			h.UpdatePortfolioBinder(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%q", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+			if tt.wantStatus == http.StatusNoContent && !strings.Contains(rr.Header().Get("HX-Trigger"), "Card moved") {
+				t.Errorf("HX-Trigger does not announce success: %q", rr.Header().Get("HX-Trigger"))
+			}
+		})
 	}
 }

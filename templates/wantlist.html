@@ -1,4 +1,4 @@
-<div class="space-y-xl animate-in" x-data="{ showAddGrailModal: false }">
+<div class="space-y-xl animate-in" x-data="{ showAddGrailModal: false, addError: '', mutationError: '' }">
     <!-- Premium Header -->
     <div
         class="relative overflow-hidden rounded-3xl p-8 bg-gradient-to-br from-primary/20 to-transparent border border-white/5">
@@ -9,7 +9,7 @@
                 <p class="text-on-surface-variant/60 text-sm mt-2 max-w-md">Track the grails you're hunting. Monitor
                     market prices against your target and strike when the time is right.</p>
             </div>
-            <button @click="showAddGrailModal = true"
+            <button type="button" x-ref="addGrailTrigger" @click="addError = ''; showAddGrailModal = true; $nextTick(() => $refs.grailCardId.focus())"
                 class="group relative overflow-hidden bg-primary px-8 py-4 rounded-2xl text-on-primary font-bold text-sm tracking-widest shadow-2xl shadow-primary/20 active:scale-95 transition-all">
                 <div
                     class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform">
@@ -21,6 +21,8 @@
             </button>
         </div>
     </div>
+    <p x-show="mutationError" x-text="mutationError" role="alert" aria-live="assertive"
+        class="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400"></p>
 
     <!-- Collection Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -61,9 +63,9 @@
                             <span class="text-white/30 uppercase font-bold">Market Price</span>
                             <span class="text-on-surface font-mono font-bold">
                                 {{ $.CurrencySymbol }}{{ if eq $.UserCurrency "EUR" }}
-                                {{ .Card.PriceEUR }}
+                                {{ printf "%.2f" .PriceEUR }}
                                 {{ else }}
-                                {{ .Card.PriceUSD }}
+                                {{ printf "%.2f" .PriceUSD }}
                                 {{ end }}
                             </span>
                         </div>
@@ -78,17 +80,35 @@ of the user's currency preference. -->
                 <div class="flex justify-between items-center mb-2">
                     <span class="text-[9px] font-bold uppercase tracking-widest text-white/20">Market Convergence</span>
                     <span class="text-[10px] font-bold text-primary">{{ if .TargetPrice }}{{ if eq $.UserCurrency "EUR"
-                        }}{{ printf "%.0f" (mul (div .Card.PriceEUR .TargetPrice) 100) }}{{ else }}{{ printf "%.0f" (mul
-                        (div .Card.PriceUSD .TargetPrice) 100) }}{{ end }}%{{ else }}0%{{ end }}</span>
+                        }}{{ printf "%.0f" .ProgressEUR }}{{ else }}{{ printf "%.0f" .ProgressUSD }}{{ end }}%{{ else }}0%{{ end }}</span>
                 </div>
                 <div class="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                     {{ if .TargetPrice }}
                     <div class="h-full bg-gradient-to-r from-primary to-primary-fixed-dim shadow-[0_0_12px_rgba(221,183,255,0.4)] transition-all duration-1000"
-                        x-init="$el.style.width = Math.min(({{ if eq $.UserCurrency "EUR" }}{{ .Card.PriceEUR }}{{ else
-                        }}{{ .Card.PriceUSD }}{{ end }} / {{ .TargetPrice }}) * 100, 100) + '%'"></div>
+                        x-init="$el.style.width = Math.min({{ if eq $.UserCurrency "EUR" }}{{ .ProgressEUR }}{{ else
+                        }}{{ .ProgressUSD }}{{ end }}, 100) + '%'"></div>
 {{ end }}
 </div>
 </div>
+            <form hx-post="/wantlist/edit" hx-target="#main-content" @htmx:before-request="mutationError = ''"
+                @htmx:after-request="if (!$event.detail.successful) mutationError = $event.detail.xhr.responseText.trim() || 'Unable to update grail'"
+                class="mt-5 grid grid-cols-2 gap-2 border-t border-white/5 pt-4">
+                <input type="hidden" name="gorilla.csrf.Token" value="{{ $.CSRFToken }}">
+                <input type="hidden" name="item_id" value="{{ .ID }}">
+                <label class="text-[9px] font-bold uppercase tracking-widest text-white/40">Target
+                    <input type="number" name="target_price" min="0" step="0.01" value="{{ .TargetPrice }}" required
+                        class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white">
+                </label>
+                <label class="text-[9px] font-bold uppercase tracking-widest text-white/40">Notes
+                    <input type="text" name="notes" value="{{ .Notes }}"
+                        class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white">
+                </label>
+                <button type="submit" class="rounded-lg bg-primary/15 py-2 text-[10px] font-bold text-primary">SAVE</button>
+                <button type="button" hx-post="/wantlist/delete" hx-target="#main-content" hx-confirm="Remove this card from your wantlist?"
+                    @htmx:before-request="mutationError = ''"
+                    @htmx:after-request="if (!$event.detail.successful) mutationError = $event.detail.xhr.responseText.trim() || 'Unable to remove grail'"
+                    hx-vals='{"item_id":"{{ .ID }}"}' class="rounded-lg bg-red-500/10 py-2 text-[10px] font-bold text-red-300">REMOVE</button>
+            </form>
         </div>
         {{ else }}
         <!-- Empty State: High Impact -->
@@ -106,7 +126,7 @@ of the user's currency preference. -->
                             <h3 class="text-xl font-bold text-on-surface tracking-tight">Empty Armory</h3>
                             <p class="text-sm text-white/40 mt-3">You haven't identified any grails for your collection
                                 yet. Start hunting to build your legacy.</p>
-                            <button @click="showAddGrailModal = true"
+                            <button type="button" @click="addError = ''; showAddGrailModal = true; $nextTick(() => $refs.grailCardId.focus())"
                                 class="mt-8 text-primary text-xs font-bold uppercase tracking-widest border-b border-primary/40 pb-1 hover:border-primary transition-all">
                                 Initiate First Hunt
                             </button>
@@ -117,6 +137,8 @@ of the user's currency preference. -->
 
                 <!-- Add Grail Modal (Enhanced) -->
                 <div x-show="showAddGrailModal" x-transition:enter="transition ease-out duration-300"
+                    role="dialog" aria-modal="true" aria-labelledby="add-grail-title"
+                    @keydown.escape.window="if (showAddGrailModal) { showAddGrailModal = false; $nextTick(() => $refs.addGrailTrigger?.focus()) }"
                     x-transition:enter-start="opacity-0 translate-y-10"
                     x-transition:enter-end="opacity-100 translate-y-0"
                     class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-background/80 backdrop-blur-xl"
@@ -128,22 +150,25 @@ of the user's currency preference. -->
                         </div>
 
                         <div class="flex justify-between items-center">
-                            <h3 class="text-2xl font-bold text-on-surface tracking-tight">Identify <span
+                            <h3 id="add-grail-title" class="text-2xl font-bold text-on-surface tracking-tight">Identify <span
                                     class="text-primary">Grail</span></h3>
-                            <button @click="showAddGrailModal = false"
+                            <button type="button" aria-label="Close add grail dialog" @click="showAddGrailModal = false; $nextTick(() => $refs.addGrailTrigger?.focus())"
                                 class="text-white/20 hover:text-white transition-colors">
                                 <span class="material-symbols-outlined">close</span>
                             </button>
                         </div>
 
-                        <form hx-post="/wantlist/add" hx-target="#main-content" @submit="showAddGrailModal = false"
+                        <form hx-post="/wantlist/add" hx-target="#main-content" @htmx:before-request="addError = ''"
+                            @htmx:after-request="if ($event.detail.successful) { showAddGrailModal = false; $nextTick(() => $refs.addGrailTrigger?.focus()) } else { addError = $event.detail.xhr.responseText.trim() || 'Unable to add grail' }"
                             class="space-y-6">
                             <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
+                            <p x-show="addError" x-text="addError" role="alert" aria-live="assertive"
+                                class="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400"></p>
 
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-bold text-white/30 tracking-widest px-1">Card
                                     ID / Fingerprint</label>
-                                <input type="text" name="card_id" required placeholder="e.g. swsh4-19"
+                                <input x-ref="grailCardId" type="text" name="card_id" required placeholder="e.g. swsh4-19"
                                     class="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm focus:outline-none focus:border-primary focus:bg-white/10 transition-all placeholder:text-white/10">
                             </div>
 

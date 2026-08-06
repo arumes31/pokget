@@ -22,6 +22,8 @@ package service
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"log/slog"
 	"sort"
 )
@@ -46,49 +48,45 @@ var Ranks = []Rank{
 }
 
 type GamificationService struct {
-	DB       *sql.DB
-	badgeSem chan struct{}
+	DB *sql.DB
 }
 
 func NewGamificationService(db *sql.DB) *GamificationService {
-	return &GamificationService{
-		DB:       db,
-		badgeSem: make(chan struct{}, 5), // max 5 concurrent badge checks
-	}
+	return &GamificationService{DB: db}
 }
 
 func (s *GamificationService) AddXP(userID string, amount int) (int, string, error) {
-	// BUG-C02 FIX: Use atomic increment instead of read-then-write to prevent race conditions
-	// under concurrent requests. Use UPDATE ... RETURNING to get the new XP value atomically.
-	var newXP int
-	var newRank string
-	err := s.DB.QueryRow(
-		"UPDATE users SET xp = xp + $1, rank_title = $2 WHERE id = $3 RETURNING xp, rank_title",
-		amount, s.GetUserRank(0).Title, userID, // placeholder rank, will be recalculated below
-	).Scan(&newXP, &newRank)
+	if s == nil || s.DB == nil {
+		return 0, "", errors.New("gamification: database is unavailable")
+	}
+	if userID == "" || amount <= 0 {
+		return 0, "", errors.New("gamification: user ID and positive XP amount are required")
+	}
+
+	tx, err := s.DB.Begin()
 	if err != nil {
-		return 0, "", err
+		return 0, "", fmt.Errorf("gamification: begin XP transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var newXP int
+	err = tx.QueryRow(
+		"UPDATE users SET xp = xp + $1 WHERE id = $2 RETURNING xp",
+		amount, userID,
+	).Scan(&newXP)
+	if err != nil {
+		return 0, "", fmt.Errorf("gamification: increment XP: %w", err)
 	}
 
-	// Recalculate rank based on the new XP value
-	actualRank := s.GetUserRank(newXP)
-	if actualRank.Title != newRank {
-		// Rank changed, update it
-		if _, err := s.DB.Exec("UPDATE users SET rank_title = $1 WHERE id = $2", actualRank.Title, userID); err != nil {
-			slog.Error("failed to update rank_title", "error", err, "user_id", userID)
-		}
-		newRank = actualRank.Title
+	newRank := s.GetUserRank(newXP).Title
+	if _, err := tx.Exec(
+		"UPDATE users SET rank_title = $1 WHERE id = $2 AND xp = $3 AND rank_title IS DISTINCT FROM $1",
+		newRank, userID, newXP,
+	); err != nil {
+		return 0, "", fmt.Errorf("gamification: update rank: %w", err)
 	}
-
-	// Asynchronously check for badges with semaphore to limit concurrency
-	select {
-	case s.badgeSem <- struct{}{}:
-		go func() {
-			defer func() { <-s.badgeSem }()
-			s.CheckForBadges(userID)
-		}()
-	default:
-		slog.Warn("Badge check skipped: too many concurrent checks", "user_id", userID)
+	if err := tx.Commit(); err != nil {
+		return 0, "", fmt.Errorf("gamification: commit XP transaction: %w", err)
 	}
 
 	return newXP, newRank, nil

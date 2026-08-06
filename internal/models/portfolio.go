@@ -35,6 +35,7 @@ type PortfolioItem struct {
 	CustomPrice    *float64  `json:"custom_price"`
 	Language       string    `json:"language"`
 	CreatedAt      time.Time `json:"created_at"`
+	BinderID       string    `json:"binder_id"`
 
 	// Join fields
 	Card Card `json:"card"`
@@ -72,4 +73,3 @@ func (p PortfolioItem) GetCustomPrice() float64 {
 	}
 	return *p.CustomPrice
 }
-

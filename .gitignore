@@ -8,7 +8,7 @@ vendor/
 *.test
 *.out
 node_modules/
-package-lock.json
+dist/
 test_cards/
 
 # Debug and coverage data
@@ -32,3 +32,9 @@ static/img/debug/
 # User data and tests
 data/
 test/
+graphify-out/
+artifacts/
+scratch/
+plans/
+
+.claudeignore

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Pokget Misprint Encyclopedia</title>
+    <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ .BuildVersion }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+    <script src="/static/js/alpine.min.js?v=3" defer></script>
+    <script src="/static/js/htmx.min.js?v=3"></script>
+    <meta name="csrf-token" content="{{ .CSRFToken }}">
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen overflow-x-hidden"
+    hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'>
+    <header class="border-b border-outline-variant/20 bg-surface/70">
+        <div class="flex items-center justify-between px-lg h-16 w-full max-w-container-max mx-auto">
+            <a href="/" class="font-h3 text-h3 uppercase tracking-widest font-bold text-primary">VAULT</a>
+            <a href="/auth" class="text-xs font-bold text-on-surface-variant hover:text-primary">ACCOUNT</a>
+        </div>
+    </header>
+    <main id="main-content" class="px-4 py-10 max-w-container-max mx-auto">
+        {{ template "error_database.html" . }}
+    </main>
+    <div x-data="{ toasts: [] }" x-cloak role="status" aria-live="polite" aria-atomic="true"
+        @notify.window="toasts.push({ id: Date.now(), msg: $event.detail.msg, type: $event.detail.type }); setTimeout(() => toasts.shift(), 3000)"
+        class="fixed top-6 left-half translate-x-half z-[100] flex flex-col gap-2 w-full max-w-[90%] pointer-events-none">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div class="glass-card px-6 py-3 shadow-2xl border-l-4 border-primary">
+                <p class="text-sm font-bold" x-text="toast.msg"></p>
+            </div>
+        </template>
+    </div>
+</body>
+</html>

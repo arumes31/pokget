@@ -1,5 +1,17 @@
-# Build stage
-FROM golang:1.26.4-alpine AS builder
+# Static asset stage
+FROM node:24-alpine AS static-assets
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+
+COPY scripts ./scripts
+COPY static ./static
+RUN npm run build:static && npm run check:static
+
+# Go build stage
+FROM golang:1.26.5-alpine AS builder
 
 # Install Tesseract OCR dependencies
 RUN apk add --no-cache \
@@ -20,10 +32,11 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN go build -o main ./cmd/pokget/main.go
+RUN go build -o main ./cmd/pokget && \
+	go build -o catalog ./cmd/catalog
 
 # Final stage
-FROM alpine:latest
+FROM alpine:3.22
 
 # Install runtime dependencies: Tesseract for OCR and Chromium for headless scraping
 RUN apk add --no-cache \
@@ -42,18 +55,30 @@ RUN apk add --no-cache \
     ca-certificates \
     ttf-freefont
 
-ENV TESSDATA_PREFIX=/usr/share/tessdata
+RUN addgroup -S -g 10001 pokget \
+    && adduser -S -D -H -u 10001 -G pokget pokget \
+    && mkdir -p /app/data/cache /app/data/catalog-images /tmp/pokget \
+    && chown -R pokget:pokget /app /tmp/pokget
+
+ENV TESSDATA_PREFIX=/usr/share/tessdata \
+    HOME=/tmp/pokget
 
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/main .
-COPY --from=builder /app/templates ./templates
-COPY --from=builder /app/static ./static
-COPY --from=builder /app/migrations ./migrations
+COPY --chown=pokget:pokget --from=builder /app/main .
+COPY --chown=pokget:pokget --from=builder /app/catalog .
+COPY --chown=pokget:pokget --from=builder /app/templates ./templates
+COPY --chown=pokget:pokget --from=static-assets /app/dist/static ./static
+COPY --chown=pokget:pokget --from=builder /app/migrations ./migrations
 
 # Expose port
-EXPOSE 8080
+EXPOSE 18066
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+  CMD wget -q --spider "http://127.0.0.1:${APP_PORT:-18066}/health/ready" || exit 1
+
+USER pokget
 
 # Run the binary
 CMD ["./main"]

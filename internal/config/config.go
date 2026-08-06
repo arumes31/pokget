@@ -29,7 +29,7 @@ import (
 type Config struct {
 	App struct {
 		Name          string `env:"APP_NAME" env-default:"Pokget"`
-		Port          string `env:"APP_PORT" env-default:"8080"`
+		Port          string `env:"APP_PORT" env-default:"18066"`
 		Debug         bool   `env:"DEBUG" env-default:"false"`
 		SecureCookies bool   `env:"SECURE_COOKIES" env-default:"true"` // BUG-C03: Configurable Secure flag for session cookies
 		WriteTimeout  int    `env:"WRITE_TIMEOUT" env-default:"120"`   // BUG-C05: Configurable write timeout in seconds
@@ -62,7 +62,34 @@ type Config struct {
 		PhashHighConf  int `env:"SCAN_PHASH_HIGH_CONF" env-default:"5"`  // SCAN-02: Strict pHash threshold
 		PhashPotential int `env:"SCAN_PHASH_POTENTIAL" env-default:"10"` // SCAN-02: Relaxed pHash threshold
 		OCRPoolSize    int `env:"SCAN_OCR_POOL_SIZE" env-default:"3"`    // SCAN-03: Number of concurrent Tesseract clients
+		TimeoutSeconds int `env:"SCAN_TIMEOUT_SECONDS" env-default:"75"`
 	} `yaml:"scan"`
+	Catalog struct {
+		Enabled             bool   `env:"CATALOG_ENABLED" env-default:"true"`
+		LegacyMetadataSync  bool   `env:"LEGACY_METADATA_SYNC_ENABLED" env-default:"false"`
+		Language            string `env:"CATALOG_LANGUAGE" env-default:"en"`
+		SyncIntervalMins    int    `env:"CATALOG_SYNC_INTERVAL_MINUTES" env-default:"360"`
+		BatchSize           int    `env:"CATALOG_BATCH_SIZE" env-default:"500"`
+		RequestDelayMS      int    `env:"CATALOG_REQUEST_DELAY_MS" env-default:"100"`
+		WeissMaxPages       int    `env:"CATALOG_WEISS_MAX_PAGES" env-default:"0"`
+		ImagesEnabled       bool   `env:"CATALOG_IMAGES_ENABLED" env-default:"true"`
+		ImageStore          string `env:"CATALOG_IMAGE_STORE" env-default:"data/catalog-images"`
+		ImageBatchSize      int    `env:"CATALOG_IMAGE_BATCH_SIZE" env-default:"8"`
+		ImagePollIntervalMS int    `env:"CATALOG_IMAGE_POLL_INTERVAL_MS" env-default:"5000"`
+	} `yaml:"catalog"`
+	Worker struct {
+		PriceSyncMinutes     int     `env:"PRICE_SYNC_INTERVAL_MINUTES" env-default:"60"`
+		MetadataTargets      string  `env:"METADATA_TARGETS" env-default:"pokemon:en"`
+		RequestsPerSecond    float64 `env:"WORKER_REQUESTS_PER_SECOND" env-default:"0.5"`
+		RequestBurst         int     `env:"WORKER_REQUEST_BURST" env-default:"1"`
+		RetryAttempts        int     `env:"WORKER_RETRY_ATTEMPTS" env-default:"3"`
+		RetryBaseDelayMS     int     `env:"WORKER_RETRY_BASE_DELAY_MS" env-default:"1000"`
+		CircuitFailures      int     `env:"WORKER_CIRCUIT_FAILURES" env-default:"3"`
+		CircuitCooldownSec   int     `env:"WORKER_CIRCUIT_COOLDOWN_SECONDS" env-default:"300"`
+		MaxPriceRatio        float64 `env:"WORKER_MAX_PRICE_RATIO" env-default:"5"`
+		HistoryRetentionDays int     `env:"PRICE_HISTORY_RETENTION_DAYS" env-default:"730"`
+		FailurePath          string  `env:"WORKER_FAILURE_PATH" env-default:"data/worker-failures.jsonl"`
+	} `yaml:"worker"`
 }
 
 func Load() (*Config, error) {

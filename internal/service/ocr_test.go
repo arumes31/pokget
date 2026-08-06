@@ -101,9 +101,7 @@ func TestProcessCardScan_Stub(t *testing.T) {
 	_ = png.Encode(&buf, img)
 
 	text, card, _, err := ProcessCardScan(buf.Bytes(), nil, "", nil)
-	if err != nil {
-		t.Errorf("ProcessCardScan failed: %v", err)
-	}
+	requireOCRSuccessOrUnavailable(t, err)
 	if !containsIgnoreCase(text, "OCR Not Available") || card != "Unknown Card" {
 		t.Errorf("Unexpected stub results: text=%s, card=%s", text, card)
 	}
@@ -242,9 +240,7 @@ func TestOCRProcessCardScanWithMockCards(t *testing.T) {
 	}
 
 	text, card, _, err := ProcessCardScan(buf.Bytes(), cards, "eng", nil)
-	if err != nil {
-		t.Errorf("ProcessCardScan with mock cards failed: %v", err)
-	}
+	requireOCRSuccessOrUnavailable(t, err)
 	if text == "" {
 		t.Error("Expected non-empty text from ProcessCardScan")
 	}
@@ -270,9 +266,7 @@ func TestOCRProcessCardScanWithDifferentLanguages(t *testing.T) {
 	for _, lang := range languages {
 		t.Run("lang_"+lang, func(t *testing.T) {
 			text, _, _, err := ProcessCardScan(buf.Bytes(), nil, lang, nil)
-			if err != nil {
-				t.Errorf("ProcessCardScan with lang=%q failed: %v", lang, err)
-			}
+			requireOCRSuccessOrUnavailable(t, err)
 			if text == "" {
 				t.Errorf("Expected non-empty text for lang=%q", lang)
 			}
@@ -292,15 +286,11 @@ func TestOCRCacheHitOnSecondScan(t *testing.T) {
 
 	// First call — should process and cache
 	text1, card1, _, err := ProcessCardScan(buf.Bytes(), nil, "eng", nil)
-	if err != nil {
-		t.Fatalf("First ProcessCardScan failed: %v", err)
-	}
+	requireOCRSuccessOrUnavailable(t, err)
 
 	// Second call — should return cached result
 	text2, card2, _, err := ProcessCardScan(buf.Bytes(), nil, "eng", nil)
-	if err != nil {
-		t.Fatalf("Second ProcessCardScan failed: %v", err)
-	}
+	requireOCRSuccessOrUnavailable(t, err)
 
 	// Results should be identical
 	if text1 != text2 {
@@ -389,9 +379,7 @@ func TestOCRConcurrentRequests(t *testing.T) {
 	// Wait for all with timeout
 	for i := 0; i < 10; i++ {
 		err := <-done
-		if err != nil {
-			t.Errorf("Concurrent OCR request %d failed: %v", i, err)
-		}
+		requireOCRSuccessOrUnavailable(t, err)
 	}
 }
 
