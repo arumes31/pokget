@@ -65,6 +65,7 @@ type scanResult struct {
 	Name      string `json:"name"`
 	StateID   string `json:"stateID"`
 	StateName string `json:"stateName"`
+	Error     string `json:"error"`
 	Visible   bool   `json:"visible"`
 }
 
@@ -420,6 +421,10 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 		return scanResult{}, fmt.Errorf("encoding scanner language: %w", err)
 	}
 
+	resultTimeout := min(cfg.timeout-15*time.Second, 100*time.Second)
+	if resultTimeout < time.Second {
+		resultTimeout = time.Second
+	}
 	if err := chromedp.Run(
 		ctx,
 		chromedp.Navigate(pageURL(cfg.baseURL, "/")),
@@ -447,12 +452,36 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 			chromedp.WithPollingInterval(100*time.Millisecond),
 		),
 		chromedp.WaitVisible(scanUploadSelector, chromedp.ByQuery),
-		chromedp.Click(scanUploadSelector, chromedp.ByQuery),
+		chromedp.Poll(
+			`(() => {
+				const button = document.querySelector('[data-testid="scan-selected-crop"]');
+				return Boolean(button) && !button.disabled && button.closest('[inert]') === null;
+			})()`,
+			nil,
+			chromedp.WithPollingTimeout(5*time.Second),
+			chromedp.WithPollingInterval(50*time.Millisecond),
+		),
+		chromedp.Evaluate(
+			`document.querySelector('[data-testid="scan-selected-crop"]').click()`,
+			nil,
+		),
+		chromedp.Poll(
+			`(() => {
+				const root = document.querySelector('#main-content > [x-data]');
+				if (!root || !window.Alpine) return false;
+				const state = Alpine.$data(root);
+				return state.scanning || Boolean(state.scanError) || Boolean(state.detectedCard);
+			})()`,
+			nil,
+			chromedp.WithPollingTimeout(5*time.Second),
+			chromedp.WithPollingInterval(50*time.Millisecond),
+		),
 		chromedp.Poll(
 			`(() => {
                 const root = document.querySelector('#main-content > [x-data]');
                 if (!root || !window.Alpine) return false;
                 const state = Alpine.$data(root);
+				if (state.scanError) return true;
 				const panel = root.querySelector('[x-show="detectedCard"]');
 				if (state.detectedCard === '' || !panel) return false;
 				const bounds = panel.getBoundingClientRect();
@@ -461,7 +490,7 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 					bounds.width > 0 && bounds.height > 0;
             })()`,
 			nil,
-			chromedp.WithPollingTimeout(cfg.timeout),
+			chromedp.WithPollingTimeout(resultTimeout),
 			chromedp.WithPollingInterval(100*time.Millisecond),
 		),
 	); err != nil {
@@ -474,12 +503,16 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
     return JSON.stringify({
         detectedCard: state.detectedCard,
         detectedID: state.detectedID,
+		previewReady: Boolean(state.previewURL && state.previewBlob),
         scanning: state.scanning,
         scanStep: state.scanStep,
         scanStatus: state.scanStatus,
+		scanError: state.scanError,
         needsReview: state.needsReview,
         topMatches: state.topMatches,
-        panelDisplay: getComputedStyle(root.querySelector('[x-show="detectedCard"]')).display
+        panelDisplay: root.querySelector('[x-show="detectedCard"]')
+            ? getComputedStyle(root.querySelector('[x-show="detectedCard"]')).display
+            : 'missing'
     });
 })()`, &debugState))
 		return scanResult{}, fmt.Errorf("uploading fixture and waiting for scan result: %w (state: %s)", err, debugState)
@@ -493,7 +526,7 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 	const nameNode = panel?.querySelector('[x-text="detectedCard"]');
 	const idNode = panel?.querySelector('`+detectedCardIDSelector+`');
 	if (!root || !panel || !nameNode || !idNode || !window.Alpine) {
-		return {id: '', name: '', stateID: '', stateName: '', visible: false};
+		return {id: '', name: '', stateID: '', stateName: '', error: '', visible: false};
     }
     const state = Alpine.$data(root);
 	const panelStyle = getComputedStyle(panel);
@@ -513,6 +546,7 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 		name: String(nameNode.textContent || ''),
 		stateID: String(state.detectedID || ''),
 		stateName: String(state.detectedCard || ''),
+		error: String(state.scanError || ''),
         visible: visible
     };
 })()`, &result)); err != nil {
@@ -522,6 +556,9 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 }
 
 func validateScanResult(result scanResult, expectedID, expectedName string) error {
+	if result.Error != "" {
+		return fmt.Errorf("scanner displayed an error: %s", result.Error)
+	}
 	if !result.Visible {
 		return fmt.Errorf("scan result panel is not visible")
 	}
