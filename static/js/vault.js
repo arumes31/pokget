@@ -89,7 +89,7 @@ function animateValue(obj, start, end, duration, prefix = '', suffix = '') {
 		if (!startTimestamp) startTimestamp = timestamp;
 		const progress = Math.min((timestamp - startTimestamp) / duration, 1);
 		const value = Math.floor(progress * (end - start) + start);
-		obj.innerHTML = prefix + value.toLocaleString() + suffix;
+		obj.textContent = prefix + value.toLocaleString() + suffix;
 		if (progress < 1) {
 			window.requestAnimationFrame(step);
 		}
