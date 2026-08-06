@@ -32,6 +32,7 @@ const (
 	registerSubmitSelector   = `form[hx-post="/auth/register"] button[type="submit"]`
 	scanNavigationSelector   = `button[hx-get="/centering"]`
 	fileInputSelector        = `#main-content input[type="file"]`
+	scanUploadSelector       = `[data-testid="scan-selected-crop"]`
 	detectedCardIDSelector   = `[data-testid="detected-card-id"]`
 )
 
@@ -434,6 +435,19 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 		chromedp.Click(scanNavigationSelector, chromedp.ByQuery),
 		chromedp.WaitReady(fileInputSelector, chromedp.ByQuery),
 		chromedp.SetUploadFiles(fileInputSelector, []string{cfg.fixture}, chromedp.ByQuery),
+		chromedp.Poll(
+			`(() => {
+				const root = document.querySelector('#main-content > [x-data]');
+				if (!root || !window.Alpine) return false;
+				const state = Alpine.$data(root);
+				return Boolean(state.previewURL) && !state.scanning;
+			})()`,
+			nil,
+			chromedp.WithPollingTimeout(15*time.Second),
+			chromedp.WithPollingInterval(100*time.Millisecond),
+		),
+		chromedp.WaitVisible(scanUploadSelector, chromedp.ByQuery),
+		chromedp.Click(scanUploadSelector, chromedp.ByQuery),
 		chromedp.Poll(
 			`(() => {
                 const root = document.querySelector('#main-content > [x-data]');
