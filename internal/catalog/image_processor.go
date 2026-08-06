@@ -10,8 +10,8 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	_ "image/jpeg"
-	_ "image/png"
+	_ "image/jpeg" // Register JPEG decoding with image.Decode.
+	_ "image/png"  // Register PNG decoding with image.Decode.
 	"io"
 	"math"
 	"net/http"
@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/corona10/goimagehash"
-	_ "golang.org/x/image/webp"
+	_ "golang.org/x/image/webp" // Register WebP decoding with image.Decode.
 )
 
 const (

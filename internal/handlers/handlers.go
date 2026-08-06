@@ -1044,7 +1044,11 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.MultipartForm != nil {
-		defer r.MultipartForm.RemoveAll()
+		defer func() {
+			if err := r.MultipartForm.RemoveAll(); err != nil {
+				slog.Warn("APIScan: Failed to remove multipart temporary files", "error", err)
+			}
+		}()
 	}
 
 	file, header, err := r.FormFile("card_image")

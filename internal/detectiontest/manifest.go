@@ -238,7 +238,8 @@ func Select(cards []Card, seed int64, count int) ([]Card, error) {
 	for _, card := range cards {
 		grouped[card.GameSlug] = append(grouped[card.GameSlug], card)
 	}
-	random := splitMix64(uint64(seed))
+	// Seeds intentionally map signed values onto the same 64 raw bits.
+	random := splitMix64(uint64(seed)) // #nosec G115
 	selected := make([]Card, 0, expectedGameCount)
 	for _, game := range expectedGameSlugs {
 		candidates := slices.Clone(grouped[game.slug])
@@ -280,5 +281,6 @@ func (s *splitMix64) intn(n int) int {
 	for value >= limit {
 		value = s.next()
 	}
-	return int(value % bound)
+	// The modulo result is strictly less than n, which is already a positive int.
+	return int(value % bound) // #nosec G115
 }

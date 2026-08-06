@@ -226,7 +226,8 @@ func retryDelay(base time.Duration, attempt int) time.Duration {
 	shift := min(attempt, 10)
 	delay := base * time.Duration(1<<shift)
 	jitterLimit := max(delay/4, time.Millisecond)
-	return delay + time.Duration(rand.Int64N(int64(jitterLimit)))
+	// This jitter only spreads retry load; it is not a security token or secret.
+	return delay + time.Duration(rand.Int64N(int64(jitterLimit))) // #nosec G404
 }
 
 func waitForRetry(ctx context.Context, delay time.Duration) error {

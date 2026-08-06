@@ -11,7 +11,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	_ "golang.org/x/image/webp"
 	"github.com/shopspring/decimal"
+	_ "golang.org/x/image/webp"
 )
 
 type CardMetadata struct {
@@ -48,11 +48,11 @@ func main() {
 	// 2. Load test cards metadata
 	fmt.Println("\n--- 2. Load Test Cards Metadata ---")
 	metadataPath := filepath.Join("test_cards", "test_cards_metadata.json")
-	metadataBytes, err := os.ReadFile(metadataPath)
+	metadataBytes, err := os.ReadFile(metadataPath) // #nosec G304 -- metadataPath is fixed under the local test_cards directory.
 	if err != nil {
 		fmt.Printf("Warning: Reading %s failed: %v. Trying fallback test_metadata.json...\n", metadataPath, err)
 		metadataPath = filepath.Join("test_cards", "test_metadata.json")
-		metadataBytes, err = os.ReadFile(metadataPath)
+		metadataBytes, err = os.ReadFile(metadataPath) // #nosec G304 -- fallback path is fixed under the local test_cards directory.
 		if err != nil {
 			fmt.Println("Error: Could not find any metadata file in test_cards.")
 			os.Exit(1)
@@ -104,14 +104,14 @@ func main() {
 
 	// 3. Pick 5 random cards from test_cards
 	fmt.Println("\n--- 3. Pick Random Cards from test_cards ---")
-	rand.Seed(time.Now().UnixNano())
 	numToPick := 5
 	if len(existingCards) < numToPick {
 		numToPick = len(existingCards)
 	}
 
 	// Shuffle
-	rand.Shuffle(len(existingCards), func(i, j int) {
+	// Random selection only varies test coverage; it does not protect a secret.
+	rand.Shuffle(len(existingCards), func(i, j int) { // #nosec G404
 		existingCards[i], existingCards[j] = existingCards[j], existingCards[i]
 	})
 
@@ -142,7 +142,7 @@ func main() {
 		filePath := filepath.Join("test_cards", filename)
 		fmt.Printf("\nTesting Card [%d/5]: %s\n", i+1, filename)
 
-		imgBytes, err := os.ReadFile(filePath)
+		imgBytes, err := os.ReadFile(filePath) // #nosec G304 -- filename comes from the local fixture manifest.
 		if err != nil {
 			fmt.Printf("  Error reading file: %v\n", err)
 			continue
@@ -187,17 +187,21 @@ func main() {
 
 		// Verify "dont fingerprint test_cards.." constraint
 		fmt.Println("  Verifying Fingerprinting Constraint...")
-		
+
 		// Load card image to calculate its hash
-		imgFile, err := os.Open(filePath)
+		imgFile, err := os.Open(filePath) // #nosec G304 -- filename comes from the local fixture manifest.
 		if err != nil {
 			fmt.Printf("  Failed to open image for hashing: %v\n", err)
 			continue
 		}
-		img, _, err := image.Decode(imgFile)
-		imgFile.Close()
-		if err != nil {
-			fmt.Printf("  Failed to decode image for hashing: %v\n", err)
+		img, _, decodeErr := image.Decode(imgFile)
+		closeErr := imgFile.Close()
+		if decodeErr != nil {
+			fmt.Printf("  Failed to decode image for hashing: %v\n", decodeErr)
+			continue
+		}
+		if closeErr != nil {
+			fmt.Printf("  Failed to close image after hashing: %v\n", closeErr)
 			continue
 		}
 
@@ -209,11 +213,11 @@ func main() {
 
 		// Search in DB/BK-tree. It should not be found since we shouldn't have fingerprinted test cards.
 		matchResult := fingerprintSvc.SearchByHash(hash)
-		
+
 		// Also query DB directly for this card ID or filename to make sure it's not present
 		var dbPhash sql.NullInt64
 		err = db.DB.QueryRow("SELECT phash FROM cards WHERE id = $1 OR image_url = $2", filename, filePath).Scan(&dbPhash)
-		
+
 		if err == sql.ErrNoRows {
 			fmt.Println("  [CONSTRAINT CHECK] Pass - Card is not present in the database cards table.")
 		} else if err == nil {
@@ -227,7 +231,7 @@ func main() {
 		}
 
 		if matchResult != nil && matchResult.HighConfidence != nil {
-			fmt.Printf("  [INDEX CHECK] WARNING - BK-tree search matched this card to: %s (distance %d)\n", 
+			fmt.Printf("  [INDEX CHECK] WARNING - BK-tree search matched this card to: %s (distance %d)\n",
 				matchResult.HighConfidence.Name, matchResult.BestDistance)
 		} else {
 			fmt.Println("  [INDEX CHECK] Pass - BK-tree search returned no high-confidence match (card is not fingerprinted).")
@@ -237,7 +241,7 @@ func main() {
 	// 5. Test Download of cards from the internet
 	fmt.Println("\n--- 5. Test Download from Internet ---")
 	fmt.Println("Fetching cards list from TCGdex API...")
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
@@ -247,16 +251,20 @@ func main() {
 		fmt.Printf("Error: Failed to fetch card list from TCGdex: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	var cards []struct {
 		ID    string `json:"id"`
 		Name  string `json:"name"`
 		Image string `json:"image"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(&cards)
-	resp.Body.Close()
-	if err != nil {
-		fmt.Printf("Error: Failed to decode card list: %v\n", err)
+	decodeErr := json.NewDecoder(resp.Body).Decode(&cards)
+	closeErr := resp.Body.Close()
+	if decodeErr != nil {
+		fmt.Printf("Error: Failed to decode card list: %v\n", decodeErr)
+		os.Exit(1)
+	}
+	if closeErr != nil {
+		fmt.Printf("Error: Failed to close card list response: %v\n", closeErr)
 		os.Exit(1)
 	}
 
@@ -283,7 +291,7 @@ func main() {
 	}
 
 	fmt.Printf("Downloading card: %s (ID: %s) from %s...\n", downloadCard.Name, downloadCard.ID, downloadCard.Image)
-	
+
 	imgReq, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadCard.Image, nil)
 	if err != nil {
 		fmt.Printf("Error creating request: %v\n", err)
@@ -311,7 +319,7 @@ func main() {
 
 	// 6. Test Fingerprinting and Indexing of the downloaded internet card
 	fmt.Println("\n--- 6. Test Fingerprinting & Indexing of Internet Card ---")
-	
+
 	// Decode the downloaded image
 	decodedImg, _, err := image.Decode(bytes.NewReader(internetImgBytes))
 	if err != nil {
@@ -325,12 +333,16 @@ func main() {
 		fmt.Printf("Error calculating perceptual hash: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("[FINGERPRINT STATUS] Pass - Calculated perceptual hash (pHash): %d (0x%x)\n", internetHash, uint64(internetHash))
+	fmt.Printf(
+		"[FINGERPRINT STATUS] Pass - Calculated perceptual hash (pHash): %d (0x%x)\n",
+		internetHash,
+		uint64(internetHash), // #nosec G115 -- preserve the signed BIGINT's raw pHash bits for display.
+	)
 
 	// Index it by inserting into the database
 	testCardID := "internet_test_card_temp"
 	testSetName := "Internet Test Set"
-	
+
 	fmt.Println("Inserting internet card fingerprint into database...")
 	_, err = db.DB.Exec(`
 		INSERT INTO cards (id, name, set_name, image_url, price_usd, price_eur, game, phash)
@@ -355,7 +367,7 @@ func main() {
 		fmt.Printf("Matched card name: %s\n", searchResult.HighConfidence.Name)
 		fmt.Printf("Matched card ID: %s\n", searchResult.HighConfidence.ID)
 		fmt.Printf("Distance: %d\n", searchResult.BestDistance)
-		
+
 		if searchResult.HighConfidence.ID == testCardID {
 			fmt.Println("[INDEXING STATUS] Pass - BK-tree search successfully matched the card by its fingerprint with 0 distance.")
 		} else {

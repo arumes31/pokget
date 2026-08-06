@@ -16,9 +16,9 @@ func TestRenderVariants(t *testing.T) {
 	for y := range 30 {
 		for x := range 20 {
 			source.SetNRGBA(x, y, color.NRGBA{
-				R: uint8(x * 10),
-				G: uint8(y * 7),
-				B: uint8((x + y) * 4),
+				R: testColorChannel(x * 10),
+				G: testColorChannel(y * 7),
+				B: testColorChannel((x + y) * 4),
 				A: 255,
 			})
 		}
@@ -85,6 +85,13 @@ func TestRenderVariants(t *testing.T) {
 	if bytes.Equal(first[0].Bytes, first[4].Bytes) {
 		t.Error("brightness variant equals clean variant")
 	}
+}
+
+func testColorChannel(value int) uint8 {
+	if value < 0 || value > 255 {
+		panic("test color channel is outside byte range")
+	}
+	return uint8(value) // #nosec G115 -- the test helper enforces the byte range.
 }
 
 func TestRenderVariantsRejectsNil(t *testing.T) {

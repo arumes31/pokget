@@ -38,7 +38,7 @@ func TestApplyImageOrientationGolden(t *testing.T) {
 			for y, row := range want[orientation] {
 				for x, expected := range row {
 					red, _, _, _ := result.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA()
-					if uint8(red>>8) != expected {
+					if red>>8 != uint32(expected) {
 						t.Errorf("orientation %d pixel (%d,%d) = %d, want %d", orientation, x, y, red>>8, expected)
 					}
 				}
@@ -58,6 +58,9 @@ func TestGetEXIFOrientationAllValues(t *testing.T) {
 }
 
 func jpegWithOrientation(orientation int) []byte {
+	if orientation < 1 || orientation > 8 {
+		panic("EXIF orientation must be between 1 and 8")
+	}
 	tiff := make([]byte, 8+2+12+4)
 	copy(tiff, "II")
 	binary.LittleEndian.PutUint16(tiff[2:4], 42)
@@ -66,10 +69,10 @@ func jpegWithOrientation(orientation int) []byte {
 	binary.LittleEndian.PutUint16(tiff[10:12], 0x0112)
 	binary.LittleEndian.PutUint16(tiff[12:14], 3)
 	binary.LittleEndian.PutUint32(tiff[14:18], 1)
-	binary.LittleEndian.PutUint16(tiff[18:20], uint16(orientation))
+	binary.LittleEndian.PutUint16(tiff[18:20], uint16(orientation)) // #nosec G115 -- orientation is bounded above.
 	payload := append([]byte("Exif\x00\x00"), tiff...)
 	result := []byte{0xff, 0xd8, 0xff, 0xe1, 0, 0}
-	binary.BigEndian.PutUint16(result[4:6], uint16(len(payload)+2))
+	binary.BigEndian.PutUint16(result[4:6], jpegSegmentLength(payload))
 	result = append(result, payload...)
 	return append(result, 0xff, 0xd9)
 }
@@ -77,13 +80,21 @@ func jpegWithOrientation(orientation int) []byte {
 func TestGetEXIFOrientationSkipsNonEXIFAPP1(t *testing.T) {
 	firstPayload := []byte("not-exif")
 	first := []byte{0xff, 0xd8, 0xff, 0xe1, 0, 0}
-	binary.BigEndian.PutUint16(first[4:6], uint16(len(firstPayload)+2))
+	binary.BigEndian.PutUint16(first[4:6], jpegSegmentLength(firstPayload))
 	first = append(first, firstPayload...)
 	second := jpegWithOrientation(6)[2:]
 	combined := append(first, second...)
 	if got := getEXIFOrientation(combined); got != 6 {
 		t.Fatalf("getEXIFOrientation() = %d, want 6", got)
 	}
+}
+
+func jpegSegmentLength(payload []byte) uint16 {
+	length := len(payload) + 2
+	if length > 65535 {
+		panic("JPEG segment payload exceeds uint16 length")
+	}
+	return uint16(length) // #nosec G115 -- length is explicitly bounded above.
 }
 
 func TestCropNormalized(t *testing.T) {
@@ -115,7 +126,7 @@ func TestCropToContentEdgesConservative(t *testing.T) {
 	}
 }
 
-func TestMalformedEXIFDoesNotPanic(t *testing.T) {
+func TestMalformedEXIFDoesNotPanic(_ *testing.T) {
 	inputs := [][]byte{
 		{0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff},
 		{0xff, 0xd8, 0xff, 0xe1, 0, 2},

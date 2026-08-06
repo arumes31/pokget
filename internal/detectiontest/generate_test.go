@@ -32,9 +32,9 @@ func TestGeneratorGenerate(t *testing.T) {
 	for y := range 18 {
 		for x := range 12 {
 			fixture.SetNRGBA(x, y, color.NRGBA{
-				R: uint8(x * 13),
-				G: uint8(y * 9),
-				B: uint8((x + y) * 6),
+				R: testColorChannel(x * 13),
+				G: testColorChannel(y * 9),
+				B: testColorChannel((x + y) * 6),
 				A: 255,
 			})
 		}
@@ -87,7 +87,7 @@ func TestGeneratorGenerate(t *testing.T) {
 		t.Error("VerifyRun() accepted unexpected variant")
 	}
 	output.Cards[0].Artifacts[0].Variant = originalVariant
-	if err := os.WriteFile(manifestPath, manifestBytes, 0o644); err != nil {
+	if err := os.WriteFile(manifestPath, manifestBytes, 0o600); err != nil {
 		t.Fatalf("restore selection.json: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestGeneratorGenerate(t *testing.T) {
 	}
 
 	artifactPath := filepath.Join(runPath, filepath.FromSlash(output.Cards[0].Artifacts[0].Path))
-	if err := os.WriteFile(artifactPath, []byte("tampered"), 0o644); err != nil {
+	if err := os.WriteFile(artifactPath, []byte("tampered"), 0o600); err != nil {
 		t.Fatalf("os.WriteFile(tampered artifact) error = %v", err)
 	}
 	if _, err := generator.Generate(t.Context(), 42, SupportedGameCount); err == nil {
@@ -118,7 +118,7 @@ func writeOutputManifestForTest(t *testing.T, path string, output OutputManifest
 		t.Fatalf("json.MarshalIndent(output) error = %v", err)
 	}
 	payload = append(payload, '\n')
-	if err := os.WriteFile(path, payload, 0o644); err != nil {
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
 		t.Fatalf("os.WriteFile(selection.json) error = %v", err)
 	}
 }

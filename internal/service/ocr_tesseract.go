@@ -28,10 +28,6 @@ func initOCRClientPool() {
 	slog.Info("OCR client pool initialized", "size", poolSize)
 }
 
-func acquireOCRClient() (*gosseract.Client, error) {
-	return acquireOCRClientContext(context.Background())
-}
-
 func acquireOCRClientContext(ctx context.Context) (*gosseract.Client, error) {
 	ocrClientPoolOnce.Do(initOCRClientPool)
 	timer := time.NewTimer(30 * time.Second)

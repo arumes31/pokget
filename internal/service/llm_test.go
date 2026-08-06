@@ -226,10 +226,12 @@ func TestLLMCardResponseConfidenceUsesDeterministicEvidence(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				llmJSON := fmt.Sprintf(`{"card_id": "test-1", "confidence": %f, "abstain": false}`, tt.llmConfidence)
 				resp := map[string]string{"response": llmJSON}
-				json.NewEncoder(w).Encode(resp)
+				if err := json.NewEncoder(w).Encode(resp); err != nil {
+					t.Errorf("encode LLM response: %v", err)
+				}
 			}))
 			defer srv.Close()
 
@@ -256,7 +258,7 @@ func TestFuzzyMatchCardWithValidationContextCancelsRequest(t *testing.T) {
 
 	requestStarted := make(chan struct{})
 	releaseRequest := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		close(requestStarted)
 		select {
 		case <-r.Context().Done():

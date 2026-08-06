@@ -13,8 +13,8 @@ import (
 	"pokget/internal/service"
 	"strings"
 
-	_ "golang.org/x/image/webp"
 	"github.com/shopspring/decimal"
+	_ "golang.org/x/image/webp"
 )
 
 type MetadataInfo struct {
@@ -62,17 +62,21 @@ func main() {
 	for path, info := range metadata {
 		// Replace forward slashes with system path separator if needed, but they are normalized to / in the downloader
 		localPath := strings.ReplaceAll(path, "/", string(os.PathSeparator))
-		
-		imgFile, err := os.Open(localPath)
+
+		imgFile, err := os.Open(localPath) // #nosec G304 -- this developer tool reads paths from its local fixture manifest.
 		if err != nil {
 			fmt.Printf("⚠️ Skip %s: %v\n", localPath, err)
 			continue
 		}
-		
-		img, _, err := image.Decode(imgFile)
-		imgFile.Close()
-		if err != nil {
-			fmt.Printf("⚠️ Skip %s: decode error %v\n", localPath, err)
+
+		img, _, decodeErr := image.Decode(imgFile)
+		closeErr := imgFile.Close()
+		if decodeErr != nil {
+			fmt.Printf("⚠️ Skip %s: decode error %v\n", localPath, decodeErr)
+			continue
+		}
+		if closeErr != nil {
+			fmt.Printf("⚠️ Skip %s: close error %v\n", localPath, closeErr)
 			continue
 		}
 
@@ -95,7 +99,7 @@ func main() {
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			ON CONFLICT (id) DO UPDATE SET phash = EXCLUDED.phash`,
 			cardID, info.Name, info.Game+" Test Set", path, decimal.NewFromFloat(1.0), decimal.NewFromFloat(0.9), info.Game, hash)
-		
+
 		if err != nil {
 			fmt.Printf("❌ Failed DB insert for %s: %v\n", info.Name, err)
 		} else {

@@ -108,10 +108,10 @@ func boxBlur(source *image.NRGBA, radius int) *image.NRGBA {
 				}
 			}
 			destination.SetNRGBA(x, y, color.NRGBA{
-				R: uint8(red / samples),
-				G: uint8(green / samples),
-				B: uint8(blue / samples),
-				A: uint8(alpha / samples),
+				R: averageChannel(red, samples),
+				G: averageChannel(green, samples),
+				B: averageChannel(blue, samples),
+				A: averageChannel(alpha, samples),
 			})
 		}
 	}
@@ -181,7 +181,18 @@ func adjustBrightness(source *image.NRGBA, factor float64) *image.NRGBA {
 
 func scaleChannel(channel uint8, factor float64) uint8 {
 	value := math.Round(float64(channel) * factor)
-	return uint8(clamp(int(value), 0, 255))
+	return uint8(clamp(int(value), 0, 255)) // #nosec G115 -- clamp restricts the value to one byte.
+}
+
+func averageChannel(total, samples uint32) uint8 {
+	if samples == 0 {
+		return 0
+	}
+	average := total / samples
+	if average > 255 {
+		return 255
+	}
+	return uint8(average) // #nosec G115 -- average is explicitly bounded to one byte.
 }
 
 func clamp(value, minimum, maximum int) int {

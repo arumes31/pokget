@@ -26,9 +26,9 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
+	_ "image/gif"  // Register GIF decoding with image.Decode.
+	_ "image/jpeg" // Register JPEG decoding with image.Decode.
+	_ "image/png"  // Register PNG decoding with image.Decode.
 	"log/slog"
 	"slices"
 	"sort"
@@ -37,7 +37,7 @@ import (
 
 	"pokget/internal/models"
 
-	_ "golang.org/x/image/webp"
+	_ "golang.org/x/image/webp" // Register WebP decoding with image.Decode.
 )
 
 type fingerprintStageRunner func(context.Context, []byte, []models.Card, *ScanScope) (*MatchResult, error)

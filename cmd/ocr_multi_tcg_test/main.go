@@ -56,7 +56,7 @@ func main() {
 
 	// 2. Load test_cards_metadata.json
 	metadataPath := filepath.Join("test_cards", "test_cards_metadata.json")
-	metadataBytes, err := os.ReadFile(metadataPath)
+	metadataBytes, err := os.ReadFile(metadataPath) // #nosec G304 -- metadataPath is fixed under the local test_cards directory.
 	if err != nil {
 		fmt.Printf("Error: Failed to read metadata file: %v\n", err)
 		os.Exit(1)
@@ -77,9 +77,13 @@ func main() {
 	for i := 0; i < 30; i++ { // Wait up to 5 minutes (10s * 30)
 		resp, err := llm.HTTPClient.Get(llm.BaseURL + "/api/tags")
 		if err == nil {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if strings.Contains(string(body), llm.Model) {
+			body, readErr := io.ReadAll(resp.Body)
+			closeErr := resp.Body.Close()
+			if readErr != nil {
+				fmt.Printf("\nFailed to read LLM readiness response: %v\n", readErr)
+			} else if closeErr != nil {
+				fmt.Printf("\nFailed to close LLM readiness response: %v\n", closeErr)
+			} else if strings.Contains(string(body), llm.Model) {
 				fmt.Printf("\nLLM model %q is ready!\n", llm.Model)
 				llmReady = true
 				break
@@ -163,7 +167,12 @@ func main() {
 					dbCards = append(dbCards, c)
 				}
 			}
-			rows.Close()
+			if closeErr := rows.Close(); closeErr != nil {
+				fmt.Printf("Failed to close card query rows: %v\n", closeErr)
+			}
+			if rowsErr := rows.Err(); rowsErr != nil {
+				fmt.Printf("Failed while reading card query rows: %v\n", rowsErr)
+			}
 		}
 
 		// Convert language string to Tesseract language code
@@ -189,7 +198,7 @@ func main() {
 			filename := filepath.Base(path)
 			meta := metadata[filename]
 
-			imgBytes, err := os.ReadFile(path)
+			imgBytes, err := os.ReadFile(path) // #nosec G304 -- paths are built from entries found in the local fixture directory.
 			if err != nil {
 				fmt.Printf("  [ERROR] Failed to read %s: %v\n", path, err)
 				continue

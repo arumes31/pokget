@@ -21,6 +21,7 @@
 package service
 
 import (
+	"crypto/sha256"
 	"pokget/internal/models"
 	"testing"
 )
@@ -45,8 +46,8 @@ func TestImageHash(t *testing.T) {
 
 	// Empty input should still produce a valid hash
 	emptyHash := imageHash([]byte{})
-	if len(emptyHash) != 32 { // SHA-256 produces 32 bytes
-		t.Errorf("Expected 32-byte hash, got %d bytes", len(emptyHash))
+	if expected := sha256.Sum256(nil); emptyHash != expected {
+		t.Errorf("empty image hash = %x, want %x", emptyHash, expected)
 	}
 }
 

@@ -521,14 +521,18 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 		_, err = tx.ExecContext(ctx, "UPDATE cards SET price_usd = $1, price_eur = $2, last_updated = NOW() WHERE id = $3",
 			nextUSD, nextEUR, c.ID)
 		if err != nil {
-			tx.Rollback()
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				slog.Warn("Failed to roll back card price update", "card", c.Name, "error", rollbackErr)
+			}
 			slog.Error("Failed to update card price", "card", c.Name, "error", err)
 			continue
 		}
 		_, err = tx.ExecContext(ctx, "INSERT INTO price_history (card_id, price_usd, price_eur) VALUES ($1, $2, $3)",
 			c.ID, nextUSD, nextEUR)
 		if err != nil {
-			tx.Rollback()
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				slog.Warn("Failed to roll back price history insert", "card", c.Name, "error", rollbackErr)
+			}
 			slog.Error("Failed to insert price history", "card", c.Name, "error", err)
 			continue
 		}

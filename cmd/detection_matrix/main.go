@@ -167,7 +167,7 @@ func run(ctx context.Context, fixtureDir, baseURL string, requestTimeout time.Du
 }
 
 func loadAndVerifyRun(directory string) (detectiontest.OutputManifest, error) {
-	payload, err := os.ReadFile(filepath.Join(directory, "selection.json"))
+	payload, err := os.ReadFile(filepath.Join(directory, "selection.json")) // #nosec G304 -- directory is an operator-selected fixture run.
 	if err != nil {
 		return detectiontest.OutputManifest{}, fmt.Errorf("read selection: %w", err)
 	}
@@ -301,7 +301,7 @@ func scan(
 	path string,
 	game string,
 ) (scanResponse, error) {
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 -- path comes from a manifest accepted by VerifyRun.
 	if err != nil {
 		return scanResponse{}, err
 	}

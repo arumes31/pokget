@@ -50,7 +50,7 @@ func main() {
 }
 
 func runImage(path string) error {
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 -- this developer CLI intentionally accepts an operator-selected image.
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func runImage(path string) error {
 }
 
 func run(fixtureDir, selectedVariant string) error {
-	payload, err := os.ReadFile(filepath.Join(fixtureDir, "selection.json"))
+	payload, err := os.ReadFile(filepath.Join(fixtureDir, "selection.json")) // #nosec G304 -- fixtureDir is an operator-selected local run.
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func run(fixtureDir, selectedVariant string) error {
 			if selectedVariant != "" && artifact.Variant != selectedVariant {
 				continue
 			}
-			file, err := os.Open(filepath.Join(fixtureDir, filepath.FromSlash(artifact.Path)))
+			file, err := os.Open(filepath.Join(fixtureDir, filepath.FromSlash(artifact.Path))) // #nosec G304 -- VerifyRun validates manifest artifact paths first.
 			if err != nil {
 				return err
 			}

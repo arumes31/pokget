@@ -43,12 +43,16 @@ func main() {
 		var setData struct {
 			Cards []TCGdexCard `json:"cards"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&setData); err != nil {
-			log.Printf("Failed to decode set for %s: %v", lang, err)
-			resp.Body.Close()
+		decodeErr := json.NewDecoder(resp.Body).Decode(&setData)
+		closeErr := resp.Body.Close()
+		if decodeErr != nil {
+			log.Printf("Failed to decode set for %s: %v", lang, decodeErr)
 			continue
 		}
-		resp.Body.Close()
+		if closeErr != nil {
+			log.Printf("Failed to close set response for %s: %v", lang, closeErr)
+			continue
+		}
 
 		count := 0
 		correct := 0
@@ -67,10 +71,14 @@ func main() {
 			if err != nil {
 				continue
 			}
-			defer imgResp.Body.Close()
-			imgBytes, err := io.ReadAll(imgResp.Body)
-			if err != nil {
-				log.Printf("Failed to read image for %s: %v", card.Name, err)
+			imgBytes, readErr := io.ReadAll(imgResp.Body)
+			closeErr := imgResp.Body.Close()
+			if readErr != nil {
+				log.Printf("Failed to read image for %s: %v", card.Name, readErr)
+				continue
+			}
+			if closeErr != nil {
+				log.Printf("Failed to close image response for %s: %v", card.Name, closeErr)
 				continue
 			}
 

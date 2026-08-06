@@ -304,7 +304,9 @@ func unloadModel(ctx context.Context, client *http.Client, baseURL, model string
 	request.Header.Set("Content-Type", "application/json")
 	response, err := client.Do(request)
 	if err == nil {
-		response.Body.Close()
+		if closeErr := response.Body.Close(); closeErr != nil {
+			log.Printf("close model unload response: %v", closeErr)
+		}
 	}
 }
 

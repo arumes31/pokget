@@ -138,10 +138,12 @@ func parseEXIFOrientation(data []byte, offset int) int {
 	}
 
 	ifdRelative := uint64(byteOrder.Uint32(data[tiffOffset+4 : tiffOffset+8]))
-	if ifdRelative > uint64(len(data)-tiffOffset-2) {
+	availableBytes := len(data) - tiffOffset - 2
+	availableBytes64 := uint64(availableBytes) // #nosec G115 -- availableBytes is non-negative after the bounds check above.
+	if ifdRelative > availableBytes64 {
 		return 0
 	}
-	ifdOffset := tiffOffset + int(ifdRelative)
+	ifdOffset := tiffOffset + int(ifdRelative) // #nosec G115 -- ifdRelative is bounded by availableBytes, an int.
 	entryCount := int(byteOrder.Uint16(data[ifdOffset : ifdOffset+2]))
 	entriesOffset := ifdOffset + 2
 	if entryCount > (len(data)-entriesOffset)/12 {

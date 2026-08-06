@@ -174,7 +174,7 @@ func TestDetectionSameNameFingerprintCollisionRequiresReview(t *testing.T) {
 		{ID: "printing-b", Name: "Shared Card", Game: "pokemon", Phash: &hash},
 	}
 	for i := range cards {
-		fingerprint.AddFingerprint(uint64(hash), &cards[i])
+		fingerprint.AddFingerprint(fingerprintHashBits(hash), &cards[i])
 	}
 
 	result := NewDetectionPipeline(fingerprint, nil).Detect(payload.Bytes(), cards, "eng")
@@ -1022,7 +1022,7 @@ func TestPipelineUniqueExactFingerprintUsesFastPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	card := &models.Card{ID: "exact-card", Name: "Exact Card"}
-	fingerprint.AddFingerprint(uint64(hash), card)
+	fingerprint.AddFingerprint(fingerprintHashBits(hash), card)
 
 	result := NewDetectionPipeline(fingerprint, nil).Detect(payload.Bytes(), []models.Card{*card}, "eng")
 	if result.BestMatchCard() == nil || result.BestMatchCard().ID != card.ID {
@@ -1052,8 +1052,8 @@ func TestPipelineUniqueExactFingerprintBeatsNearCollision(t *testing.T) {
 	}
 	exact := &models.Card{ID: "exact-card", Name: "Exact Card"}
 	near := &models.Card{ID: "near-card", Name: "Different Near Card"}
-	fingerprint.AddFingerprint(uint64(hash), exact)
-	fingerprint.AddFingerprint(uint64(hash)^1, near)
+	fingerprint.AddFingerprint(fingerprintHashBits(hash), exact)
+	fingerprint.AddFingerprint(fingerprintHashBits(hash)^1, near)
 
 	result := NewDetectionPipeline(fingerprint, nil).Detect(
 		payload.Bytes(),

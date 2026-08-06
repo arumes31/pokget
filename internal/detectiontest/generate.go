@@ -264,7 +264,7 @@ func VerifyRun(runPath string, version int, manifestHash string, seed int64, cou
 
 func writeCardArtifacts(stagePath string, card Card, fetched FetchedImage) (OutputCard, error) {
 	cardDirectory := filepath.Join(stagePath, card.GameSlug, card.FileSlug)
-	if err := os.MkdirAll(cardDirectory, 0o755); err != nil {
+	if err := os.MkdirAll(cardDirectory, 0o750); err != nil {
 		return OutputCard{}, fmt.Errorf("creating card artifact directory %q: %w", card.SourceID, err)
 	}
 
@@ -370,7 +370,7 @@ func hashBytes(payload []byte) string {
 }
 
 func ensureOutputRoot(path string) error {
-	if err := os.MkdirAll(path, 0o755); err != nil {
+	if err := os.MkdirAll(path, 0o750); err != nil {
 		return fmt.Errorf("creating fixture output root: %w", err)
 	}
 	info, err := os.Lstat(path)
@@ -401,7 +401,7 @@ func writeAtomic(path string, payload []byte) error {
 	}
 
 	directory := filepath.Dir(path)
-	if err := os.MkdirAll(directory, 0o755); err != nil {
+	if err := os.MkdirAll(directory, 0o750); err != nil {
 		return err
 	}
 	temporary, err := os.CreateTemp(directory, ".fixture-")
@@ -450,7 +450,7 @@ func readBoundedRegularFile(path string, limit int64) ([]byte, error) {
 		return nil, fmt.Errorf("file size %d exceeds limit %d", info.Size(), limit)
 	}
 
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 -- callers provide generator-owned, validated fixture paths.
 	if err != nil {
 		return nil, err
 	}

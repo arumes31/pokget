@@ -62,7 +62,7 @@ func FuzzDecodeOCRImage(f *testing.F) {
 	_ = png.Encode(&seed, image.NewRGBA(image.Rect(0, 0, 2, 2)))
 	f.Add(seed.Bytes())
 	f.Add([]byte("not an image"))
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		_, _, _ = decodeOCRImage(data, OCRScanConfig{MaxInputBytes: 1 << 20, MaxPixels: 1_000_000})
 	})
 }

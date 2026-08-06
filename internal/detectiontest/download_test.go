@@ -172,9 +172,9 @@ func testPNG(t *testing.T, width int, height int) []byte {
 	for y := range height {
 		for x := range width {
 			fixture.SetNRGBA(x, y, color.NRGBA{
-				R: uint8(x * 11),
-				G: uint8(y * 7),
-				B: uint8((x + y) * 5),
+				R: testColorChannel(x * 11),
+				G: testColorChannel(y * 7),
+				B: testColorChannel((x + y) * 5),
 				A: 255,
 			})
 		}

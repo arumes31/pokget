@@ -20,7 +20,7 @@ type CardMetadata struct {
 
 func main() {
 	metadataPath := filepath.Join("test_cards", "test_cards_metadata.json")
-	metadataBytes, err := os.ReadFile(metadataPath)
+	metadataBytes, err := os.ReadFile(metadataPath) // #nosec G304 -- metadataPath is fixed under the local test_cards directory.
 	if err != nil {
 		fmt.Println("Error reading metadata file:", err)
 		fmt.Println("Please run prepare_test_cards.py first.")
@@ -49,9 +49,13 @@ func main() {
 	for i := 0; i < 60; i++ {
 		resp, err := llm.HTTPClient.Get(llm.BaseURL + "/api/tags")
 		if err == nil {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if strings.Contains(string(body), llm.Model) {
+			body, readErr := io.ReadAll(resp.Body)
+			closeErr := resp.Body.Close()
+			if readErr != nil {
+				fmt.Fprintf(os.Stderr, "reading LLM readiness response: %v\n", readErr)
+			} else if closeErr != nil {
+				fmt.Fprintf(os.Stderr, "closing LLM readiness response: %v\n", closeErr)
+			} else if strings.Contains(string(body), llm.Model) {
 				fmt.Println("\nLLM model is ready!")
 				ready = true
 				break
@@ -90,7 +94,7 @@ func main() {
 
 		totalCount++
 		filePath := filepath.Join("test_cards", f.Name())
-		imgBytes, err := os.ReadFile(filePath)
+		imgBytes, err := os.ReadFile(filePath) // #nosec G304 -- f.Name comes from ReadDir on the same local test_cards directory.
 		if err != nil {
 			fmt.Printf("Error reading %s: %v\n", f.Name(), err)
 			continue
@@ -100,7 +104,9 @@ func main() {
 		lang := meta.Lang
 
 		fmt.Printf("Processing %s (%s)...\n", f.Name(), lang)
-		os.Stdout.Sync()
+		if err := os.Stdout.Sync(); err != nil {
+			fmt.Fprintf(os.Stderr, "flushing progress output: %v\n", err)
+		}
 
 		// Discard standard output/log to avoid cluttering the test results
 		origStdout := os.Stdout
@@ -111,15 +117,24 @@ func main() {
 		}
 		os.Stdout = w
 
+		drainDone := make(chan error, 1)
 		go func() {
-			io.Copy(io.Discard, r)
+			_, copyErr := io.Copy(io.Discard, r)
+			drainDone <- copyErr
 		}()
 
 		extractedText, _, _, processErr := service.ProcessCardScan(imgBytes, knownCards, lang, llm)
 
 		os.Stdout = origStdout
-		w.Close()
-		r.Close()
+		if closeErr := w.Close(); closeErr != nil {
+			fmt.Fprintf(os.Stderr, "closing captured OCR writer: %v\n", closeErr)
+		}
+		if copyErr := <-drainDone; copyErr != nil {
+			fmt.Fprintf(os.Stderr, "discarding captured OCR output: %v\n", copyErr)
+		}
+		if closeErr := r.Close(); closeErr != nil {
+			fmt.Fprintf(os.Stderr, "closing captured OCR reader: %v\n", closeErr)
+		}
 
 		if processErr != nil {
 			fmt.Printf("[FAIL] %s - Error: %v\n", f.Name(), processErr)

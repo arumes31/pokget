@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
+	_ "image/gif"  // Register GIF decoding with image.Decode.
+	_ "image/jpeg" // Register JPEG decoding with image.Decode.
+	_ "image/png"  // Register PNG decoding with image.Decode.
 	"slices"
 	"strings"
 
-	_ "golang.org/x/image/webp"
+	_ "golang.org/x/image/webp" // Register WebP decoding with image.Decode.
 )
 
 func decodeOCRImage(imgBytes []byte, config OCRScanConfig) (image.Image, string, error) {

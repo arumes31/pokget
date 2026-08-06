@@ -124,6 +124,7 @@ func buildOCRPasses(src image.Image, config OCRScanConfig) ([]ocrPass, []byte, e
 	return passes, append([]byte(nil), grayBytes...), nil
 }
 
+//nolint:unused // Used by ocr_stub.go when Tesseract/CGO is unavailable.
 func buildOCRPreview(src image.Image) ([]byte, error) {
 	return encodeOCRJPEG(buildOCRPreviewImage(upscaleForOCR(src)))
 }

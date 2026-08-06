@@ -11,7 +11,7 @@ COPY static ./static
 RUN npm run build:static && npm run check:static
 
 # Go build stage
-FROM golang:1.26.4-alpine AS builder
+FROM golang:1.26.5-alpine AS builder
 
 # Install Tesseract OCR dependencies
 RUN apk add --no-cache \

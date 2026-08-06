@@ -9,14 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	_ "image/jpeg"
-	_ "image/png"
+	_ "image/jpeg" // Register JPEG decoding with image.Decode.
+	_ "image/png"  // Register PNG decoding with image.Decode.
 	"io"
 	"mime"
 	"net/http"
 	"time"
 
-	_ "golang.org/x/image/webp"
+	_ "golang.org/x/image/webp" // Register WebP decoding with image.Decode.
 )
 
 const (
