@@ -17,7 +17,7 @@
         {{ range .Binders }}
         <button type="button" hx-get="/binders/{{ .ID }}" hx-target="#main-content"
              hx-push-url="/?view=binders&amp;binder={{ .ID }}"
-             class="card group relative p-5 hover:border-violet-300 hover:shadow-md transition-all cursor-pointer overflow-hidden flex flex-col text-left w-full">
+             class="card group relative min-h-11 p-5 hover:border-violet-300 hover:shadow-md transition-all cursor-pointer overflow-hidden flex flex-col text-left w-full">
 
             <!-- Binder Icon/Art -->
             <div class="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center text-violet-700 group-hover:scale-105 transition-transform">

@@ -103,7 +103,7 @@
             <div class="absolute left-0 bg-black/40" :style="`top: ${lines.top}%; bottom: ${100 - lines.bottom}%; width: ${lines.left}%`"></div>
             <div class="absolute right-0 bg-black/40" :style="`top: ${lines.top}%; bottom: ${100 - lines.bottom}%; width: ${100 - lines.right}%`"></div>
             <button type="button"
-                class="absolute top-0 h-full w-[44px] pointer-events-auto cursor-ew-resize touch-none"
+                class="absolute top-0 h-full min-h-11 w-[44px] pointer-events-auto cursor-ew-resize touch-none"
                 :style="`left: calc(${lines.left}% - 22px)`" role="slider" aria-orientation="horizontal" aria-label="Left crop guide"
                 :aria-valuenow="Math.round(lines.left)" aria-valuemin="0" :aria-valuemax="Math.round(lines.right - 5)"
                 @pointerdown.prevent="startGuideDrag('left', $event)"
@@ -111,7 +111,7 @@
                 <span class="absolute left-1/2 top-0 w-0.5 h-full bg-violet-500/60 shadow-[0_0_8px_rgba(139,92,246,0.8)]"></span>
             </button>
             <button type="button"
-                class="absolute top-0 h-full w-[44px] pointer-events-auto cursor-ew-resize touch-none"
+                class="absolute top-0 h-full min-h-11 w-[44px] pointer-events-auto cursor-ew-resize touch-none"
                 :style="`left: calc(${lines.right}% - 22px)`" role="slider" aria-orientation="horizontal" aria-label="Right crop guide"
                 :aria-valuenow="Math.round(lines.right)" :aria-valuemin="Math.round(lines.left + 5)" aria-valuemax="100"
                 @pointerdown.prevent="startGuideDrag('right', $event)"

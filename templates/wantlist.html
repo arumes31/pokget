@@ -121,7 +121,7 @@ of the user's currency preference. -->
         x-cloak>
         <div class="card w-full sm:max-w-md rounded-b-none sm:rounded-b-2xl p-5 sm:p-6 space-y-4 max-h-[90dvh] overflow-y-auto"
             style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))"
-            @click.away="showAddGrailModal = false">
+            @click.away="showAddGrailModal = false; $nextTick(() => $refs.addGrailTrigger?.focus())">
             <div class="flex justify-between items-center">
                 <h3 id="add-grail-title" class="text-xl font-bold text-zinc-900 tracking-tight">Add a grail</h3>
                 <button type="button" aria-label="Close add grail dialog" @click="showAddGrailModal = false; $nextTick(() => $refs.addGrailTrigger?.focus())"
@@ -138,24 +138,24 @@ of the user's currency preference. -->
                     class="rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700"></p>
 
                 <div>
-                    <label class="label">Card ID / Fingerprint</label>
-                    <input x-ref="grailCardId" type="text" name="card_id" required placeholder="e.g. swsh4-19"
+                    <label for="grail-card-id" class="label">Card ID / Fingerprint</label>
+                    <input id="grail-card-id" x-ref="grailCardId" type="text" name="card_id" required placeholder="e.g. swsh4-19"
                         class="input">
                 </div>
 
                 <div>
-                    <label class="label">Target acquisition price ({{ $.CurrencySymbol }})</label>
+                    <label for="grail-target-price" class="label">Target acquisition price ({{ $.CurrencySymbol }})</label>
                     <div class="relative">
                         <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-violet-700 font-semibold pointer-events-none">{{
                             $.CurrencySymbol }}</span>
-                        <input type="number" step="0.01" inputmode="decimal" name="target_price" required placeholder="0.00"
+                        <input id="grail-target-price" type="number" min="0" step="0.01" inputmode="decimal" name="target_price" required placeholder="0.00"
                             class="input pl-9 font-semibold">
                     </div>
                 </div>
 
                 <div>
-                    <label class="label">Notes</label>
-                    <textarea name="notes" placeholder="Condition, seller, or priority..." rows="3"
+                    <label for="grail-notes" class="label">Notes</label>
+                    <textarea id="grail-notes" name="notes" placeholder="Condition, seller, or priority..." rows="3"
                         class="input min-h-24 py-2.5"></textarea>
                 </div>
 

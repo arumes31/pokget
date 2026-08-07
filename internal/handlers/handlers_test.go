@@ -1223,69 +1223,70 @@ func TestHandlers(t *testing.T) {
 		// Request a template that doesn't exist
 		h.render(rr, req, "nonexistent.html", nil)
 		if rr.Code != http.StatusInternalServerError {
-			t.Run("Login_HTMX_Success", func(t *testing.T) {
-				h, mock, cleanup := setupTestHandler(t)
-				defer cleanup()
-
-				req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass"))
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				req.Header.Set("HX-Request", "true")
-				rr := httptest.NewRecorder()
-
-				passHash := fastPasswordHash(t, "pass")
-				rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
-					AddRow("user-123", "test@example.com", passHash, true, 0)
-				mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
-				mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
-
-				h.Login(rr, req)
-
-				if rr.Code != http.StatusOK {
-					t.Errorf("Expected status 200, got %d", rr.Code)
-				}
-				if rr.Header().Get("HX-Redirect") != "/" {
-					t.Errorf("Expected HX-Redirect header '/', got %s", rr.Header().Get("HX-Redirect"))
-				}
-			})
-
-			t.Run("Login_RememberMe", func(t *testing.T) {
-				h, mock, cleanup := setupTestHandler(t)
-				defer cleanup()
-
-				req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass&remember=on"))
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				req.Header.Set("HX-Request", "true")
-				rr := httptest.NewRecorder()
-
-				passHash := fastPasswordHash(t, "pass")
-				rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
-					AddRow("user-123", "test@example.com", passHash, true, 0)
-				mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
-				mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
-
-				h.Login(rr, req)
-
-				if rr.Code != http.StatusOK {
-					t.Errorf("Expected status 200, got %d", rr.Code)
-				}
-			})
-
-			t.Run("Login_EmptyCredentials", func(t *testing.T) {
-				h, _, cleanup := setupTestHandler(t)
-				defer cleanup()
-
-				req := httptest.NewRequest("POST", "/login", strings.NewReader("email=&password="))
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				rr := httptest.NewRecorder()
-
-				h.Login(rr, req)
-
-				if rr.Code != http.StatusUnauthorized {
-					t.Errorf("Expected status 401, got %d", rr.Code)
-				}
-			})
 			t.Errorf("Expected status 500, got %d", rr.Code)
 		}
+
+		t.Run("Login_HTMX_Success", func(t *testing.T) {
+			h, mock, cleanup := setupTestHandler(t)
+			defer cleanup()
+
+			req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass"))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("HX-Request", "true")
+			rr := httptest.NewRecorder()
+
+			passHash := fastPasswordHash(t, "pass")
+			rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+				AddRow("user-123", "test@example.com", passHash, true, 0)
+			mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
+			mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
+
+			h.Login(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Errorf("Expected status 200, got %d", rr.Code)
+			}
+			if rr.Header().Get("HX-Redirect") != "/" {
+				t.Errorf("Expected HX-Redirect header '/', got %s", rr.Header().Get("HX-Redirect"))
+			}
+		})
+
+		t.Run("Login_RememberMe", func(t *testing.T) {
+			h, mock, cleanup := setupTestHandler(t)
+			defer cleanup()
+
+			req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=pass&remember=on"))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("HX-Request", "true")
+			rr := httptest.NewRecorder()
+
+			passHash := fastPasswordHash(t, "pass")
+			rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+				AddRow("user-123", "test@example.com", passHash, true, 0)
+			mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
+			mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
+
+			h.Login(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Errorf("Expected status 200, got %d", rr.Code)
+			}
+		})
+
+		t.Run("Login_EmptyCredentials", func(t *testing.T) {
+			h, _, cleanup := setupTestHandler(t)
+			defer cleanup()
+
+			req := httptest.NewRequest("POST", "/login", strings.NewReader("email=&password="))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rr := httptest.NewRecorder()
+
+			h.Login(rr, req)
+
+			if rr.Code != http.StatusUnauthorized {
+				t.Errorf("Expected status 401, got %d", rr.Code)
+			}
+		})
 	})
 
 	t.Run("ErrorDatabase_DBError", func(t *testing.T) {

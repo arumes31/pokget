@@ -102,13 +102,37 @@ if [[ "${migration_version}" != "28" || "${migration_dirty}" != "f" ]]; then
 fi
 
 # Reproduce a legacy installation whose migration ledger reached version 27
-# even though migration 6/8 objects were absent. Restarting the application
-# must apply migration 28 and restore every runtime dependency.
+# even though card metadata, price, and catalog objects were absent. Restarting
+# the application must apply migration 28 and pass runtime schema validation.
 docker stop "${application_container}" >/dev/null
 docker exec "${database_container}" psql -v ON_ERROR_STOP=1 -U "${database_user}" -d "${database_name}" -c '
-  ALTER TABLE cards DROP COLUMN rarity;
+  ALTER TABLE cards
+    DROP COLUMN variant,
+    DROP COLUMN change_24h,
+    DROP COLUMN game,
+    DROP COLUMN rarity,
+    DROP COLUMN language,
+    DROP COLUMN phash,
+    DROP COLUMN source_id,
+    DROP COLUMN source_card_id,
+    DROP COLUMN set_code,
+    DROP COLUMN collector_number,
+    DROP COLUMN source_updated_at,
+    DROP COLUMN source_metadata,
+    DROP COLUMN catalog_active,
+    DROP COLUMN first_seen_at,
+    DROP COLUMN last_seen_at,
+    DROP COLUMN last_seen_run_id,
+    DROP COLUMN superseded_by_card_id;
   DROP TABLE price_alerts;
   DROP TABLE price_history;
+  DROP TABLE catalog_printing_images;
+  DROP TABLE card_fingerprints;
+  DROP TABLE card_images;
+  DROP TABLE catalog_printings;
+  DROP TABLE catalog_source_state;
+  DROP TABLE catalog_sync_runs;
+  DROP TABLE catalog_sources;
   UPDATE schema_migrations SET version = 27, dirty = FALSE;
 ' >/dev/null
 docker start "${application_container}" >/dev/null
@@ -139,9 +163,34 @@ if [[ "${migration_version}" != "28" || "${migration_dirty}" != "f" ]]; then
 fi
 
 schema_reconciled="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c \
-  "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'cards' AND column_name = 'rarity') AND to_regclass('public.price_history') IS NOT NULL AND to_regclass('public.price_alerts') IS NOT NULL")"
+  "WITH required(table_name, column_name) AS (
+     VALUES
+       ('cards', 'id'), ('cards', 'name'), ('cards', 'set_name'), ('cards', 'image_url'),
+       ('cards', 'price_usd'), ('cards', 'price_eur'), ('cards', 'variant'), ('cards', 'change_24h'),
+       ('cards', 'phash'), ('cards', 'game'), ('cards', 'language'), ('cards', 'rarity'),
+       ('cards', 'source_id'), ('cards', 'source_card_id'), ('cards', 'set_code'),
+       ('cards', 'collector_number'), ('cards', 'source_updated_at'), ('cards', 'source_metadata'),
+       ('cards', 'catalog_active'), ('cards', 'first_seen_at'), ('cards', 'last_seen_at'),
+       ('cards', 'last_seen_run_id'), ('cards', 'superseded_by_card_id'),
+       ('price_history', 'card_id'), ('price_history', 'price_usd'),
+       ('price_history', 'price_eur'), ('price_history', 'recorded_at'),
+       ('price_alerts', 'id'), ('price_alerts', 'user_id'), ('price_alerts', 'card_id'),
+       ('price_alerts', 'target_price'), ('price_alerts', 'is_active'),
+       ('catalog_sources', 'id'), ('catalog_source_state', 'source_id'),
+       ('catalog_sync_runs', 'id'), ('catalog_printings', 'id'),
+       ('card_images', 'id'), ('card_fingerprints', 'image_id')
+   )
+   SELECT NOT EXISTS (
+     SELECT 1
+     FROM required
+     LEFT JOIN information_schema.columns AS present
+       ON present.table_schema = 'public'
+      AND present.table_name = required.table_name
+      AND present.column_name = required.column_name
+     WHERE present.column_name IS NULL
+   )")"
 if [[ "${schema_reconciled}" != "t" ]]; then
-  echo "required card and price schema was not reconciled" >&2
+  echo "required card, price, and catalog schema was not reconciled" >&2
   exit 1
 fi
 
@@ -149,11 +198,25 @@ docker exec "${database_container}" pg_dump -U "${database_user}" -d "${database
 docker exec "${database_container}" createdb -U "${database_user}" pokget_restore
 docker exec "${database_container}" pg_restore -U "${database_user}" -d pokget_restore /tmp/pokget.dump
 
-source_tables="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
-restored_tables="$(docker exec "${database_container}" psql -At -U "${database_user}" -d pokget_restore -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
 restored_version="$(docker exec "${database_container}" psql -At -U "${database_user}" -d pokget_restore -c 'SELECT version FROM schema_migrations')"
-if [[ "${source_tables}" -eq 0 || "${source_tables}" != "${restored_tables}" || "${restored_version}" != "28" ]]; then
-  echo "backup/restore mismatch: source_tables=${source_tables}, restored_tables=${restored_tables}, restored_version=${restored_version}" >&2
+if [[ "${restored_version}" != "28" ]]; then
+  echo "backup/restore migration mismatch: restored_version=${restored_version}" >&2
+  exit 1
+fi
+
+normalized_schema_dump() {
+  local target_database="$1"
+  docker exec "${database_container}" pg_dump \
+    --schema-only --no-owner --no-privileges \
+    -U "${database_user}" -d "${target_database}" |
+    sed -E '/^\\(un)?restrict /d'
+}
+
+source_schema="$(normalized_schema_dump "${database_name}")"
+restored_schema="$(normalized_schema_dump pokget_restore)"
+if [[ -z "${source_schema}" || -z "${restored_schema}" || "${source_schema}" != "${restored_schema}" ]]; then
+  echo "backup/restore schema mismatch" >&2
+  diff -u <(printf '%s\n' "${source_schema}") <(printf '%s\n' "${restored_schema}") >&2 || true
   exit 1
 fi
 

@@ -53,7 +53,8 @@
     <div x-show="showSubmitErrorModal" x-cloak @keydown.escape.window="if (showSubmitErrorModal) { showSubmitErrorModal = false; $nextTick(() => $refs.submitErrorTrigger?.focus()) }"
         class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-zinc-900/50" role="dialog" aria-modal="true" aria-labelledby="submit-error-title">
         <div class="card w-full sm:max-w-md rounded-b-none sm:rounded-b-2xl p-5 sm:p-6 max-h-[90dvh] overflow-y-auto"
-            style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))" @click.outside="showSubmitErrorModal = false">
+            style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))"
+            @click.outside="showSubmitErrorModal = false; $nextTick(() => $refs.submitErrorTrigger?.focus())">
             <div class="flex items-center justify-between">
                 <h3 id="submit-error-title" class="text-xl font-bold text-zinc-900">Submit a misprint</h3>
                 <button type="button" @click="showSubmitErrorModal = false; $nextTick(() => $refs.submitErrorTrigger?.focus())" aria-label="Close submission dialog"

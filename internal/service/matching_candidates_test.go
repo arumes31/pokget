@@ -80,6 +80,9 @@ func TestCardCohortMatchingAcceptance(t *testing.T) {
 			Game: card.Game,
 		})
 	}
+	if len(cardsByGame) != detectiontest.SupportedGameCount {
+		t.Fatalf("card cohort contains %d supported games, want %d", len(cardsByGame), detectiontest.SupportedGameCount)
+	}
 
 	for game, cards := range cardsByGame {
 		game := game

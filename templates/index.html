@@ -111,6 +111,7 @@
     </header>
 
     <main id="main-content" class="pt-20 pb-28 px-4 w-full max-w-6xl mx-auto"
+        style="padding-top: calc(5rem + env(safe-area-inset-top))"
         hx-get="{{ .InitialPath }}" hx-trigger="load" hx-sync="this:replace">
         <!-- Content will be loaded here via HTMX -->
         <!-- Skeleton Content: Shown during initial load -->

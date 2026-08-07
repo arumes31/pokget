@@ -16,7 +16,9 @@
 
         <div class="pt-6 mt-6 border-t border-zinc-200">
             <p class="text-xs text-zinc-500 mb-2">Didn't get the email?</p>
-            <button @click="
+            <input type="hidden" x-ref="resendEmail" value="{{ .Email }}">
+            <input type="hidden" x-ref="resendCSRF" value="{{ .CSRFToken }}">
+            <button type="button" @click="
                 if (!resendDisabled) {
                     resendDisabled = true;
                     countdown = 300;
@@ -27,11 +29,23 @@
                             resendDisabled = false;
                         }
                     }, 1000);
-                    $dispatch('notify', { msg: 'Please go back to sign up to resend.', type: 'info' });
+                    const formData = new FormData();
+                    formData.append('email', $refs.resendEmail.value);
+                    formData.append('gorilla.csrf.Token', $refs.resendCSRF.value);
+                    fetch('/auth/resend', { method: 'POST', body: formData }).then(res => {
+                        if (res.ok) {
+                            $dispatch('notify', { msg: 'Verification email re-sent', type: 'success' });
+                        } else {
+                            $dispatch('notify', { msg: 'Unable to resend verification email', type: 'error' });
+                        }
+                    }).catch(() => {
+                        $dispatch('notify', { msg: 'Unable to resend verification email', type: 'error' });
+                    });
                 }"
                 :disabled="resendDisabled"
                 class="btn-ghost text-violet-700 text-sm">
-                <span>Resend verification email</span>
+                <span
+                    x-text="resendDisabled ? 'Retry in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend verification email'"></span>
             </button>
         </div>
     </div>

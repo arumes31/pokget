@@ -29,6 +29,7 @@ func TestMigrationRecoveryPolicy(t *testing.T) {
 
 	filesByStem := make(map[string]migrationFiles, len(entries))
 	versions := make(map[int]struct{}, len(entries))
+	stemsByVersion := make(map[int]string, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
 			continue
@@ -41,8 +42,12 @@ func TestMigrationRecoveryPolicy(t *testing.T) {
 		if parseErr != nil {
 			t.Fatalf("parse migration version %q: %v", matches[1], parseErr)
 		}
-		versions[version] = struct{}{}
 		stem := matches[1] + "_" + matches[2]
+		if firstStem, exists := stemsByVersion[version]; exists && firstStem != stem {
+			t.Fatalf("migration version %d has duplicate stems %q and %q", version, firstStem, stem)
+		}
+		stemsByVersion[version] = stem
+		versions[version] = struct{}{}
 		files := filesByStem[stem]
 		if matches[3] == "up" {
 			if files.up {
@@ -90,9 +95,19 @@ func TestSchemaReconciliationMigration(t *testing.T) {
 
 	sql := strings.ToLower(string(contents))
 	for _, required := range []string{
+		"alter table cards add column if not exists variant text",
+		"alter table cards add column if not exists change_24h numeric",
 		"alter table cards add column if not exists rarity text",
+		"alter table cards add column if not exists source_id text references catalog_sources(id)",
+		"alter table cards add column if not exists superseded_by_card_id text",
 		"create table if not exists price_history",
 		"create table if not exists price_alerts",
+		"create table if not exists catalog_sources",
+		"create table if not exists catalog_source_state",
+		"create table if not exists catalog_sync_runs",
+		"create table if not exists catalog_printings",
+		"create table if not exists card_images",
+		"create table if not exists card_fingerprints",
 		"create index if not exists idx_price_alerts_user_id",
 	} {
 		if !strings.Contains(sql, required) {

@@ -104,6 +104,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	data := map[string]interface{}{
 		"Message":   "Registration successful! Please check your email to verify your account.",
+		"Email":     email,
 		"CSRFToken": csrf.Token(r),
 	}
 	if err := h.Templates.ExecuteTemplate(w, "auth_success", data); err != nil {

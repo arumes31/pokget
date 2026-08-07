@@ -362,10 +362,9 @@ func TestTemplatesUseMobileFirstResponsiveMarkup(t *testing.T) {
 	fixedWidthRe := regexp.MustCompile(`w-\[\d{3,}px\]`)
 	constrainedWidthRe := regexp.MustCompile(`(?:min|max)-w-\[\d+px\]`)
 	buttonRe := regexp.MustCompile(`<button\b(?:[^>"']|"[^"]*"|'[^']*')*>`)
-	// 44px targets: explicit min sizing, btn components (min-h-11), the 44px
-	// scanner guides, h-11/w-11 squares, p-4..p-6 padded card surfaces, or the
-	// styles.css-enforced scan-progress-cancel (min-height: 3rem).
-	touchTargetRe := regexp.MustCompile(`min-h-|min-w-|btn|\[44px\]|\bh-11\b|\bw-11\b|\bp-[456]\b|scan-progress-cancel`)
+	// 44px targets: h-11/min-h-11 or larger Tailwind heights, shared button
+	// components, or the styles.css-enforced scan-progress-cancel class.
+	touchTargetRe := regexp.MustCompile(`\b(?:min-)?h-(?:1[1-9]|[2-9]\d*)\b|\b(?:min-)?h-\[(?:4[4-9]|[5-9]\d|\d{3,})px\]|\bbtn(?:-[\w-]+)?\b|\bscan-progress-cancel\b`)
 
 	for _, file := range files {
 		file := file
