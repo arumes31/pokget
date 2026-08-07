@@ -1,0 +1,18 @@
+# Historical migrations without a safe automatic down operation.
+# Recovery for these versions is the tested PostgreSQL backup/restore path.
+000001_init_schema
+000002_add_verification_token
+000003_add_portfolio_history
+000004_audit_logs
+000005_add_card_variant
+000006_price_history
+000007_add_cards_variant_field
+000008_multi_tcg
+000009_add_fingerprints_and_lang
+000010_indexes
+000012_gamification_and_social
+000014_multi_tcg_expansion
+000015_improvements_batch_1
+000018_add_binder_default_flag
+000019_add_trigram_index
+000020_add_is_admin

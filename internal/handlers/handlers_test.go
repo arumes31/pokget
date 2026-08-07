@@ -41,7 +41,23 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gorilla/mux"
+	"golang.org/x/crypto/bcrypt"
 )
+
+func fastPasswordHasher(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	return string(hash), err
+}
+
+func fastPasswordHash(t testing.TB, password string) string {
+	t.Helper()
+
+	hash, err := fastPasswordHasher(password)
+	if err != nil {
+		t.Fatalf("hash test password: %v", err)
+	}
+	return hash
+}
 
 func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 	tmpl := template.Must(template.New("test").Parse(`
@@ -68,12 +84,13 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 	db.DB = dbMock
 
 	h := &Handler{
-		Templates:   tmpl,
-		MockCards:   []models.Card{{ID: "test-id", Name: "Test Card"}},
-		Audit:       service.NewAuditService(dbMock),
-		Game:        service.NewGamificationService(dbMock),
-		Fingerprint: service.NewFingerprintService(dbMock),
-		DB:          dbMock,
+		Templates:      tmpl,
+		MockCards:      []models.Card{{ID: "test-id", Name: "Test Card"}},
+		Audit:          service.NewAuditService(dbMock),
+		Game:           service.NewGamificationService(dbMock),
+		Fingerprint:    service.NewFingerprintService(dbMock),
+		DB:             dbMock,
+		passwordHasher: fastPasswordHasher,
 	}
 
 	return h, mock, func() {
@@ -377,7 +394,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		passHash, _ := auth.HashPassword("pass")
+		passHash := fastPasswordHash(t, "pass")
 		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
 			AddRow("user-123", "test@example.com", passHash, false, 0)
 		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
@@ -397,7 +414,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		passHash, _ := auth.HashPassword("pass")
+		passHash := fastPasswordHash(t, "pass")
 		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
 			AddRow("user-123", "test@example.com", passHash, true, 0)
 		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
@@ -496,7 +513,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("HX-Request", "true")
 		rr := httptest.NewRecorder()
 
-		passHash, _ := auth.HashPassword("pass")
+		passHash := fastPasswordHash(t, "pass")
 		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
 			AddRow("user-123", "test@example.com", passHash, true, 0)
 		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
@@ -518,7 +535,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("HX-Request", "true")
 		rr := httptest.NewRecorder()
 
-		passHash, _ := auth.HashPassword("pass")
+		passHash := fastPasswordHash(t, "pass")
 		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
 			AddRow("user-123", "test@example.com", passHash, true, 0)
 		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
@@ -543,7 +560,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("HX-Request", "true")
 		rr := httptest.NewRecorder()
 
-		passHash, _ := auth.HashPassword("pass")
+		passHash := fastPasswordHash(t, "pass")
 		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
 			AddRow("user-123", "test@example.com", passHash, true, 0)
 		mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
@@ -1215,7 +1232,7 @@ func TestHandlers(t *testing.T) {
 				req.Header.Set("HX-Request", "true")
 				rr := httptest.NewRecorder()
 
-				passHash, _ := auth.HashPassword("pass")
+				passHash := fastPasswordHash(t, "pass")
 				rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
 					AddRow("user-123", "test@example.com", passHash, true, 0)
 				mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)
@@ -1240,7 +1257,7 @@ func TestHandlers(t *testing.T) {
 				req.Header.Set("HX-Request", "true")
 				rr := httptest.NewRecorder()
 
-				passHash, _ := auth.HashPassword("pass")
+				passHash := fastPasswordHash(t, "pass")
 				rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
 					AddRow("user-123", "test@example.com", passHash, true, 0)
 				mock.ExpectQuery("SELECT id, email, password_hash, is_verified").WillReturnRows(rows)

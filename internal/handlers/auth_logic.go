@@ -62,7 +62,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Performance: Only hash password if registration can proceed
-	hash, errHash := auth.HashPassword(password)
+	hash, errHash := h.hashPassword(password)
 	if errHash != nil {
 		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 		return

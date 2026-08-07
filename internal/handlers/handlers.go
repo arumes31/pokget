@@ -58,21 +58,29 @@ type Binder struct {
 }
 
 type Handler struct {
-	Templates     *template.Template
-	MockCards     []models.Card
-	CardsMu       sync.RWMutex // Protects concurrent access to MockCards
-	Fingerprint   *service.FingerprintService
-	Detection     *service.DetectionPipeline // SCAN-07, SCAN-09, SCAN-16: Detection pipeline
-	Mailer        service.Mailer
-	Audit         *service.AuditService
-	Crypto        *service.CryptoService
-	Game          *service.GamificationService
-	LLM           *service.LLMService
-	PriceClient   *service.ScraperPriceClient
-	DB            *sql.DB
-	BuildVersion  string
-	ScanTimeout   time.Duration
-	SecureCookies bool // BUG-C03: Configurable Secure flag for session cookies
+	Templates      *template.Template
+	MockCards      []models.Card
+	CardsMu        sync.RWMutex // Protects concurrent access to MockCards
+	Fingerprint    *service.FingerprintService
+	Detection      *service.DetectionPipeline // SCAN-07, SCAN-09, SCAN-16: Detection pipeline
+	Mailer         service.Mailer
+	Audit          *service.AuditService
+	Crypto         *service.CryptoService
+	Game           *service.GamificationService
+	LLM            *service.LLMService
+	PriceClient    *service.ScraperPriceClient
+	DB             *sql.DB
+	BuildVersion   string
+	ScanTimeout    time.Duration
+	SecureCookies  bool // BUG-C03: Configurable Secure flag for session cookies
+	passwordHasher func(string) (string, error)
+}
+
+func (h *Handler) hashPassword(password string) (string, error) {
+	if h.passwordHasher != nil {
+		return h.passwordHasher(password)
+	}
+	return auth.HashPassword(password)
 }
 
 // scanDetectionSlots bounds native OCR work that cannot be interrupted while a

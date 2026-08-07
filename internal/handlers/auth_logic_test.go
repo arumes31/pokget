@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"net/http"
 	"net/http/httptest"
-	"pokget/internal/auth"
 	"pokget/internal/service"
 	"strings"
 	"testing"
@@ -99,7 +98,7 @@ func TestLogin_Failures(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		hash, _ := auth.HashPassword("correct")
+		hash := fastPasswordHash(t, "correct")
 		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
 			AddRow("u1", "test@example.com", hash, true, 0)
 		mock.ExpectQuery("SELECT id, email").WillReturnRows(rows)
@@ -115,7 +114,7 @@ func TestLogin_Failures(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		hash, _ := auth.HashPassword("correct")
+		hash := fastPasswordHash(t, "correct")
 		rows := sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
 			AddRow("u1", "test@example.com", hash, false, 0)
 		mock.ExpectQuery("SELECT id, email").WillReturnRows(rows)
