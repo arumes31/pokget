@@ -39,6 +39,49 @@ func (r *PostgresRepository) LeaseImageJobsForCard(
 	return r.leaseImageJobs(ctx, owner, cardID, limit, leaseDuration)
 }
 
+func (r *PostgresRepository) ImageProgress(ctx context.Context) (ImageProgress, error) {
+	var progress ImageProgress
+	err := r.db.QueryRowContext(ctx, `
+		WITH eligible_images AS MATERIALIZED (
+			SELECT image.id, image.status, image.next_attempt_at
+			FROM card_images AS image
+			JOIN cards AS card ON card.id = image.card_id
+			JOIN catalog_sources AS source ON source.id = card.source_id
+			WHERE card.catalog_active = TRUE
+			  AND source.enabled = TRUE
+		), image_counts AS (
+			SELECT COUNT(*) AS total,
+			       COUNT(*) FILTER (WHERE status = 'ready') AS ready,
+			       COUNT(*) FILTER (WHERE status = 'pending') AS pending,
+			       COUNT(*) FILTER (WHERE status = 'processing') AS processing,
+			       COUNT(*) FILTER (WHERE status = 'failed' AND next_attempt_at IS NOT NULL) AS retryable,
+			       COUNT(*) FILTER (WHERE status = 'failed' AND next_attempt_at IS NULL) AS failed,
+			       COUNT(*) FILTER (WHERE status = 'unavailable') AS unavailable
+			FROM eligible_images
+		)
+		SELECT image_counts.total, image_counts.ready, image_counts.pending,
+		       image_counts.processing, image_counts.retryable, image_counts.failed,
+		       image_counts.unavailable,
+		       (SELECT COUNT(*)
+		        FROM card_fingerprints AS fingerprint
+		        JOIN eligible_images AS image ON image.id = fingerprint.image_id
+		        WHERE fingerprint.algorithm = $1 AND fingerprint.algorithm_version = $2)
+		FROM image_counts`, FingerprintAlgorithm, FingerprintAlgorithmVersion).Scan(
+		&progress.Total,
+		&progress.Ready,
+		&progress.Pending,
+		&progress.Processing,
+		&progress.Retryable,
+		&progress.Failed,
+		&progress.Unavailable,
+		&progress.Fingerprints,
+	)
+	if err != nil {
+		return ImageProgress{}, fmt.Errorf("catalog: loading image fingerprint progress: %w", err)
+	}
+	return progress, nil
+}
+
 func (r *PostgresRepository) leaseImageJobs(
 	ctx context.Context,
 	owner string,

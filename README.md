@@ -165,6 +165,8 @@ docker-compose up --build
     ```
     Logs use readable `key=value` text by default. Set `LOG_FORMAT=json` only when
     sending them to a structured-log collector.
+    During catalog fingerprint generation, the logs also report queue totals,
+    completion, failures, throughput, and an ETA while work is changing.
 3.  **Run**:
     ```bash
     go run ./cmd/pokget

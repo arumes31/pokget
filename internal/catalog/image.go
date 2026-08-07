@@ -45,6 +45,32 @@ type ImageFingerprint struct {
 	Hash             int64
 }
 
+type ImageProgress struct {
+	Total        int64
+	Ready        int64
+	Pending      int64
+	Processing   int64
+	Retryable    int64
+	Failed       int64
+	Unavailable  int64
+	Fingerprints int64
+}
+
+func (p ImageProgress) Remaining() int64 {
+	remaining := p.Total - p.Ready - p.Failed - p.Unavailable
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+func (p ImageProgress) ReadyPercent() float64 {
+	if p.Total <= 0 {
+		return 0
+	}
+	return float64(p.Ready) / float64(p.Total) * 100
+}
+
 type ImageFailureKind string
 
 const (

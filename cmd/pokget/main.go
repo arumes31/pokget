@@ -180,6 +180,7 @@ func main() {
 	var dataWorker *worker.DataSyncWorker
 	var catalogWorker *worker.CatalogWorker
 	var catalogImageWorker *worker.CatalogImageWorker
+	var catalogRepository *catalog.PostgresRepository
 	var backgroundWorkers sync.WaitGroup
 	var fingerprintIndexDirty atomic.Bool
 	workerCtx, workerCancel := context.WithCancel(context.Background())
@@ -216,7 +217,7 @@ func main() {
 		}
 
 		if cfg.Catalog.Enabled || cfg.Catalog.ImagesEnabled {
-			catalogRepository, err := catalog.NewPostgresRepository(database)
+			catalogRepository, err = catalog.NewPostgresRepository(database)
 			if err != nil {
 				slog.Error("Catalog initialization failed", "error", err)
 				os.Exit(1)
@@ -373,6 +374,7 @@ func main() {
 		}()
 	}
 	if catalogImageWorker != nil {
+		progressReporter := newFingerprintProgressReporter(catalogRepository, slog.Default())
 		backgroundWorkers.Add(1)
 		go func() {
 			defer backgroundWorkers.Done()
@@ -383,6 +385,9 @@ func main() {
 		backgroundWorkers.Add(1)
 		go func() {
 			defer backgroundWorkers.Done()
+			if err := progressReporter.Report(workerCtx); err != nil {
+				slog.Warn("Catalog fingerprint progress unavailable", "error", err)
+			}
 			ticker := time.NewTicker(30 * time.Second)
 			defer ticker.Stop()
 			for {
@@ -393,6 +398,9 @@ func main() {
 					if fingerprintIndexDirty.Swap(false) {
 						fingerprintSvc.RebuildTree()
 						slog.Info("Catalog image fingerprints reloaded")
+						if err := progressReporter.Report(workerCtx); err != nil {
+							slog.Warn("Catalog fingerprint progress unavailable", "error", err)
+						}
 					}
 				}
 			}

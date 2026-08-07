@@ -69,6 +69,39 @@ func TestPostgresRepositoryLeaseImageJobsForCardFiltersCard(t *testing.T) {
 	}
 }
 
+func TestPostgresRepositoryImageProgress(t *testing.T) {
+	t.Parallel()
+
+	database, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	repository, err := NewPostgresRepository(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta("WITH eligible_images AS MATERIALIZED")).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"total", "ready", "pending", "processing", "retryable", "failed", "unavailable", "fingerprints",
+		}).AddRow(int64(100), int64(30), int64(52), int64(8), int64(5), int64(2), int64(3), int64(90)))
+
+	progress, err := repository.ImageProgress(context.Background())
+	if err != nil {
+		t.Fatalf("ImageProgress() error = %v", err)
+	}
+	if progress.Total != 100 || progress.Ready != 30 || progress.Remaining() != 65 || progress.Fingerprints != 90 {
+		t.Fatalf("ImageProgress() = %+v", progress)
+	}
+	if progress.ReadyPercent() != 30 {
+		t.Fatalf("ReadyPercent() = %v, want 30", progress.ReadyPercent())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPostgresRepositoryMarkImageReadyIsTransactional(t *testing.T) {
 	t.Parallel()
 
