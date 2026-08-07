@@ -2,7 +2,7 @@
 <div x-data="cardScanner({ csrfToken: '{{ .CSRFToken }}' })"
     @pointermove="handleMove($event)" @pointerup="finishGuideDrag()" @pointercancel="finishGuideDrag()"
     @keydown.escape.window="scanning && cancelScan()"
-    class="space-y-6 md:bg-zinc-950 md:text-white md:p-6 md:rounded-3xl md:border md:border-zinc-800">
+    class="scanner-shell min-h-dvh bg-zinc-950 text-white md:min-h-0 md:space-y-6 md:rounded-3xl md:border md:border-zinc-800 md:p-6">
 
     <div x-show="scanning" x-cloak class="scan-progress-overlay"
         x-effect="scanning && $nextTick(() => $refs.progressCancel?.focus({ preventScroll: true }))"
@@ -47,15 +47,26 @@
         </section>
     </div>
 
-    <div
+    <div data-testid="scanner-toolbar"
         :inert="scanning"
-        class="flex items-center justify-between px-4 py-3 absolute top-6 left-4 right-4 z-40 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 md:relative md:top-auto md:left-auto md:right-auto md:z-auto md:bg-transparent md:border-none md:p-0">
-        <div>
-            <h2 class="text-xs font-bold uppercase tracking-widest text-violet-300 md:text-lg md:normal-case md:tracking-normal md:text-white">
-                Card Scanner</h2>
+        class="fixed left-3 right-3 top-3 z-40 flex items-center justify-between rounded-2xl border border-white/15 bg-black/55 px-2 py-2 backdrop-blur-xl md:relative md:left-auto md:right-auto md:top-auto md:z-auto md:bg-transparent md:p-0">
+        <div class="flex min-w-0 items-center gap-1">
+            <button type="button" class="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-white/80 hover:bg-white/10 hover:text-white"
+                aria-label="Leave scanner" @click="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'home' } })); htmx.ajax('GET', '/dashboard', { target: '#main-content', source: $el }); history.replaceState({}, '', '/?view=home')">
+                <span class="material-symbols-outlined">arrow_back</span>
+            </button>
+            <div class="min-w-0">
+            <h2 class="truncate text-xs font-bold uppercase tracking-widest text-violet-200 md:text-lg md:normal-case md:tracking-normal md:text-white">Card scanner</h2>
             <p class="hidden md:block text-sm text-zinc-400">Crop to the printed card, then let Pokget compare only the selected TCG.</p>
+            </div>
         </div>
-        <button type="button" class="min-h-11 min-w-11 flex items-center justify-center text-white/60 hover:text-white transition-colors"
+        <div class="flex items-center gap-1">
+        <button type="button" x-show="torchAvailable && !previewURL" @click="toggleTorch()"
+            class="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-white/70 hover:bg-white/10 hover:text-white"
+            :aria-pressed="torchOn.toString()" :aria-label="torchOn ? 'Turn flashlight off' : 'Turn flashlight on'">
+            <span class="material-symbols-outlined" x-text="torchOn ? 'flashlight_off' : 'flashlight_on'"></span>
+        </button>
+        <button type="button" class="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-white/70 transition-colors hover:bg-white/10 hover:text-white"
             aria-label="Reset scanner, preview, and guide lines" @click="resetAll()">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -63,10 +74,11 @@
                 <path d="M3 3v5h5" />
             </svg>
         </button>
+        </div>
     </div>
 
-    <div x-ref="container" :inert="scanning"
-        class="fixed inset-0 z-30 bg-black overflow-hidden md:relative md:inset-auto md:aspect-[3/4] md:rounded-3xl md:border md:border-violet-500/20 md:shadow-[0_0_30px_rgba(124,58,237,0.15)]">
+    <div x-ref="container" :inert="scanning" data-testid="scanner-frame"
+        class="fixed inset-x-0 bottom-[44dvh] top-0 z-30 overflow-hidden bg-black md:relative md:inset-auto md:aspect-[3/4] md:rounded-3xl md:border md:border-violet-500/20 md:shadow-[0_0_30px_rgba(124,58,237,0.15)]">
         <video x-ref="video" x-show="!previewURL" autoplay playsinline muted
             class="absolute inset-0 w-full h-full object-cover md:object-contain"
             aria-label="Live camera preview"></video>
@@ -135,21 +147,19 @@
                 <span class="absolute left-0 top-1/2 h-0.5 w-full bg-violet-500/60 shadow-[0_0_8px_rgba(139,92,246,0.8)]"></span>
             </button>
 
-            <div class="absolute bg-black/80 text-violet-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-violet-500/30 backdrop-blur-sm"
-                :style="`left: 5%; top: ${(lines.top + lines.bottom) / 2}%`" x-text="metrics.tb"></div>
-            <div class="absolute bg-black/80 text-sky-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-sky-500/30 backdrop-blur-sm"
-                :style="`left: ${(lines.left + lines.right) / 2}%; top: 5%`" x-text="metrics.lr"></div>
+            <div class="absolute rounded border border-violet-500/30 bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-violet-200 backdrop-blur-sm"
+                :style="`left: 3%; top: ${(lines.top + lines.bottom) / 2}%`"><span>L/R </span><span x-text="metrics.lr"></span></div>
+            <div class="absolute rounded border border-sky-500/30 bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-sky-200 backdrop-blur-sm"
+                :style="`left: ${(lines.left + lines.right) / 2}%; top: 3%`"><span>T/B </span><span x-text="metrics.tb"></span></div>
         </div>
 
-        <div class="absolute bottom-28 left-0 right-0 flex justify-center z-20 md:bottom-4 pointer-events-none">
-            <span
-                class="text-[10px] font-semibold text-white/70 uppercase tracking-widest bg-black/60 px-3 py-1.5 rounded-full backdrop-blur-md border border-white/10">Only
-                the area inside the guides is uploaded</span>
+        <div data-testid="scanner-privacy-note" class="pointer-events-none absolute bottom-3 left-3 right-3 z-20 flex justify-center md:bottom-4">
+            <span class="rounded-full border border-white/15 bg-black/70 px-3 py-1.5 text-center text-[10px] font-semibold text-white/80 backdrop-blur-md"><span class="material-symbols-outlined mr-1 align-middle text-sm">lock</span><span aria-hidden="true">Only the framed area is uploaded</span><span class="sr-only">Only the area inside the guides is uploaded.</span></span>
         </div>
     </div>
 
-    <div :inert="scanning"
-        class="scanner-controls space-y-4 absolute bottom-24 left-4 right-4 z-40 md:relative md:bottom-auto md:left-auto md:right-auto md:z-auto">
+    <div :inert="scanning" data-testid="scanner-controls"
+        class="scanner-controls fixed inset-x-0 bottom-0 z-40 h-[44dvh] space-y-4 overflow-y-auto rounded-t-[1.75rem] border-t border-white/15 bg-zinc-950/96 p-4 shadow-[0_-20px_60px_rgba(0,0,0,.3)] backdrop-blur-xl md:relative md:inset-auto md:z-auto md:h-auto md:overflow-visible md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
         <fieldset class="grid grid-cols-2 gap-3">
             <legend class="sr-only">Scan options</legend>
             <label for="scanner-game" class="text-xs font-semibold uppercase tracking-wider text-white/70">
@@ -187,26 +197,26 @@
             class="w-full min-h-12 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-lg"
             :class="scanning || !activeStream ? 'bg-white/10 text-white/40 cursor-not-allowed' : 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-500/20'">
             <span class="material-symbols-outlined text-lg" aria-hidden="true">photo_camera</span>
-            <span>CAPTURE GUIDE CROP</span>
+            <span>Capture framed card</span>
         </button>
 
         <button type="button" x-show="previewURL" @click="scanUpload()" :disabled="scanning"
             data-testid="scan-selected-crop"
             class="w-full min-h-12 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-semibold text-sm shadow-lg shadow-violet-500/20 disabled:opacity-50">
-            SCAN SELECTED CROP
+            Scan selected crop
         </button>
 
         <div class="grid grid-cols-2 gap-3">
             <label for="scanner-file"
                 class="min-h-12 bg-white/5 border border-white/10 rounded-xl font-semibold text-xs text-white flex items-center justify-center gap-2 cursor-pointer hover:bg-white/10 transition-colors">
                 <span class="material-symbols-outlined text-lg" aria-hidden="true">upload_file</span>
-                <span>CHOOSE PHOTO</span>
+                <span>Choose photo</span>
                 <input id="scanner-file" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only"
                     :disabled="scanning" @change="handleFileUpload($event)">
             </label>
-            <button type="button" @click="retryLastScan()" :disabled="!lastScanBlob || scanning"
+            <button type="button" @click="retryLastScan()" :disabled="!lastScanBlob || scanning" aria-label="RETRY LAST CROP"
                 class="min-h-12 bg-white/5 border border-white/10 rounded-xl font-semibold text-xs text-white disabled:opacity-40">
-                RETRY LAST CROP
+                Retry last crop
             </button>
         </div>
 
@@ -270,11 +280,11 @@
 
         <div class="grid grid-cols-2 gap-3" aria-label="Centering ratios">
             <div class="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
-                <p class="text-[10px] text-white/50 font-semibold uppercase tracking-widest mb-0.5">L / R Ratio</p>
+                <p class="text-[10px] text-white/50 font-semibold uppercase tracking-widest mb-0.5">L/R ratio</p>
                 <p class="text-sm font-bold font-mono text-violet-300" x-text="metrics.lr"></p>
             </div>
             <div class="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
-                <p class="text-[10px] text-white/50 font-semibold uppercase tracking-widest mb-0.5">T / B Ratio</p>
+                <p class="text-[10px] text-white/50 font-semibold uppercase tracking-widest mb-0.5">T/B ratio</p>
                 <p class="text-sm font-bold font-mono text-sky-300" x-text="metrics.tb"></p>
             </div>
         </div>

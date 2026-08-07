@@ -1,16 +1,18 @@
-<div class="w-full max-w-6xl mx-auto space-y-6" x-data="{ showAddGrailModal: false, addError: '', mutationError: '' }">
+<div class="app-page" x-data="{ showAddGrailModal: false, addError: '', mutationError: '' }">
     <!-- Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div class="page-header">
         <div>
-            <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-900">The Wantlist</h2>
-            <p class="text-sm text-zinc-500 mt-1 max-w-md">Track the grails you're hunting. Monitor
-                market prices against your target and strike when the time is right.</p>
+            <p class="page-eyebrow">Price watch</p>
+            <h2 class="page-title">Grails</h2>
+            <p class="page-description">Track the cards you’re hunting and see when market prices meet your target.</p>
         </div>
+        {{ if .Items }}
         <button type="button" x-ref="addGrailTrigger" @click="addError = ''; showAddGrailModal = true; $nextTick(() => $refs.grailCardId.focus())"
-            class="btn-primary w-full sm:w-auto min-h-12">
+            class="btn-primary w-full sm:w-auto">
             <span class="material-symbols-outlined text-[20px]">add_circle</span>
-            Add new grail
+            Add grail
         </button>
+        {{ end }}
     </div>
     <p x-show="mutationError" x-text="mutationError" role="alert" aria-live="assertive"
         class="rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700"></p>
@@ -18,7 +20,7 @@
     <!-- Wantlist Grid -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {{ range .Items }}
-        <div class="card p-4 sm:p-5 flex flex-col">
+        <article class="card flex flex-col p-4 sm:p-5">
             <div class="flex gap-4">
                 <!-- Card Image -->
                 <div
@@ -37,8 +39,7 @@
 
                     <div class="space-y-2 mt-3">
                         <div class="flex flex-col">
-                            <span class="text-[11px] text-zinc-500 uppercase font-medium tracking-wide">Your
-                                target</span>
+                            <span class="text-[11px] text-zinc-500 uppercase font-bold tracking-wide">Your target</span>
                             <span class="text-xl font-bold text-violet-700 tracking-tight">{{ $.CurrencySymbol }}{{
                                 .TargetPrice }}</span>
                         </div>
@@ -72,9 +73,11 @@ of the user's currency preference. -->
                     {{ end }}
                 </div>
             </div>
+            <details class="mt-4 border-t border-stone-200 pt-3">
+                <summary class="flex min-h-11 cursor-pointer items-center justify-between text-sm font-bold text-zinc-700">Edit target and notes<span class="material-symbols-outlined">expand_more</span></summary>
             <form hx-post="/wantlist/edit" hx-target="#main-content" @htmx:before-request="mutationError = ''"
                 @htmx:after-request="if (!$event.detail.successful) mutationError = $event.detail.xhr.responseText.trim() || 'Unable to update grail'"
-                class="mt-4 grid grid-cols-2 gap-2 border-t border-zinc-200 pt-4">
+                class="grid grid-cols-2 gap-2 pt-3">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{ $.CSRFToken }}">
                 <input type="hidden" name="item_id" value="{{ .ID }}">
                 <label class="block text-xs font-medium text-zinc-600">Target
@@ -91,20 +94,20 @@ of the user's currency preference. -->
                     @htmx:after-request="if (!$event.detail.successful) mutationError = $event.detail.xhr.responseText.trim() || 'Unable to remove grail'"
                     hx-vals='{"item_id":"{{ .ID }}"}' class="btn-danger">Remove</button>
             </form>
-        </div>
+            </details>
+        </article>
         {{ else }}
         <!-- Empty State -->
-        <div class="col-span-full py-16 sm:py-24 flex items-center justify-center">
-            <div class="card border-dashed p-8 sm:p-10 flex flex-col items-center text-center max-w-sm w-full">
-                <div class="w-16 h-16 bg-violet-100 rounded-full flex items-center justify-center mb-4">
+        <div class="col-span-full py-6 sm:py-12">
+            <div class="empty-state">
+                <div class="empty-state-icon">
                     <span class="material-symbols-outlined text-3xl text-violet-700">explore</span>
                 </div>
-                <h3 class="text-lg font-bold text-zinc-900 tracking-tight">No grails yet</h3>
-                <p class="text-sm text-zinc-500 mt-2">You haven't identified any grails for your collection
-                    yet. Start hunting to build your legacy.</p>
+                <h3 class="font-display text-xl font-bold text-zinc-950">Build your hunt list</h3>
+                <p class="mt-2 max-w-sm text-sm leading-6 text-zinc-600">Set a target price and Pokget will track the gap to the current market.</p>
                 <button type="button" @click="addError = ''; showAddGrailModal = true; $nextTick(() => $refs.grailCardId.focus())"
                     class="btn-primary w-full sm:w-auto mt-6">
-                    Add your first grail
+                    <span class="material-symbols-outlined">add_circle</span>Add first grail
                 </button>
             </div>
         </div>
@@ -123,7 +126,7 @@ of the user's currency preference. -->
             style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))"
             @click.away="showAddGrailModal = false; $nextTick(() => $refs.addGrailTrigger?.focus())">
             <div class="flex justify-between items-center">
-                <h3 id="add-grail-title" class="text-xl font-bold text-zinc-900 tracking-tight">Add a grail</h3>
+                <div><p class="page-eyebrow">Price watch</p><h3 id="add-grail-title" class="font-display text-xl font-bold text-zinc-950">Add a grail</h3></div>
                 <button type="button" aria-label="Close add grail dialog" @click="showAddGrailModal = false; $nextTick(() => $refs.addGrailTrigger?.focus())"
                     class="btn-ghost min-h-11 px-2 -mr-2">
                     <span class="material-symbols-outlined">close</span>
@@ -138,9 +141,10 @@ of the user's currency preference. -->
                     class="rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700"></p>
 
                 <div>
-                    <label for="grail-card-id" class="label">Card ID / Fingerprint</label>
-                    <input id="grail-card-id" x-ref="grailCardId" type="text" name="card_id" required placeholder="e.g. swsh4-19"
+                    <label for="grail-card-id" class="label">Catalog card ID</label>
+                    <input id="grail-card-id" x-ref="grailCardId" type="search" name="card_id" required placeholder="Search or paste an ID, e.g. swsh4-19"
                         class="input">
+                    <p class="mt-1.5 text-xs text-zinc-500">Use the ID shown after scanning or in the card catalog.</p>
                 </div>
 
                 <div>
@@ -161,7 +165,7 @@ of the user's currency preference. -->
 
                 <button type="submit" class="btn-primary w-full min-h-12 text-base">
                     <span class="material-symbols-outlined text-[20px]">target</span>
-                    Add to wantlist
+                    Start tracking
                 </button>
             </form>
         </div>

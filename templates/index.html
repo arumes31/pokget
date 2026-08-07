@@ -7,7 +7,7 @@
     <title>Pokget — Your TCG Collection</title>
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Manrope:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
         rel="stylesheet" />
     <script src="/static/js/scanner.js?v={{ .BuildVersion }}" defer></script>
     <script src="/static/js/alpine.min.js?v=3" defer></script>
@@ -18,7 +18,7 @@
     <link rel="manifest" href="/static/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#7c3aed">
+    <meta name="theme-color" content="#6d28d9">
     <meta name="csrf-token" content="{{ .CSRFToken }}">
     <script>
         if ('serviceWorker' in navigator) {
@@ -30,8 +30,9 @@
     </script>
 </head>
 
-<body class="bg-zinc-100 text-zinc-900 min-h-dvh overflow-x-hidden" x-data="{
+<body class="min-h-dvh overflow-x-hidden" :class="{ 'scanner-active': activeTab === 'scan' }" x-data="{
           activeTab: '{{ .InitialView }}',
+          moreOpen: false,
           showEditModal: false,
           editItemId: '',
           editNotes: '',
@@ -45,18 +46,18 @@
           showPwaPrompt: false,
           isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream,
           isPwaInstalled: window.matchMedia('(display-mode: standalone)').matches
-      }" @beforeinstallprompt.window="deferredPrompt = $event; showPwaPrompt = !isPwaInstalled"
+      }" @beforeinstallprompt.window="$event.preventDefault(); deferredPrompt = $event"
     hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'
     @open-edit-modal.window="showEditModal = true; editItemId = $event.detail.id; editNotes = $event.detail.notes; editCustomPrice = $event.detail.price; editGrade = $event.detail.grade; editIsPublic = $event.detail.isPublic; editBinderId = $event.detail.binderId; editError = ''; editTrigger = $event.detail.trigger; $nextTick(() => $refs.editPrice.focus())"
-    @pokget-view-change.window="activeTab = $event.detail.view">
+    @pokget-view-change.window="activeTab = $event.detail.view; moreOpen = false">
 
     <!-- Top app bar -->
-    <header class="fixed top-0 w-full z-50 bg-white/85 backdrop-blur-xl border-b border-zinc-200"
+    <header class="app-header"
         style="padding-top: env(safe-area-inset-top)">
-        <div class="flex justify-between items-center px-4 h-16 w-full max-w-6xl mx-auto">
-            <div class="flex items-center gap-2.5">
-                <img src="/static/img/logo.png" alt="" class="w-8 h-8">
-                <h1 class="text-lg font-extrabold tracking-tight text-zinc-900">Pokget</h1>
+        <div class="flex h-16 w-full max-w-6xl items-center justify-between px-4 mx-auto sm:px-6">
+            <div class="flex min-w-0 items-center gap-2.5">
+                <img src="/static/img/logo.png" alt="" class="size-8 object-contain" width="32" height="32">
+                <h1 class="font-display text-xl font-extrabold tracking-[-0.035em] text-zinc-950">Pokget</h1>
             </div>
             <div class="flex items-center gap-3">
                 {{ if .UserRank }}
@@ -71,7 +72,7 @@
                 <div class="relative" x-data="{ open: false }">
                     <button type="button" @click="open = !open" @keydown.escape="open = false"
                         :aria-expanded="open.toString()" aria-haspopup="menu" aria-label="Open account menu"
-                        class="w-11 h-11 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center active:bg-violet-200 transition-colors cursor-pointer">
+                    class="flex size-11 min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-2xl border border-violet-200 bg-violet-100 text-violet-800 transition-colors hover:bg-violet-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
                         <span class="material-symbols-outlined">account_circle</span>
                     </button>
 
@@ -110,8 +111,7 @@
         </div>
     </header>
 
-    <main id="main-content" class="pt-20 pb-28 px-4 w-full max-w-6xl mx-auto"
-        style="padding-top: calc(5rem + env(safe-area-inset-top))"
+    <main id="main-content" class="app-main"
         hx-get="{{ .InitialPath }}" hx-trigger="load" hx-sync="this:replace">
         <!-- Content will be loaded here via HTMX -->
         <!-- Skeleton Content: Shown during initial load -->
@@ -134,52 +134,61 @@
     </main>
 
     <!-- Bottom tab bar -->
-    <nav hx-sync="#main-content:replace"
-        class="fixed bottom-0 w-full z-50 bg-white/95 backdrop-blur-xl border-t border-zinc-200"
-        style="padding-bottom: env(safe-area-inset-bottom)" aria-label="Primary">
-        <div class="flex justify-around items-stretch w-full max-w-2xl mx-auto">
-            <!-- Home -->
-            <button @click="activeTab = 'home'" hx-get="/dashboard" hx-target="#main-content" hx-push-url="/?view=home"
-                class="flex flex-col items-center justify-center gap-0.5 flex-1 min-w-[44px] min-h-[56px] py-1.5 transition-colors"
-                :class="activeTab === 'home' ? 'text-violet-700' : 'text-zinc-500 hover:text-zinc-700'">
-                <span class="material-symbols-outlined" :class="activeTab === 'home' && 'fill-icon'">home</span>
-                <span class="text-[10px] font-semibold">Vault</span>
+    <nav hx-sync="#main-content:replace" class="app-bottom-nav" aria-label="Primary">
+        <div class="relative mx-auto flex w-full max-w-lg items-stretch gap-0.5 px-2">
+            <button data-nav-item @click="activeTab = 'home'; moreOpen = false" hx-get="/dashboard" hx-target="#main-content" hx-push-url="/?view=home"
+                class="nav-item min-h-11 min-w-11" :class="activeTab === 'home' && 'nav-item-active'"
+                :aria-current="activeTab === 'home' ? 'page' : null">
+                <span class="material-symbols-outlined nav-icon" :class="activeTab === 'home' && 'fill-icon'">home</span>
+                <span class="nav-label">Vault</span>
             </button>
-            <!-- Wantlist -->
-            <button @click="activeTab = 'wantlist'" hx-get="/wantlist" hx-target="#main-content" hx-push-url="/?view=wantlist"
-                class="flex flex-col items-center justify-center gap-0.5 flex-1 min-w-[44px] min-h-[56px] py-1.5 transition-colors"
-                :class="activeTab === 'wantlist' ? 'text-violet-700' : 'text-zinc-500 hover:text-zinc-700'">
-                <span class="material-symbols-outlined" :class="activeTab === 'wantlist' && 'fill-icon'">favorite</span>
-                <span class="text-[10px] font-semibold">Grails</span>
+            <button data-nav-item @click="activeTab = 'wantlist'; moreOpen = false" hx-get="/wantlist" hx-target="#main-content" hx-push-url="/?view=wantlist"
+                class="nav-item min-h-11 min-w-11" :class="activeTab === 'wantlist' && 'nav-item-active'"
+                :aria-current="activeTab === 'wantlist' ? 'page' : null">
+                <span class="material-symbols-outlined nav-icon" :class="activeTab === 'wantlist' && 'fill-icon'">favorite</span>
+                <span class="nav-label">Grails</span>
             </button>
-            <!-- Binders -->
-            <button @click="activeTab = 'binders'" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
-                class="flex flex-col items-center justify-center gap-0.5 flex-1 min-w-[44px] min-h-[56px] py-1.5 transition-colors"
-                :class="activeTab === 'binders' ? 'text-violet-700' : 'text-zinc-500 hover:text-zinc-700'">
-                <span class="material-symbols-outlined" :class="activeTab === 'binders' && 'fill-icon'">style</span>
-                <span class="text-[10px] font-semibold">Binders</span>
+            <button data-nav-item @click="activeTab = 'scan'; moreOpen = false" hx-get="/centering" hx-target="#main-content" hx-push-url="/?view=scan"
+                class="nav-item min-h-11 min-w-11" :class="activeTab === 'scan' && 'nav-item-active'"
+                :aria-current="activeTab === 'scan' ? 'page' : null">
+                <span class="material-symbols-outlined nav-icon rounded-xl bg-violet-700 px-2 py-1 text-white shadow-md shadow-violet-900/20">center_focus_strong</span>
+                <span class="nav-label">Scan</span>
             </button>
-            <!-- Scan -->
-            <button @click="activeTab = 'scan'" hx-get="/centering" hx-target="#main-content" hx-push-url="/?view=scan"
-                class="flex flex-col items-center justify-center gap-0.5 flex-1 min-w-[44px] min-h-[56px] py-1.5 transition-colors"
-                :class="activeTab === 'scan' ? 'text-violet-700' : 'text-zinc-500 hover:text-zinc-700'">
-                <span class="material-symbols-outlined" :class="activeTab === 'scan' && 'fill-icon'">qr_code_scanner</span>
-                <span class="text-[10px] font-semibold">Scan</span>
+            <button data-nav-item @click="activeTab = 'binders'; moreOpen = false" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
+                class="nav-item min-h-11 min-w-11" :class="activeTab === 'binders' && 'nav-item-active'"
+                :aria-current="activeTab === 'binders' ? 'page' : null">
+                <span class="material-symbols-outlined nav-icon" :class="activeTab === 'binders' && 'fill-icon'">style</span>
+                <span class="nav-label">Binders</span>
             </button>
-            <!-- Errors -->
-            <button @click="activeTab = 'errors'" hx-get="/errors" hx-target="#main-content" hx-push-url="/?view=errors"
-                class="flex flex-col items-center justify-center gap-0.5 flex-1 min-w-[44px] min-h-[56px] py-1.5 transition-colors"
-                :class="activeTab === 'errors' ? 'text-violet-700' : 'text-zinc-500 hover:text-zinc-700'">
-                <span class="material-symbols-outlined" :class="activeTab === 'errors' && 'fill-icon'">warning</span>
-                <span class="text-[10px] font-semibold">Misprints</span>
+            <button data-nav-item type="button" @click="moreOpen = !moreOpen"
+                class="nav-item min-h-11 min-w-11" :class="(activeTab === 'errors' || activeTab === 'trade' || moreOpen) && 'nav-item-active'"
+                :aria-expanded="moreOpen.toString()" aria-controls="more-navigation">
+                <span class="material-symbols-outlined nav-icon">more_horiz</span>
+                <span class="nav-label">More</span>
             </button>
-            <!-- Trade -->
-            <button @click="activeTab = 'trade'" hx-get="/trade" hx-target="#main-content" hx-push-url="/?view=trade"
-                class="flex flex-col items-center justify-center gap-0.5 flex-1 min-w-[44px] min-h-[56px] py-1.5 transition-colors"
-                :class="activeTab === 'trade' ? 'text-violet-700' : 'text-zinc-500 hover:text-zinc-700'">
-                <span class="material-symbols-outlined" :class="activeTab === 'trade' && 'fill-icon'">swap_horiz</span>
-                <span class="text-[10px] font-semibold">Trade</span>
-            </button>
+
+            <div id="more-navigation" data-testid="more-navigation" x-show="moreOpen" x-cloak
+                @click.outside="moreOpen = false" @keydown.escape.window="moreOpen = false"
+                x-transition.origin.bottom.right
+                class="card absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-3 z-[70] w-56 overflow-hidden p-2 shadow-xl"
+                role="menu" aria-label="More destinations">
+                <button role="menuitem" @click="activeTab = 'errors'; moreOpen = false" hx-get="/errors" hx-target="#main-content" hx-push-url="/?view=errors"
+                    class="btn-ghost w-full justify-start">
+                    <span class="material-symbols-outlined">warning</span><span>Misprints</span>
+                </button>
+                <button role="menuitem" @click="activeTab = 'trade'; moreOpen = false" hx-get="/trade" hx-target="#main-content" hx-push-url="/?view=trade"
+                    class="btn-ghost w-full justify-start">
+                    <span class="material-symbols-outlined">swap_horiz</span><span>Trade analyzer</span>
+                </button>
+                <button role="menuitem" @click="activeTab = 'settings'; moreOpen = false" hx-get="/settings" hx-target="#main-content" hx-push-url="/?view=settings"
+                    class="btn-ghost w-full justify-start">
+                    <span class="material-symbols-outlined">settings</span><span>Settings</span>
+                </button>
+                <button role="menuitem" x-show="deferredPrompt || (isIOS && !isPwaInstalled)" @click="moreOpen = false; showPwaPrompt = true"
+                    class="btn-ghost w-full justify-start">
+                    <span class="material-symbols-outlined">install_mobile</span><span>Install app</span>
+                </button>
+            </div>
         </div>
     </nav>
 

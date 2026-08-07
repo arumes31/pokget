@@ -39,6 +39,87 @@ type progressLayout struct {
 	ScrollLocked   bool    `json:"scrollLocked"`
 }
 
+type scannerWorkspaceLayout struct {
+	ViewportWidth  float64 `json:"viewportWidth"`
+	ViewportHeight float64 `json:"viewportHeight"`
+	ScrollWidth    float64 `json:"scrollWidth"`
+	ToolbarLeft    float64 `json:"toolbarLeft"`
+	ToolbarRight   float64 `json:"toolbarRight"`
+	ToolbarTop     float64 `json:"toolbarTop"`
+	FrameBottom    float64 `json:"frameBottom"`
+	ControlsTop    float64 `json:"controlsTop"`
+	ControlsBottom float64 `json:"controlsBottom"`
+	PrivacyVisible bool    `json:"privacyVisible"`
+}
+
+func TestMobileScannerSeparatesCameraAndControls(t *testing.T) {
+	chromePath := mobileTestChromePath()
+	if chromePath == "" {
+		t.Skip("Chrome or Edge is not installed; skipping rendered scanner workspace check")
+	}
+
+	server := newScannerProgressServer(t)
+	defer server.Close()
+	browserContext := newHeadlessBrowserContext(t, chromePath)
+	tabContext, cancelTab := chromedp.NewContext(browserContext)
+	defer cancelTab()
+	ctx, cancel := context.WithTimeout(tabContext, 30*time.Second)
+	defer cancel()
+
+	var layout scannerWorkspaceLayout
+	var screenshot []byte
+	actions := []chromedp.Action{
+		chromedp.EmulateViewport(390, 844),
+		chromedp.Navigate(server.URL),
+		chromedp.WaitVisible(`[data-testid="scanner-controls"]`, chromedp.ByQuery),
+		chromedp.Evaluate(`(() => {
+			const toolbar = document.querySelector('[data-testid="scanner-toolbar"]').getBoundingClientRect();
+			const frame = document.querySelector('[data-testid="scanner-frame"]').getBoundingClientRect();
+			const controls = document.querySelector('[data-testid="scanner-controls"]').getBoundingClientRect();
+			const privacy = document.querySelector('[data-testid="scanner-privacy-note"]');
+			return {
+				viewportWidth: innerWidth,
+				viewportHeight: innerHeight,
+				scrollWidth: document.documentElement.scrollWidth,
+				toolbarLeft: toolbar.left,
+				toolbarRight: toolbar.right,
+				toolbarTop: toolbar.top,
+				frameBottom: frame.bottom,
+				controlsTop: controls.top,
+				controlsBottom: controls.bottom,
+				privacyVisible: getComputedStyle(privacy).display !== 'none'
+			};
+		})()`, &layout),
+	}
+	if screenshotDir := os.Getenv("POKGET_MOBILE_SCREENSHOT_DIR"); screenshotDir != "" {
+		if err := os.MkdirAll(screenshotDir, 0o750); err != nil {
+			t.Fatalf("create screenshot directory: %v", err)
+		}
+		actions = append(actions, chromedp.CaptureScreenshot(&screenshot))
+		defer func() {
+			if err := os.WriteFile(filepath.Join(screenshotDir, "scanner-workspace.png"), screenshot, 0o600); err != nil {
+				t.Errorf("write scanner workspace screenshot: %v", err)
+			}
+		}()
+	}
+	if err := chromedp.Run(ctx, actions...); err != nil {
+		t.Fatalf("inspect rendered scanner workspace: %v", err)
+	}
+
+	if layout.ScrollWidth > layout.ViewportWidth+1 {
+		t.Errorf("scanner overflows horizontally: %+v", layout)
+	}
+	if layout.ToolbarLeft < 0 || layout.ToolbarRight > layout.ViewportWidth || layout.ToolbarTop < 0 {
+		t.Errorf("scanner toolbar is outside viewport: %+v", layout)
+	}
+	if difference(layout.FrameBottom, layout.ControlsTop) > 1 {
+		t.Errorf("camera and controls overlap or leave a gap: %+v", layout)
+	}
+	if difference(layout.ControlsBottom, layout.ViewportHeight) > 1 || !layout.PrivacyVisible {
+		t.Errorf("scanner controls or privacy note are misplaced: %+v", layout)
+	}
+}
+
 func TestMobileScanProgressOccupiesViewportAndCancels(t *testing.T) {
 	chromePath := mobileTestChromePath()
 	if chromePath == "" {

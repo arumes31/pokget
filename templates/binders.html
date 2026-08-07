@@ -1,57 +1,70 @@
-<div class="space-y-6" x-data="{ showNewBinderModal: false, createError: '' }">
+<div class="app-page" x-data="{
+    showNewBinderModal: false,
+    createError: '',
+    sortBinders(mode) {
+        const cards = [...this.$refs.binderGrid.querySelectorAll('[data-binder-card]')];
+        cards.sort((a, b) => mode === 'count'
+            ? Number(b.dataset.count) - Number(a.dataset.count)
+            : a.dataset.name.localeCompare(b.dataset.name));
+        cards.forEach(card => this.$refs.binderGrid.appendChild(card));
+    }
+}">
     <!-- Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div class="page-header">
         <div>
-            <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-900">The Library</h2>
-            <p class="text-sm text-zinc-500 mt-1 max-w-md">Organize your assets into themed binders. Track completion, set master sets, and manage your hoard with precision.</p>
+            <p class="page-eyebrow">Organization</p>
+            <h2 class="page-title">Binders</h2>
+            <p class="page-description">Group your cards by set, collection, deck, or any system that works for you.</p>
         </div>
+        {{ if .Binders }}
         <button type="button" x-ref="newBinderTrigger" @click="createError = ''; showNewBinderModal = true; $nextTick(() => $refs.binderName.focus())"
-                class="btn-primary w-full sm:w-auto min-h-12 text-base">
+                class="btn-primary w-full sm:w-auto">
             <span class="material-symbols-outlined text-[20px]">book</span>
             New binder
         </button>
+        {{ end }}
     </div>
 
     <!-- Binders Grid -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    {{ if .Binders }}
+    <div class="flex items-center justify-between gap-3">
+        <p class="text-sm font-semibold text-zinc-600">{{ len .Binders }} binder{{ if ne (len .Binders) 1 }}s{{ end }}</p>
+        <label class="flex items-center gap-2 text-xs font-bold text-zinc-600">Sort
+            <select class="form-control min-h-11 w-auto py-0 pr-9" @change="sortBinders($event.target.value)" aria-label="Sort binders">
+                <option value="name">Name</option><option value="count">Most cards</option>
+            </select>
+        </label>
+    </div>
+    {{ end }}
+    <div x-ref="binderGrid" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {{ range .Binders }}
         <button type="button" hx-get="/binders/{{ .ID }}" hx-target="#main-content"
              hx-push-url="/?view=binders&amp;binder={{ .ID }}"
-             class="card group relative min-h-11 p-5 hover:border-violet-300 hover:shadow-md transition-all cursor-pointer overflow-hidden flex flex-col text-left w-full">
+             data-binder-card data-name="{{ .Name }}" data-count="{{ .CardCount }}"
+             class="card group flex min-h-28 w-full items-center gap-4 overflow-hidden p-4 text-left transition hover:border-violet-300 hover:shadow-md active:scale-[0.99]">
 
             <!-- Binder Icon/Art -->
-            <div class="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center text-violet-700 group-hover:scale-105 transition-transform">
+            <div class="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 transition-transform group-hover:scale-105">
                 <span class="material-symbols-outlined text-2xl">auto_stories</span>
             </div>
-            <div class="mt-4 flex-1">
-                <h3 class="text-base font-bold text-zinc-900 tracking-tight group-hover:text-violet-700 transition-colors">{{ .Name }}</h3>
-                <p class="text-xs text-zinc-500 mt-1 line-clamp-2">{{ .Description }}</p>
+            <div class="min-w-0 flex-1">
+                <h3 class="truncate text-base font-bold text-zinc-950 transition-colors group-hover:text-violet-800">{{ .Name }}</h3>
+                <p class="mt-1 line-clamp-2 text-xs leading-5 text-zinc-600">{{ if .Description }}{{ .Description }}{{ else }}No description yet{{ end }}</p>
+                <span class="status-badge mt-2 border-stone-200 bg-stone-50 text-zinc-700">{{ .CardCount }} card{{ if ne .CardCount 1 }}s{{ end }}</span>
             </div>
-
-            <!-- Stats -->
-            <div class="pt-4 mt-4 border-t border-zinc-100">
-                <div class="flex justify-between items-center">
-                    <div class="flex flex-col">
-                        <span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Stored Assets</span>
-                        <span class="text-xl font-extrabold text-zinc-900">{{ .CardCount }}</span>
-                    </div>
-                    <div class="w-9 h-9 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-500 group-hover:bg-violet-600 group-hover:text-white transition-colors">
-                        <span class="material-symbols-outlined text-lg">arrow_forward</span>
-                    </div>
-                </div>
-            </div>
+            <span class="material-symbols-outlined flex size-11 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-zinc-600 transition group-hover:bg-violet-700 group-hover:text-white">arrow_forward</span>
         </button>
         {{ else }}
-        <div class="col-span-full py-12 sm:py-16 flex items-center justify-center">
-            <div class="card border-dashed p-6 sm:p-8 flex flex-col items-center text-center max-w-sm w-full">
-                <div class="w-16 h-16 bg-violet-100 rounded-full flex items-center justify-center mb-4">
+        <div class="col-span-full py-6 sm:py-12">
+            <div class="empty-state">
+                <div class="empty-state-icon">
                     <span class="material-symbols-outlined text-3xl text-violet-700">inventory_2</span>
                 </div>
-                <h3 class="text-lg font-bold text-zinc-900">Empty Archives</h3>
-                <p class="text-sm text-zinc-500 mt-2">Your library is currently empty. Organize your collection into binders to track sets and rarities.</p>
+                <h3 class="font-display text-xl font-bold text-zinc-950">Create your first binder</h3>
+                <p class="mt-2 max-w-sm text-sm leading-6 text-zinc-600">Keep a set, deck, or personal collection together and see its card count at a glance.</p>
                 <button type="button" @click="createError = ''; showNewBinderModal = true; $nextTick(() => $refs.binderName.focus())"
-                        class="btn-primary w-full sm:w-auto mt-6 min-h-12">
-                    Establish first binder
+                        class="btn-primary mt-6 w-full sm:w-auto">
+                    <span class="material-symbols-outlined">bookmark_add</span>Create first binder
                 </button>
             </div>
         </div>
@@ -69,7 +82,7 @@
          <div class="card w-full sm:max-w-md rounded-b-none sm:rounded-b-2xl p-5 sm:p-6 space-y-4 max-h-[90dvh] overflow-y-auto"
               style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))" @click.away="showNewBinderModal = false">
             <div class="flex justify-between items-center">
-                 <h3 id="new-binder-title" class="text-xl font-bold text-zinc-900">New Archive</h3>
+                 <div><p class="page-eyebrow">Organization</p><h3 id="new-binder-title" class="font-display text-xl font-bold text-zinc-950">New binder</h3></div>
                  <button type="button" aria-label="Close new binder dialog" @click="showNewBinderModal = false; $nextTick(() => $refs.newBinderTrigger?.focus())" class="btn-ghost min-h-11 px-2.5 -mr-2 -mt-1">
                     <span class="material-symbols-outlined">close</span>
                 </button>
@@ -84,20 +97,20 @@
                     class="rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700"></p>
 
                 <div>
-                    <label for="new-binder-name" class="label">Binder designation</label>
-                    <input id="new-binder-name" x-ref="binderName" type="text" name="name" required placeholder="e.g. Master Set: base-1"
+                    <label for="new-binder-name" class="label">Binder name</label>
+                    <input id="new-binder-name" x-ref="binderName" type="text" name="name" required maxlength="80" placeholder="e.g. Base Set master set"
                            class="input">
                 </div>
 
                 <div>
-                    <label for="new-binder-description" class="label">Manifest description</label>
-                    <textarea id="new-binder-description" name="description" placeholder="Notes about this binder's purpose..." rows="3"
+                    <label for="new-binder-description" class="label">Description <span class="normal-case tracking-normal text-zinc-400">(optional)</span></label>
+                    <textarea id="new-binder-description" name="description" maxlength="240" placeholder="What belongs in this binder?" rows="3"
                               class="input min-h-24 py-2.5"></textarea>
                 </div>
 
                 <button type="submit" class="btn-primary w-full min-h-12 text-base">
                     <span class="material-symbols-outlined text-[20px]">bookmark_add</span>
-                    Create archive
+                    Create binder
                 </button>
             </form>
         </div>

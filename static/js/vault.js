@@ -83,13 +83,22 @@ function currentFragmentPath() {
 }
 
 // Improvement #8: Rolling Number Animation
-function animateValue(obj, start, end, duration, prefix = '', suffix = '') {
+function animateValue(obj, start, end, duration, prefix = '', suffix = '', decimals = 0) {
 	let startTimestamp = null;
 	const step = (timestamp) => {
 		if (!startTimestamp) startTimestamp = timestamp;
 		const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-		const value = Math.floor(progress * (end - start) + start);
-		obj.textContent = prefix + value.toLocaleString() + suffix;
+		const value = decimals === 0
+			? Math.floor(progress * (end - start) + start)
+			: progress * (end - start) + start;
+		if (decimals === 0) {
+			obj.textContent = prefix + value.toLocaleString() + suffix;
+		} else {
+			obj.textContent = prefix + value.toLocaleString(undefined, {
+				minimumFractionDigits: decimals,
+				maximumFractionDigits: decimals
+			}) + suffix;
+		}
 		if (progress < 1) {
 			window.requestAnimationFrame(step);
 		}
@@ -108,7 +117,8 @@ function initRollingNumbers() {
 		const target = parseFloat(counter.getAttribute('data-target'));
 		const prefix = counter.getAttribute('data-prefix') || '';
 		const suffix = counter.getAttribute('data-suffix') || '';
-		animateValue(counter, 0, target, 2000, prefix, suffix);
+		const decimals = Number.parseInt(counter.getAttribute('data-decimals') || '0', 10);
+		animateValue(counter, 0, target, 900, prefix, suffix, decimals);
 	});
 }
 

@@ -342,6 +342,8 @@
       cameras: [],
       currentCamera: '',
       activeStream: null,
+      torchAvailable: false,
+      torchOn: false,
       abortController: null,
       operationID: 0,
       requestID: 0,
@@ -406,6 +408,8 @@
         this.setScanning(false);
         stopStream(this.activeStream);
         this.activeStream = null;
+        this.torchAvailable = false;
+        this.torchOn = false;
         if (this.previewURL) URL.revokeObjectURL(this.previewURL);
         if (this.deviceChangeHandler
           && typeof navigator.mediaDevices?.removeEventListener === 'function') {
@@ -526,6 +530,8 @@
 
         stopStream(this.activeStream);
         this.activeStream = null;
+        this.torchAvailable = false;
+        this.torchOn = false;
 
         try {
           let stream;
@@ -543,7 +549,13 @@
           this.activeStream = stream;
           this.$refs.video.srcObject = stream;
           await this.$refs.video.play().catch(() => {});
-          const actualCamera = stream.getVideoTracks()[0]?.getSettings?.().deviceId || '';
+          const track = stream.getVideoTracks()[0];
+          const actualCamera = track?.getSettings?.().deviceId || '';
+          try {
+            this.torchAvailable = Boolean(track?.getCapabilities?.().torch);
+          } catch (_) {
+            this.torchAvailable = false;
+          }
           if (actualCamera) {
             this.currentCamera = actualCamera;
             storageSet(STORAGE_KEYS.camera, actualCamera);
@@ -564,6 +576,21 @@
       async switchCamera() {
         storageSet(STORAGE_KEYS.camera, this.currentCamera);
         await this.startCamera();
+      },
+
+      async toggleTorch() {
+        const track = this.activeStream?.getVideoTracks?.()[0];
+        if (!track || !this.torchAvailable) return;
+        const next = !this.torchOn;
+        try {
+          await track.applyConstraints({ advanced: [{ torch: next }] });
+          this.torchOn = next;
+        } catch (error) {
+          console.warn('Flashlight unavailable', error);
+          this.torchAvailable = false;
+          this.torchOn = false;
+          this.notify('This camera cannot control the flashlight.', 'info');
+        }
       },
 
       startGuideDrag(edge, event) {

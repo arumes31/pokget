@@ -1,24 +1,41 @@
-<div class="w-full max-w-lg mx-auto space-y-6"
+<div class="app-page max-w-3xl"
     x-data="{
         myOffer: 0,
         myCard: '',
         myPortfolioId: '',
-        theirOffer: 0,
+        myImage: '',
+        theirOffer: null,
         theirCards: '',
-        downloadLog() {
-            const difference = Number(this.theirOffer || 0) - Number(this.myOffer || 0);
-            const text = [
-                'Pokget Trade Log',
+        copied: false,
+        get difference() { return Number(this.theirOffer || 0) - Number(this.myOffer || 0) },
+        get ready() { return Boolean(this.myPortfolioId) && Number(this.myOffer) > 0 && Number(this.theirOffer) > 0 },
+        summary() {
+            return [
+                'Pokget Trade Summary',
                 'Generated: ' + new Date().toISOString(),
-                'My card: ' + this.myCard,
+                'You give: ' + this.myCard,
                 'Portfolio item: ' + this.myPortfolioId,
-                'My offer: {{ .CurrencySymbol }}' + Number(this.myOffer || 0).toFixed(2),
-                'Their offer: {{ .CurrencySymbol }}' + Number(this.theirOffer || 0).toFixed(2),
-                'Difference: {{ .CurrencySymbol }}' + difference.toFixed(2),
-                'Their cards / notes: ' + (this.theirCards || 'Not specified'),
-                'This log is downloaded locally and is not stored by Pokget.'
+                'Your value: {{ .CurrencySymbol }}' + Number(this.myOffer || 0).toFixed(2),
+                'You receive: ' + (this.theirCards || 'Not specified'),
+                'Their value: {{ .CurrencySymbol }}' + Number(this.theirOffer || 0).toFixed(2),
+                'Difference: {{ .CurrencySymbol }}' + this.difference.toFixed(2),
+                'This private summary is generated locally and is not stored by Pokget.'
             ].join('\n');
-            const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+        },
+        async copySummary() {
+            if (!this.ready) return;
+            try {
+                await navigator.clipboard.writeText(this.summary());
+                this.copied = true;
+                setTimeout(() => this.copied = false, 1800);
+                $dispatch('notify', { msg: 'Trade summary copied', type: 'success' });
+            } catch (_) {
+                $dispatch('notify', { msg: 'Could not copy summary', type: 'error' });
+            }
+        },
+        downloadLog() {
+            if (!this.ready) return;
+            const url = URL.createObjectURL(new Blob([this.summary()], { type: 'text/plain' }));
             const link = document.createElement('a');
             link.href = url;
             link.download = 'pokget-trade-' + new Date().toISOString().slice(0, 10) + '.txt';
@@ -27,49 +44,76 @@
             $dispatch('notify', { msg: 'Trade log downloaded', type: 'success' });
         }
     }">
-    <div>
-        <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-900">Trade Analyzer</h2>
-        <p class="mt-1 text-sm text-zinc-500">Compare current market values and download a private, non-persisted trade log.</p>
-    </div>
-
-    <div class="card space-y-3 p-5">
-        <label for="my-trade-card" class="label !mb-0 text-emerald-700">My card</label>
-        <select id="my-trade-card" x-model="myPortfolioId"
-            @change="myOffer = Number($event.target.selectedOptions[0].dataset.price || 0); myCard = $event.target.selectedOptions[0].dataset.label || ''"
-            class="input">
-            <option value="" data-price="0" data-label="">Select from your collection</option>
-            {{ range .Portfolio }}
-            <option value="{{ .ID }}"
-                data-price="{{ if eq $.UserCurrency "EUR" }}{{ .Card.PriceEUR }}{{ else }}{{ .Card.PriceUSD }}{{ end }}"
-                data-label="{{ .Card.Name }} — {{ .Card.Set }} ({{ .Condition }})">
-                {{ .Card.Name }} — {{ .Card.Set }} ({{ .Condition }})
-            </option>
-            {{ end }}
-        </select>
-        <p class="text-right text-xl font-bold text-emerald-600" x-text="'{{ .CurrencySymbol }}' + Number(myOffer).toFixed(2)"></p>
-    </div>
-
-    <div class="card space-y-3 p-5">
+    <div class="page-header">
         <div>
-            <label for="their-offer" class="label">Their offer value</label>
-            <input id="their-offer" type="number" min="0" step="0.01" x-model.number="theirOffer"
-                class="input">
+            <p class="page-eyebrow">Private calculator</p>
+            <h2 class="page-title">Trade analyzer</h2>
+            <p class="page-description">Compare both sides at current market value. Nothing you enter here is saved.</p>
         </div>
-        <div>
-            <label for="their-cards" class="label">Cards / notes</label>
-            <textarea id="their-cards" rows="3" x-model="theirCards" placeholder="Card names, conditions, or deal notes"
-                class="input min-h-24 py-2.5"></textarea>
-        </div>
+        <span class="status-badge self-start border-emerald-200 bg-emerald-50 text-emerald-800"><span class="material-symbols-outlined text-base">lock</span>Local only</span>
     </div>
 
-    <div class="card p-5" role="region" aria-labelledby="trade-verdict-title">
-        <h3 id="trade-verdict-title" class="text-base font-bold text-zinc-900">Trade Verdict</h3>
-        <p class="mt-2 text-sm text-zinc-700"
-            x-text="Number(theirOffer) === Number(myOffer) ? 'Even market value' : (Number(theirOffer) > Number(myOffer) ? 'In your favor by ' : 'Against you by ') + '{{ .CurrencySymbol }}' + Math.abs(Number(theirOffer) - Number(myOffer)).toFixed(2)"></p>
-        <button type="button" @click="downloadLog()" :disabled="!myPortfolioId || Number(myOffer) <= 0 || Number(theirOffer) <= 0"
-            class="btn-primary w-full min-h-12 mt-4">
-            <span class="material-symbols-outlined text-[20px]">download</span>
-            Download trade log
-        </button>
+    <div class="grid gap-4 md:grid-cols-2">
+        <section class="card p-5" aria-labelledby="you-give-title">
+            <div class="mb-4 flex items-center gap-3">
+                <span class="flex size-10 items-center justify-center rounded-xl bg-rose-100 text-rose-700"><span class="material-symbols-outlined">north_east</span></span>
+                <div><p class="page-eyebrow mb-0">Side one</p><h3 id="you-give-title" class="font-display text-xl font-bold">You give</h3></div>
+            </div>
+            <label for="my-trade-card" class="field-label">Card from your vault</label>
+            <select id="my-trade-card" x-model="myPortfolioId"
+                @change="const option = $event.target.selectedOptions[0]; myOffer = Number(option.dataset.price || 0); myCard = option.dataset.label || ''; myImage = option.dataset.image || ''"
+                class="form-control">
+                <option value="" data-price="0" data-label="" data-image="">Select a card</option>
+                {{ range .Portfolio }}
+                <option value="{{ .ID }}" data-price="{{ if eq $.UserCurrency "EUR" }}{{ .Card.PriceEUR }}{{ else }}{{ .Card.PriceUSD }}{{ end }}"
+                    data-label="{{ .Card.Name }} — {{ .Card.Set }} ({{ .Condition }})" data-image="{{ .Card.ImageURL }}">{{ .Card.Name }} — {{ .Card.Set }}</option>
+                {{ end }}
+            </select>
+            <div class="mt-4 flex min-h-20 items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
+                <template x-if="myImage"><img :src="myImage" :alt="myCard" class="h-16 w-12 rounded-md object-cover"></template>
+                <div class="min-w-0 flex-1">
+                    <p class="truncate text-sm font-semibold" x-text="myCard || 'No card selected'"></p>
+                    <p class="mt-1 font-display text-2xl font-extrabold text-rose-700" x-text="'{{ .CurrencySymbol }}' + Number(myOffer).toFixed(2)"></p>
+                </div>
+            </div>
+        </section>
+
+        <section class="card p-5" aria-labelledby="you-receive-title">
+            <div class="mb-4 flex items-center gap-3">
+                <span class="flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><span class="material-symbols-outlined">south_west</span></span>
+                <div><p class="page-eyebrow mb-0">Side two</p><h3 id="you-receive-title" class="font-display text-xl font-bold">You receive</h3></div>
+            </div>
+            <label for="their-offer" class="field-label">Estimated market value</label>
+            <div class="relative">
+                <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-emerald-700">{{ .CurrencySymbol }}</span>
+                <input id="their-offer" type="number" min="0" step="0.01" inputmode="decimal" x-model.number="theirOffer" placeholder="0.00" class="form-control pl-9">
+            </div>
+            <label for="their-cards" class="field-label mt-4">Cards and notes</label>
+            <textarea id="their-cards" rows="3" maxlength="400" x-model="theirCards" placeholder="Card names, conditions, cash, or deal notes" class="form-control min-h-28 py-3"></textarea>
+            <p class="mt-1 text-right text-xs text-zinc-500"><span x-text="theirCards.length"></span>/400</p>
+        </section>
     </div>
+
+    <section class="card overflow-hidden" role="region" aria-labelledby="trade-verdict-title" data-testid="trade-verdict">
+        <div class="p-5 sm:p-6">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div><p class="page-eyebrow">Market comparison</p><h3 id="trade-verdict-title" class="section-title">Trade verdict</h3></div>
+                <span class="status-badge" :class="!ready ? 'border-stone-200 bg-stone-100 text-zinc-600' : Math.abs(difference) < 0.01 ? 'border-sky-200 bg-sky-50 text-sky-800' : difference > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'"
+                    x-text="!ready ? 'Waiting for values' : Math.abs(difference) < 0.01 ? 'Even value' : difference > 0 ? 'In your favor' : 'You give more'"></span>
+            </div>
+            <div class="mt-5 rounded-2xl bg-zinc-950 p-5 text-white">
+                <p class="text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">Net difference</p>
+                <p class="mt-1 font-display text-4xl font-extrabold tracking-[-0.04em]" :class="ready && difference > 0 ? 'text-emerald-300' : ready && difference < 0 ? 'text-amber-300' : 'text-white'"
+                    x-text="(difference > 0 ? '+' : difference < 0 ? '−' : '') + '{{ .CurrencySymbol }}' + Math.abs(difference).toFixed(2)"></p>
+                <p class="mt-2 text-sm text-zinc-300" x-text="!ready ? 'Complete both sides to see the comparison.' : Math.abs(difference) < 0.01 ? 'Both sides have the same current market value.' : difference > 0 ? 'The cards you receive are worth more at current market prices.' : 'The cards you give are worth more at current market prices.'"></p>
+            </div>
+        </div>
+        <div class="grid gap-2 border-t border-stone-200 bg-stone-50 p-4 sm:grid-cols-2">
+            <button type="button" @click="copySummary()" :disabled="!ready" class="btn-secondary w-full"><span class="material-symbols-outlined">content_copy</span><span x-text="copied ? 'Copied' : 'Copy summary'"></span></button>
+            <button type="button" @click="downloadLog()" :disabled="!ready" class="btn-primary w-full"><span class="material-symbols-outlined">download</span>Download trade log</button>
+            <p x-show="!ready" class="text-center text-xs text-zinc-500 sm:col-span-2">Complete both sides to export</p>
+        </div>
+    </section>
+
+    <p class="flex items-start gap-2 text-xs leading-5 text-zinc-500"><span class="material-symbols-outlined text-base">info</span>Market prices are estimates, not guarantees. Check condition, authenticity, and recent sales before trading.</p>
 </div>

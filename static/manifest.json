@@ -1,14 +1,14 @@
 {
   "name": "Pokget TCG Portfolio",
   "short_name": "Pokget",
-  "description": "Premium TCG Portfolio Tracker and Vault.",
+  "description": "Scan, organize, value, and trade your TCG collection.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
   "lang": "en",
   "display": "standalone",
-  "background_color": "#111111",
-  "theme_color": "#ddb7ff",
+  "background_color": "#f5f2eb",
+  "theme_color": "#6d28d9",
   "icons": [
     {
       "src": "/static/img/icon-192.png",

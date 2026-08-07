@@ -4,17 +4,41 @@
 @source "../../static/js";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Bricolage Grotesque", "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --color-paper: #f5f2eb;
+  --color-paper-deep: #ebe5da;
+  --color-ink: #17151d;
+  --color-muted-ink: #625d69;
+  --color-foil: #6d28d9;
 }
 
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
+    max-width: 100%;
+    overflow-x: clip;
+    scroll-padding-top: calc(4rem + env(safe-area-inset-top));
   }
 
   body {
-    @apply bg-zinc-100 text-zinc-900 font-sans antialiased;
+    @apply font-sans antialiased;
+    max-width: 100%;
+    overflow-x: clip;
     min-height: 100dvh;
+    color: var(--color-ink);
+    background:
+      radial-gradient(circle at 15% -10%, rgb(109 40 217 / 0.08), transparent 28rem),
+      var(--color-paper);
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  summary {
+    touch-action: manipulation;
   }
 
   [x-cloak] {
@@ -23,44 +47,135 @@
 }
 
 @utility btn {
-  @apply inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl
+  @apply inline-flex items-center justify-center gap-2 min-h-12 px-4 rounded-xl
     text-sm font-semibold select-none touch-manipulation cursor-pointer
-    transition-colors disabled:opacity-50 disabled:pointer-events-none
-    focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600;
+    transition-[color,background-color,border-color,box-shadow,transform] duration-150
+    disabled:bg-zinc-200 disabled:text-zinc-500 disabled:shadow-none disabled:cursor-not-allowed
+    focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700;
 }
 
 @layer components {
-  /* Buttons: 44px minimum touch targets, mobile-first full-width friendly */
   .btn-primary {
-    @apply btn bg-violet-600 text-white shadow-sm hover:bg-violet-700 active:bg-violet-800;
+    @apply btn bg-violet-700 text-white shadow-[0_6px_18px_rgba(91,33,182,0.18)] hover:bg-violet-800 active:scale-[0.98];
   }
 
   .btn-secondary {
-    @apply btn bg-white text-zinc-700 border border-zinc-300 shadow-sm hover:bg-zinc-50 active:bg-zinc-100;
+    @apply btn bg-white text-zinc-800 border border-stone-300 hover:border-violet-300 hover:bg-violet-50/50 active:scale-[0.98];
   }
 
   .btn-ghost {
-    @apply btn text-zinc-600 hover:bg-zinc-200/60 active:bg-zinc-200;
+    @apply btn text-zinc-700 hover:bg-stone-200/70 active:scale-[0.98];
   }
 
   .btn-danger {
     @apply btn bg-red-600 text-white shadow-sm hover:bg-red-700 active:bg-red-800;
   }
 
-  /* Form controls: text-base (>=16px) prevents iOS focus zoom */
-  .input {
-    @apply w-full min-h-11 px-3.5 rounded-xl border border-zinc-300 bg-white
-      text-base text-zinc-900 placeholder:text-zinc-400 shadow-sm
-      focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 focus:outline-none transition;
+  .input,
+  .form-control {
+    @apply w-full min-h-12 px-3.5 rounded-xl border border-stone-300 bg-white
+      text-base text-zinc-900 placeholder:text-zinc-500 shadow-none
+      focus:border-violet-600 focus:ring-2 focus:ring-violet-600/20 focus:outline-none transition;
   }
 
-  .label {
-    @apply block text-sm font-medium text-zinc-700 mb-1.5;
+  .label,
+  .field-label {
+    @apply block mb-1.5 text-xs font-bold uppercase tracking-[0.12em] text-zinc-700;
   }
 
-  /* Surfaces */
   .card {
-    @apply bg-white rounded-2xl border border-zinc-200 shadow-sm;
+    @apply bg-white rounded-2xl border border-stone-200 shadow-[0_8px_28px_rgba(48,39,31,0.055)];
+  }
+
+  .app-page {
+    @apply mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6;
+  }
+
+  .page-header {
+    @apply flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between;
+  }
+
+  .page-eyebrow {
+    @apply mb-1.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-violet-700;
+  }
+
+  .page-title {
+    @apply font-display text-[clamp(1.75rem,8vw,2.5rem)] font-extrabold leading-[1.05] tracking-[-0.035em] text-zinc-950;
+  }
+
+  .page-description {
+    @apply mt-2 max-w-[48ch] text-[15px] leading-6 text-zinc-600;
+  }
+
+  .empty-state {
+    @apply mx-auto flex w-full max-w-lg flex-col items-center rounded-2xl border border-dashed border-stone-300 bg-white px-5 py-8 text-center shadow-[0_8px_28px_rgba(48,39,31,0.055)] sm:px-8;
+  }
+
+  .empty-state-icon {
+    @apply mb-4 flex size-14 items-center justify-center rounded-2xl bg-violet-100 text-violet-700;
+  }
+
+  .metric-card {
+    @apply flex min-h-24 flex-col justify-between rounded-2xl border border-stone-200 bg-white p-4 shadow-[0_8px_28px_rgba(48,39,31,0.055)];
+  }
+
+  .status-badge {
+    @apply inline-flex min-h-7 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold;
+  }
+
+  .section-title {
+    @apply font-display text-xl font-bold tracking-[-0.02em] text-zinc-950 sm:text-2xl;
+  }
+
+  .app-header {
+    @apply fixed inset-x-0 top-0 z-50 border-b border-stone-200/90 bg-[rgba(250,248,243,0.94)] backdrop-blur-xl;
+  }
+
+  .app-main {
+    @apply mx-auto w-full min-w-0 max-w-6xl px-4 pb-28 pt-20 sm:px-6;
+    padding-top: calc(5rem + env(safe-area-inset-top));
+    padding-bottom: calc(6.5rem + env(safe-area-inset-bottom));
+  }
+
+  .app-bottom-nav {
+    @apply fixed inset-x-0 bottom-0 z-50 border-t border-stone-200/90 bg-[rgba(250,248,243,0.96)] backdrop-blur-xl;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .nav-item {
+    @apply relative flex min-h-16 min-w-11 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-1 py-1.5 text-zinc-600 transition-colors focus-visible:outline-2 focus-visible:outline-violet-700;
+  }
+
+  .nav-item::before {
+    content: "";
+    @apply absolute inset-x-2 top-1.5 h-9 scale-75 rounded-xl bg-transparent opacity-0 transition-all;
+  }
+
+  .nav-item-active {
+    @apply text-violet-800;
+  }
+
+  .nav-item-active::before {
+    @apply scale-100 bg-violet-100 opacity-100;
+  }
+
+  .nav-icon {
+    @apply relative z-10 text-[24px];
+  }
+
+  .nav-label {
+    @apply relative z-10 text-[10px] font-bold leading-none;
+  }
+
+  .scanner-active .app-header,
+  .scanner-active .app-bottom-nav {
+    display: none;
+  }
+
+  .scanner-active .app-main {
+    max-width: none;
+    min-height: 100dvh;
+    padding: 0;
   }
 
   /* Material Symbols icon defaults + filled variant */
@@ -70,5 +185,16 @@
 
   .fill-icon {
     font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

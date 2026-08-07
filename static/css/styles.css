@@ -46,10 +46,9 @@
 
 @media (max-width: 767px) {
   .scanner-controls {
-    max-height: calc(100dvh - 12rem);
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 0.25rem;
     scrollbar-width: thin;
   }
 }
