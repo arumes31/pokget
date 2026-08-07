@@ -160,8 +160,11 @@ docker-compose up --build
     DB_HOST=localhost
     DB_PORT=5432
     SESSION_KEY=your-32-character-secure-key-here
+    LOG_FORMAT=text
     SMTP_HOST=smtp.gmail.com
     ```
+    Logs use readable `key=value` text by default. Set `LOG_FORMAT=json` only when
+    sending them to a structured-log collector.
 3.  **Run**:
     ```bash
     go run ./cmd/pokget

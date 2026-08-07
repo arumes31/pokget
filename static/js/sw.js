@@ -1,7 +1,7 @@
 'use strict';
 
 const CACHE_PREFIX = 'pokget-';
-const CACHE_NAME = `${CACHE_PREFIX}shell-v7`;
+const CACHE_NAME = `${CACHE_PREFIX}shell-v8`;
 const OFFLINE_URL = '/static/offline.html';
 const PRECACHE_URLS = [
   OFFLINE_URL,

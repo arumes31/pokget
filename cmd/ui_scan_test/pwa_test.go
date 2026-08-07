@@ -40,14 +40,14 @@ func TestServiceWorkerInstallUpdateAndOfflineNavigation(t *testing.T) {
 	); err != nil {
 		t.Fatalf("install tracked service worker: %v", err)
 	}
-	if !containsString(initialCaches, "pokget-shell-v7") {
-		t.Fatalf("initial cache names = %v, want pokget-shell-v7", initialCaches)
+	if !containsString(initialCaches, "pokget-shell-v8") {
+		t.Fatalf("initial cache names = %v, want pokget-shell-v8", initialCaches)
 	}
 
 	workerVersion.Store(1)
 	if err := chromedp.Run(ctx,
 		chromedp.Evaluate(`navigator.serviceWorker.getRegistration().then((registration) => registration.update())`, nil),
-		chromedp.Poll(`caches.keys().then((names) => names.includes('pokget-shell-v8-test') && !names.includes('pokget-shell-v7'))`, nil,
+		chromedp.Poll(`caches.keys().then((names) => names.includes('pokget-shell-v9-test') && !names.includes('pokget-shell-v8'))`, nil,
 			chromedp.WithPollingTimeout(20*time.Second)),
 	); err != nil {
 		t.Fatalf("activate service-worker update and remove stale cache: %v", err)
@@ -93,7 +93,7 @@ func newServiceWorkerTestServer(t *testing.T) (*httptest.Server, *atomic.Int32, 
 			writer.Header().Set("Service-Worker-Allowed", "/")
 			source := string(workerSource)
 			if version.Load() > 0 {
-				source = strings.Replace(source, "shell-v7", "shell-v8-test", 1)
+				source = strings.Replace(source, "shell-v8", "shell-v9-test", 1)
 			}
 			_, _ = fmt.Fprint(writer, source)
 		case "/offline-probe":

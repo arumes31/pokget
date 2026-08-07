@@ -31,6 +31,7 @@ type Config struct {
 		Name          string `env:"APP_NAME" env-default:"Pokget"`
 		Port          string `env:"APP_PORT" env-default:"18066"`
 		Debug         bool   `env:"DEBUG" env-default:"false"`
+		LogFormat     string `env:"LOG_FORMAT" env-default:"text"`
 		SecureCookies bool   `env:"SECURE_COOKIES" env-default:"true"` // BUG-C03: Configurable Secure flag for session cookies
 		WriteTimeout  int    `env:"WRITE_TIMEOUT" env-default:"120"`   // BUG-C05: Configurable write timeout in seconds
 	} `yaml:"app"`

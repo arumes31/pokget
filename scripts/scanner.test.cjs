@@ -170,3 +170,38 @@ test('one submission pipeline sends the selected TCG and language', async () => 
     global.fetch = originalFetch;
   }
 });
+
+test('missing selected-language cards retry once with automatic language detection', async () => {
+  const originalFetch = global.fetch;
+  const requests = [];
+  global.fetch = async (url, options) => {
+    requests.push({ url, options });
+    if (requests.length === 1) {
+      return new Response('No cards are available for the selected TCG and language\n', { status: 422 });
+    }
+    return new Response(JSON.stringify({
+      detected: 'Pikachu',
+      id: 'sv1-025',
+      confidence: 94,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const component = scanner.createCardScanner({ csrfToken: 'csrf' });
+    component.game = 'pokemon';
+    component.lang = 'deu';
+    component.notify = () => {};
+    const crop = new Blob(['jpeg'], { type: 'image/jpeg' });
+
+    await component.submitPreparedBlob(crop, 'crop.jpg');
+
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].options.body.get('lang'), 'deu');
+    assert.equal(requests[1].options.body.get('lang'), scanner.AUTO_LANGUAGE);
+    assert.equal(component.lang, scanner.AUTO_LANGUAGE);
+    assert.equal(component.detectedID, 'sv1-025');
+    assert.equal(component.scanError, '');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

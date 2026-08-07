@@ -52,6 +52,9 @@ func TestConfigLoad(t *testing.T) {
 	if cfg.App.Port != "9090" {
 		t.Errorf("Expected port 9090, got %s", cfg.App.Port)
 	}
+	if cfg.App.LogFormat != "text" {
+		t.Errorf("Expected text log format, got %s", cfg.App.LogFormat)
+	}
 	if cfg.DB.Host != "db" {
 		t.Errorf("Expected db host db, got %s", cfg.DB.Host)
 	}

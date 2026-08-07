@@ -23,6 +23,7 @@
   const MAX_OUTPUT_DIMENSION = 1800;
   const REQUEST_TIMEOUT_MS = 90000;
   const SCAN_PROGRESS_STEPS = 5;
+  const NO_CARDS_FOR_LANGUAGE = 'No cards are available for the selected TCG and language';
   const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
   const LANGUAGE_OPTIONS = Object.freeze({
@@ -790,26 +791,41 @@
 
         try {
           this.setStatus('Uploading the crop and running detection…', 2);
-          const formData = new FormData();
-          formData.append('card_image', blob, filename);
-          formData.append('lang', normalizeLanguage(this.game, this.lang));
-          formData.append('game', this.game);
+          let requestedLanguage = normalizeLanguage(this.game, this.lang);
+          let response;
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            const formData = new FormData();
+            formData.append('card_image', blob, filename);
+            formData.append('lang', requestedLanguage);
+            formData.append('game', this.game);
 
-          const response = await fetch('/api/scan', {
-            method: 'POST',
-            headers: { 'X-CSRF-Token': this.csrfToken },
-            body: formData,
-            signal: controller.signal,
-          });
+            response = await fetch('/api/scan', {
+              method: 'POST',
+              headers: { 'X-CSRF-Token': this.csrfToken },
+              body: formData,
+              signal: controller.signal,
+            });
 
-          this.setStatus('Reading the scanner response…', 3);
-          if (!response.ok) {
+            if (response.ok) break;
+
             const body = await response.text();
-            const error = new Error(friendlyHTTPError(response.status, body));
-            error.status = response.status;
-            throw error;
+            const canRetryAutomatically = response.status === 422
+              && body.trim() === NO_CARDS_FOR_LANGUAGE
+              && requestedLanguage !== AUTO_LANGUAGE;
+            if (!canRetryAutomatically) {
+              const error = new Error(friendlyHTTPError(response.status, body));
+              error.status = response.status;
+              throw error;
+            }
+
+            requestedLanguage = AUTO_LANGUAGE;
+            this.lang = AUTO_LANGUAGE;
+            storageSet(STORAGE_KEYS.language, AUTO_LANGUAGE);
+            this.setStatus('No exact-language catalog is loaded. Retrying with Auto detect…', 2);
+            this.notify('No exact-language catalog is loaded; using Auto detect.', 'info');
           }
 
+          this.setStatus('Reading the scanner response…', 3);
           let data;
           try {
             data = await response.json();
