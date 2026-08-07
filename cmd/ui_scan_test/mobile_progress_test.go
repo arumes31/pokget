@@ -67,7 +67,7 @@ func TestMobileScanProgressOccupiesViewportAndCancels(t *testing.T) {
 				screenshotPath = filepath.Join(screenshotDir, strings.ReplaceAll(viewport.name, " ", "-")+".png")
 			}
 			layout := inspectProgressAtViewport(
-				t, browserContext, server.URL, viewport.width, viewport.height, screenshotPath,
+				browserContext, t, server.URL, viewport.width, viewport.height, screenshotPath,
 			)
 			if layout.Position != "fixed" || layout.Left != 0 || layout.Top != 0 {
 				t.Errorf("overlay position = %s at %.1f,%.1f", layout.Position, layout.Left, layout.Top)
@@ -97,8 +97,8 @@ func TestMobileScanProgressOccupiesViewportAndCancels(t *testing.T) {
 }
 
 func inspectProgressAtViewport(
-	t *testing.T,
 	browserContext context.Context,
+	t *testing.T,
 	pageURL string,
 	width, height int64,
 	screenshotPath string,

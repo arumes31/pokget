@@ -95,15 +95,15 @@ func TestVision_DetectCardEdges(t *testing.T) {
 	}
 }
 
-func TestProcessCardScan_Stub(t *testing.T) {
+func TestProcessCardScanReturnsProcessedImage(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
 	var buf bytes.Buffer
 	_ = png.Encode(&buf, img)
 
-	text, card, _, err := ProcessCardScan(buf.Bytes(), nil, "", nil)
+	_, card, processedImage, err := ProcessCardScan(buf.Bytes(), nil, "eng", nil)
 	requireOCRSuccessOrUnavailable(t, err)
-	if !containsIgnoreCase(text, "OCR Not Available") || card != "Unknown Card" {
-		t.Errorf("Unexpected stub results: text=%s, card=%s", text, card)
+	if card != "Unknown Card" || len(processedImage) == 0 {
+		t.Errorf("ProcessCardScan() card/image = %q/%d bytes", card, len(processedImage))
 	}
 }
 
@@ -225,28 +225,25 @@ func TestFallbackExtractLatinPatternDirectly(t *testing.T) {
 	}
 }
 
-// TestOCRProcessCardScanWithMockCards verifies that ProcessCardScan
-// can match cards from a provided list using the stub implementation.
+// TestOCRProcessCardScanWithMockCards verifies that ProcessCardScan accepts a
+// caller-supplied card corpus even when the image contains no readable text.
 func TestOCRProcessCardScanWithMockCards(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
 	var buf bytes.Buffer
 	_ = png.Encode(&buf, img)
 
-	// The stub returns "OCR Not Available (Stub)" which won't match any card
-	// but we verify the function doesn't crash with mock cards
 	cards := []models.Card{
 		{ID: "1", Name: "Pikachu"},
 		{ID: "2", Name: "Charizard"},
 	}
 
-	text, card, _, err := ProcessCardScan(buf.Bytes(), cards, "eng", nil)
+	_, card, processedImage, err := ProcessCardScan(buf.Bytes(), cards, "eng", nil)
 	requireOCRSuccessOrUnavailable(t, err)
-	if text == "" {
-		t.Error("Expected non-empty text from ProcessCardScan")
+	if len(processedImage) == 0 {
+		t.Error("ProcessCardScan returned no processed image")
 	}
-	// Stub mode returns "Unknown Card" since "OCR Not Available (Stub)" doesn't match
 	if card != "Unknown Card" {
-		t.Logf("ProcessCardScan returned card=%q (stub behavior may vary)", card)
+		t.Errorf("ProcessCardScan returned card %q for a blank image", card)
 	}
 }
 
@@ -265,10 +262,10 @@ func TestOCRProcessCardScanWithDifferentLanguages(t *testing.T) {
 	languages := []string{"eng", "jpn", "eng+jpn", "chi_sim", "deu+eng", ""}
 	for _, lang := range languages {
 		t.Run("lang_"+lang, func(t *testing.T) {
-			text, _, _, err := ProcessCardScan(buf.Bytes(), nil, lang, nil)
+			_, _, processedImage, err := ProcessCardScan(buf.Bytes(), nil, lang, nil)
 			requireOCRSuccessOrUnavailable(t, err)
-			if text == "" {
-				t.Errorf("Expected non-empty text for lang=%q", lang)
+			if len(processedImage) == 0 {
+				t.Errorf("ProcessCardScan returned no processed image for lang=%q", lang)
 			}
 		})
 	}

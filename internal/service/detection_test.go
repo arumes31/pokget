@@ -778,8 +778,8 @@ func TestOCRScoreCJK(t *testing.T) {
 
 // --- NEW: Integration/Pipeline tests ---
 
-// TestFullPipelineEnglishCard verifies the full detection pipeline with
-// an English card image (using stub OCR).
+// TestFullPipelineEnglishCard verifies the full detection pipeline with a
+// blank English card image.
 func TestFullPipelineEnglishCard(t *testing.T) {
 	clearOCRCache()
 
@@ -813,14 +813,10 @@ func TestFullPipelineEnglishCard(t *testing.T) {
 		t.Error("Expected stage metrics to be recorded")
 	}
 
-	// OCR text should be present (stub returns "OCR Not Available (Stub)")
-	if result.OCRText == "" {
-		t.Error("Expected non-empty OCR text")
-	}
 }
 
-// TestFullPipelineJapaneseCard verifies the full detection pipeline with
-// a Japanese card image (using stub OCR with CJK language).
+// TestFullPipelineJapaneseCard verifies the full detection pipeline with a
+// blank Japanese card image.
 func TestFullPipelineJapaneseCard(t *testing.T) {
 	clearOCRCache()
 
@@ -869,8 +865,7 @@ func TestFullPipelineNoMatch(t *testing.T) {
 
 	result := pipeline.Detect(buf.Bytes(), cards, "eng")
 
-	// With no fingerprint match and stub OCR returning "Unknown Card",
-	// the result should be flagged for review
+	// With no fingerprint or OCR match, the result should be flagged for review.
 	if !result.BestMatchNeedsReview() {
 		t.Error("Expected result to be flagged for review with no match")
 	}

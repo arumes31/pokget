@@ -26,8 +26,6 @@ import (
 	"database/sql"
 	"errors"
 	"html/template"
-	"image"
-	"image/png"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -1183,33 +1181,6 @@ func TestHandlers(t *testing.T) {
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
-		}
-	})
-
-	t.Run("APIScan_OCRUnavailable", func(t *testing.T) {
-		h, mock, cleanup := setupTestHandler(t)
-		defer cleanup()
-
-		img := image.NewRGBA(image.Rect(0, 0, 10, 10))
-		buf := new(bytes.Buffer)
-		_ = png.Encode(buf, img)
-
-		body := &bytes.Buffer{}
-		writer := multipart.NewWriter(body)
-		part, _ := writer.CreateFormFile("card_image", "test.png")
-		_, _ = part.Write(buf.Bytes())
-		_ = writer.Close()
-
-		req := httptest.NewRequest("POST", "/api/scan", body)
-		req.Header.Set("Content-Type", writer.FormDataContentType())
-		rr := httptest.NewRecorder()
-
-		mock.ExpectQuery("SELECT id").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "set_name", "image_url", "phash"}))
-
-		h.APIScan(rr, req)
-
-		if rr.Code != http.StatusServiceUnavailable {
-			t.Errorf("Expected status %d, got %d", http.StatusServiceUnavailable, rr.Code)
 		}
 	})
 

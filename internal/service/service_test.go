@@ -262,13 +262,13 @@ func TestProcessCardScan_Full(t *testing.T) {
 
 	t.Run("Match", func(t *testing.T) {
 		cards := []models.Card{{ID: "1", Name: "Charizard"}}
-		text, card, _, err := ProcessCardScan(buf.Bytes(), cards, "", nil)
+		_, card, processedImage, err := ProcessCardScan(buf.Bytes(), cards, "eng", nil)
 		requireOCRSuccessOrUnavailable(t, err)
 		if card == "" {
-			t.Error("Expected to find a match")
+			t.Error("Expected a card detection result")
 		}
-		if !containsIgnoreCase(text, "OCR Not Available") {
-			t.Errorf("Expected stub text, got %s", text)
+		if len(processedImage) == 0 {
+			t.Error("Expected a processed OCR image")
 		}
 	})
 }

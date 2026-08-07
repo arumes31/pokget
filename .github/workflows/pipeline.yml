@@ -33,10 +33,21 @@ jobs:
         with:
           ref: ${{ github.event.inputs.target_branch || github.ref }}
           persist-credentials: false
-      - name: Install Tesseract dependencies
+      - name: Install Tesseract runtime, development files, and test languages
         run: |
           sudo apt-get update
-          sudo apt-get install -y libtesseract-dev libleptonica-dev pkg-config
+          sudo apt-get install -y \
+            tesseract-ocr \
+            tesseract-ocr-chi-sim \
+            tesseract-ocr-chi-tra \
+            tesseract-ocr-deu \
+            tesseract-ocr-eng \
+            tesseract-ocr-fra \
+            tesseract-ocr-jpn \
+            tesseract-ocr-kor \
+            libtesseract-dev \
+            libleptonica-dev \
+            pkg-config
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
@@ -67,10 +78,21 @@ jobs:
         with:
           ref: ${{ github.event.inputs.target_branch || github.ref }}
           persist-credentials: false
-      - name: Install Tesseract dependencies
+      - name: Install Tesseract runtime, development files, and test languages
         run: |
           sudo apt-get update
-          sudo apt-get install -y libtesseract-dev libleptonica-dev pkg-config
+          sudo apt-get install -y \
+            tesseract-ocr \
+            tesseract-ocr-chi-sim \
+            tesseract-ocr-chi-tra \
+            tesseract-ocr-deu \
+            tesseract-ocr-eng \
+            tesseract-ocr-fra \
+            tesseract-ocr-jpn \
+            tesseract-ocr-kor \
+            libtesseract-dev \
+            libleptonica-dev \
+            pkg-config
       - name: Set up Go
         uses: actions/setup-go@v6
         with:

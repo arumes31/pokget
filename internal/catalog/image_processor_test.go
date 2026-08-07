@@ -3,6 +3,7 @@ package catalog
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"image"
 	"image/color"
@@ -27,9 +28,19 @@ func (h fixedImageHasher) CalculateHash(image.Image) (int64, error) {
 func TestImageProcessorSupportedFormats(t *testing.T) {
 	t.Parallel()
 
-	webp, err := os.ReadFile(filepath.Join("..", "..", "test.webp"))
+	webp, err := base64.StdEncoding.DecodeString(
+		"UklGRh4CAABXRUJQVlA4WAoAAAAgAAAAAQAAAQAASUNDUMgBAAAAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AAB" +
+			"AAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAA" +
+			"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFla" +
+			"AAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAA" +
+			"AChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1" +
+			"AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBh" +
+			"cmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAc" +
+			"AEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADZWUDggMAAAANABAJ0BKgIAAgABQCYloAJ0ugH4AAOwAP7y" +
+			"63/82BXNc+/3/9Lg/S4P0uD/0pAAAA==",
+	)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("decode WebP fixture: %v", err)
 	}
 	tests := []struct {
 		name      string

@@ -61,6 +61,10 @@ html.scan-progress-open body {
 }
 
 .scan-progress-overlay {
+    --scan-progress-inset-top: max(1rem, env(safe-area-inset-top));
+    --scan-progress-inset-right: max(1rem, env(safe-area-inset-right));
+    --scan-progress-inset-bottom: max(1rem, env(safe-area-inset-bottom));
+    --scan-progress-inset-left: max(1rem, env(safe-area-inset-left));
     position: fixed;
     inset: 0;
     z-index: 1000;
@@ -72,10 +76,10 @@ html.scan-progress-open body {
     overflow: hidden;
     overscroll-behavior: none;
     padding:
-        max(1rem, env(safe-area-inset-top))
-        max(1rem, env(safe-area-inset-right))
-        max(1rem, env(safe-area-inset-bottom))
-        max(1rem, env(safe-area-inset-left));
+        var(--scan-progress-inset-top)
+        var(--scan-progress-inset-right)
+        var(--scan-progress-inset-bottom)
+        var(--scan-progress-inset-left);
     background:
         radial-gradient(circle at 50% 22%, rgba(124, 58, 237, 0.28), transparent 38%),
         linear-gradient(165deg, #17121f 0%, #0a0a0c 54%, #050506 100%);
@@ -98,9 +102,13 @@ html.scan-progress-open body {
     position: relative;
     z-index: 1;
     width: min(100%, 28rem);
+    max-height: calc(100dvh - var(--scan-progress-inset-top) - var(--scan-progress-inset-bottom));
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
     text-align: center;
     padding: clamp(1.25rem, 5vw, 2rem);
     border: 1px solid rgba(196, 181, 253, 0.22);
@@ -263,12 +271,12 @@ html.scan-progress-open body {
 }
 
 @media (max-height: 620px) {
-    .scan-progress-card { padding: 1rem 1.2rem; }
-    .scan-progress-mark { width: 3.75rem; height: 3.75rem; margin-bottom: 0.8rem; }
+    .scan-progress-card { padding: 0.75rem 1.2rem; }
+    .scan-progress-mark { width: 3.5rem; height: 3.5rem; margin-bottom: 0.65rem; }
     .scan-progress-status { margin-top: 0.55rem; min-height: auto; }
     .scan-progress-track { margin-top: 0.8rem; }
-    .scan-progress-detail { min-height: auto; margin-top: 0.65rem; }
-    .scan-progress-cancel { margin-top: 0.8rem; }
+    .scan-progress-detail { min-height: auto; margin-top: 0.5rem; }
+    .scan-progress-cancel { margin-top: 0.6rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
