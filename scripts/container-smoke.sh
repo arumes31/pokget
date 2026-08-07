@@ -34,6 +34,22 @@ docker run --rm --entrypoint sh "${image}" -c '
   test -x /app/catalog
   test -f /app/static/js/scanner.js
   test -f /app/static/js/sw.js
+  css=/app/static/css/tailwind.css
+  test -s "${css}"
+  for selector in \
+    ".min-h-dvh{" \
+    ".max-w-md{" \
+    ".mx-auto{" \
+    ".w-16{" \
+    ".h-16{" \
+    ".grid-cols-2{" \
+    ".px-4{" \
+    ".text-3xl{"; do
+    if ! grep -Fq "${selector}" "${css}"; then
+      echo "production Tailwind bundle is missing template utility ${selector}" >&2
+      exit 1
+    fi
+  done
   tesseract --version >/dev/null
   command -v chromium-browser >/dev/null || command -v chromium >/dev/null
 '

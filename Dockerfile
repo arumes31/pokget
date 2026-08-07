@@ -8,6 +8,7 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 
 COPY scripts ./scripts
 COPY static ./static
+COPY templates ./templates
 RUN npm run build:static && npm run check:static
 
 # Go build stage
