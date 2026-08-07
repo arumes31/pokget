@@ -79,6 +79,28 @@ func TestMigrationRecoveryPolicy(t *testing.T) {
 	}
 }
 
+func TestSchemaReconciliationMigration(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join("..", "..", "migrations", "000028_reconcile_legacy_schema.up.sql")
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read schema reconciliation migration: %v", err)
+	}
+
+	sql := strings.ToLower(string(contents))
+	for _, required := range []string{
+		"alter table cards add column if not exists rarity text",
+		"create table if not exists price_history",
+		"create table if not exists price_alerts",
+		"create index if not exists idx_price_alerts_user_id",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Errorf("schema reconciliation migration does not contain %q", required)
+		}
+	}
+}
+
 func assertContiguousMigrationVersions(t *testing.T, versions map[int]struct{}) {
 	t.Helper()
 

@@ -96,8 +96,52 @@ docker exec "${application_container}" wget -qO- http://127.0.0.1:18066/sw.js | 
 
 migration_version="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT version FROM schema_migrations')"
 migration_dirty="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT dirty FROM schema_migrations')"
-if [[ "${migration_version}" != "27" || "${migration_dirty}" != "f" ]]; then
+if [[ "${migration_version}" != "28" || "${migration_dirty}" != "f" ]]; then
   echo "unexpected migration state: version=${migration_version}, dirty=${migration_dirty}" >&2
+  exit 1
+fi
+
+# Reproduce a legacy installation whose migration ledger reached version 27
+# even though migration 6/8 objects were absent. Restarting the application
+# must apply migration 28 and restore every runtime dependency.
+docker stop "${application_container}" >/dev/null
+docker exec "${database_container}" psql -v ON_ERROR_STOP=1 -U "${database_user}" -d "${database_name}" -c '
+  ALTER TABLE cards DROP COLUMN rarity;
+  DROP TABLE price_alerts;
+  DROP TABLE price_history;
+  UPDATE schema_migrations SET version = 27, dirty = FALSE;
+' >/dev/null
+docker start "${application_container}" >/dev/null
+
+ready=false
+for _ in $(seq 1 90); do
+  if docker exec "${application_container}" wget -q --spider http://127.0.0.1:18066/health/ready >/dev/null 2>&1; then
+    ready=true
+    break
+  fi
+  if [[ "$(docker inspect --format '{{.State.Running}}' "${application_container}")" != "true" ]]; then
+    docker logs "${application_container}" >&2
+    exit 1
+  fi
+  sleep 1
+done
+if [[ "${ready}" != "true" ]]; then
+  docker logs "${application_container}" >&2
+  echo "production container did not recover the drifted schema" >&2
+  exit 1
+fi
+
+migration_version="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT version FROM schema_migrations')"
+migration_dirty="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT dirty FROM schema_migrations')"
+if [[ "${migration_version}" != "28" || "${migration_dirty}" != "f" ]]; then
+  echo "schema reconciliation did not advance migration state: version=${migration_version}, dirty=${migration_dirty}" >&2
+  exit 1
+fi
+
+schema_reconciled="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c \
+  "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'cards' AND column_name = 'rarity') AND to_regclass('public.price_history') IS NOT NULL AND to_regclass('public.price_alerts') IS NOT NULL")"
+if [[ "${schema_reconciled}" != "t" ]]; then
+  echo "required card and price schema was not reconciled" >&2
   exit 1
 fi
 
@@ -108,9 +152,9 @@ docker exec "${database_container}" pg_restore -U "${database_user}" -d pokget_r
 source_tables="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
 restored_tables="$(docker exec "${database_container}" psql -At -U "${database_user}" -d pokget_restore -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
 restored_version="$(docker exec "${database_container}" psql -At -U "${database_user}" -d pokget_restore -c 'SELECT version FROM schema_migrations')"
-if [[ "${source_tables}" -eq 0 || "${source_tables}" != "${restored_tables}" || "${restored_version}" != "27" ]]; then
+if [[ "${source_tables}" -eq 0 || "${source_tables}" != "${restored_tables}" || "${restored_version}" != "28" ]]; then
   echo "backup/restore mismatch: source_tables=${source_tables}, restored_tables=${restored_tables}, restored_version=${restored_version}" >&2
   exit 1
 fi
 
-echo "production image, migration apply, and backup/restore smoke test passed"
+echo "production image, migration repair, and backup/restore smoke test passed"

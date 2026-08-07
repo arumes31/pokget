@@ -188,6 +188,13 @@ func main() {
 		slog.Error("Migration error", "error", err)
 		os.Exit(1)
 	}
+	schemaCtx, schemaCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := db.ValidateRuntimeSchema(schemaCtx, database); err != nil {
+		schemaCancel()
+		slog.Error("Runtime schema validation failed", "error", err)
+		os.Exit(1)
+	}
+	schemaCancel()
 
 	if database != nil {
 		fingerprintSvc = service.NewFingerprintService(database)

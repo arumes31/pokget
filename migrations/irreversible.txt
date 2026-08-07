@@ -16,3 +16,4 @@
 000018_add_binder_default_flag
 000019_add_trigram_index
 000020_add_is_admin
+000028_reconcile_legacy_schema
