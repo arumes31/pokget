@@ -1,4 +1,4 @@
-<div class="flex flex-col space-y-6"
+<div class="w-full max-w-lg mx-auto space-y-6"
     x-data="{
         myOffer: 0,
         myCard: '',
@@ -28,15 +28,15 @@
         }
     }">
     <div>
-        <h2 class="text-xl font-bold">Trade Analyzer</h2>
-        <p class="mt-1 text-xs text-white/50">Compare current market values and download a private, non-persisted trade log.</p>
+        <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-900">Trade Analyzer</h2>
+        <p class="mt-1 text-sm text-zinc-500">Compare current market values and download a private, non-persisted trade log.</p>
     </div>
 
-    <div class="glass-card space-y-4 rounded-2xl p-5 border-emerald-500/20">
-        <label for="my-trade-card" class="block text-[10px] font-bold uppercase tracking-widest text-emerald-300">My card</label>
+    <div class="card space-y-3 p-5">
+        <label for="my-trade-card" class="label !mb-0 text-emerald-700">My card</label>
         <select id="my-trade-card" x-model="myPortfolioId"
             @change="myOffer = Number($event.target.selectedOptions[0].dataset.price || 0); myCard = $event.target.selectedOptions[0].dataset.label || ''"
-            class="w-full rounded-xl border border-white/10 bg-surface px-4 py-3 text-sm">
+            class="input">
             <option value="" data-price="0" data-label="">Select from your collection</option>
             {{ range .Portfolio }}
             <option value="{{ .ID }}"
@@ -46,25 +46,30 @@
             </option>
             {{ end }}
         </select>
-        <p class="text-right text-lg font-bold text-emerald-300" x-text="'{{ .CurrencySymbol }}' + Number(myOffer).toFixed(2)"></p>
+        <p class="text-right text-xl font-bold text-emerald-600" x-text="'{{ .CurrencySymbol }}' + Number(myOffer).toFixed(2)"></p>
     </div>
 
-    <div class="glass-card space-y-4 rounded-2xl p-5 border-blue-500/20">
-        <label for="their-offer" class="block text-[10px] font-bold uppercase tracking-widest text-blue-300">Their offer value</label>
-        <input id="their-offer" type="number" min="0" step="0.01" x-model.number="theirOffer"
-            class="w-full rounded-xl border border-white/10 bg-surface px-4 py-3 text-sm">
-        <label for="their-cards" class="block text-[10px] font-bold uppercase tracking-widest text-blue-300">Cards / notes</label>
-        <textarea id="their-cards" rows="3" x-model="theirCards" placeholder="Card names, conditions, or deal notes"
-            class="w-full rounded-xl border border-white/10 bg-surface px-4 py-3 text-sm"></textarea>
+    <div class="card space-y-3 p-5">
+        <div>
+            <label for="their-offer" class="label">Their offer value</label>
+            <input id="their-offer" type="number" min="0" step="0.01" x-model.number="theirOffer"
+                class="input">
+        </div>
+        <div>
+            <label for="their-cards" class="label">Cards / notes</label>
+            <textarea id="their-cards" rows="3" x-model="theirCards" placeholder="Card names, conditions, or deal notes"
+                class="input min-h-24 py-2.5"></textarea>
+        </div>
     </div>
 
-    <div class="glass-card rounded-2xl p-6" role="region" aria-labelledby="trade-verdict-title">
-        <h3 id="trade-verdict-title" class="text-sm font-bold">Trade Verdict</h3>
-        <p class="mt-3 text-sm text-white/70"
+    <div class="card p-5" role="region" aria-labelledby="trade-verdict-title">
+        <h3 id="trade-verdict-title" class="text-base font-bold text-zinc-900">Trade Verdict</h3>
+        <p class="mt-2 text-sm text-zinc-700"
             x-text="Number(theirOffer) === Number(myOffer) ? 'Even market value' : (Number(theirOffer) > Number(myOffer) ? 'In your favor by ' : 'Against you by ') + '{{ .CurrencySymbol }}' + Math.abs(Number(theirOffer) - Number(myOffer)).toFixed(2)"></p>
         <button type="button" @click="downloadLog()" :disabled="!myPortfolioId || Number(myOffer) <= 0 || Number(theirOffer) <= 0"
-            class="mt-5 w-full rounded-xl bg-primary py-3 text-xs font-bold text-on-primary disabled:cursor-not-allowed disabled:opacity-40">
-            DOWNLOAD TRADE LOG
+            class="btn-primary w-full min-h-12 mt-4">
+            <span class="material-symbols-outlined text-[20px]">download</span>
+            Download trade log
         </button>
     </div>
 </div>

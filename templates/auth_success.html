@@ -1,39 +1,52 @@
-<div class="animate-in flex flex-col items-center justify-center py-12" x-data="{ resendDisabled: false, countdown: 0 }">
-    <div class="glass-card text-center max-w-sm w-full">
-        <div class="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto text-emerald-400 mb-6">
-            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+<div class="w-full max-w-md mx-auto flex flex-col justify-center py-8"
+    x-data="{ resendDisabled: false, countdown: 0 }">
+    <div class="card p-6 sm:p-8 text-center">
+        <div class="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                class="text-emerald-600">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
         </div>
         <h2 class="text-2xl font-bold mb-2">Success!</h2>
-        <p class="text-white/40 text-sm mb-8">{{.Message}}</p>
-        
-        <div class="space-y-4">
-            <a href="/auth" class="w-full primary-button py-4 text-sm flex items-center justify-center">
-                Return to Login
-            </a>
+        <p class="text-sm text-zinc-500 mb-6">{{.Message}}</p>
 
-            <div class="pt-8 border-t border-white/5">
-                <p class="text-xs text-white/40 mb-4">Didn't get the email?</p>
-                <button @click="
-                    if (!resendDisabled) {
-                        resendDisabled = true;
-                        countdown = 300;
-                        let timer = setInterval(() => {
-                            countdown--;
-                            if (countdown <= 0) {
-                                clearInterval(timer);
-                                resendDisabled = false;
-                            }
-                        }, 1000);
-                        
-                        // We don't have the email input here, but we can potentially get it from the message or session
-                        // For now, redirecting back to login to resend is safest, or we could pass the email in template
-                        $dispatch('notify', { msg: 'Please go back to sign up to resend.', type: 'info' });
-                    }"
-                    :disabled="resendDisabled"
-                    class="w-full glass-button py-3 text-xs font-bold">
-                    <span>Resend Verification Email</span>
-                </button>
-            </div>
+        <a href="/auth" class="btn-primary w-full min-h-12">Return to login</a>
+
+        <div class="pt-6 mt-6 border-t border-zinc-200">
+            <p class="text-xs text-zinc-500 mb-2">Didn't get the email?</p>
+            <input type="hidden" x-ref="resendEmail" value="{{ .Email }}">
+            <input type="hidden" x-ref="resendCSRF" value="{{ .CSRFToken }}">
+            <button type="button" @click="
+                if (!resendDisabled) {
+                    resendDisabled = true;
+                    countdown = 300;
+                    let timer = setInterval(() => {
+                        countdown--;
+                        if (countdown <= 0) {
+                            clearInterval(timer);
+                            resendDisabled = false;
+                        }
+                    }, 1000);
+                    const formData = new FormData();
+                    formData.append('email', $refs.resendEmail.value);
+                    formData.append('gorilla.csrf.Token', $refs.resendCSRF.value);
+                    fetch('/auth/resend', { method: 'POST', body: formData }).then(res => {
+                        if (res.ok) {
+                            $dispatch('notify', { msg: 'Verification email re-sent', type: 'success' });
+                        } else {
+                            $dispatch('notify', { msg: 'Unable to resend verification email', type: 'error' });
+                        }
+                    }).catch(() => {
+                        $dispatch('notify', { msg: 'Unable to resend verification email', type: 'error' });
+                    });
+                }"
+                :disabled="resendDisabled"
+                class="btn-ghost text-violet-700 text-sm">
+                <span
+                    x-text="resendDisabled ? 'Retry in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend verification email'">Resend verification email</span>
+            </button>
         </div>
     </div>
 </div>

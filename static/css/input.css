@@ -1,81 +1,74 @@
-@import "tailwindcss/base";
-@import "tailwindcss/components";
-@import "tailwindcss/utilities";
+@import "tailwindcss" source(none);
 
-/* Custom styles previously in styles.css */
+@source "../../templates";
+@source "../../static/js";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
 @layer base {
-  :root {
-    --vault-bg: #131314;
-    --vault-surface: #1c1b1c;
-    --vault-primary: #ddb7ff;
-    --vault-primary-dim: #b76dff;
-    --vault-secondary: #ffb0cd;
-    --vault-outline: #4d4354;
-    --vapor-gradient: linear-gradient(180deg, #490080 0%, #131314 60%, #0e0e0f 100%);
+  html {
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
-    @apply bg-background text-on-background;
-    min-height: max(884px, 100dvh);
+    @apply bg-zinc-100 text-zinc-900 font-sans antialiased;
+    min-height: 100dvh;
   }
 
-  /* MOBILE-14: Safe area insets for notched devices */
-  .safe-area-top {
-    padding-top: env(safe-area-inset-top);
+  [x-cloak] {
+    display: none !important;
   }
+}
 
-  .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  .safe-area-left {
-    padding-left: env(safe-area-inset-left);
-  }
-
-  .safe-area-right {
-    padding-right: env(safe-area-inset-right);
-  }
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl
+    text-sm font-semibold select-none touch-manipulation cursor-pointer
+    transition-colors disabled:opacity-50 disabled:pointer-events-none
+    focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600;
 }
 
 @layer components {
-  .vapor-bg {
-    background: var(--vapor-gradient);
+  /* Buttons: 44px minimum touch targets, mobile-first full-width friendly */
+  .btn-primary {
+    @apply btn bg-violet-600 text-white shadow-sm hover:bg-violet-700 active:bg-violet-800;
   }
 
-  .glass-card {
-    @apply bg-surface-container/70 backdrop-blur-xl border border-white/10;
+  .btn-secondary {
+    @apply btn bg-white text-zinc-700 border border-zinc-300 shadow-sm hover:bg-zinc-50 active:bg-zinc-100;
   }
 
-  .neon-bloom {
-    box-shadow: 0 0 30px rgba(168, 85, 247, 0.4);
-  }
-}
-
-@layer utilities {
-
-  /* MOBILE-06: Touch action utility for drag handles */
-  .touch-none {
-    touch-action: none;
+  .btn-ghost {
+    @apply btn text-zinc-600 hover:bg-zinc-200/60 active:bg-zinc-200;
   }
 
-  /* MOBILE-12: Prevent horizontal overflow */
-  .overflow-x-hidden {
-    overflow-x: hidden;
+  .btn-danger {
+    @apply btn bg-red-600 text-white shadow-sm hover:bg-red-700 active:bg-red-800;
   }
 
-  /* MOBILE-12: Ensure images and pre don't overflow */
-  .max-w-full {
-    max-width: 100%;
+  /* Form controls: text-base (>=16px) prevents iOS focus zoom */
+  .input {
+    @apply w-full min-h-11 px-3.5 rounded-xl border border-zinc-300 bg-white
+      text-base text-zinc-900 placeholder:text-zinc-400 shadow-sm
+      focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 focus:outline-none transition;
   }
 
-  /* MOBILE-11: Pull-to-refresh indicator animation */
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
+  .label {
+    @apply block text-sm font-medium text-zinc-700 mb-1.5;
+  }
 
-    to {
-      transform: rotate(360deg);
-    }
+  /* Surfaces */
+  .card {
+    @apply bg-white rounded-2xl border border-zinc-200 shadow-sm;
+  }
+
+  /* Material Symbols icon defaults + filled variant */
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+
+  .fill-icon {
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   }
 }

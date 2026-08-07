@@ -24,8 +24,113 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          persist-credentials: false
+      - name: Install Tesseract dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtesseract-dev libleptonica-dev pkg-config
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - name: Run Go tests
+        run: go test -timeout=10m -count=1 ./...
+
+  race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: service
+            packages: ./internal/service
+          - name: catalog-workers
+            packages: ./internal/catalog ./internal/catalog/source ./internal/worker
+          - name: handlers-auth
+            packages: ./internal/auth ./internal/handlers ./internal/middleware
+          - name: database-main
+            packages: ./internal/db ./cmd/pokget
+    name: race (${{ matrix.name }})
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          persist-credentials: false
+      - name: Install Tesseract dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtesseract-dev libleptonica-dev pkg-config
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - name: Run bounded race shard
+        run: go test -race -timeout=8m -count=1 ${{ matrix.packages }}
+
+  ocr-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          persist-credentials: false
+      - name: Install Tesseract runtime and development data
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng libtesseract-dev libleptonica-dev pkg-config
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - name: Exercise real Tesseract OCR
+        env:
+          CGO_ENABLED: "1"
+        run: go test -tags=ocrintegration -run '^TestTesseractRecognizesSyntheticCardName$' -timeout=2m -count=1 -v ./internal/service
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - name: Resolve Chrome
+        shell: bash
+        run: |
+          chrome_path="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [[ -z "$chrome_path" ]]; then
+            echo "::error::Chrome or Chromium is not installed on the runner"
+            exit 1
+          fi
+          printf 'POKGET_CHROME_PATH=%s\n' "$chrome_path" >> "$GITHUB_ENV"
+      - name: Run rendered mobile and service-worker tests
+        run: go test -timeout=3m -count=1 -v ./cmd/ui_scan_test
+
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -49,6 +154,7 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -77,6 +183,7 @@ jobs:
 
   js-assets:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -97,9 +204,24 @@ jobs:
           npm run build:static
           npm run check:static
 
-  docker:
-    needs: [lint, security, js-assets]
+  container-smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          persist-credentials: false
+      - name: Build production image
+        run: docker build --tag pokget:verification .
+      - name: Verify runtime, migrations, and backup restore
+        run: bash scripts/container-smoke.sh pokget:verification
+
+  docker:
+    needs: [test, race, ocr-integration, browser, lint, security, js-assets, container-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
     permissions:
       contents: read

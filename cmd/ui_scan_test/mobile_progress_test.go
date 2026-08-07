@@ -47,6 +47,7 @@ func TestMobileScanProgressOccupiesViewportAndCancels(t *testing.T) {
 
 	server := newScannerProgressServer(t)
 	defer server.Close()
+	browserContext := newHeadlessBrowserContext(t, chromePath)
 
 	for _, viewport := range []struct {
 		name          string
@@ -66,7 +67,7 @@ func TestMobileScanProgressOccupiesViewportAndCancels(t *testing.T) {
 				screenshotPath = filepath.Join(screenshotDir, strings.ReplaceAll(viewport.name, " ", "-")+".png")
 			}
 			layout := inspectProgressAtViewport(
-				t, chromePath, server.URL, viewport.width, viewport.height, screenshotPath,
+				t, browserContext, server.URL, viewport.width, viewport.height, screenshotPath,
 			)
 			if layout.Position != "fixed" || layout.Left != 0 || layout.Top != 0 {
 				t.Errorf("overlay position = %s at %.1f,%.1f", layout.Position, layout.Left, layout.Top)
@@ -97,25 +98,16 @@ func TestMobileScanProgressOccupiesViewportAndCancels(t *testing.T) {
 
 func inspectProgressAtViewport(
 	t *testing.T,
-	chromePath, pageURL string,
+	browserContext context.Context,
+	pageURL string,
 	width, height int64,
 	screenshotPath string,
 ) progressLayout {
 	t.Helper()
 
-	options := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
-	options = append(options,
-		chromedp.ExecPath(chromePath),
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("disable-dev-shm-usage", true),
-		chromedp.Flag("no-sandbox", true),
-	)
-	allocatorContext, cancelAllocator := chromedp.NewExecAllocator(context.Background(), options...)
-	defer cancelAllocator()
-	browserContext, cancelBrowser := chromedp.NewContext(allocatorContext)
-	defer cancelBrowser()
-	ctx, cancel := context.WithTimeout(browserContext, 30*time.Second)
+	tabContext, cancelTab := chromedp.NewContext(browserContext)
+	defer cancelTab()
+	ctx, cancel := context.WithTimeout(tabContext, 30*time.Second)
 	defer cancel()
 
 	var layout progressLayout

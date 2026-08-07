@@ -188,7 +188,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Hash the new password
-	newHash, err := auth.HashPassword(newPassword)
+	newHash, err := h.hashPassword(newPassword)
 	if err != nil {
 		slog.Error("Failed to hash new password", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)

@@ -20,10 +20,7 @@ func TestChangePasswordRotatesSessionVersion(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 
-	currentHash, err := auth.HashPassword("current-password")
-	if err != nil {
-		t.Fatal(err)
-	}
+	currentHash := fastPasswordHash(t, "current-password")
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT password_hash FROM users").
 		WithArgs("user-1").
@@ -36,7 +33,7 @@ func TestChangePasswordRotatesSessionVersion(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	audit := service.NewAuditService(database)
-	handler := &Handler{DB: database, Audit: audit}
+	handler := &Handler{DB: database, Audit: audit, passwordHasher: fastPasswordHasher}
 	form := url.Values{
 		"current_password": {"current-password"},
 		"new_password":     {"new-password"},

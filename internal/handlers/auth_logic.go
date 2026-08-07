@@ -62,7 +62,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Performance: Only hash password if registration can proceed
-	hash, errHash := auth.HashPassword(password)
+	hash, errHash := h.hashPassword(password)
 	if errHash != nil {
 		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 		return
@@ -104,6 +104,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	data := map[string]interface{}{
 		"Message":   "Registration successful! Please check your email to verify your account.",
+		"Email":     email,
 		"CSRFToken": csrf.Token(r),
 	}
 	if err := h.Templates.ExecuteTemplate(w, "auth_success", data); err != nil {

@@ -1,20 +1,20 @@
 {{ define "settings" }}
 <div id="settings-content" class="space-y-6">
-    <div class="glass-card p-6 border-white/5">
-        <h2 class="text-lg font-bold text-on-surface mb-4">Currency Preference</h2>
-        <p class="text-xs text-on-surface-variant mb-6 leading-relaxed">Select your primary currency for market valuations and price display. This affects all portfolios and binders.</p>
-        
+    <div class="card p-5 sm:p-6">
+        <h2 class="text-lg font-bold text-zinc-900 mb-2">Currency Preference</h2>
+        <p class="text-sm text-zinc-500 mb-6 leading-relaxed">Select your primary currency for market valuations and price display. This affects all portfolios and binders.</p>
+
         <form hx-post="/settings" hx-target="#settings-content" hx-swap="outerHTML" class="space-y-4">
             <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-2 gap-3 sm:gap-4">
                 <label class="relative cursor-pointer group">
                     <input type="radio" name="currency" value="EUR" class="peer sr-only" {{ if eq .Currency "EUR" }}checked{{ end }}>
-                    <div class="p-4 rounded-xl border border-white/10 bg-white/5 transition-all group-hover:bg-white/10 peer-checked:border-primary peer-checked:bg-primary/10">
+                    <div class="p-4 rounded-xl border border-zinc-200 bg-white transition-colors group-hover:bg-zinc-50 peer-checked:border-violet-600 peer-checked:bg-violet-50">
                         <div class="flex items-center gap-3">
-                            <span class="text-2xl font-bold {{ if eq .Currency "EUR" }}text-primary{{ else }}text-on-surface/40{{ end }}">€</span>
+                            <span class="text-2xl font-bold {{ if eq .Currency "EUR" }}text-violet-700{{ else }}text-zinc-400{{ end }}">€</span>
                             <div>
-                                <p class="text-xs font-bold text-on-surface">Euro</p>
-                                <p class="text-[10px] text-on-surface-variant">Default</p>
+                                <p class="text-sm font-bold text-zinc-900">Euro</p>
+                                <p class="text-[10px] text-zinc-500">Default</p>
                             </div>
                         </div>
                     </div>
@@ -22,62 +22,68 @@
 
                 <label class="relative cursor-pointer group">
                     <input type="radio" name="currency" value="USD" class="peer sr-only" {{ if eq .Currency "USD" }}checked{{ end }}>
-                    <div class="p-4 rounded-xl border border-white/10 bg-white/5 transition-all group-hover:bg-white/10 peer-checked:border-primary peer-checked:bg-primary/10">
+                    <div class="p-4 rounded-xl border border-zinc-200 bg-white transition-colors group-hover:bg-zinc-50 peer-checked:border-violet-600 peer-checked:bg-violet-50">
                         <div class="flex items-center gap-3">
-                            <span class="text-2xl font-bold {{ if eq .Currency "USD" }}text-primary{{ else }}text-on-surface/40{{ end }}">$</span>
+                            <span class="text-2xl font-bold {{ if eq .Currency "USD" }}text-violet-700{{ else }}text-zinc-400{{ end }}">$</span>
                             <div>
-                                <p class="text-xs font-bold text-on-surface">US Dollar</p>
-                                <p class="text-[10px] text-on-surface-variant">International</p>
+                                <p class="text-sm font-bold text-zinc-900">US Dollar</p>
+                                <p class="text-[10px] text-zinc-500">International</p>
                             </div>
                         </div>
                     </div>
                 </label>
             </div>
-            
-            <button type="submit" class="w-full bg-primary text-surface font-bold py-3 rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all">
+
+            <button type="submit" class="btn-primary w-full min-h-12 text-base">
                 Save Changes
             </button>
         </form>
     </div>
 
-    <div class="glass-card p-6 border-white/5">
-        <h2 class="text-lg font-bold text-on-surface mb-2">Public Vault</h2>
-        <p class="text-xs text-on-surface-variant mb-4">Share only portfolio cards you explicitly mark public.</p>
+    <div class="card p-5 sm:p-6">
+        <h2 class="text-lg font-bold text-zinc-900 mb-2">Public Vault</h2>
+        <p class="text-sm text-zinc-500 mb-4">Share only portfolio cards you explicitly mark public.</p>
         <form hx-post="/settings/public-profile" hx-target="#settings-content" hx-swap="outerHTML" class="space-y-4">
             <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
-            <label class="flex items-center gap-3 text-sm font-bold cursor-pointer">
+            <label class="flex items-center gap-2.5 min-h-11 text-sm font-semibold text-zinc-700 cursor-pointer">
                 <input type="checkbox" name="is_public_profile" value="true" {{ if .IsPublicProfile }}checked{{ end }}
-                    class="h-5 w-5 rounded border-white/20 bg-white/5 text-primary">
+                    class="w-5 h-5 accent-violet-600">
                 Enable public profile
             </label>
             {{ if .PublicSlug }}
             <div class="flex items-center gap-2">
                 <input readonly value="/vault/{{ .PublicSlug }}" aria-label="Public vault URL"
-                    class="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-mono">
-                <a href="/vault/{{ .PublicSlug }}" target="_blank" rel="noopener" class="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold">OPEN</a>
+                    class="input min-w-0 flex-1 font-mono text-sm">
+                <a href="/vault/{{ .PublicSlug }}" target="_blank" rel="noopener" class="btn-secondary shrink-0">Open</a>
             </div>
             {{ end }}
-            <button type="submit" class="w-full rounded-xl bg-primary/15 py-3 text-sm font-bold text-primary">Save sharing settings</button>
+            <button type="submit" class="btn-secondary w-full">Save sharing settings</button>
         </form>
     </div>
 
-    <div class="glass-card p-6 border-white/5">
-        <h2 class="text-lg font-bold text-on-surface mb-2">Account Node</h2>
-        <p class="text-xs text-on-surface-variant mb-4">Managed via encrypted session: {{ .Email }}</p>
-        <form hx-post="/settings/change-password" hx-swap="none" class="space-y-3"
+    <div class="card p-5 sm:p-6">
+        <h2 class="text-lg font-bold text-zinc-900 mb-2">Account</h2>
+        <p class="text-sm text-zinc-500 mb-4">Managed via encrypted session: {{ .Email }}</p>
+        <form hx-post="/settings/change-password" hx-swap="none" class="space-y-4"
             hx-on::response-error="this.querySelector('[role=alert]').textContent = event.detail.xhr.responseText">
             <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
-            <label for="current-password" class="block text-xs font-bold text-on-surface-variant">Current password</label>
-            <input id="current-password" type="password" name="current_password" autocomplete="current-password" required
-                class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-            <label for="new-password" class="block text-xs font-bold text-on-surface-variant">New password</label>
-            <input id="new-password" type="password" name="new_password" autocomplete="new-password" required
-                class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-            <label for="confirm-password" class="block text-xs font-bold text-on-surface-variant">Confirm new password</label>
-            <input id="confirm-password" type="password" name="confirm_password" autocomplete="new-password" required
-                class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-            <p role="alert" aria-live="assertive" class="text-xs text-red-400"></p>
-            <button type="submit" class="w-full bg-red-500/15 text-red-300 border border-red-500/30 font-bold py-3 rounded-xl">
+            <div>
+                <label for="current-password" class="label">Current password</label>
+                <input id="current-password" type="password" name="current_password" autocomplete="current-password" required
+                    class="input">
+            </div>
+            <div>
+                <label for="new-password" class="label">New password</label>
+                <input id="new-password" type="password" name="new_password" autocomplete="new-password" required
+                    class="input">
+            </div>
+            <div>
+                <label for="confirm-password" class="label">Confirm new password</label>
+                <input id="confirm-password" type="password" name="confirm_password" autocomplete="new-password" required
+                    class="input">
+            </div>
+            <p role="alert" aria-live="assertive" class="empty:hidden rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700"></p>
+            <button type="submit" class="btn-danger w-full">
                 Change Password
             </button>
         </form>
@@ -87,52 +93,51 @@
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Settings | Pokget</title>
-    <link href="/static/css/tailwind.css" rel="stylesheet">
-    <link href="/static/css/styles.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-    <script src="/static/js/htmx.min.js"></script>
-    <script defer src="/static/js/alpine.min.js"></script>
+    <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        rel="stylesheet" />
+    <script src="/static/js/alpine.min.js?v=3" defer></script>
+    <script src="/static/js/htmx.min.js?v=3"></script>
+    <link rel="icon" type="image/png" href="/static/img/logo.png?v=3">
+    <link rel="stylesheet" href="/static/css/styles.css?v=3">
 </head>
-<body class="bg-surface text-on-surface font-sans selection:bg-primary/30 min-h-screen overflow-x-hidden" style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom)">
-    <div class="max-w-md mx-auto p-4 space-y-8">
+
+<body class="min-h-dvh bg-zinc-100 text-zinc-900 overflow-x-hidden">
+    <div class="w-full max-w-md mx-auto px-4 py-6 space-y-6"
+        style="padding-top: max(1.5rem, env(safe-area-inset-top)); padding-bottom: max(1.5rem, env(safe-area-inset-bottom))">
         <!-- Header -->
-        <header class="flex items-center justify-between pt-4">
-            <div class="flex items-center gap-4">
-                <a href="/" class="p-2 hover:bg-white/5 rounded-full transition-colors">
-                    <span class="material-symbols-outlined">arrow_back</span>
-                </a>
-                <h1 class="text-2xl font-black tracking-tightest bg-gradient-to-br from-white to-white/60 bg-clip-text text-transparent italic">SETTINGS</h1>
-            </div>
+        <header class="flex items-center gap-2">
+            <a href="/" class="btn-ghost -ml-2 min-h-11 px-2" aria-label="Back to vault">
+                <span class="material-symbols-outlined">arrow_back</span>
+            </a>
+            <h1 class="text-2xl font-extrabold tracking-tight text-zinc-900">Settings</h1>
         </header>
 
         {{ template "settings" . }}
     </div>
 
     <!-- Notifications Container -->
-    <div x-data="{ toasts: [] }" role="status" aria-live="polite" aria-atomic="true"
+    <div x-data="{ toasts: [] }" x-cloak role="status" aria-live="polite" aria-atomic="true"
          @notify.window="toasts.push({ id: Date.now(), msg: $event.detail.msg, type: $event.detail.type }); setTimeout(() => toasts.shift(), 3000)"
-         class="fixed bottom-6 right-6 z-[100] space-y-3 pointer-events-none">
+         class="fixed top-4 inset-x-4 z-[100] flex flex-col items-center gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
-            <div x-show="true" 
-                 x-transition:enter="transition ease-out duration-300"
-                 x-transition:enter-start="translate-y-4 opacity-0 scale-95"
-                 x-transition:enter-end="translate-y-0 opacity-100 scale-100"
-                 x-transition:leave="transition ease-in duration-200"
-                 x-transition:leave-start="opacity-100 scale-100"
-                 x-transition:leave-end="opacity-0 scale-90"
-                 :class="{
-                    'bg-emerald-500/90': toast.type === 'success',
-                    'bg-red-500/90': toast.type === 'error',
-                    'bg-blue-500/90': toast.type === 'info'
-                 }"
-                 class="px-6 py-3 rounded-2xl shadow-2xl backdrop-blur-md text-white font-bold text-sm flex items-center gap-3 pointer-events-auto border border-white/20">
-                <span x-text="toast.msg"></span>
+            <div x-transition.duration.300ms class="card px-4 py-3 shadow-lg flex items-center gap-3 border-l-4 w-full max-w-sm"
+                :class="toast.type === 'error' ? 'border-red-500' : 'border-violet-600'">
+                <span class="material-symbols-outlined text-lg"
+                    :class="toast.type === 'error' ? 'text-red-600' : 'text-violet-700'"
+                    x-text="toast.type === 'error' ? 'error' : 'check_circle'"></span>
+                <p class="text-sm font-semibold" x-text="toast.msg"></p>
             </div>
         </template>
     </div>
 </body>
+
 </html>

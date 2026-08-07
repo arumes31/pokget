@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/HTMX-3366CC?style=for-the-badge&logo=htmx&logoColor=white" alt="HTMX">
   <img src="https://img.shields.io/badge/Tailwind-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind">
   <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="Postgres">
-  <img src="https://img.shields.io/badge/Coverage-90%2B%25-brightgreen?style=for-the-badge" alt="Coverage">
+  <a href="https://github.com/arumes31/pokget/actions/workflows/pipeline.yml"><img src="https://github.com/arumes31/pokget/actions/workflows/pipeline.yml/badge.svg?branch=main" alt="CI/CD Pipeline"></a>
 </p>
 
 ---
@@ -114,6 +114,32 @@ go run ./cmd/ui_scan_test --base-url http://localhost:18066 \
 
 Use a different `--seed` to select a different card from each game's pool. “100%” refers specifically to a reproducible seeded 42-case acceptance matrix; it is not a claim that every possible camera, blur level, crop, language, or newly released card will always match. Add captured failure cases to the pool before changing thresholds.
 
+The normal Go suite also exercises a fixed 600-card matching cohort: 100
+unique printing IDs for each supported TCG. Every card is ranked against only
+its 100-card game scope using exact and OCR-normalized text. Same-name
+printings remain explicit ties unless set or collector evidence distinguishes
+them.
+
+### Verification gates
+
+Pull requests run bounded unit and race-detector shards, real Linux Tesseract
+OCR, rendered mobile and service-worker lifecycle tests, static asset tests,
+and a production-container smoke test. The container gate starts PostgreSQL on
+an isolated network, applies every migration, checks the application health and
+runtime dependencies, then verifies a complete dump/restore into a second
+database. Historical migrations that cannot be reversed without data loss are
+listed in `migrations/irreversible.txt` rather than given unsafe down scripts.
+
+Useful local checks:
+
+```bash
+go test -timeout=10m -count=1 ./...
+go test -race -timeout=8m -count=1 ./internal/service
+go test -timeout=3m -count=1 -v ./cmd/ui_scan_test
+docker build -t pokget:verification .
+bash scripts/container-smoke.sh pokget:verification
+```
+
 
 ---
 
@@ -138,7 +164,7 @@ docker-compose up --build
     ```
 3.  **Run**:
     ```bash
-    go run ./cmd/pokget/main.go
+    go run ./cmd/pokget
     ```
 
 ---
