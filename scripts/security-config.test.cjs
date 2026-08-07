@@ -21,3 +21,15 @@ test('automated workflows declare least-privilege repository access', () => {
     assert.match(source, /^permissions:\r?\n  contents: read$/m, workflow);
   }
 });
+
+test('GHCR publishing minifies and validates JavaScript before building the image', () => {
+  const workflow = read('.github/workflows/pipeline.yml');
+  const dockerJob = workflow.slice(workflow.indexOf('\n  docker:'));
+  const minifyStep = dockerJob.indexOf('name: Minify and validate JavaScript before image build');
+  const imageBuild = dockerJob.indexOf('uses: docker/build-push-action@');
+
+  assert.ok(minifyStep >= 0, 'docker job is missing the production asset step');
+  assert.ok(imageBuild > minifyStep, 'image build must run after asset minification');
+  assert.match(dockerJob, /npm run build:static/);
+  assert.match(dockerJob, /npm run check:static/);
+});
