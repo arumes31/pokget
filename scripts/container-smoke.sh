@@ -92,7 +92,11 @@ if [[ "${ready}" != "true" ]]; then
 fi
 
 docker exec "${application_container}" wget -q --spider http://127.0.0.1:18066/health/live
-docker exec "${application_container}" wget -qO- http://127.0.0.1:18066/sw.js | grep -q "pokget-"
+service_worker="$(docker exec "${application_container}" wget -qO- http://127.0.0.1:18066/sw.js)"
+if [[ "${service_worker}" != *pokget-* ]]; then
+  echo "production service worker does not contain the expected cache name" >&2
+  exit 1
+fi
 
 migration_version="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT version FROM schema_migrations')"
 migration_dirty="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT dirty FROM schema_migrations')"
@@ -205,15 +209,24 @@ if [[ "${restored_version}" != "28" ]]; then
 fi
 
 normalized_schema_dump() {
-  local target_database="$1"
+  local source_database="$1"
+  local normalized_database="$2"
+
+  docker exec "${database_container}" dropdb --if-exists -U "${database_user}" "${normalized_database}"
+  docker exec "${database_container}" createdb -U "${database_user}" "${normalized_database}"
   docker exec "${database_container}" pg_dump \
     --schema-only --no-owner --no-privileges \
-    -U "${database_user}" -d "${target_database}" |
+    -U "${database_user}" -d "${source_database}" |
+    docker exec -i "${database_container}" psql -v ON_ERROR_STOP=1 \
+      -U "${database_user}" -d "${normalized_database}" >/dev/null
+  docker exec "${database_container}" pg_dump \
+    --schema-only --no-owner --no-privileges \
+    -U "${database_user}" -d "${normalized_database}" |
     sed -E '/^\\(un)?restrict /d'
 }
 
-source_schema="$(normalized_schema_dump "${database_name}")"
-restored_schema="$(normalized_schema_dump pokget_restore)"
+source_schema="$(normalized_schema_dump "${database_name}" pokget_source_schema)"
+restored_schema="$(normalized_schema_dump pokget_restore pokget_restored_schema)"
 if [[ -z "${source_schema}" || -z "${restored_schema}" || "${source_schema}" != "${restored_schema}" ]]; then
   echo "backup/restore schema mismatch" >&2
   diff -u <(printf '%s\n' "${source_schema}") <(printf '%s\n' "${restored_schema}") >&2 || true

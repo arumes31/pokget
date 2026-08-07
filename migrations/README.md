@@ -10,8 +10,9 @@ look safe while potentially deleting user data. The container smoke test instead
 applies the complete migration chain to a fresh PostgreSQL database, creates a
 custom-format dump, restores it into a second database, and compares the schema
 and migration version. Schema integrity is checked by comparing normalized
-`pg_dump --schema-only --no-owner --no-privileges` output, with PostgreSQL's
-per-dump `\restrict` guards removed before comparison.
+`pg_dump --schema-only --no-owner --no-privileges` output. Each dump is replayed
+into an empty scratch database to canonicalize PostgreSQL expressions, then the
+per-dump `\restrict` guards are removed before comparison.
 
 New migrations should be reversible. If a new migration genuinely cannot be
 reversed, its pull request must add it to `irreversible.txt` and explain the
