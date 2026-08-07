@@ -343,6 +343,68 @@ func TestManifestIconMetadataMatchesAsset(t *testing.T) {
 	}
 }
 
+// TestTemplatesUseMobileFirstResponsiveMarkup asserts every page ships
+// mobile-first markup: a correct viewport meta on full documents, no fixed
+// desktop-only pixel widths, and ~44px minimum touch targets on buttons
+// (44px enforced either by Tailwind classes or by styles.css component rules).
+func TestTemplatesUseMobileFirstResponsiveMarkup(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(filepath.Join("..", "..", "templates", "*.html"))
+	if err != nil {
+		t.Fatalf("glob templates: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no templates found")
+	}
+
+	viewportNameRe := regexp.MustCompile(`<meta\b[^>]*name="viewport"[^>]*>`)
+	fixedWidthRe := regexp.MustCompile(`w-\[\d{3,}px\]`)
+	constrainedWidthRe := regexp.MustCompile(`(?:min|max)-w-\[\d+px\]`)
+	buttonRe := regexp.MustCompile(`<button\b(?:[^>"']|"[^"]*"|'[^']*')*>`)
+	// 44px targets: explicit min sizing, btn components (min-h-11), the 44px
+	// scanner guides, h-11/w-11 squares, p-4..p-6 padded card surfaces, or the
+	// styles.css-enforced scan-progress-cancel (min-height: 3rem).
+	touchTargetRe := regexp.MustCompile(`min-h-|min-w-|btn|\[44px\]|\bh-11\b|\bw-11\b|\bp-[456]\b|scan-progress-cancel`)
+
+	for _, file := range files {
+		file := file
+		t.Run(filepath.Base(file), func(t *testing.T) {
+			t.Parallel()
+
+			contents, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("read template: %v", err)
+			}
+			source := string(contents)
+
+			if strings.Contains(source, "<!DOCTYPE") || strings.Contains(source, "<!doctype") {
+				viewport := viewportNameRe.FindString(source)
+				if viewport == "" {
+					t.Error("full document is missing a viewport meta tag")
+				} else {
+					if !strings.Contains(viewport, "width=device-width") {
+						t.Errorf("viewport meta lacks width=device-width: %s", viewport)
+					}
+					if !strings.Contains(viewport, "viewport-fit=cover") {
+						t.Errorf("viewport meta lacks viewport-fit=cover: %s", viewport)
+					}
+				}
+			}
+
+			if match := fixedWidthRe.FindString(constrainedWidthRe.ReplaceAllString(source, "")); match != "" {
+				t.Errorf("template uses fixed desktop-only width %q", match)
+			}
+
+			for _, button := range buttonRe.FindAllString(source, -1) {
+				if !touchTargetRe.MatchString(button) {
+					t.Errorf("button without a ~44px touch target: %s", button)
+				}
+			}
+		})
+	}
+}
+
 func parseApplicationTemplates(t *testing.T) *template.Template {
 	t.Helper()
 

@@ -3,16 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "build:css": "tailwindcss -i static/css/input.css -o static/css/tailwind.css --minify",
+    "prebuild:static": "npm run build:css",
     "build:static": "node scripts/build-static.mjs",
     "check:static": "node --check dist/static/js/vault.js && node --check dist/static/js/scanner.js && node --check dist/static/js/sw.js && node -e \"const fs=require('node:fs');fs.accessSync('dist/static/offline.html');if(fs.existsSync('dist/static/sw.js'))process.exit(1)\"",
     "test:static": "node --test scripts/build-static.test.mjs scripts/scanner.test.cjs scripts/pwa-template.test.cjs scripts/security-config.test.cjs"
   },
   "dependencies": {
-    "tailwindcss": "^4.2.4",
+    "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/forms": "^0.5.9",
-    "@tailwindcss/container-queries": "^0.1.1"
+    "tailwindcss": "^4.2.4"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
     "terser": "5.49.0"
   }
 }

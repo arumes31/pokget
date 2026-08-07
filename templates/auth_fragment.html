@@ -1,201 +1,149 @@
-<div class="max-w-container-max mx-auto w-full animate-in"
+<div class="w-full max-w-md mx-auto"
     x-data="{ mode: 'login', signupAttempted: false, resendDisabled: false, countdown: 0 }">
-    <div class="flex flex-col lg:flex-row items-center lg:items-end justify-between gap-12 lg:gap-20">
-        <!-- Branding Section -->
-        <div class="w-full lg:w-auto text-center lg:text-left">
-            <div class="flex items-center justify-center lg:justify-start gap-6 mb-4">
-                <img src="/static/img/logo.png" alt="Pokget" class="w-20 h-20 lg:w-16 lg:h-16">
-                <h1
-                    class="font-h2 text-6xl lg:text-5xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
-                    Pokget
-                </h1>
-            </div>
-            <p class="font-label-sm text-[11px] text-on-surface-variant uppercase tracking-[0.3em] opacity-40 mb-10">
-                Digital Vault Access // v.2.0.4
-            </p>
-            <div class="flex justify-center lg:justify-start gap-12" role="tablist" aria-label="Account access">
-                <button type="button" role="tab" aria-controls="login-panel" :aria-selected="(mode === 'login').toString()"
-                    @click="mode = 'login'; signupAttempted = false"
-                    class="text-lg font-black transition-all uppercase tracking-[0.3em]"
-                    :class="mode === 'login' ? 'text-primary' : 'text-on-surface-variant/20 hover:text-on-surface-variant/40'">
-                    Login
-                </button>
-                <button type="button" role="tab" aria-controls="register-panel" :aria-selected="(mode === 'register').toString()"
-                    @click="mode = 'register'" class="text-lg font-black transition-all uppercase tracking-[0.3em]"
-                    :class="mode === 'register' ? 'text-primary' : 'text-on-surface-variant/20 hover:text-on-surface-variant/40'">
-                    Register
-                </button>
-            </div>
+    <!-- Brand -->
+    <div class="text-center mb-6">
+        <img src="/static/img/logo.png" alt="Pokget" class="w-16 h-16 mx-auto mb-3">
+        <h1 class="text-3xl font-extrabold tracking-tight text-zinc-900">Pokget</h1>
+        <p class="text-sm text-zinc-500 mt-1">Your collection, in your pocket.</p>
+    </div>
+
+    <div class="card p-5 sm:p-8">
+        <!-- Mode tabs -->
+        <div class="grid grid-cols-2 gap-1 p-1 mb-6 bg-zinc-100 rounded-xl" role="tablist"
+            aria-label="Account access">
+            <button type="button" role="tab" aria-controls="login-panel"
+                :aria-selected="(mode === 'login').toString()"
+                @click="mode = 'login'; signupAttempted = false"
+                class="min-h-11 rounded-lg text-sm font-semibold transition-colors"
+                :class="mode === 'login' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'">
+                Login
+            </button>
+            <button type="button" role="tab" aria-controls="register-panel"
+                :aria-selected="(mode === 'register').toString()"
+                @click="mode = 'register'"
+                class="min-h-11 rounded-lg text-sm font-semibold transition-colors"
+                :class="mode === 'register' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'">
+                Register
+            </button>
         </div>
 
-        <!-- Inputs & CTA Cluster -->
-        <div class="w-full lg:flex-grow flex flex-col items-center lg:items-end gap-12">
-            <!-- Login Form -->
-            <form id="login-panel" role="tabpanel" x-show="mode === 'login'" hx-post="/auth/login" hx-target="#main-content"
-                class="flex flex-col lg:flex-row items-center lg:items-end gap-10 w-full lg:w-auto relative">
-                <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+        <!-- Login Form -->
+        <form id="login-panel" role="tabpanel" x-show="mode === 'login'" hx-post="/auth/login"
+            hx-target="#main-content" class="space-y-4">
+            <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
 
-                <div id="auth-error" role="alert" aria-live="assertive" tabindex="-1"
-                    class="absolute -top-12 left-0 w-full text-red-400 font-bold text-sm text-center lg:text-left h-8">
-                </div>
+            <div id="auth-error" role="alert" aria-live="assertive" tabindex="-1"
+                class="empty:hidden rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700">
+            </div>
 
-                <div class="relative group w-full lg:w-80">
-                    <label for="login-email"
-                        class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Access
-                        Node (Mail)</label>
-                    <input id="login-email"
-                        class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20"
-                        placeholder="collector@example.com" type="email" inputmode="email" autocomplete="email"
-                        name="email" required />
-                </div>
+            <div>
+                <label for="login-email" class="label">Email</label>
+                <input id="login-email" class="input" placeholder="collector@example.com" type="email"
+                    inputmode="email" autocomplete="email" name="email" required />
+            </div>
 
-                <div class="relative group w-full lg:w-80">
-                    <label for="login-password"
-                        class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Security
-                        Key</label>
-                    <input id="login-password"
-                        class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20"
-                        placeholder="••••••••" type="password" autocomplete="current-password" enterkeyhint="send"
-                        name="password" required />
-                </div>
+            <div>
+                <label for="login-password" class="label">Password</label>
+                <input id="login-password" class="input" placeholder="••••••••" type="password"
+                    autocomplete="current-password" enterkeyhint="send" name="password" required />
+            </div>
 
-                <div class="w-full lg:w-auto flex flex-col items-center lg:items-end gap-8">
-                    <button type="submit"
-                        class="w-full lg:w-auto bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-black text-xl px-14 py-6 rounded-[2.5rem] hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-4">
-                        Enter Vault
-                        <span class="material-symbols-outlined text-[28px]">keyboard_tab</span>
-                    </button>
+            <button type="submit" class="btn-primary w-full min-h-12 text-base">Sign in</button>
 
-                    <div class="flex flex-col sm:flex-row items-center gap-8 lg:gap-10">
-                        <label class="flex items-center gap-3 cursor-pointer group">
-                            <div class="relative w-6 h-6">
-                                <input type="checkbox" name="remember"
-                                    class="peer opacity-0 absolute inset-0 cursor-pointer z-10">
-                                <div
-                                    class="w-full h-full border-2 border-primary/20 rounded-lg peer-checked:bg-primary peer-checked:border-primary transition-all group-hover:border-primary/40">
-                                </div>
-                                <span
-                                    class="material-symbols-outlined absolute inset-0 flex items-center justify-center text-[18px] text-on-primary scale-0 peer-checked:scale-100 transition-transform font-bold">check</span>
-                            </div>
-                            <span
-                                class="text-[11px] font-black text-on-surface-variant uppercase tracking-[0.2em] group-hover:text-primary transition-colors">Remember
-                                Session</span>
-                        </label>
+            <div class="flex flex-wrap items-center justify-between gap-x-4 pt-1">
+                <label class="flex items-center gap-2.5 min-h-11 cursor-pointer">
+                    <input type="checkbox" name="remember" class="w-5 h-5 accent-violet-600">
+                    <span class="text-sm text-zinc-600">Remember me</span>
+                </label>
 
-                        <button type="button"
-                            @click="$dispatch('notify', { msg: 'Mobile Biometrics Active: Use your device manager to autofill.', type: 'info' })"
-                            class="flex items-center gap-2 text-[11px] font-black text-primary/60 uppercase tracking-[0.2em] hover:text-primary transition-colors group">
-                            <span
-                                class="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">fingerprint</span>
-                            Biometric Unlock
-                        </button>
-                    </div>
-                </div>
-            </form>
-
-            <!-- Register Form (Similar updates for consistency) -->
-            <form id="register-panel" role="tabpanel" x-show="mode === 'register'" x-cloak hx-post="/auth/register" hx-target="#main-content"
-                class="flex flex-col items-center lg:items-end gap-10 w-full relative">
-                <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
-                <div id="auth-register-error" role="alert" aria-live="assertive" tabindex="-1"
-                    class="absolute -top-12 left-0 w-full text-red-400 font-bold text-sm text-center lg:text-left h-8">
-                </div>
-
-                <div class="flex flex-col lg:flex-row items-center lg:items-end gap-10 w-full lg:w-auto">
-                    <div class="relative group w-full lg:w-64">
-                        <label for="register-email"
-                            class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Mail</label>
-                        <input id="register-email"
-                            class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20"
-                            placeholder="collector@example.com" type="email" inputmode="email" autocomplete="email"
-                            name="email" required />
-                    </div>
-                    <div class="relative group w-full lg:w-64">
-                        <label for="register-password"
-                            class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Secret
-                            Key</label>
-                        <input id="register-password"
-                            class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20"
-                            placeholder="••••••••" type="password" autocomplete="new-password" enterkeyhint="next"
-                            name="password" required />
-                    </div>
-                    <div class="relative group w-full lg:w-64">
-                        <label for="register-confirm-password"
-                            class="absolute -top-7 left-0 font-label-sm text-[10px] text-primary opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 uppercase tracking-widest font-bold">Confirm
-                            Key</label>
-                        <input id="register-confirm-password"
-                            class="bg-surface-container-lowest/40 border border-outline-variant/20 text-on-surface px-8 py-6 rounded-[2.5rem] w-full text-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-500 backdrop-blur-2xl placeholder:text-on-surface-variant/20"
-                            placeholder="••••••••" type="password" autocomplete="new-password" enterkeyhint="send"
-                            name="confirm_password" required />
-                    </div>
-                    <button type="submit" @click="signupAttempted = true"
-                        class="w-full lg:w-auto bg-gradient-to-r from-primary-container to-secondary-container text-on-primary-container font-black text-xl px-14 py-6 rounded-[2.5rem] hover:neon-bloom active:scale-95 transition-all duration-500 flex items-center justify-center gap-4">
-                        Initiate
-                        <span class="material-symbols-outlined text-[28px]">vibration</span>
-                    </button>
-                </div>
-            </form>
-
-            <!-- Resend Section -->
-            <div x-show="signupAttempted && mode === 'register'" x-transition
-                class="md:absolute md:bottom-full md:right-0 mb-16 text-center md:text-right">
-                <p class="text-sm text-on-surface-variant/40 uppercase tracking-widest mb-4">Key not received?</p>
-                <button @click="
-                    if (!resendDisabled) {
-                        resendDisabled = true;
-                        countdown = 300;
-                        let timer = setInterval(() => {
-                            countdown--;
-                            if (countdown <= 0) {
-                                clearInterval(timer);
-                                resendDisabled = false;
-                            }
-                        }, 1000);
-                        
-                        const emailInput = $el.closest('.flex').querySelector('input[type=\'email\']');
-                        const csrfToken = document.getElementsByName('gorilla.csrf.Token')[0]?.value;
-                        const formData = new FormData();
-                        formData.append('email', emailInput.value);
-                        if (csrfToken) formData.append('gorilla.csrf.Token', csrfToken);
-                        fetch('/auth/resend', { method: 'POST', body: formData }).then(res => {
-                            if (res.ok) {
-                                $dispatch('notify', { msg: 'Access Key Re-sent', type: 'success' });
-                            } else {
-                                $dispatch('notify', { msg: 'Rate Limit Breach', type: 'error' });
-                            }
-                        });
-                    }"
-                    :disabled="resendDisabled"
-                    class="text-sm font-bold text-primary uppercase tracking-widest hover:text-white transition-colors
-                    disabled:opacity-20">
-                    <span
-                        x-text="resendDisabled ? 'Retry in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend Key'"></span>
+                <button type="button"
+                    @click="$dispatch('notify', { msg: 'Mobile Biometrics Active: Use your device manager to autofill.', type: 'info' })"
+                    class="btn-ghost -mr-2 text-sm">
+                    <span class="material-symbols-outlined text-[20px]">fingerprint</span>
+                    Biometric unlock
                 </button>
             </div>
+        </form>
+
+        <!-- Register Form -->
+        <form id="register-panel" role="tabpanel" x-show="mode === 'register'" x-cloak
+            hx-post="/auth/register" hx-target="#main-content" class="space-y-4">
+            <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+
+            <div id="auth-register-error" role="alert" aria-live="assertive" tabindex="-1"
+                class="empty:hidden rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700">
+            </div>
+
+            <div>
+                <label for="register-email" class="label">Email</label>
+                <input id="register-email" class="input" placeholder="collector@example.com" type="email"
+                    inputmode="email" autocomplete="email" name="email" required />
+            </div>
+
+            <div>
+                <label for="register-password" class="label">Password</label>
+                <input id="register-password" class="input" placeholder="••••••••" type="password"
+                    autocomplete="new-password" enterkeyhint="next" name="password" required />
+            </div>
+
+            <div>
+                <label for="register-confirm-password" class="label">Confirm password</label>
+                <input id="register-confirm-password" class="input" placeholder="••••••••" type="password"
+                    autocomplete="new-password" enterkeyhint="send" name="confirm_password" required />
+            </div>
+
+            <button type="submit" @click="signupAttempted = true"
+                class="btn-primary w-full min-h-12 text-base">Create account</button>
+        </form>
+
+        <!-- Resend verification -->
+        <div x-show="signupAttempted && mode === 'register'" x-cloak class="mt-4 text-center">
+            <p class="text-sm text-zinc-500 mb-1">Didn't receive the email?</p>
+            <button @click="
+                if (!resendDisabled) {
+                    resendDisabled = true;
+                    countdown = 300;
+                    let timer = setInterval(() => {
+                        countdown--;
+                        if (countdown <= 0) {
+                            clearInterval(timer);
+                            resendDisabled = false;
+                        }
+                    }, 1000);
+
+                    const emailInput = document.getElementById('register-email');
+                    const csrfToken = document.getElementsByName('gorilla.csrf.Token')[0]?.value;
+                    const formData = new FormData();
+                    formData.append('email', emailInput ? emailInput.value : '');
+                    if (csrfToken) formData.append('gorilla.csrf.Token', csrfToken);
+                    fetch('/auth/resend', { method: 'POST', body: formData }).then(res => {
+                        if (res.ok) {
+                            $dispatch('notify', { msg: 'Verification email re-sent', type: 'success' });
+                        } else {
+                            $dispatch('notify', { msg: 'Rate limit reached, try later', type: 'error' });
+                        }
+                    });
+                }"
+                :disabled="resendDisabled"
+                class="btn-ghost text-violet-700">
+                <span
+                    x-text="resendDisabled ? 'Retry in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend email'"></span>
+            </button>
         </div>
     </div>
 
-    <!-- Footer Elements -->
-    <div
-        class="mt-20 flex flex-col md:flex-row justify-between items-center border-t border-outline-variant/10 pt-10 pb-4">
-        <span class="font-label-sm text-[10px] text-on-surface-variant/40 uppercase tracking-widest">© 2026 POKGET
-            VAULT. PRESTIGE ENCRYPTED.</span>
-        <div class="flex gap-12 mt-8 md:mt-0">
-            <!-- Removed Lost Access and Security Protocols links -->
-        </div>
-    </div>
+    <p class="text-center text-xs text-zinc-400 mt-6">© 2026 Pokget</p>
 </div>
 
 {{define "auth_success"}}
-<div class="glass-card rounded-3xl p-12 text-center animate-in">
-    <div class="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-8">
-        <span class="material-symbols-outlined text-primary text-4xl">check_circle</span>
+<div class="w-full max-w-md mx-auto">
+    <div class="card p-6 sm:p-8 text-center">
+        <div class="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span class="material-symbols-outlined text-emerald-600 text-3xl">check_circle</span>
+        </div>
+        <h2 class="text-2xl font-bold mb-2">{{.Message}}</h2>
+        <p class="text-sm text-zinc-500 mb-6">You can now sign in to your account.</p>
+        <a href="/auth" class="btn-primary w-full min-h-12">Back to login</a>
     </div>
-    <h2 class="text-3xl font-bold mb-4">{{.Message}}</h2>
-    <p class="text-on-surface-variant opacity-60 mb-10">You can now proceed to the vault gateway.</p>
-    <a href="/auth"
-        class="inline-block bg-primary text-on-primary font-bold px-10 py-4 rounded-xl hover:scale-105 transition-transform">
-        Back to Login
-    </a>
 </div>
 {{end}}
