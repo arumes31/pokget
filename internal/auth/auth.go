@@ -218,23 +218,27 @@ func cleanupStaleLimiters() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		mu.Lock()
-		now := time.Now()
-		for ip, entry := range limiters {
-			if now.Sub(entry.lastSeen) > maxLimiterAge {
-				delete(limiters, ip)
-			}
-		}
-		mu.Unlock()
-
-		scanMu.Lock()
-		for ip, entry := range scanLimiters {
-			if now.Sub(entry.lastSeen) > maxLimiterAge {
-				delete(scanLimiters, ip)
-			}
-		}
-		scanMu.Unlock()
+		evictStaleLimiters(time.Now())
 	}
+}
+
+// evictStaleLimiters removes entries idle for longer than maxLimiterAge.
+func evictStaleLimiters(now time.Time) {
+	mu.Lock()
+	for ip, entry := range limiters {
+		if now.Sub(entry.lastSeen) > maxLimiterAge {
+			delete(limiters, ip)
+		}
+	}
+	mu.Unlock()
+
+	scanMu.Lock()
+	for ip, entry := range scanLimiters {
+		if now.Sub(entry.lastSeen) > maxLimiterAge {
+			delete(scanLimiters, ip)
+		}
+	}
+	scanMu.Unlock()
 }
 
 func getLimiter(ip string) *rate.Limiter {

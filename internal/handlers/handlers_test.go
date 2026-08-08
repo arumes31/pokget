@@ -73,6 +73,9 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 		{{define "public_vault.html"}}public_vault{{end}}
 		{{define "confirm_email.html"}}confirm_email{{end}}
 		{{define "confirm_success"}}confirm_success{{end}}
+		{{define "settings.html"}}settings{{end}}
+		{{define "settings"}}settings_fragment{{end}}
+		{{define "binder_detail.html"}}binder_detail{{end}}
 	`))
 
 	dbMock, mock, err := sqlmock.New()
