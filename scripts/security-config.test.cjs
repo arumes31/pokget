@@ -33,3 +33,11 @@ test('GHCR publishing minifies and validates JavaScript before building the imag
   assert.match(dockerJob, /npm run build:static/);
   assert.match(dockerJob, /npm run check:static/);
 });
+
+test('repository default CodeQL setup is not duplicated by an advanced workflow', () => {
+  assert.equal(
+    fs.existsSync(path.join(projectRoot, '.github/workflows/codeql.yml')),
+    false,
+    'default and advanced CodeQL setups cannot upload analyses for the same repository',
+  );
+});
