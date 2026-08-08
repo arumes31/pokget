@@ -140,7 +140,9 @@ func loadCardsCache(database *sql.DB) []models.Card {
 	var allCards []models.Card
 	if database != nil {
 		rows, err := database.Query("SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash, COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, ''), COALESCE(set_code, ''), COALESCE(collector_number, ''), catalog_active FROM cards WHERE superseded_by_card_id IS NULL AND (source_id IS NULL OR catalog_active = TRUE)")
-		if err == nil {
+		if err != nil {
+			slog.Error("Database: Failed to load cards cache", "error", err)
+		} else {
 			defer rows.Close()
 			for rows.Next() {
 				var c models.Card

@@ -77,8 +77,13 @@ func TestDataSyncWorkerWait(t *testing.T) {
 	t.Run("ReturnsNilAfterStop", func(t *testing.T) {
 		worker := NewDataSyncWorker(db, &service.MockPriceClient{}, nil, nil, time.Hour)
 		go worker.Start(context.Background())
+		// Stop signals through a closed channel, so Start observes it even if
+		// it has not reached its select loop yet; Wait joins the Start
+		// goroutine, bounded so a regression fails instead of hanging.
 		worker.Stop()
-		if err := worker.Wait(context.Background()); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := worker.Wait(ctx); err != nil {
 			t.Fatalf("Wait() error = %v, want nil", err)
 		}
 	})

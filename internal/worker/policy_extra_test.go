@@ -293,9 +293,15 @@ func TestAcquireCycleWithoutLease(t *testing.T) {
 	worker.releaseCycle(nil, "prices")
 }
 
-func TestStoreFailurePropagatesSinkError(t *testing.T) {
-	worker := &DataSyncWorker{failureSink: &failureSinkStub{err: errors.New("disk full")}}
+func TestStoreFailureSinkErrorIsBestEffort(t *testing.T) {
+	// storeFailure only logs sink errors; nothing is returned or requeued.
+	// The observable contract is that the sink is still invoked exactly once.
+	failingSink := &failureSinkStub{err: errors.New("disk full")}
+	worker := &DataSyncWorker{failureSink: failingSink}
 	worker.storeFailure(context.Background(), FailureRecord{Operation: "price"})
+	if len(failingSink.records) != 1 {
+		t.Fatalf("sink calls = %d, want 1 even when the sink errors", len(failingSink.records))
+	}
 
 	worker = &DataSyncWorker{failureSink: &failureSinkStub{}}
 	worker.storeFailure(context.Background(), FailureRecord{Operation: "price", Error: "boom"})

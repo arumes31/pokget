@@ -399,6 +399,9 @@ func TestChangePasswordBranches(t *testing.T) {
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("UserNotFound", func(t *testing.T) {
@@ -418,6 +421,9 @@ func TestChangePasswordBranches(t *testing.T) {
 
 		if rr.Code != http.StatusNotFound {
 			t.Errorf("Expected status 404, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
 		}
 	})
 
@@ -439,6 +445,9 @@ func TestChangePasswordBranches(t *testing.T) {
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("WrongCurrentPassword", func(t *testing.T) {
@@ -458,6 +467,9 @@ func TestChangePasswordBranches(t *testing.T) {
 
 		if rr.Code != http.StatusUnauthorized {
 			t.Errorf("Expected status 401, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
 		}
 	})
 
@@ -479,6 +491,9 @@ func TestChangePasswordBranches(t *testing.T) {
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
 		}
 	})
 
@@ -502,6 +517,9 @@ func TestChangePasswordBranches(t *testing.T) {
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("CommitError", func(t *testing.T) {
@@ -523,6 +541,9 @@ func TestChangePasswordBranches(t *testing.T) {
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
 		}
 	})
 }

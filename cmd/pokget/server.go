@@ -88,7 +88,11 @@ func gracefulShutdown(
 	}
 	if auditSvc != nil {
 		// Drain queued audit records while the database pool is still open.
-		if err := auditSvc.CloseContext(ctx); err != nil {
+		// Give the drain its own context: the shutdown context above may
+		// already be spent by srv.Shutdown and the worker wait.
+		auditCtx, auditCancel := context.WithTimeout(context.Background(), timeout)
+		defer auditCancel()
+		if err := auditSvc.CloseContext(auditCtx); err != nil {
 			slog.Warn("Audit service did not drain before shutdown deadline", "error", err)
 		}
 	}

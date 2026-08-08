@@ -74,6 +74,10 @@ func TestCatalogImageWorkerRun(t *testing.T) {
 			leaseErr: errors.New("lease down"),
 			onLease: func() {
 				leases++
+				// Cancel immediately after the first lease call, while the
+				// worker waits out its poll interval after the failed cycle;
+				// the run must end with the context error, not the lease error.
+				cancel()
 			},
 		}
 		worker, err := NewCatalogImageWorker(queue, imageProcessorStub{}, CatalogImageWorkerConfig{
@@ -82,9 +86,6 @@ func TestCatalogImageWorkerRun(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Cancel while the worker waits out its poll interval after the failed
-		// cycle; the run must end with the context error, not the lease error.
-		time.AfterFunc(50*time.Millisecond, cancel)
 		if err := worker.Run(ctx); !errors.Is(err, context.Canceled) {
 			t.Fatalf("Run() error = %v, want context.Canceled", err)
 		}
