@@ -206,3 +206,27 @@ func TestCanonicalFragmentRedirectMiddleware(t *testing.T) {
 		t.Fatalf("HTMX status = %d, want %d", response.Code, http.StatusNoContent)
 	}
 }
+
+func TestCSRFMiddlewareSecureMode(t *testing.T) {
+	t.Parallel()
+
+	middleware := newCSRFMiddleware([]byte("0123456789abcdef0123456789abcdef"), true)
+	handler := middleware(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = io.WriteString(writer, csrf.Token(request))
+	}))
+
+	request := httptest.NewRequest(http.MethodGet, "https://pokget.test/auth", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET status = %d", response.Code)
+	}
+	token := strings.TrimSpace(response.Body.String())
+	cookies := response.Result().Cookies()
+	if token == "" || len(cookies) == 0 {
+		t.Fatal("GET did not issue a CSRF token and cookie")
+	}
+	if !cookies[0].Secure {
+		t.Fatal("secure CSRF cookie missing the Secure flag")
+	}
+}
