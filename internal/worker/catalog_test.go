@@ -13,7 +13,12 @@ type catalogWorkerProvider struct{ id string }
 func (p catalogWorkerProvider) ID() string         { return p.id }
 func (p catalogWorkerProvider) Game() catalog.Game { return catalog.GamePokemon }
 func (p catalogWorkerProvider) Fetch(_ context.Context, _ catalog.FetchRequest, emit func(catalog.CardRecord) error) (catalog.FetchResult, error) {
-	if err := emit(catalog.CardRecord{SourceCardID: "one"}); err != nil {
+	if err := emit(catalog.CardRecord{
+		SourceCardID: "one",
+		Name:         "Card One",
+		SetName:      "Test Set",
+		Language:     "en",
+	}); err != nil {
 		return catalog.FetchResult{}, err
 	}
 	return catalog.FetchResult{Count: 1, CompleteSnapshot: true}, nil
@@ -62,5 +67,35 @@ func TestCatalogWorkerInitialSyncAndCancellation(t *testing.T) {
 	}
 	if repository.completed != 1 {
 		t.Fatalf("completed syncs = %d, want 1", repository.completed)
+	}
+}
+
+func TestSyncedRecordCount(t *testing.T) {
+	tests := []struct {
+		name       string
+		state      catalog.SourceState
+		completion catalog.Completion
+		want       int64
+	}{
+		{
+			name:       "modified response uses fetched count",
+			state:      catalog.SourceState{LastRecordCount: 100},
+			completion: catalog.Completion{Fetch: catalog.FetchResult{Count: 125}},
+			want:       125,
+		},
+		{
+			name:       "not modified response retains prior count",
+			state:      catalog.SourceState{LastRecordCount: 100},
+			completion: catalog.Completion{Fetch: catalog.FetchResult{NotModified: true}},
+			want:       100,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := syncedRecordCount(test.state, test.completion); got != test.want {
+				t.Fatalf("syncedRecordCount() = %d, want %d", got, test.want)
+			}
+		})
 	}
 }

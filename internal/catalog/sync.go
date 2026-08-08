@@ -40,6 +40,7 @@ func (s *Syncer) Sync(ctx context.Context, provider Provider, mode SyncMode, req
 
 	request.Mode = mode
 	records := make([]CardRecord, 0, batchSize)
+	var emittedCount int64
 	flush := func() error {
 		if len(records) == 0 {
 			return nil
@@ -59,6 +60,10 @@ func (s *Syncer) Sync(ctx context.Context, provider Provider, mode SyncMode, req
 	}
 
 	fetch, err := provider.Fetch(ctx, request, func(record CardRecord) error {
+		if err := record.Validate(); err != nil {
+			return fmt.Errorf("catalog: source %q emitted invalid record %d: %w", provider.ID(), emittedCount+1, err)
+		}
+		emittedCount++
 		records = append(records, record)
 		if len(records) >= batchSize {
 			return flush()
@@ -67,6 +72,26 @@ func (s *Syncer) Sync(ctx context.Context, provider Provider, mode SyncMode, req
 	})
 	if err != nil {
 		return fail(err)
+	}
+	if fetch.CompleteSnapshot && !fetch.NotModified && emittedCount == 0 {
+		return fail(fmt.Errorf("%w: %q", ErrEmptySnapshot, provider.ID()))
+	}
+	if fetch.NotModified && emittedCount != 0 {
+		return fail(fmt.Errorf(
+			"%w: source %q emitted %d records for a not-modified response",
+			ErrRecordCountMismatch,
+			provider.ID(),
+			emittedCount,
+		))
+	}
+	if !fetch.NotModified && fetch.Count != emittedCount {
+		return fail(fmt.Errorf(
+			"%w: source %q emitted %d records but reported %d",
+			ErrRecordCountMismatch,
+			provider.ID(),
+			emittedCount,
+			fetch.Count,
+		))
 	}
 	completion.Fetch = fetch
 	if err := flush(); err != nil {

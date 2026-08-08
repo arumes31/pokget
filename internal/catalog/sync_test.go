@@ -7,8 +7,9 @@ import (
 )
 
 type syncTestProvider struct {
-	records []CardRecord
-	err     error
+	records     []CardRecord
+	fetchResult *FetchResult
+	err         error
 }
 
 func (p syncTestProvider) ID() string { return "source" }
@@ -18,6 +19,9 @@ func (p syncTestProvider) Fetch(_ context.Context, _ FetchRequest, emit func(Car
 		if err := emit(record); err != nil {
 			return FetchResult{}, err
 		}
+	}
+	if p.fetchResult != nil {
+		return *p.fetchResult, p.err
 	}
 	return FetchResult{Count: int64(len(p.records)), CompleteSnapshot: true}, p.err
 }
@@ -48,7 +52,7 @@ func (r *syncTestRepository) FailRun(context.Context, string, error) error {
 
 func TestSyncerBatchesAndCompletes(t *testing.T) {
 	repository := &syncTestRepository{}
-	provider := syncTestProvider{records: []CardRecord{{SourceCardID: "1"}, {SourceCardID: "2"}, {SourceCardID: "3"}}}
+	provider := syncTestProvider{records: []CardRecord{validSyncRecord("1"), validSyncRecord("2"), validSyncRecord("3")}}
 	completion, err := (&Syncer{Repository: repository, BatchSize: 2}).Sync(context.Background(), provider, SyncModeFull, FetchRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -67,5 +71,72 @@ func TestSyncerMarksFailedRun(t *testing.T) {
 	_, err := (&Syncer{Repository: repository}).Sync(context.Background(), syncTestProvider{err: wantErr}, SyncModeFull, FetchRequest{})
 	if !errors.Is(err, wantErr) || !repository.failed || repository.completed {
 		t.Fatalf("error=%v repository=%+v", err, repository)
+	}
+}
+
+func TestSyncerAcceptsNotModifiedSnapshot(t *testing.T) {
+	repository := &syncTestRepository{}
+	completion, err := (&Syncer{Repository: repository}).Sync(
+		context.Background(),
+		syncTestProvider{fetchResult: &FetchResult{CompleteSnapshot: true, NotModified: true}},
+		SyncModeIncremental,
+		FetchRequest{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !completion.Fetch.NotModified || !repository.completed || repository.failed || len(repository.batches) != 0 {
+		t.Fatalf("completion=%+v repository=%+v", completion, repository)
+	}
+}
+
+func TestSyncerRejectsInvalidProviderRecord(t *testing.T) {
+	repository := &syncTestRepository{}
+	_, err := (&Syncer{Repository: repository}).Sync(
+		context.Background(),
+		syncTestProvider{records: []CardRecord{{SourceCardID: "invalid"}}},
+		SyncModeFull,
+		FetchRequest{},
+	)
+	if err == nil || !repository.failed || repository.completed {
+		t.Fatalf("error=%v repository=%+v", err, repository)
+	}
+}
+
+func TestSyncerRejectsEmptyCompleteSnapshot(t *testing.T) {
+	repository := &syncTestRepository{}
+	_, err := (&Syncer{Repository: repository}).Sync(
+		context.Background(),
+		syncTestProvider{fetchResult: &FetchResult{CompleteSnapshot: true}},
+		SyncModeFull,
+		FetchRequest{},
+	)
+	if !errors.Is(err, ErrEmptySnapshot) || !repository.failed || repository.completed {
+		t.Fatalf("error=%v repository=%+v", err, repository)
+	}
+}
+
+func TestSyncerRejectsMismatchedRecordCount(t *testing.T) {
+	repository := &syncTestRepository{}
+	_, err := (&Syncer{Repository: repository}).Sync(
+		context.Background(),
+		syncTestProvider{
+			records:     []CardRecord{validSyncRecord("one")},
+			fetchResult: &FetchResult{Count: 2, CompleteSnapshot: true},
+		},
+		SyncModeFull,
+		FetchRequest{},
+	)
+	if !errors.Is(err, ErrRecordCountMismatch) || !repository.failed || repository.completed {
+		t.Fatalf("error=%v repository=%+v", err, repository)
+	}
+}
+
+func validSyncRecord(id string) CardRecord {
+	return CardRecord{
+		SourceCardID: id,
+		Name:         "Card " + id,
+		SetName:      "Test Set",
+		Language:     "en",
 	}
 }
