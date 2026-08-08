@@ -64,13 +64,32 @@ docker run -d \
   -e "POSTGRES_DB=${database_name}" \
   postgres:17-alpine >/dev/null
 
+database_ready=false
 for _ in $(seq 1 60); do
-  if docker exec "${database_container}" pg_isready -U "${database_user}" -d "${database_name}" >/dev/null 2>&1; then
+  database_running="$(docker inspect --format '{{.State.Running}}' "${database_container}" 2>/dev/null || true)"
+  if [[ "${database_running}" != "true" ]]; then
+    docker logs "${database_container}" >&2 || true
+    echo "PostgreSQL container exited before becoming ready" >&2
+    exit 1
+  fi
+
+  # pg_isready can briefly succeed against the temporary server that the
+  # official image starts while initializing a fresh data directory. Wait for
+  # that phase to finish before accepting a successful readiness probe.
+  if docker logs "${database_container}" 2>&1 |
+      grep -Fq 'PostgreSQL init process complete; ready for start up.' &&
+    docker exec "${database_container}" pg_isready \
+      -U "${database_user}" -d "${database_name}" >/dev/null 2>&1; then
+    database_ready=true
     break
   fi
   sleep 1
 done
-docker exec "${database_container}" pg_isready -U "${database_user}" -d "${database_name}" >/dev/null
+if [[ "${database_ready}" != "true" ]]; then
+  docker logs "${database_container}" >&2 || true
+  echo "PostgreSQL did not finish initialization and become ready" >&2
+  exit 1
+fi
 
 docker run -d \
   --name "${application_container}" \
