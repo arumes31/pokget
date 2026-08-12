@@ -37,7 +37,7 @@ RUN go build -o main ./cmd/pokget && \
 	go build -o catalog ./cmd/catalog
 
 # Final stage
-FROM alpine:3.22
+FROM alpine:3.24
 
 # Install runtime dependencies: Tesseract for OCR and Chromium for headless scraping
 RUN apk add --no-cache \
