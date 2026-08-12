@@ -17,7 +17,7 @@ require (
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/lib/pq v1.12.3
 	github.com/otiai10/gosseract/v2 v2.4.1
-	github.com/redis/go-redis/v9 v9.20.0
+	github.com/redis/go-redis/v9 v9.22.0
 	github.com/shopspring/decimal v1.4.0
 	golang.org/x/crypto v0.52.0
 	golang.org/x/image v0.43.0
