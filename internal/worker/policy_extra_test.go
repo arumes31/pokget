@@ -205,7 +205,9 @@ func TestWaitForRetry(t *testing.T) {
 func TestNewRequestLimiter(t *testing.T) {
 	t.Run("UnlimitedWithoutRate", func(t *testing.T) {
 		limiter := newRequestLimiter(0, 0)
-		if !limiter.Allow() || !limiter.Allow() {
+		firstAllowed := limiter.Allow()
+		secondAllowed := limiter.Allow()
+		if !firstAllowed || !secondAllowed {
 			t.Fatal("limiter without a configured rate should allow every request")
 		}
 	})

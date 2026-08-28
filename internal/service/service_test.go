@@ -36,6 +36,7 @@ import (
 	"path/filepath"
 	"pokget/internal/models"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -110,6 +111,7 @@ func TestImageCacheService_Error(t *testing.T) {
 		// Try to create in a path that should fail (e.g. nested in non-existent)
 		// Or just a very long path/invalid characters on windows
 		s := NewImageCacheService("Z:\\invalid\\path\\that\\does\\not\\exist")
+		defer s.Close()
 		if s == nil {
 			t.Error("Expected service instance even if mkdir fails")
 		}
@@ -124,6 +126,7 @@ func TestImageCacheService(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	s := NewImageCacheService(tempDir)
+	defer s.Close()
 
 	t.Run("DownloadAndCache", func(t *testing.T) {
 		// SSRF validation: non-https scheme rejected
@@ -164,6 +167,32 @@ func TestImageCacheService(t *testing.T) {
 			t.Error("Expected error for 404 response")
 		}
 	})
+}
+
+func TestImageCacheServiceConcurrentClose(t *testing.T) {
+	t.Parallel()
+
+	service := NewImageCacheService(t.TempDir())
+	const callers = 32
+	var callersWG sync.WaitGroup
+	callersWG.Add(callers)
+	for range callers {
+		go func() {
+			defer callersWG.Done()
+			service.Close()
+		}()
+	}
+
+	done := make(chan struct{})
+	go func() {
+		callersWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("concurrent Close calls did not join the cleanup goroutine")
+	}
 }
 
 func TestMailService(t *testing.T) {

@@ -23,8 +23,8 @@ trap cleanup EXIT
 docker image inspect "${image}" >/dev/null
 
 runtime_user="$(docker image inspect --format '{{.Config.User}}' "${image}")"
-if [[ "${runtime_user}" != "pokget" ]]; then
-  echo "expected production image user pokget, got ${runtime_user:-<empty>}" >&2
+if [[ "${runtime_user}" != "10001:10001" ]]; then
+  echo "expected production image user 10001:10001, got ${runtime_user:-<empty>}" >&2
   exit 1
 fi
 
@@ -62,7 +62,7 @@ docker run -d \
   -e "POSTGRES_USER=${database_user}" \
   -e "POSTGRES_PASSWORD=${database_password}" \
   -e "POSTGRES_DB=${database_name}" \
-  postgres:17-alpine >/dev/null
+  postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b >/dev/null
 
 database_ready=false
 for _ in $(seq 1 60); do

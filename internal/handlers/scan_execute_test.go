@@ -150,12 +150,25 @@ func TestExecuteScan_FingerprintMatch(t *testing.T) {
 }
 
 func TestExecuteScan_OCRUnavailable(t *testing.T) {
-	// No fingerprint match (card carries no phash) forces the OCR fallback,
-	// which is a stub in this build and reports itself unavailable.
+	// No fingerprint match (card carries no phash) forces the OCR fallback.
+	// Inject the failure so the contract is deterministic in both CGO/Tesseract
+	// builds and the portable stub build.
 	imgBytes := testCardPNG(t)
 	card := models.Card{ID: "card-1", Name: "Pikachu"}
 
-	h := &Handler{MockCards: []models.Card{card}, Fingerprint: service.NewFingerprintService(nil)}
+	h := &Handler{
+		MockCards:   []models.Card{card},
+		Fingerprint: service.NewFingerprintService(nil),
+		scanProcessor: func(
+			context.Context,
+			[]byte,
+			[]models.Card,
+			string,
+			*service.LLMService,
+		) (string, string, []byte, error) {
+			return "", "", nil, &service.OCRUnavailableError{Reason: "test"}
+		},
+	}
 	req := scanRequest(t, imgBytes, nil)
 	rr := httptest.NewRecorder()
 

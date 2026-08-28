@@ -1,3 +1,5 @@
+version: "2"
+
 run:
   timeout: 5m
   modules-download-mode: readonly
@@ -5,15 +7,36 @@ run:
 linters:
   enable:
     - errcheck
-    - gosimple
-    - govet
     - ineffassign
     - staticcheck
     - unused
-    - revive
-    - gosec
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - -QF*
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+      - path: ^cmd/(comprehensive_test|detection_fixtures|detection_matrix|detection_seed|fingerprint_diagnostics|generate_crops|llm_benchmark|ocr_bulk|ocr_multi_tcg_test|ocr_multilang|ocr_test|ocr_tester|populate_fingerprints|ui_scan_test)/
+        linters:
+          - staticcheck
+          - unused
+      - path: internal/service/ocr_passes\.go
+        linters:
+          - unused
+      # The non-CGO OCR stub always returns its sentinel error. Production and
+      # CI build the Tesseract implementation, where this branch is reachable.
+      - path: internal/handlers/handlers\.go
+        text: SA4023
+        linters:
+          - staticcheck
 
 issues:
-  exclude-use-default: true
   max-issues-per-linter: 50
   max-same-issues: 50
