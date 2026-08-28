@@ -74,6 +74,7 @@ type Handler struct {
 	ScanTimeout    time.Duration
 	SecureCookies  bool // BUG-C03: Configurable Secure flag for session cookies
 	passwordHasher func(string) (string, error)
+	scanProcessor  func(context.Context, []byte, []models.Card, string, *service.LLMService) (string, string, []byte, error)
 }
 
 func (h *Handler) hashPassword(password string) (string, error) {
@@ -81,6 +82,18 @@ func (h *Handler) hashPassword(password string) (string, error) {
 		return h.passwordHasher(password)
 	}
 	return auth.HashPassword(password)
+}
+
+func (h *Handler) processCardScan(
+	ctx context.Context,
+	image []byte,
+	cards []models.Card,
+	language string,
+) (string, string, []byte, error) {
+	if h.scanProcessor != nil {
+		return h.scanProcessor(ctx, image, cards, language, h.LLM)
+	}
+	return service.ProcessCardScanContext(ctx, image, cards, language, h.LLM)
 }
 
 // scanDetectionSlots bounds native OCR work that cannot be interrupted while a
@@ -1279,7 +1292,7 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	if detectedCard == "" {
 		slog.Info("APIScan: Fingerprint missed, falling back to OCR")
 		var ocrMatch string
-		text, ocrMatch, processedImg, err = service.ProcessCardScanContext(ctx, imgBytes, cards, lang, h.LLM)
+		text, ocrMatch, processedImg, err = h.processCardScan(ctx, imgBytes, cards, lang)
 		if err != nil {
 			slog.Error("OCR: Failed to process scan", "error", err)
 			writeDetectionError(w, err)
