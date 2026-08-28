@@ -23,8 +23,8 @@ trap cleanup EXIT
 docker image inspect "${image}" >/dev/null
 
 runtime_user="$(docker image inspect --format '{{.Config.User}}' "${image}")"
-if [[ "${runtime_user}" != "10001:10001" ]]; then
-  echo "expected production image user 10001:10001, got ${runtime_user:-<empty>}" >&2
+if [[ "${runtime_user}" != "pokget" ]]; then
+  echo "expected production image user pokget, got ${runtime_user:-<empty>}" >&2
   exit 1
 fi
 

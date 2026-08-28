@@ -81,7 +81,7 @@ EXPOSE 18066
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
   CMD ["sh", "-c", "wget -q --spider http://127.0.0.1:${APP_PORT:-18066}/health/ready"]
 
-USER 10001:10001
+USER pokget
 
 # Run the binary
 CMD ["./main"]
