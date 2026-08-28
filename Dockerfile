@@ -1,5 +1,5 @@
 # Static asset stage
-FROM node:24-alpine AS static-assets
+FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS static-assets
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY templates ./templates
 RUN npm run build:static && npm run check:static
 
 # Go build stage
-FROM golang:1.26.5-alpine AS builder
+FROM golang:1.27.0-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc AS builder
 
 # Install Tesseract OCR dependencies
 RUN apk add --no-cache \
@@ -37,10 +37,12 @@ RUN go build -o main ./cmd/pokget && \
 	go build -o catalog ./cmd/catalog
 
 # Final stage
-FROM alpine:3.22
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 # Install runtime dependencies: Tesseract for OCR and Chromium for headless scraping
 RUN apk add --no-cache \
+    libcrypto3=3.5.8-r0 \
+    libssl3=3.5.8-r0 \
     tesseract-ocr \
     tesseract-ocr-data-eng \
     tesseract-ocr-data-jpn \
@@ -77,9 +79,9 @@ COPY --chown=pokget:pokget --from=builder /app/migrations ./migrations
 EXPOSE 18066
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
-  CMD wget -q --spider "http://127.0.0.1:${APP_PORT:-18066}/health/ready" || exit 1
+  CMD ["sh", "-c", "wget -q --spider http://127.0.0.1:${APP_PORT:-18066}/health/ready"]
 
-USER pokget
+USER 10001:10001
 
 # Run the binary
 CMD ["./main"]

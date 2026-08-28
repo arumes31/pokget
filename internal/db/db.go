@@ -223,7 +223,7 @@ func ApplyMigrations(db *sql.DB, absPath string) (retErr error) {
 	}
 
 	// Verify migrations directory exists
-	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+	if _, err := os.Stat(absPath); os.IsNotExist(err) { // #nosec G703 -- startup-only operator configuration, not request input.
 		return fmt.Errorf("migrations directory not found at: %s", absPath)
 	}
 

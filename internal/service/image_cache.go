@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -35,6 +36,8 @@ type ImageCacheService struct {
 	BaseDir    string
 	maxAge     time.Duration // BUG-H07: Maximum age for cached images
 	stopCh     chan struct{}
+	stopOnce   sync.Once
+	cleanupWG  sync.WaitGroup
 	httpClient *http.Client
 }
 
@@ -51,6 +54,7 @@ func NewImageCacheService(baseDir string) *ImageCacheService {
 	}
 
 	// BUG-H07 FIX: Start background goroutine to periodically clean up stale cache entries
+	svc.cleanupWG.Add(1)
 	go svc.cleanupStaleEntries()
 
 	return svc
@@ -58,11 +62,13 @@ func NewImageCacheService(baseDir string) *ImageCacheService {
 
 // Close stops the background cleanup goroutine.
 func (s *ImageCacheService) Close() {
-	close(s.stopCh)
+	s.stopOnce.Do(func() { close(s.stopCh) })
+	s.cleanupWG.Wait()
 }
 
 // cleanupStaleEntries periodically removes cached image files older than maxAge
 func (s *ImageCacheService) cleanupStaleEntries() {
+	defer s.cleanupWG.Done()
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 

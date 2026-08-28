@@ -8,15 +8,18 @@ on:
         type: boolean
         default: true
 
+permissions: {}
+
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       packages: write
       contents: read
     steps:
       - name: Prune old GHCR versions
-        uses: vlaurin/action-ghcr-prune@v0.6.0
+        uses: vlaurin/action-ghcr-prune@0ca88117ed406e99ff396691511c6a267643166f # v0.6.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           user: ${{ github.repository_owner }}
