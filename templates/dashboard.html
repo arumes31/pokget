@@ -1,98 +1,73 @@
 <div class="app-page">
-    <section class="card overflow-hidden" aria-labelledby="portfolio-value-title">
-        <div class="grid gap-5 p-5 sm:grid-cols-[1fr_auto] sm:items-center sm:p-6">
-            <div class="min-w-0">
-                <p id="portfolio-value-title" class="page-eyebrow">Portfolio value</p>
-                <div class="flex flex-wrap items-center gap-3">
-                    <span class="roll-counter font-display text-4xl font-extrabold tracking-[-0.05em] text-zinc-950 sm:text-5xl"
-                        data-target="{{ .TotalValuation }}" data-prefix="{{ .CurrencySymbol }}" data-decimals="2">{{ .CurrencySymbol }}{{ printf "%.2f" .TotalValuation }}</span>
-                    {{ if gt .TotalValuation 0.0 }}
-                    <span class="status-badge {{ if ge .Change24h 0.0 }}border-emerald-200 bg-emerald-50 text-emerald-800{{ else }}border-red-200 bg-red-50 text-red-800{{ end }}">
-                        <span class="material-symbols-outlined text-base">{{ if ge .Change24h 0.0 }}trending_up{{ else }}trending_down{{ end }}</span>
-                        {{ if ge .Change24h 0.0 }}+{{ end }}{{ printf "%.1f" .Change24h }}% today
-                    </span>
-                    {{ end }}
-                </div>
-                <p class="mt-2 text-sm text-zinc-600">Live market value across every card in your vault.</p>
-            </div>
-
-            <div class="flex items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-3 sm:min-w-56">
-                <img src="{{ .RankIcon }}" alt="" class="size-12 rounded-xl object-contain" loading="lazy">
-                <div class="min-w-0 flex-1">
-                    <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Collector level</p>
-                    <p class="truncate text-sm font-extrabold text-violet-800">{{ .Rank }}</p>
-                    <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-violet-200" role="progressbar"
-                        aria-label="Progress to the next collector level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ .XPPercent }}">
-                        <div class="h-full rounded-full bg-violet-700 motion-safe:transition-[width] motion-safe:duration-700"
-                            style="width: {{ .XPPercent }}%"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {{ if gt .TotalValuation 0.0 }}
-        <div class="border-t border-stone-200 bg-stone-50/60 px-5 pb-3 pt-4 sm:px-6">
-            <div class="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-                <span>Value trend</span><span>Recent activity</span>
-            </div>
-            <svg class="h-16 w-full" preserveAspectRatio="none" viewBox="0 0 400 70" role="img" aria-label="Recent portfolio value trend">
-                <defs><linearGradient id="portfolio-gradient" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#6d28d9" stop-opacity=".2"/><stop offset="1" stop-color="#6d28d9" stop-opacity="0"/></linearGradient></defs>
-                <path d="M0,55 Q40,46 80,58 T160,28 T240,44 T320,15 T400,22" fill="none" stroke="#6d28d9" stroke-width="3" stroke-linecap="round"/>
-                <path d="M0,55 Q40,46 80,58 T160,28 T240,44 T320,15 T400,22 L400,70 L0,70 Z" fill="url(#portfolio-gradient)"/>
-            </svg>
-        </div>
-        {{ end }}
-    </section>
-
-    <section class="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Collection summary">
-        <div class="metric-card"><span class="field-label mb-0">Cards</span><span class="roll-counter font-display text-3xl font-extrabold" data-target="{{ len .Portfolio }}">{{ len .Portfolio }}</span></div>
-        <div class="metric-card"><span class="field-label mb-0">Binders</span><span class="font-display text-3xl font-extrabold">{{ .BinderCount }}</span></div>
-        <div class="metric-card col-span-2 sm:col-span-1">
-            <span class="field-label mb-0">Collection highlight</span>
-            {{ if .Portfolio }}<span class="truncate text-sm font-bold text-zinc-900">{{ (index .Portfolio 0).Card.Name }}</span>{{ else }}<span class="text-sm text-zinc-500">Add a card to get started</span>{{ end }}
-        </div>
-    </section>
-
+    <header class="page-header">
+        <div><h1 data-i18n class="page-title">My collection</h1><p data-i18n class="page-description">A place for every card you keep.</p></div>
+        {{ if .Portfolio }}<a data-i18n href="/?view=scan" class="btn-primary w-full sm:w-auto" hx-get="/centering" hx-target="#main-content" hx-push-url="/?view=scan" hx-on::before-request="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'scan' } }))"><span class="material-symbols-outlined" aria-hidden="true">center_focus_strong</span>Scan a card</a>{{ end }}
+    </header>
+    {{ if .TotalCards }}
+    <dl data-i18n-attrs="aria-label" class="collection-summary" aria-label="Collection summary">
+        <div><dt data-i18n>Estimated value</dt><dd>{{ if .PricedCardCount }}{{ .CurrencySymbol }}{{ printf "%.2f" .TotalValuation }}{{ else }}<span data-i18n class="text-base">Price unavailable</span>{{ end }}</dd></div>
+        <div><dt data-i18n>Cards</dt><dd data-collection-total>{{ .TotalCards }}</dd></div>
+        <div><dt data-i18n>Binders</dt><dd>{{ .BinderCount }}</dd></div>
+        <div><dt data-i18n>Collector level</dt><dd class="!text-base !mt-2">{{ .Rank }}</dd></div>
+    </dl>
+    <p data-i18n class="-mt-3 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Value uses available catalog prices and your custom values. Prices may be missing or out of date.</p>
+    {{ end }}
     <section aria-labelledby="main-vault-title">
+        {{ if .Portfolio }}
         <div class="mb-4 flex items-center justify-between gap-3">
-            <div><p class="page-eyebrow">Collection</p><h2 id="main-vault-title" class="section-title">Main vault</h2></div>
-            <button class="btn-ghost text-violet-800" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
+            <div><h2 data-i18n id="main-vault-title" class="section-title">Main vault</h2></div>
+            <button data-i18n class="btn-ghost text-violet-800 dark:text-violet-200" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
                 hx-on::before-request="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'binders' } }))">View binders</button>
         </div>
+        {{ else }}<h2 data-i18n id="main-vault-title" class="sr-only">Main vault</h2>{{ end }}
 
         {{ if .Portfolio }}
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
             {{ range .Portfolio }}
-            <article data-portfolio-item data-id="{{ .ID }}" data-binder-id="{{ .BinderID }}" class="card group min-w-0 overflow-hidden p-2.5 transition hover:border-violet-300">
+            <article data-collection-item data-portfolio-item data-id="{{ .ID }}" data-binder-id="{{ .BinderID }}" class="card portfolio-card group min-w-0 overflow-hidden p-2.5 transition hover:border-violet-300">
                 <div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-stone-100">
-                    <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" loading="lazy">
-                    <span class="status-badge absolute right-2 top-2 border-white/60 bg-white/90 text-zinc-800 backdrop-blur">{{ .Condition }}</span>
+                    <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="h-full w-full object-contain" loading="lazy" decoding="async">
+                    <span class="status-badge absolute right-2 top-2 border-white/60 bg-surface/90 text-zinc-800 dark:text-zinc-100 backdrop-blur">{{ .Condition }}</span>
                 </div>
                 <div class="px-1 pb-1 pt-3">
-                    <p class="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-violet-700">{{ .Card.Set }}</p>
+                    <p class="truncate text-xs font-bold uppercase tracking-[0.12em] text-violet-700 dark:text-violet-300">{{ .Card.Set }}</p>
                     <div class="mt-0.5 flex min-w-0 items-start justify-between gap-1">
-                        <h3 class="min-w-0 truncate text-sm font-bold text-zinc-950">{{ .Card.Name }}</h3>
-                        <button type="button" class="material-symbols-outlined -mr-2 -mt-2 flex min-h-11 min-w-11 items-center justify-center rounded-xl text-xl text-zinc-500 hover:bg-violet-50 hover:text-violet-800"
+                        <h3 class="min-w-0 break-words text-sm font-bold text-zinc-950 dark:text-zinc-50">{{ .Card.Name }}</h3>
+                        <button data-i18n-attrs="aria-label" type="button" class="material-symbols-outlined -mr-2 -mt-2 flex min-h-11 min-w-11 items-center justify-center rounded-xl text-xl text-zinc-500 dark:text-zinc-400 hover:bg-violet-50 dark:hover:bg-violet-900 hover:text-violet-800 dark:hover:text-violet-200"
                             aria-label="Edit {{ .Card.Name }}" data-id="{{ .ID }}" data-notes="{{ .Notes }}"
                             data-price="{{ if .CustomPrice }}{{ printf "%.2f" .GetCustomPrice }}{{ end }}" data-grade="{{ .Grade }}"
                             data-public="{{ .IsPublic }}" data-binder-id="{{ .BinderID }}" onclick="openEditModalFromButton(this)">more_horiz</button>
                     </div>
                     <div class="mt-3 flex items-end justify-between border-t border-stone-200 pt-3">
-                        <div><span class="block text-[10px] font-bold uppercase tracking-wide text-zinc-500">Market</span><span class="font-display text-base font-extrabold">{{ $.CurrencySymbol }}{{ if .CustomPrice }}{{ printf "%.2f" .GetCustomPrice }}{{ else }}{{ if eq $.UserCurrency "EUR" }}{{ printf "%.2f" .Card.PriceEUR }}{{ else }}{{ printf "%.2f" .Card.PriceUSD }}{{ end }}{{ end }}</span></div>
-                        {{ if .CustomPrice }}<span class="status-badge border-violet-200 bg-violet-50 text-violet-800">Custom</span>{{ end }}
+                        {{ $hasPrice := or (and (eq $.UserCurrency "EUR") .Card.PriceEURValid) (and (ne $.UserCurrency "EUR") .Card.PriceUSDValid) }}
+                        <div class="min-w-0"><span data-i18n class="block text-xs font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Market</span><span class="font-display text-base font-extrabold">{{ if or .CustomPrice $hasPrice }}{{ $.CurrencySymbol }}{{ if .CustomPrice }}{{ printf "%.2f" .GetCustomPrice }}{{ else }}{{ if eq $.UserCurrency "EUR" }}{{ .Card.PriceEUR.StringFixed 2 }}{{ else }}{{ .Card.PriceUSD.StringFixed 2 }}{{ end }}{{ end }}{{ else }}<span data-i18n class="text-sm font-medium text-zinc-500 dark:text-zinc-400">Price unavailable</span>{{ end }}</span></div>
+                        {{ if .CustomPrice }}<span data-i18n class="status-badge border-violet-200 bg-violet-50 dark:bg-violet-900 text-violet-800 dark:text-violet-200">Custom</span>{{ end }}
                     </div>
                 </div>
             </article>
             {{ end }}
         </div>
         {{ else }}
-        <div class="empty-state">
-            <div class="empty-state-icon"><span class="material-symbols-outlined text-3xl">style</span></div>
-            <h3 class="font-display text-xl font-bold">Your vault is ready</h3>
-            <p class="mt-2 max-w-sm text-sm leading-6 text-zinc-600">Scan a card to identify it, check its centering, and begin tracking your collection.</p>
-            <button class="btn-primary mt-5 w-full sm:w-auto" hx-get="/centering" hx-target="#main-content" hx-push-url="/?view=scan"
-                hx-on::before-request="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'scan' } }))"><span class="material-symbols-outlined">center_focus_strong</span>Scan first card</button>
+        <div class="vault-welcome">
+            <div>
+                <h2 data-i18n>Your collection starts here.</h2>
+                <p data-i18n>Start with a card in your hand. Scan it, check the printing, and give it a place in your vault.</p>
+                <a data-i18n href="/?view=scan" class="btn-primary mt-6 w-full sm:w-auto" hx-get="/centering" hx-target="#main-content" hx-push-url="/?view=scan" hx-on::before-request="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'scan' } }))"><span class="material-symbols-outlined" aria-hidden="true">center_focus_strong</span>Scan first card</a>
+                <p data-i18n class="!text-xs">Use your camera or a saved photo.</p>
+            </div>
+            <div class="welcome-steps">
+                <div class="welcome-step"><span class="material-symbols-outlined" aria-hidden="true">photo_camera</span><div data-i18n><strong data-i18n>Capture the whole card</strong>Keep its name and collector number in frame.</div></div>
+                <div class="welcome-step"><span class="material-symbols-outlined" aria-hidden="true">fact_check</span><div data-i18n><strong data-i18n>Check the printing</strong>Compare the set, language, and artwork.</div></div>
+                <div class="welcome-step"><span class="material-symbols-outlined" aria-hidden="true">folder</span><div data-i18n><strong data-i18n>Make it yours</strong>Save it and organize your cards into binders.</div></div>
+            </div>
         </div>
         {{ end }}
     </section>
+    {{ with .Pagination }}{{ if or .PreviousURL .NextURL }}
+    <nav data-i18n-attrs="aria-label" aria-label="Collection pages" class="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 pt-5">
+        {{ if .PreviousURL }}<a data-i18n rel="prev" href="{{ .PreviousURL }}" hx-get="{{ .PreviousFragmentURL }}" hx-target="#main-content" hx-push-url="{{ .PreviousURL }}" class="btn-secondary">Previous</a>{{ else }}<span></span>{{ end }}
+        <span data-i18n class="text-sm text-zinc-600 dark:text-zinc-300">Page {{ .Page }}</span>
+        {{ if .NextURL }}<a data-i18n rel="next" href="{{ .NextURL }}" hx-get="{{ .NextFragmentURL }}" hx-target="#main-content" hx-push-url="{{ .NextURL }}" class="btn-secondary">Next</a>{{ end }}
+    </nav>
+    {{ end }}{{ end }}
 </div>

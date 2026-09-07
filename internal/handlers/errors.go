@@ -23,8 +23,11 @@ package handlers
 import (
 	"log/slog"
 	"net/http"
+	"net/url"
 	"pokget/internal/auth"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type ErrorCard struct {
@@ -39,15 +42,42 @@ type ErrorCard struct {
 	Game                     string
 }
 
+const misprintPageSize = 24
+
 func (h *Handler) ErrorDatabase(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: ErrorDatabase", "method", r.Method)
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if utf8.RuneCountInString(query) > 200 {
+		http.Error(w, "Search must be 200 characters or fewer", http.StatusBadRequest)
+		return
+	}
+	kind := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
+	switch kind {
+	case "miscut", "ink", "holo":
+	default:
+		kind = "all"
+	}
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 || page > int(^uint(0)>>1)/misprintPageSize {
+		page = 1
+	}
+	searchPattern, typePattern := "", ""
+	if query != "" {
+		searchPattern = "%" + strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(query) + "%"
+	}
+	if kind != "all" {
+		typePattern = "%" + kind + "%"
+	}
 
 	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT e.id, e.card_id, e.error_type, COALESCE(e.description, ''), COALESCE(e.estimated_value_multiplier, 1.0),
 		       c.name, c.set_name, COALESCE(c.image_url, ''), COALESCE(c.game, '')
 		FROM error_cards e
 		JOIN cards c ON e.card_id = c.id
-		ORDER BY e.created_at DESC`)
+		WHERE ($1 = '' OR CONCAT_WS(' ', c.name, c.set_name, e.error_type, e.description) ILIKE $1 ESCAPE '!')
+		  AND ($2 = '' OR e.error_type ILIKE $2)
+		ORDER BY e.created_at DESC, e.id DESC
+		LIMIT $3 OFFSET $4`, searchPattern, typePattern, misprintPageSize+1, (page-1)*misprintPageSize)
 
 	if err != nil {
 		slog.Error("Failed to fetch error database", "error", err)
@@ -56,7 +86,7 @@ func (h *Handler) ErrorDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	errors := make([]ErrorCard, 0, 64) // Pre-allocate to reduce reallocations
+	errors := make([]ErrorCard, 0, misprintPageSize+1)
 	for rows.Next() {
 		var e ErrorCard
 		if err := rows.Scan(&e.ID, &e.CardID, &e.ErrorType, &e.Description, &e.EstimatedValueMultiplier, &e.CardName, &e.SetName, &e.ImageURL, &e.Game); err != nil {
@@ -71,6 +101,14 @@ func (h *Handler) ErrorDatabase(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
+	previousURL, nextURL := "", ""
+	if page > 1 {
+		previousURL = misprintPageURL(query, kind, page-1)
+	}
+	if len(errors) > misprintPageSize {
+		errors = errors[:misprintPageSize]
+		nextURL = misprintPageURL(query, kind, page+1)
+	}
 
 	canSubmit := false
 	if session, err := auth.Store.Get(r, "session"); err == nil {
@@ -83,9 +121,26 @@ func (h *Handler) ErrorDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.render(w, r, templateName, map[string]interface{}{
-		"Errors":    errors,
-		"CanSubmit": canSubmit,
+		"Errors":              errors,
+		"CanSubmit":           canSubmit,
+		"MisprintQuery":       query,
+		"MisprintType":        kind,
+		"MisprintPage":        page,
+		"MisprintPreviousURL": previousURL,
+		"MisprintNextURL":     nextURL,
+		"MisprintFiltered":    query != "" || kind != "all",
 	})
+}
+
+func misprintPageURL(query, kind string, page int) string {
+	values := url.Values{"page": {strconv.Itoa(page)}}
+	if query != "" {
+		values.Set("q", query)
+	}
+	if kind != "all" {
+		values.Set("type", kind)
+	}
+	return "/errors?" + values.Encode()
 }
 
 func (h *Handler) SubmitError(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +191,7 @@ func (h *Handler) SubmitError(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set(
 		"HX-Trigger",
-		`{"notify":{"msg":"Misprint submitted for review","type":"success"}}`,
+		`{"notify":{"msg":"Misprint published","type":"success"}}`,
 	)
 	w.WriteHeader(http.StatusOK)
 }

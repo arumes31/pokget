@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/net/html"
 	"pokget/internal/catalog"
 )
 
@@ -49,7 +50,7 @@ func (p *OnePieceOfficialProvider) Fetch(ctx context.Context, request catalog.Fe
 		if id == "" || strings.EqualFold(id, "ALL") {
 			return
 		}
-		name := strings.Join(strings.Fields(selection.Text()), " ")
+		name := onePieceSeriesDisplayName(selection.Text())
 		code := id
 		if match := bracketedSetCode.FindStringSubmatch(name); len(match) == 2 {
 			code = match[1]
@@ -127,6 +128,23 @@ func (p *OnePieceOfficialProvider) Fetch(ctx context.Context, request catalog.Fe
 		}
 	}
 	return result, nil
+}
+
+// Series options contain escaped formatting markup, so their DOM text still
+// needs to be decoded as display text before it enters the catalog.
+func onePieceSeriesDisplayName(value string) string {
+	tokenizer := html.NewTokenizer(strings.NewReader(value))
+	var text strings.Builder
+	for {
+		switch tokenizer.Next() {
+		case html.ErrorToken:
+			return strings.Join(strings.Fields(text.String()), " ")
+		case html.TextToken:
+			text.WriteString(tokenizer.Token().Data)
+		case html.StartTagToken, html.EndTagToken, html.SelfClosingTagToken:
+			text.WriteByte(' ')
+		}
+	}
 }
 
 func resolveURL(base, reference string) string {

@@ -1,0 +1,49 @@
+{{define "pack-print"}}
+<div class="pack-print">
+    <span class="pack-seal pack-seal-top"></span>
+    <div data-i18n class="pack-wordmark"><img src="/static/img/logo-128.webp" alt="" width="22" height="22">Pokget</div>
+    <div class="pack-illustration"></div>
+    <div class="pack-lettering"><strong data-i18n>Your collection<br>awaits.</strong><span data-i18n>THE COLLECTOR’S ENTRANCE</span></div>
+    <span class="pack-holo-strip"></span>
+    <span class="pack-seal pack-seal-bottom"></span>
+    <span class="pack-specular"></span>
+</div>
+{{end}}
+{{define "pack-back"}}
+<div class="pack-card-back"><div class="pack-back-border"></div><img src="/static/img/logo-128.webp" alt="" width="64" height="64"><span data-i18n>Pokget</span></div>
+{{end}}
+{{define "auth_pack.html"}}
+<template id="auth-pack-template">
+    <section data-i18n-attrs="aria-label" class="pack-opening" data-pack-opening role="dialog" aria-modal="true" aria-label="Entering your collection" tabindex="-1">
+        <div class="pack-backdrop" aria-hidden="true"></div>
+        <p data-i18n class="pack-status" role="status">Welcome back. Entering your collection.</p>
+        <div class="pack-stage" aria-hidden="true">
+            <div class="pack-aura"></div>
+            <div class="pack-position pack-stack">
+                <div class="pack-card pack-side pack-card-one">{{template "pack-back" .}}</div>
+                <div class="pack-card pack-side pack-card-two">{{template "pack-back" .}}</div>
+                <div class="pack-card pack-side pack-card-four">{{template "pack-back" .}}</div>
+                <div class="pack-card pack-side pack-card-five">{{template "pack-back" .}}</div>
+                <div class="pack-card pack-hero"><div class="pack-flipper">
+                    {{template "pack-back" .}}
+                    <div class="pack-card-front"><div class="pack-hero-art"></div><div class="pack-welcome"><span data-i18n>Welcome back</span><strong data-i18n>Your collection<br>awaits.</strong></div><div class="pack-hero-foil"></div></div>
+                </div></div>
+            </div>
+            <div class="pack-position"><div class="pack-wrapper">
+                <div class="pack-piece pack-body-left">{{template "pack-print" .}}</div>
+                <div class="pack-piece pack-body-right">{{template "pack-print" .}}</div>
+                <div class="pack-piece pack-top">{{template "pack-print" .}}</div>
+                <div class="pack-tear-light"></div>
+            </div></div>
+            <div class="pack-fragments">
+                <i style="--x:-115px;--y:-145px;--r:-130deg"></i><i style="--x:100px;--y:-160px;--r:160deg"></i>
+                <i style="--x:-130px;--y:-65px;--r:80deg"></i><i style="--x:125px;--y:-80px;--r:-100deg"></i>
+                <i style="--x:-85px;--y:70px;--r:210deg"></i><i style="--x:105px;--y:100px;--r:260deg"></i>
+                <i style="--x:-50px;--y:-180px;--r:-220deg"></i><i style="--x:60px;--y:-125px;--r:300deg"></i>
+            </div>
+            <div class="pack-impact"></div>
+        </div>
+        <p data-i18n class="pack-caption">Entering your collection<span data-i18n class="pack-escape-hint">Press Esc to skip</span></p>
+    </section>
+</template>
+{{end}}

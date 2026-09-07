@@ -185,9 +185,8 @@ func TestDetectScopedExactFingerprintCollisionReturnsReview(t *testing.T) {
 			{Card: &cards[1], Distance: 0},
 		}}, nil
 	}
-	pipeline.ocrRunner = func(ctx context.Context, _ []byte, _ []models.Card, _ string) (string, string, []byte, error) {
-		<-ctx.Done()
-		return "", "", nil, ctx.Err()
+	pipeline.ocrRunner = func(context.Context, []byte, []models.Card, string) (string, string, []byte, error) {
+		return "", "Unknown Card", nil, nil
 	}
 
 	result, err := pipeline.DetectScoped(context.Background(), DetectionRequest{

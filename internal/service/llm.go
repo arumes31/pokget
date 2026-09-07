@@ -47,7 +47,7 @@ const (
 	defaultLLMMaxCandidates = 20
 	defaultLLMMinEvidence   = 180
 	defaultLLMMinConfidence = 0.55
-	defaultLLMNumPredict    = 32
+	defaultLLMNumPredict    = 128
 	defaultLLMNumContext    = 2048
 	defaultLLMNumThread     = 8
 	defaultLLMSeed          = 42
@@ -61,74 +61,113 @@ type LLMClient interface {
 	GenerateBinderName(cards []models.Card) (string, error)
 }
 
-// LLMConfig configures deterministic card matching through Ollama.
+// LLMConfig configures a primary OpenAI-compatible provider and an Ollama fallback.
 type LLMConfig struct {
-	BaseURL       string
-	Model         string
-	HTTPClient    *http.Client
-	Timeout       time.Duration
-	Temperature   float64
-	Seed          int
-	NumPredict    int
-	NumContext    int
-	NumThread     int
-	MaxCandidates int
-	MinEvidence   int
-	MinConfidence float64
+	PrimaryBaseURL   string
+	PrimaryModel     string
+	PrimaryAPIKey    string
+	PrimaryMaxTokens int
+	BaseURL          string
+	Model            string
+	HTTPClient       *http.Client
+	Timeout          time.Duration
+	Temperature      float64
+	Seed             int
+	NumPredict       int
+	NumContext       int
+	NumThread        int
+	MaxCandidates    int
+	MinEvidence      int
+	MinConfidence    float64
 }
 
-// LLMService provides LLM-based card identification via Ollama.
+// LLMService provides validated card identification through configured LLM providers.
 // Existing exported fields remain for compatibility with callers that build a
 // service literal; zero values for the matching options use secure defaults.
 type LLMService struct {
-	BaseURL       string
-	Model         string
-	HTTPClient    *http.Client
-	Temperature   float64
-	Seed          int
-	NumPredict    int
-	NumContext    int
-	NumThread     int
-	MaxCandidates int
-	MinEvidence   int
-	MinConfidence float64
+	PrimaryBaseURL   string
+	PrimaryModel     string
+	PrimaryAPIKey    string
+	PrimaryMaxTokens int
+	Timeout          time.Duration
+	BaseURL          string
+	Model            string
+	HTTPClient       *http.Client
+	Temperature      float64
+	Seed             int
+	NumPredict       int
+	NumContext       int
+	NumThread        int
+	MaxCandidates    int
+	MinEvidence      int
+	MinConfidence    float64
 }
 
-// NewLLMService creates an Ollama client from environment configuration.
+// NewLLMService enables the primary provider only when LLM_BASE_URL is configured.
 func NewLLMService() *LLMService {
 	config := LLMConfig{
-		BaseURL:       os.Getenv("OLLAMA_HOST"),
-		Model:         envString("OLLAMA_MODEL", defaultOllamaModel),
-		Temperature:   envFloat("OLLAMA_TEMPERATURE", 0),
-		Seed:          envInt("OLLAMA_SEED", defaultLLMSeed),
-		NumPredict:    envInt("OLLAMA_NUM_PREDICT", defaultLLMNumPredict),
-		NumContext:    envInt("OLLAMA_NUM_CTX", defaultLLMNumContext),
-		NumThread:     envInt("OLLAMA_NUM_THREAD", defaultLLMNumThread),
-		MaxCandidates: envInt("OLLAMA_MAX_CANDIDATES", defaultLLMMaxCandidates),
-		MinEvidence:   envInt("OLLAMA_MIN_EVIDENCE", defaultLLMMinEvidence),
-		MinConfidence: envFloat("OLLAMA_MIN_CONFIDENCE", defaultLLMMinConfidence),
-		Timeout:       5 * time.Minute,
+		PrimaryBaseURL:   os.Getenv("LLM_BASE_URL"),
+		PrimaryModel:     os.Getenv("LLM_MODEL"),
+		PrimaryAPIKey:    os.Getenv("LLM_API"),
+		PrimaryMaxTokens: envInt("LLM_MAX_TOKENS", defaultLLMPrimaryMaxTokens),
+		BaseURL:          os.Getenv("OLLAMA_HOST"),
+		Model:            envString("OLLAMA_MODEL", defaultOllamaModel),
+		Temperature:      envFloat("OLLAMA_TEMPERATURE", 0),
+		Seed:             envInt("OLLAMA_SEED", defaultLLMSeed),
+		NumPredict:       envInt("OLLAMA_NUM_PREDICT", defaultLLMNumPredict),
+		NumContext:       envInt("OLLAMA_NUM_CTX", defaultLLMNumContext),
+		NumThread:        envInt("OLLAMA_NUM_THREAD", defaultLLMNumThread),
+		MaxCandidates:    envInt("OLLAMA_MAX_CANDIDATES", defaultLLMMaxCandidates),
+		MinEvidence:      envInt("OLLAMA_MIN_EVIDENCE", defaultLLMMinEvidence),
+		MinConfidence:    envFloat("OLLAMA_MIN_CONFIDENCE", defaultLLMMinConfidence),
 	}
 	service, err := NewLLMServiceWithConfig(config)
 	if err == nil {
 		return service
 	}
-	slog.Warn("LLM: Invalid environment configuration; using defaults", "error", err)
+	slog.Warn("LLM: Invalid environment configuration; disabling primary provider", "error", err)
+	config.PrimaryBaseURL, config.PrimaryModel, config.PrimaryAPIKey = "", "", ""
+	service, err = NewLLMServiceWithConfig(config)
+	if err == nil {
+		return service
+	}
 	service, _ = NewLLMServiceWithConfig(LLMConfig{})
 	return service
 }
 
-// NewLLMServiceWithConfig validates explicit Ollama and matching options.
+// NewLLMServiceWithConfig validates provider URLs and deterministic matching options.
 func NewLLMServiceWithConfig(config LLMConfig) (*LLMService, error) {
 	baseURL, err := normalizeOllamaBaseURL(config.BaseURL)
 	if err != nil {
 		return nil, err
+	}
+	primaryURL, err := normalizePrimaryLLMBaseURL(config.PrimaryBaseURL)
+	if err != nil {
+		return nil, err
+	}
+	if primaryURL != "" {
+		config.PrimaryModel = strings.TrimSpace(config.PrimaryModel)
+		if config.PrimaryModel == "" {
+			return nil, errors.New("llm: primary model is required")
+		}
+		config.PrimaryAPIKey = strings.TrimSpace(config.PrimaryAPIKey)
+		if strings.ContainsAny(config.PrimaryAPIKey, "\r\n") {
+			return nil, errors.New("llm: invalid primary API key")
+		}
+	} else {
+		config.PrimaryModel, config.PrimaryAPIKey = "", ""
+	}
+	if config.PrimaryMaxTokens <= 0 {
+		config.PrimaryMaxTokens = defaultLLMPrimaryMaxTokens
 	}
 	if config.Model == "" {
 		config.Model = defaultOllamaModel
 	}
 	if config.Timeout <= 0 {
 		config.Timeout = 5 * time.Minute
+		if primaryURL != "" {
+			config.Timeout = defaultLLMRequestTimeout
+		}
 	}
 	if config.HTTPClient == nil {
 		config.HTTPClient = &http.Client{Timeout: config.Timeout}
@@ -162,17 +201,22 @@ func NewLLMServiceWithConfig(config LLMConfig) (*LLMService, error) {
 	}
 
 	return &LLMService{
-		BaseURL:       baseURL,
-		Model:         config.Model,
-		HTTPClient:    config.HTTPClient,
-		Temperature:   config.Temperature,
-		Seed:          config.Seed,
-		NumPredict:    config.NumPredict,
-		NumContext:    config.NumContext,
-		NumThread:     config.NumThread,
-		MaxCandidates: config.MaxCandidates,
-		MinEvidence:   config.MinEvidence,
-		MinConfidence: config.MinConfidence,
+		PrimaryBaseURL:   primaryURL,
+		PrimaryModel:     config.PrimaryModel,
+		PrimaryAPIKey:    config.PrimaryAPIKey,
+		PrimaryMaxTokens: config.PrimaryMaxTokens,
+		Timeout:          config.Timeout,
+		BaseURL:          baseURL,
+		Model:            config.Model,
+		HTTPClient:       config.HTTPClient,
+		Temperature:      config.Temperature,
+		Seed:             config.Seed,
+		NumPredict:       config.NumPredict,
+		NumContext:       config.NumContext,
+		NumThread:        config.NumThread,
+		MaxCandidates:    config.MaxCandidates,
+		MinEvidence:      config.MinEvidence,
+		MinConfidence:    config.MinConfidence,
 	}, nil
 }
 
@@ -290,15 +334,10 @@ func (s *LLMService) AutoSetupContext(ctx context.Context) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		slog.Error("LLM: Pull API returned error", "status", resp.StatusCode, "body", string(body))
+		slog.Error("LLM: Pull API returned error", "status", resp.StatusCode)
 		return
 	}
 	slog.Info("LLM: Model pulled successfully", "model", model)
-}
-
-func (s *LLMService) queryLLM(prompt string) (string, error) {
-	return s.queryLLMContext(context.Background(), prompt)
 }
 
 func (s *LLMService) queryLLMContext(ctx context.Context, prompt string) (string, error) {
@@ -306,6 +345,10 @@ func (s *LLMService) queryLLMContext(ctx context.Context, prompt string) (string
 }
 
 func (s *LLMService) queryLLMRequest(ctx context.Context, prompt string, responseFormat any) (string, error) {
+	return s.queryLLMWithFallback(ctx, prompt, responseFormat, nil, nil, nil)
+}
+
+func (s *LLMService) queryOllamaRequest(ctx context.Context, prompt string, responseFormat any) (string, error) {
 	payload := map[string]any{
 		"model":  s.Model,
 		"prompt": prompt,
@@ -338,16 +381,23 @@ func (s *LLMService) queryLLMRequest(ctx context.Context, prompt string, respons
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		slog.Error("LLM API error", "status", resp.StatusCode, "body", string(body))
 		return "", fmt.Errorf("llm API returned status %d", resp.StatusCode)
 	}
 	var result struct {
-		Response string `json:"response"`
+		Response   string `json:"response"`
+		Done       *bool  `json:"done"`
+		DoneReason string `json:"done_reason"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, 1<<20))
 	if err := decoder.Decode(&result); err != nil {
 		return "", fmt.Errorf("llm: decode Ollama response: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return "", errors.New("llm: trailing Ollama response data")
+	}
+	if strings.TrimSpace(result.Response) == "" || result.DoneReason == "length" || (result.Done != nil && !*result.Done) {
+		return "", errors.New("llm: Ollama returned an incomplete response")
 	}
 	return result.Response, nil
 }
@@ -410,10 +460,11 @@ func (s *LLMService) effectiveMinConfidence() float64 {
 
 // LLMCardResponse is a validated printing-level card identification.
 type LLMCardResponse struct {
-	CardName   string  `json:"card_name,omitempty"`
-	CardID     string  `json:"card_id"`
-	Confidence float64 `json:"confidence"`
-	Abstained  bool    `json:"abstain,omitempty"`
+	CardName       string  `json:"card_name,omitempty"`
+	CardID         string  `json:"card_id"`
+	Confidence     float64 `json:"confidence"`
+	Abstained      bool    `json:"abstain,omitempty"`
+	visionSelected bool
 }
 
 func abstainedLLMResponse() *LLMCardResponse {
@@ -460,6 +511,16 @@ func (s *LLMService) FuzzyMatchCardWithValidation(ocrText string, knownCards []m
 // FuzzyMatchCardScopedContext enforces the selected catalog scope before any
 // candidate metadata is serialized for the model.
 func (s *LLMService) FuzzyMatchCardScopedContext(ctx context.Context, ocrText string, knownCards []models.Card, scope ScanScope) (*LLMCardResponse, error) {
+	return s.FuzzyMatchCardScopedWithImageContext(ctx, ocrText, nil, knownCards, scope)
+}
+
+// FuzzyMatchCardScopedWithImageContext optionally supplies the card photo while
+// enforcing the same catalog scope and evidence-backed shortlist.
+func (s *LLMService) FuzzyMatchCardScopedWithImageContext(ctx context.Context, ocrText string, imageData []byte, knownCards []models.Card, scope ScanScope) (*LLMCardResponse, error) {
+	return s.fuzzyMatchCardScopedWithArtworkContext(ctx, ocrText, imageData, knownCards, knownCards, scope)
+}
+
+func (s *LLMService) fuzzyMatchCardScopedWithArtworkContext(ctx context.Context, ocrText string, imageData []byte, knownCards, referenceCatalog []models.Card, scope ScanScope) (*LLMCardResponse, error) {
 	if !scope.TCG.Valid() || !scope.Language.Valid() {
 		return nil, fmt.Errorf("%w: invalid LLM card scope", ErrInvalidDetectionRequest)
 	}
@@ -467,12 +528,27 @@ func (s *LLMService) FuzzyMatchCardScopedContext(ctx context.Context, ocrText st
 	if len(eligible) == 0 {
 		return abstainedLLMResponse(), nil
 	}
-	return s.FuzzyMatchCardWithValidationContext(ctx, ocrText, eligible)
+	return s.fuzzyMatchCardWithArtworkContext(ctx, ocrText, imageData, eligible, referenceCatalog)
 }
 
 // FuzzyMatchCardWithValidationContext sends only deterministic, evidence-backed
 // printing IDs to the model and accepts exactly one supplied ID or abstention.
 func (s *LLMService) FuzzyMatchCardWithValidationContext(ctx context.Context, ocrText string, knownCards []models.Card) (*LLMCardResponse, error) {
+	return s.FuzzyMatchCardWithImageContext(ctx, ocrText, nil, knownCards)
+}
+
+// FuzzyMatchCardWithImageContext keeps model selections inside the deterministic
+// shortlist; the primary receives the optional image and Ollama remains text-only.
+func (s *LLMService) FuzzyMatchCardWithImageContext(ctx context.Context, ocrText string, imageData []byte, knownCards []models.Card) (*LLMCardResponse, error) {
+	return s.fuzzyMatchCardWithArtworkContext(ctx, ocrText, imageData, knownCards, knownCards)
+}
+
+// referenceCatalog checks artwork-group completeness before earlier pipeline
+// limits. It never expands the candidates or metadata sent to the provider.
+func (s *LLMService) fuzzyMatchCardWithArtworkContext(ctx context.Context, ocrText string, imageData []byte, knownCards, referenceCatalog []models.Card) (*LLMCardResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	eligible := make([]models.Card, 0, len(knownCards))
 	for index := range knownCards {
 		if knownCards[index].ID != "" && knownCards[index].IsCatalogActive() {
@@ -527,38 +603,57 @@ func (s *LLMService) FuzzyMatchCardWithValidationContext(ctx context.Context, oc
 		`Choose card_id only from candidates when the evidence is sufficient. Never invent an ID or return a card name as the selection. ` +
 		`Return exactly {"card_id":"<supplied ID>"}; otherwise return {"card_id":""}. Input: ` + string(inputJSON)
 
-	response, err := s.queryLLMRequest(ctx, prompt, llmCardResponseSchema(shortlistByID))
-	if err != nil {
-		return nil, fmt.Errorf("LLM query failed: %w", err)
+	var selection *LLMCardResponse
+	var references []llmArtworkReference
+	if s.PrimaryBaseURL != "" && len(imageData) > 0 {
+		references = shortlistArtworkReferences(shortlist, referenceCatalog)
 	}
+	_, err = s.queryLLMWithFallback(ctx, prompt, llmCardResponseSchema(shortlistByID), imageData, references, func(response string, primary bool) error {
+		var validationErr error
+		selection, validationErr = s.validateLLMCardResponse(response, shortlistByID, shortlistScoreByID)
+		if selection != nil {
+			selection.visionSelected = primary && len(imageData) > 0 && !selection.Abstained
+		}
+		return validationErr
+	})
+	if err != nil {
+		return nil, fmt.Errorf("llm query failed: %w", err)
+	}
+	return selection, nil
+}
+
+func (s *LLMService) validateLLMCardResponse(response string, shortlistByID map[string]models.Card, shortlistScoreByID map[string]int) (*LLMCardResponse, error) {
 	var raw struct {
-		CardID     string  `json:"card_id"`
+		CardID     *string `json:"card_id"`
 		Confidence float64 `json:"confidence"`
 		Abstain    bool    `json:"abstain"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(strings.TrimSpace(response)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&raw); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidLLMResponse, err)
+		return nil, fmt.Errorf("%w: invalid selection JSON", ErrInvalidLLMResponse)
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%w: trailing response content", ErrInvalidLLMResponse)
 	}
 	if raw.Abstain {
-		if raw.CardID != "" {
+		if raw.CardID != nil && *raw.CardID != "" {
 			return nil, fmt.Errorf("%w: abstention included card_id", ErrInvalidLLMResponse)
 		}
 		return abstainedLLMResponse(), nil
 	}
-	if raw.CardID == "" {
+	if raw.CardID == nil {
+		return nil, fmt.Errorf("%w: missing card_id", ErrInvalidLLMResponse)
+	}
+	if *raw.CardID == "" {
 		return abstainedLLMResponse(), nil
 	}
-	card, ok := shortlistByID[raw.CardID]
+	card, ok := shortlistByID[*raw.CardID]
 	if !ok {
-		return nil, fmt.Errorf("%w: %q was not supplied", ErrInvalidLLMResponse, raw.CardID)
+		return nil, fmt.Errorf("%w: selected ID was not supplied", ErrInvalidLLMResponse)
 	}
-	confidence := llmEvidenceConfidence(shortlistScoreByID[raw.CardID])
+	confidence := llmEvidenceConfidence(shortlistScoreByID[*raw.CardID])
 	if confidence < s.effectiveMinConfidence() {
 		return abstainedLLMResponse(), nil
 	}
@@ -603,6 +698,12 @@ func (*LLMService) validatePlainTextResponse(string, []models.Card, []models.Car
 }
 
 func (s *LLMService) GenerateBinderName(cards []models.Card) (string, error) {
+	return s.GenerateBinderNameContext(context.Background(), cards)
+}
+
+// GenerateBinderNameContext keeps a primary naming request attached to its
+// caller, including while waiting between failed provider attempts.
+func (s *LLMService) GenerateBinderNameContext(ctx context.Context, cards []models.Card) (string, error) {
 	if len(cards) == 0 {
 		return "New Empty Binder", nil
 	}
@@ -613,7 +714,7 @@ func (s *LLMService) GenerateBinderName(cards []models.Card) (string, error) {
 	}
 	prompt := fmt.Sprintf(`Based on the following cards in a binder, suggest a single, creative, and premium-sounding name for the binder: %s.
 Respond ONLY with the name, no quotes or explanations.`, strings.Join(cardNames, ", "))
-	response, err := s.queryLLM(prompt)
+	response, err := s.queryLLMContext(ctx, prompt)
 	if err != nil {
 		return "", err
 	}

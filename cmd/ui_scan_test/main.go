@@ -11,10 +11,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	"github.com/chromedp/chromedp/kb"
 )
 
 const (
@@ -31,7 +34,7 @@ const (
 	registerConfirmSelector  = `#register-confirm-password`
 	registerSubmitSelector   = `form[hx-post="/auth/register"] button[type="submit"]`
 	scanNavigationSelector   = `button[hx-get="/centering"]`
-	fileInputSelector        = `#main-content input[type="file"]`
+	fileInputSelector        = `#main-content .scanner-shell input[type="file"]`
 	scanUploadSelector       = `[data-testid="scan-selected-crop"]`
 	detectedCardIDSelector   = `[data-testid="detected-card-id"]`
 )
@@ -50,6 +53,9 @@ type config struct {
 	timeout           time.Duration
 	headless          bool
 	register          bool
+	fullImage         bool
+	screenshot        string
+	artifactDir       string
 }
 
 type authState struct {
@@ -61,12 +67,13 @@ type authState struct {
 }
 
 type scanResult struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	StateID   string `json:"stateID"`
-	StateName string `json:"stateName"`
-	Error     string `json:"error"`
-	Visible   bool   `json:"visible"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	StateID           string `json:"stateID"`
+	StateName         string `json:"stateName"`
+	Error             string `json:"error"`
+	Visible           bool   `json:"visible"`
+	InternalIDVisible bool   `json:"internalIDVisible"`
 }
 
 func main() {
@@ -109,6 +116,9 @@ func parseFlags(args []string, output io.Writer) (config, error) {
 	flags.DurationVar(&cfg.timeout, "timeout", defaultTimeout, "overall browser smoke timeout")
 	flags.BoolVar(&cfg.headless, "headless", true, "run Chrome in headless mode")
 	flags.BoolVar(&cfg.register, "register", true, "register the account if login fails")
+	flags.BoolVar(&cfg.fullImage, "full-image", false, "use the crop-guide keyboard controls to include the entire fixture")
+	flags.StringVar(&cfg.screenshot, "screenshot", "", "optional path for a screenshot of the rendered scan result")
+	flags.StringVar(&cfg.artifactDir, "artifacts", "", "save actual prepared upload and server response for diagnosis")
 
 	if err := flags.Parse(args); err != nil {
 		return config{}, fmt.Errorf("parsing flags: %w", err)
@@ -230,6 +240,18 @@ func run(cfg config) error {
 
 	ctx, cancelTimeout := context.WithTimeout(browserContext, cfg.timeout)
 	defer cancelTimeout()
+	var artifacts *scanArtifactCapture
+	if cfg.artifactDir != "" {
+		artifacts = newScanArtifactCapture(ctx)
+	}
+	if err := chromedp.Run(ctx, chromedp.EmulateViewport(390, 844)); err != nil {
+		return fmt.Errorf("setting mobile viewport: %w", err)
+	}
+	if artifacts != nil {
+		if err := chromedp.Run(ctx, network.Enable()); err != nil {
+			return fmt.Errorf("observing scan response: %w", err)
+		}
+	}
 
 	if err := authenticate(ctx, cfg); err != nil {
 		return fmt.Errorf("authenticating through rendered ui: %w", err)
@@ -237,6 +259,26 @@ func run(cfg config) error {
 	result, err := scanFixture(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("scanning fixture through rendered ui: %w", err)
+	}
+	if artifacts != nil {
+		if err := artifacts.save(ctx, cfg.artifactDir, result); err != nil {
+			return fmt.Errorf("saving actual scan artifacts: %w", err)
+		}
+	}
+	if cfg.screenshot != "" {
+		var screenshot []byte
+		if err := chromedp.Run(ctx,
+			chromedp.Evaluate(`document.querySelector('[x-ref="scanResult"]')?.scrollIntoView({block:'nearest'})`, nil),
+			chromedp.CaptureScreenshot(&screenshot),
+		); err != nil {
+			return fmt.Errorf("capturing rendered scan result: %w", err)
+		}
+		if err := os.MkdirAll(filepath.Dir(cfg.screenshot), 0755); err != nil {
+			return fmt.Errorf("creating screenshot directory: %w", err)
+		}
+		if err := os.WriteFile(cfg.screenshot, screenshot, 0644); err != nil {
+			return fmt.Errorf("writing scan screenshot: %w", err)
+		}
 	}
 	if err := validateScanResult(result, cfg.expectedID, cfg.expectedName); err != nil {
 		return err
@@ -303,7 +345,7 @@ func login(ctx context.Context, email, password string) (authState, error) {
 func register(ctx context.Context, email, password string) error {
 	if err := chromedp.Run(
 		ctx,
-		chromedp.Click(`//button[normalize-space()="Register"]`, chromedp.BySearch),
+		chromedp.Click(`#register-tab`, chromedp.ByQuery),
 		chromedp.WaitVisible(registerEmailSelector, chromedp.ByQuery),
 		chromedp.SetValue(registerEmailSelector, email, chromedp.ByQuery),
 		chromedp.SetValue(registerPasswordSelector, password, chromedp.ByQuery),
@@ -421,13 +463,12 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 		return scanResult{}, fmt.Errorf("encoding scanner language: %w", err)
 	}
 
-	resultTimeout := min(cfg.timeout-15*time.Second, 100*time.Second)
+	resultTimeout := cfg.timeout - 15*time.Second
 	if resultTimeout < time.Second {
 		resultTimeout = time.Second
 	}
 	if err := chromedp.Run(
 		ctx,
-		chromedp.Navigate(pageURL(cfg.baseURL, "/")),
 		chromedp.WaitVisible(scanNavigationSelector, chromedp.ByQuery),
 		chromedp.Evaluate(
 			`localStorage.setItem('pokget_scan_lang', `+string(languageJSON)+`)`,
@@ -438,19 +479,33 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 			nil,
 		),
 		chromedp.Click(scanNavigationSelector, chromedp.ByQuery),
-		chromedp.WaitReady(fileInputSelector, chromedp.ByQuery),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			pageContext, cancel := context.WithTimeout(ctx, 15*time.Second)
+			defer cancel()
+			if err := chromedp.Run(pageContext, chromedp.WaitReady(fileInputSelector, chromedp.ByQuery)); err != nil {
+				return fmt.Errorf("waiting for the scanner upload input: %w", err)
+			}
+			return nil
+		}),
 		chromedp.SetUploadFiles(fileInputSelector, []string{cfg.fixture}, chromedp.ByQuery),
 		chromedp.Poll(
 			`(() => {
-				const root = document.querySelector('#main-content > [x-data]');
+				const root = document.querySelector('#main-content .scanner-shell');
 				if (!root || !window.Alpine) return false;
 				const state = Alpine.$data(root);
-				return Boolean(state.previewURL) && !state.scanning;
+				const image = root.querySelector('.scanner-frame img');
+				return Boolean(state.previewURL) && !state.scanning && image?.complete && image.naturalWidth > 0;
 			})()`,
 			nil,
 			chromedp.WithPollingTimeout(15*time.Second),
 			chromedp.WithPollingInterval(100*time.Millisecond),
 		),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			if !cfg.fullImage {
+				return nil
+			}
+			return includeFullImageWithGuides(ctx)
+		}),
 		chromedp.WaitVisible(scanUploadSelector, chromedp.ByQuery),
 		chromedp.Poll(
 			`(() => {
@@ -467,7 +522,7 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 		),
 		chromedp.Poll(
 			`(() => {
-				const root = document.querySelector('#main-content > [x-data]');
+				const root = document.querySelector('#main-content .scanner-shell');
 				if (!root || !window.Alpine) return false;
 				const state = Alpine.$data(root);
 				return state.scanning || Boolean(state.scanError) || Boolean(state.detectedCard);
@@ -478,7 +533,7 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 		),
 		chromedp.Poll(
 			`(() => {
-                const root = document.querySelector('#main-content > [x-data]');
+                const root = document.querySelector('#main-content .scanner-shell');
                 if (!root || !window.Alpine) return false;
                 const state = Alpine.$data(root);
 				if (state.scanError) return true;
@@ -497,8 +552,8 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 		var debugState string
 		_ = chromedp.Run(ctx, chromedp.Evaluate(`
 (() => {
-    const root = document.querySelector('#main-content > [x-data]');
-    if (!root || !window.Alpine) return JSON.stringify({root: Boolean(root), alpine: Boolean(window.Alpine)});
+    const root = document.querySelector('#main-content .scanner-shell');
+    if (!root || !window.Alpine) return JSON.stringify({root: Boolean(root), alpine: Boolean(window.Alpine), path: location.pathname, navigationError: document.querySelector('[data-testid="navigation-error"]')?.textContent?.trim()});
     const state = Alpine.$data(root);
     return JSON.stringify({
         detectedCard: state.detectedCard,
@@ -521,7 +576,7 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 	var result scanResult
 	if err := chromedp.Run(ctx, chromedp.Evaluate(`
 (() => {
-    const root = document.querySelector('#main-content > [x-data]');
+    const root = document.querySelector('#main-content .scanner-shell');
     const panel = root?.querySelector('[x-show="detectedCard"]');
 	const nameNode = panel?.querySelector('[x-text="detectedCard"]');
 	const idNode = panel?.querySelector('`+detectedCardIDSelector+`');
@@ -542,11 +597,12 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 		nameBounds.width > 0 && nameBounds.height > 0 &&
 		idBounds.width > 0 && idBounds.height > 0;
     return {
-		id: String(idNode.textContent || ''),
+		id: String(idNode.dataset.cardId || ''),
 		name: String(nameNode.textContent || ''),
 		stateID: String(state.detectedID || ''),
 		stateName: String(state.detectedCard || ''),
 		error: String(state.scanError || ''),
+		internalIDVisible: [state.detectedID, ...state.topMatches.map(match => match.id)].filter(Boolean).some(id => panel.innerText.includes(id)),
         visible: visible
     };
 })()`, &result)); err != nil {
@@ -555,12 +611,50 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 	return result, nil
 }
 
+func includeFullImageWithGuides(ctx context.Context) error {
+	for _, guide := range []struct {
+		label, key string
+		target     int
+	}{
+		{"Left crop guide", kb.ArrowLeft, 0},
+		{"Right crop guide", kb.ArrowRight, 100},
+		{"Top crop guide", kb.ArrowUp, 0},
+		{"Bottom crop guide", kb.ArrowDown, 100},
+	} {
+		selector := `[role="slider"][aria-label="` + guide.label + `"]`
+		var current string
+		var exists bool
+		if err := chromedp.Run(ctx, chromedp.AttributeValue(selector, "aria-valuenow", &current, &exists, chromedp.ByQuery)); err != nil {
+			return fmt.Errorf("reading %s: %w", guide.label, err)
+		}
+		value, err := strconv.Atoi(current)
+		if err != nil || !exists || value < 0 || value > 100 {
+			return fmt.Errorf("%s has invalid slider position %q", guide.label, current)
+		}
+		steps := value - guide.target
+		if steps < 0 {
+			steps = -steps
+		}
+		if err := chromedp.Run(ctx,
+			chromedp.Focus(selector, chromedp.ByQuery),
+			chromedp.KeyEvent(strings.Repeat(guide.key, steps)),
+			chromedp.Poll(fmt.Sprintf(`document.querySelector(%q).getAttribute('aria-valuenow')===%q`, selector, strconv.Itoa(guide.target)), nil, chromedp.WithPollingTimeout(2*time.Second)),
+		); err != nil {
+			return fmt.Errorf("adjusting %s through its keyboard control: %w", guide.label, err)
+		}
+	}
+	return nil
+}
+
 func validateScanResult(result scanResult, expectedID, expectedName string) error {
 	if result.Error != "" {
 		return fmt.Errorf("scanner displayed an error: %s", result.Error)
 	}
 	if !result.Visible {
 		return fmt.Errorf("scan result panel is not visible")
+	}
+	if result.InternalIDVisible {
+		return fmt.Errorf("printing review exposes an internal catalog ID in visible copy")
 	}
 	if actualID := strings.TrimSpace(result.ID); actualID != expectedID {
 		return fmt.Errorf("detected card id %q, expected exact id %q", actualID, expectedID)

@@ -1031,7 +1031,7 @@ func TestPipelineUniqueExactFingerprintUsesFastPath(t *testing.T) {
 	}
 }
 
-func TestPipelineUniqueExactFingerprintBeatsNearCollision(t *testing.T) {
+func TestPipelineExactFingerprintWithNearCollisionRequiresReview(t *testing.T) {
 	t.Parallel()
 
 	fingerprint := NewFingerprintService(nil)
@@ -1058,11 +1058,11 @@ func TestPipelineUniqueExactFingerprintBeatsNearCollision(t *testing.T) {
 	if result.BestMatchCard() == nil || result.BestMatchCard().ID != exact.ID {
 		t.Fatalf("best match = %+v, want exact card", result.BestMatchCard())
 	}
-	if result.BestMatchConfidence() != 100 || result.BestMatchNeedsReview() {
+	if !result.BestMatchNeedsReview() || len(result.TopMatches) != 2 {
 		t.Fatalf("confidence/review = %v/%v", result.BestMatchConfidence(), result.BestMatchNeedsReview())
 	}
-	if len(result.Metrics.Stages) != 1 || result.Metrics.Stages[0].Name != "fingerprint" {
-		t.Fatalf("stages = %+v, want fingerprint fast-path metric", result.Metrics.Stages)
+	if len(result.Metrics.Stages) < 3 {
+		t.Fatalf("stages = %+v, want OCR evidence before returning a near collision", result.Metrics.Stages)
 	}
 }
 

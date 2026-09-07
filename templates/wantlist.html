@@ -2,94 +2,92 @@
     <!-- Header -->
     <div class="page-header">
         <div>
-            <p class="page-eyebrow">Price watch</p>
-            <h2 class="page-title">Grails</h2>
-            <p class="page-description">Track the cards you’re hunting and see when market prices meet your target.</p>
+            <h2 data-i18n class="page-title">Grails</h2>
+            <p data-i18n class="page-description">Track the cards you’re hunting and see when market prices meet your target.</p>
         </div>
         {{ if .Items }}
-        <button type="button" x-ref="addGrailTrigger" @click="addError = ''; showAddGrailModal = true; $nextTick(() => $refs.grailCardId.focus())"
+        <button data-i18n type="button" x-ref="addGrailTrigger" @click="addError = ''; showAddGrailModal = true; $nextTick(() => $refs.grailCardId.focus())"
             class="btn-primary w-full sm:w-auto">
             <span class="material-symbols-outlined text-[20px]">add_circle</span>
             Add grail
         </button>
         {{ end }}
     </div>
-    <p x-show="mutationError" x-text="mutationError" role="alert" aria-live="assertive"
-        class="rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700"></p>
+    <p data-i18n x-show="mutationError" x-text="mutationError" role="alert" aria-live="assertive"
+        class="rounded-xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 px-3.5 py-3 text-sm font-medium text-red-700 dark:text-red-300"></p>
 
     <!-- Wantlist Grid -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {{ range .Items }}
+        {{ $priceAvailable := .Card.PriceUSDValid }}
+        {{ if eq $.UserCurrency "EUR" }}{{ $priceAvailable = .Card.PriceEURValid }}{{ end }}
         <article class="card flex flex-col p-4 sm:p-5">
-            <div class="flex gap-4">
+            <div class="card-summary">
                 <!-- Card Image -->
                 <div
-                    class="w-20 sm:w-24 aspect-[3/4] rounded-xl overflow-hidden flex-shrink-0 bg-zinc-100 border border-zinc-200">
-                    <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-cover">
+                    class="card-summary-image aspect-[3/4] rounded-xl overflow-hidden bg-zinc-100 dark:bg-stone-100 border border-zinc-200 dark:border-stone-200">
+                    <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-contain" loading="lazy">
                 </div>
 
                 <!-- Info -->
-                <div class="flex flex-col justify-between py-0.5 flex-1 min-w-0">
+                <div class="card-summary-body flex flex-col justify-between py-0.5">
                     <div>
-                        <p class="text-violet-700 text-[11px] font-semibold uppercase tracking-wide mb-0.5">{{ .Card.Set }}
+                        <p class="text-zinc-600 dark:text-zinc-300 text-xs font-medium mb-1">{{ .Card.Set }}
                         </p>
-                        <h3 class="text-base font-bold text-zinc-900 truncate">
+                        <h3 class="text-base font-bold text-zinc-900 dark:text-zinc-100">
                             {{ .Card.Name }}</h3>
                     </div>
 
                     <div class="space-y-2 mt-3">
                         <div class="flex flex-col">
-                            <span class="text-[11px] text-zinc-500 uppercase font-bold tracking-wide">Your target</span>
-                            <span class="text-xl font-bold text-violet-700 tracking-tight">{{ $.CurrencySymbol }}{{
-                                .TargetPrice }}</span>
+                            <span data-i18n class="text-xs text-zinc-600 dark:text-zinc-300 font-medium">Your target</span>
+                            <span class="text-xl font-bold text-violet-700 dark:text-violet-300 tracking-tight">{{ $.CurrencySymbol }}{{ printf "%.2f" .TargetPrice }}</span>
                         </div>
-                        <div class="flex items-center justify-between text-xs">
-                            <span class="text-zinc-500 uppercase font-medium">Market price</span>
-                            <span class="text-zinc-900 font-mono font-semibold">
+                        <div class="flex flex-wrap gap-x-2 items-center justify-between text-xs">
+                            <span data-i18n class="text-zinc-600 dark:text-zinc-300 font-medium">Market price</span>
+                            <span class="text-zinc-900 dark:text-zinc-100 font-mono font-semibold">
+                                {{ if $priceAvailable }}
                                 {{ $.CurrencySymbol }}{{ if eq $.UserCurrency "EUR" }}
                                 {{ printf "%.2f" .PriceEUR }}
                                 {{ else }}
                                 {{ printf "%.2f" .PriceUSD }}
                                 {{ end }}
+                                {{ else }}<span data-i18n>Price unavailable</span>{{ end }}
                             </span>
                         </div>
                     </div>
                 </div>
             </div>
-            <!-- Progress Bar / Status -->
-            <!-- BUG-M12 FIX: Use user's preferred currency for progress bar instead of
-hardcoded USD. Previously, the progress bar always used PriceUSD regardless
-of the user's currency preference. -->
+            {{ if and $priceAvailable (gt .TargetPrice 0.0) }}
             <div class="mt-4">
                 <div class="flex justify-between items-center mb-1.5">
-                    <span class="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Market convergence</span>
-                    <span class="text-xs font-semibold text-violet-700">{{ if .TargetPrice }}{{ if eq $.UserCurrency "EUR"
-                        }}{{ printf "%.0f" .ProgressEUR }}{{ else }}{{ printf "%.0f" .ProgressUSD }}{{ end }}%{{ else }}0%{{ end }}</span>
+                    <span data-i18n class="text-xs font-medium text-zinc-600 dark:text-zinc-300">Market / target</span>
+                    <span class="text-xs font-semibold text-violet-700 dark:text-violet-300">{{ if eq $.UserCurrency "EUR"
+                        }}{{ printf "%.0f" .ProgressEUR }}{{ else }}{{ printf "%.0f" .ProgressUSD }}{{ end }}%</span>
                 </div>
-                <div class="h-2 w-full bg-zinc-100 rounded-full overflow-hidden">
-                    {{ if .TargetPrice }}
+                <div class="h-2 w-full bg-zinc-100 dark:bg-stone-100 rounded-full overflow-hidden">
                     <div class="h-full bg-violet-600 rounded-full transition-all duration-700"
                         x-init="$el.style.width = Math.min({{ if eq $.UserCurrency "EUR" }}{{ .ProgressEUR }}{{ else }}{{ .ProgressUSD }}{{ end }}, 100) + '%'"></div>
-                    {{ end }}
                 </div>
             </div>
+            {{ end }}
             <details class="mt-4 border-t border-stone-200 pt-3">
-                <summary class="flex min-h-11 cursor-pointer items-center justify-between text-sm font-bold text-zinc-700">Edit target and notes<span class="material-symbols-outlined">expand_more</span></summary>
+                <summary data-i18n class="flex min-h-11 cursor-pointer items-center justify-between text-sm font-bold text-zinc-700 dark:text-zinc-200">Edit target and notes<span class="material-symbols-outlined">expand_more</span></summary>
             <form hx-post="/wantlist/edit" hx-target="#main-content" @htmx:before-request="mutationError = ''"
                 @htmx:after-request="if (!$event.detail.successful) mutationError = $event.detail.xhr.responseText.trim() || 'Unable to update grail'"
                 class="grid grid-cols-2 gap-2 pt-3">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{ $.CSRFToken }}">
                 <input type="hidden" name="item_id" value="{{ .ID }}">
-                <label class="block text-xs font-medium text-zinc-600">Target
+                <label data-i18n class="block text-xs font-medium text-zinc-600 dark:text-zinc-300">Target
                     <input type="number" name="target_price" min="0" step="0.01" value="{{ .TargetPrice }}" required
                         class="input mt-1">
                 </label>
-                <label class="block text-xs font-medium text-zinc-600">Notes
+                <label data-i18n class="block text-xs font-medium text-zinc-600 dark:text-zinc-300">Notes
                     <input type="text" name="notes" value="{{ .Notes }}"
                         class="input mt-1">
                 </label>
-                <button type="submit" class="btn-primary">Save</button>
-                <button type="button" hx-post="/wantlist/delete" hx-target="#main-content" hx-confirm="Remove this card from your wantlist?"
+                <button data-i18n type="submit" class="btn-primary">Save</button>
+                <button data-i18n type="button" hx-post="/wantlist/delete" hx-target="#main-content" hx-confirm="Remove this card from your wantlist?"
                     @htmx:before-request="mutationError = ''"
                     @htmx:after-request="if (!$event.detail.successful) mutationError = $event.detail.xhr.responseText.trim() || 'Unable to remove grail'"
                     hx-vals='{"item_id":"{{ .ID }}"}' class="btn-danger">Remove</button>
@@ -98,14 +96,14 @@ of the user's currency preference. -->
         </article>
         {{ else }}
         <!-- Empty State -->
-        <div class="col-span-full py-6 sm:py-12">
+        <div class="col-span-full py-3 sm:py-6">
             <div class="empty-state">
                 <div class="empty-state-icon">
-                    <span class="material-symbols-outlined text-3xl text-violet-700">explore</span>
+                    <span class="material-symbols-outlined text-3xl text-violet-700 dark:text-violet-300">explore</span>
                 </div>
-                <h3 class="font-display text-xl font-bold text-zinc-950">Build your hunt list</h3>
-                <p class="mt-2 max-w-sm text-sm leading-6 text-zinc-600">Set a target price and Pokget will track the gap to the current market.</p>
-                <button type="button" @click="addError = ''; showAddGrailModal = true; $nextTick(() => $refs.grailCardId.focus())"
+                <h3 data-i18n class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">Build your hunt list</h3>
+                <p data-i18n class="mt-2 max-w-sm text-sm leading-6 text-zinc-600 dark:text-zinc-300">Set a target price and Pokget will track the gap to the current market.</p>
+                <button data-i18n type="button" x-ref="addGrailTrigger" @click="addError = ''; showAddGrailModal = true; $nextTick(() => $refs.grailCardId.focus())"
                     class="btn-primary w-full sm:w-auto mt-6">
                     <span class="material-symbols-outlined">add_circle</span>Add first grail
                 </button>
@@ -126,8 +124,8 @@ of the user's currency preference. -->
             style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))"
             @click.away="showAddGrailModal = false; $nextTick(() => $refs.addGrailTrigger?.focus())">
             <div class="flex justify-between items-center">
-                <div><p class="page-eyebrow">Price watch</p><h3 id="add-grail-title" class="font-display text-xl font-bold text-zinc-950">Add a grail</h3></div>
-                <button type="button" aria-label="Close add grail dialog" @click="showAddGrailModal = false; $nextTick(() => $refs.addGrailTrigger?.focus())"
+                <h3 data-i18n id="add-grail-title" class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">Add a grail</h3>
+                <button data-i18n-attrs="aria-label" type="button" aria-label="Close add grail dialog" @click="showAddGrailModal = false; $nextTick(() => $refs.addGrailTrigger?.focus())"
                     class="btn-ghost min-h-11 px-2 -mr-2">
                     <span class="material-symbols-outlined">close</span>
                 </button>
@@ -137,20 +135,20 @@ of the user's currency preference. -->
                 @htmx:after-request="if ($event.detail.successful) { showAddGrailModal = false; $nextTick(() => $refs.addGrailTrigger?.focus()) } else { addError = $event.detail.xhr.responseText.trim() || 'Unable to add grail' }"
                 class="space-y-4">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
-                <p x-show="addError" x-text="addError" role="alert" aria-live="assertive"
-                    class="rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700"></p>
+                <p data-i18n x-show="addError" x-text="addError" role="alert" aria-live="assertive"
+                    class="rounded-xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 px-3.5 py-3 text-sm font-medium text-red-700 dark:text-red-300"></p>
 
                 <div>
-                    <label for="grail-card-id" class="label">Catalog card ID</label>
-                    <input id="grail-card-id" x-ref="grailCardId" type="search" name="card_id" required placeholder="Search or paste an ID, e.g. swsh4-19"
+                    <label data-i18n for="grail-card-id" class="label">Catalog card ID</label>
+                    <input data-i18n-attrs="placeholder" id="grail-card-id" x-ref="grailCardId" type="text" name="card_id" required placeholder="e.g. swsh4-19"
                         class="input">
-                    <p class="mt-1.5 text-xs text-zinc-500">Use the ID shown after scanning or in the card catalog.</p>
+                    <p data-i18n class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">Use the ID shown after scanning or in the card catalog.</p>
                 </div>
 
                 <div>
-                    <label for="grail-target-price" class="label">Target acquisition price ({{ $.CurrencySymbol }})</label>
+                    <label data-i18n for="grail-target-price" class="label">Target acquisition price ({{ $.CurrencySymbol }})</label>
                     <div class="relative">
-                        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-violet-700 font-semibold pointer-events-none">{{
+                        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-violet-700 dark:text-violet-300 font-semibold pointer-events-none">{{
                             $.CurrencySymbol }}</span>
                         <input id="grail-target-price" type="number" min="0" step="0.01" inputmode="decimal" name="target_price" required placeholder="0.00"
                             class="input pl-9 font-semibold">
@@ -158,12 +156,12 @@ of the user's currency preference. -->
                 </div>
 
                 <div>
-                    <label for="grail-notes" class="label">Notes</label>
-                    <textarea id="grail-notes" name="notes" placeholder="Condition, seller, or priority..." rows="3"
+                    <label data-i18n for="grail-notes" class="label">Notes</label>
+                    <textarea data-i18n-attrs="placeholder" id="grail-notes" name="notes" placeholder="Condition, seller, or priority..." rows="3"
                         class="input min-h-24 py-2.5"></textarea>
                 </div>
 
-                <button type="submit" class="btn-primary w-full min-h-12 text-base">
+                <button data-i18n type="submit" class="btn-primary w-full min-h-12 text-base">
                     <span class="material-symbols-outlined text-[20px]">target</span>
                     Start tracking
                 </button>

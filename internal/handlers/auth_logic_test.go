@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"pokget/internal/service"
 	"strings"
 	"testing"
@@ -11,6 +12,39 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
+
+func TestRegisterRejectsPasswordBeyondBcryptLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		password string
+	}{
+		{name: "ascii", password: strings.Repeat("a", 73)},
+		{name: "multibyte", password: strings.Repeat("界", 25)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, mock, cleanup := setupTestHandler(t)
+			defer cleanup()
+			mock.ExpectQuery("SELECT is_verified FROM users").
+				WithArgs("new@example.com").WillReturnError(sql.ErrNoRows)
+			form := url.Values{
+				"email": {"new@example.com"}, "password": {tc.password},
+				"confirm_password": {tc.password},
+			}
+			request := httptest.NewRequest(http.MethodPost, "/auth/register", strings.NewReader(form.Encode()))
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			response := httptest.NewRecorder()
+
+			h.Register(response, request)
+
+			if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "72 bytes") {
+				t.Fatalf("status = %d, body = %q; want 400 explaining the 72-byte limit", response.Code, response.Body.String())
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 func TestRegister_Success_NewUser(t *testing.T) {
 	h, mock, cleanup := setupTestHandler(t)

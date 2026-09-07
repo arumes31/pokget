@@ -20,7 +20,7 @@ test('scanner template loads one external Alpine controller before Alpine', () =
   }
   assert.match(scannerTemplate, /availableLanguages/);
   assert.match(scannerTemplate, /RETRY LAST CROP/);
-  assert.match(scannerTemplate, /USE A CATALOG ID/);
+  assert.match(scannerTemplate, /Enter a catalog ID instead/);
   assert.match(scannerTemplate, /Only\s*the area inside the guides is uploaded/);
   assert.match(scannerTemplate, /data-testid="scan-progress-overlay"/);
   assert.match(scannerTemplate, /role="dialog" aria-modal="true"/);

@@ -1,17 +1,24 @@
 'use strict';
 
 const CACHE_PREFIX = 'pokget-';
-const CACHE_NAME = `${CACHE_PREFIX}shell-v8`;
+const CACHE_NAME = `${CACHE_PREFIX}shell-v13`;
 const OFFLINE_URL = '/static/offline.html';
 const PRECACHE_URLS = [
   OFFLINE_URL,
+  '/static/fonts/material-symbols-ui.woff2',
   '/static/css/tailwind.css',
   '/static/css/styles.css',
   '/static/js/htmx.min.js',
+  '/static/js/theme.js',
+  '/static/js/i18n.js',
   '/static/js/alpine.min.js',
   '/static/js/vault.js',
+  '/static/js/dialogs.js',
   '/static/js/scanner.js',
-  '/static/img/logo.png',
+  '/static/js/measure.js',
+  '/static/css/measure.css',
+  '/static/img/logo-128.webp',
+  '/static/img/favicon-32.png',
   '/static/img/icon-192.png',
   '/static/img/icon-512.png',
   '/static/manifest.json',

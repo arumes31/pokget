@@ -75,7 +75,9 @@ func TestPublicVault_USDCollectorWithoutAtSign(t *testing.T) {
 	mock.ExpectQuery("SELECT id, email").WithArgs("public-user").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "rank_title", "xp", "currency"}).
 			AddRow("user-1", "collector", "Collector", 100, "USD"))
-	mock.ExpectQuery("SELECT p.id").WithArgs("user-1").
+	mock.ExpectQuery(`SELECT COUNT\(\*\)`).WithArgs("user-1").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery("SELECT p.id").WithArgs("user-1", 25, 0).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "condition", "format", "grade", "grading_company", "notes",
 			"name", "set_name", "price_usd", "price_eur", "image_url", "game",
@@ -117,6 +119,8 @@ func TestPublicVault_PortfolioErrors(t *testing.T) {
 		mock.ExpectQuery("SELECT id, email").WithArgs("public-user").
 			WillReturnRows(sqlmock.NewRows([]string{"id", "email", "rank_title", "xp", "currency"}).
 				AddRow("user-1", "collector@example.com", "Collector", 100, "EUR"))
+		mock.ExpectQuery(`SELECT COUNT\(\*\)`).WithArgs("user-1").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 	}
 
 	t.Run("QueryError", func(t *testing.T) {
@@ -124,7 +128,7 @@ func TestPublicVault_PortfolioErrors(t *testing.T) {
 		defer cleanup()
 
 		expectUser(mock)
-		mock.ExpectQuery("SELECT p.id").WithArgs("user-1").WillReturnError(sql.ErrConnDone)
+		mock.ExpectQuery("SELECT p.id").WithArgs("user-1", 25, 0).WillReturnError(sql.ErrConnDone)
 
 		request := httptest.NewRequest(http.MethodGet, "/vault/public-user", nil)
 		request = mux.SetURLVars(request, map[string]string{"slug": "public-user"})
@@ -135,6 +139,9 @@ func TestPublicVault_PortfolioErrors(t *testing.T) {
 		if response.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("ScanError", func(t *testing.T) {
@@ -142,7 +149,7 @@ func TestPublicVault_PortfolioErrors(t *testing.T) {
 		defer cleanup()
 
 		expectUser(mock)
-		mock.ExpectQuery("SELECT p.id").WithArgs("user-1").
+		mock.ExpectQuery("SELECT p.id").WithArgs("user-1", 25, 0).
 			WillReturnRows(sqlmock.NewRows([]string{
 				"id", "condition", "format", "grade", "grading_company", "notes",
 				"name", "set_name", "price_usd", "price_eur", "image_url", "game",
@@ -160,6 +167,9 @@ func TestPublicVault_PortfolioErrors(t *testing.T) {
 		if response.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("RowsError", func(t *testing.T) {
@@ -174,7 +184,7 @@ func TestPublicVault_PortfolioErrors(t *testing.T) {
 			"item-1", "Near Mint", "Raw", nil, nil, nil,
 			"Test Card", "Test Set", "10.00", "9.00", "/card.png", "pokemon",
 		).RowError(0, errors.New("row stream failed"))
-		mock.ExpectQuery("SELECT p.id").WithArgs("user-1").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT p.id").WithArgs("user-1", 25, 0).WillReturnRows(rows)
 
 		request := httptest.NewRequest(http.MethodGet, "/vault/public-user", nil)
 		request = mux.SetURLVars(request, map[string]string{"slug": "public-user"})
@@ -184,6 +194,9 @@ func TestPublicVault_PortfolioErrors(t *testing.T) {
 
 		if response.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
 		}
 	})
 }

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/shopspring/decimal"
 )
 
@@ -40,10 +41,12 @@ func TestWantlistTemplateSupportsDecimalMarketPrice(t *testing.T) {
 				CardID:      "card-1",
 				TargetPrice: 10,
 				Card: models.Card{
-					ID:       "card-1",
-					Name:     "Test Card",
-					PriceEUR: decimal.NewFromInt(15),
-					PriceUSD: decimal.NewFromInt(16),
+					ID:            "card-1",
+					Name:          "Test Card",
+					PriceEUR:      decimal.NewFromInt(15),
+					PriceUSD:      decimal.NewFromInt(16),
+					PriceEURValid: true,
+					PriceUSDValid: true,
 				},
 			},
 			PriceEUR:    15,
@@ -95,11 +98,16 @@ func TestCenteringToolRendersDetectedCardID(t *testing.T) {
 
 	templates := parseApplicationTemplates(t)
 	output := executeApplicationTemplate(t, templates, "centering_tool.html")
-	idBinding := regexp.MustCompile(
-		`<span[^>]*data-testid="detected-card-id"[^>]*x-text="detectedID"[^>]*>`,
-	)
-	if !idBinding.MatchString(output) {
-		t.Error("centering_tool.html does not render detectedID in the detected-card-id element")
+	document, err := goquery.NewDocumentFromReader(strings.NewReader(output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := document.Find(`[data-testid="detected-card-id"]`)
+	if identity.AttrOr(":data-card-id", "") != "detectedID" || identity.AttrOr("x-text", "") != "detectedCard" {
+		t.Error("printing name must retain exact identity in data-card-id")
+	}
+	if document.Find(`[x-text="detectedID"], [x-text="match.id"]`).Length() != 0 {
+		t.Error("internal catalog IDs must not appear in visible printing review copy")
 	}
 }
 
@@ -131,10 +139,6 @@ func TestPortfolioWorkflowTemplatesExposeSafeActions(t *testing.T) {
 		"BuildVersion": "test",
 		"InitialView":  "home",
 		"InitialPath":  "/dashboard",
-		"Binders": []Binder{{
-			ID:   "binder-1",
-			Name: "Master Set",
-		}},
 	}
 	var indexOutput bytes.Buffer
 	if err := templates.ExecuteTemplate(&indexOutput, "index.html", indexData); err != nil {
@@ -145,7 +149,9 @@ func TestPortfolioWorkflowTemplatesExposeSafeActions(t *testing.T) {
 		`hx-post="/portfolio/delete"`,
 		`hx-post="/portfolio/binder"`,
 		`role="dialog"`,
-		`value="binder-1"`,
+		`/portfolio/editor-metadata`,
+		`data-testid="edit-metadata-retry"`,
+		`:disabled="!editReady"`,
 	} {
 		if !strings.Contains(indexOutput.String(), expected) {
 			t.Errorf("index output does not contain %q", expected)
@@ -214,7 +220,8 @@ func TestMutationTemplatesRetainErrorsAndTradeIdentity(t *testing.T) {
 			data: map[string]interface{}{"CSRFToken": "test", "CanSubmit": true},
 			contains: []string{
 				`submitError = $event.detail.xhr.responseText.trim()`,
-				`htmx.ajax('GET', '/errors'`,
+				`window.location.pathname === '/errors' ? window.location.pathname + window.location.search : '/errors'`,
+				`htmx.ajax('GET', reportsURL`,
 			},
 		},
 		{
@@ -361,7 +368,7 @@ func TestTemplatesUseMobileFirstResponsiveMarkup(t *testing.T) {
 	viewportNameRe := regexp.MustCompile(`<meta\b[^>]*name="viewport"[^>]*>`)
 	fixedWidthRe := regexp.MustCompile(`w-\[\d{3,}px\]`)
 	constrainedWidthRe := regexp.MustCompile(`(?:min|max)-w-\[\d+px\]`)
-	buttonRe := regexp.MustCompile(`<button\b(?:[^>"']|"[^"]*"|'[^']*')*>`)
+	componentTargets := verifiedComponentTouchTargets(t)
 	// 44px targets: h-11/min-h-11 or larger numeric and arbitrary pixel heights,
 	// shared button components, or styles.css-enforced scan-progress-cancel.
 	touchTargetRe := regexp.MustCompile(`\b(?:min-)?h-(?:1[1-9]|[2-9]\d*)\b|\b(?:min-)?h-\[(?:4[4-9]|[5-9]\d|\d{3,})px\]|\bbtn(?:-[\w-]+)?\b|\bscan-progress-cancel\b`)
@@ -395,13 +402,63 @@ func TestTemplatesUseMobileFirstResponsiveMarkup(t *testing.T) {
 				t.Errorf("template uses fixed desktop-only width %q", match)
 			}
 
-			for _, button := range buttonRe.FindAllString(source, -1) {
-				if !touchTargetRe.MatchString(button) {
-					t.Errorf("button without a ~44px touch target: %s", button)
-				}
+			document, err := goquery.NewDocumentFromReader(strings.NewReader(source))
+			if err != nil {
+				t.Fatalf("parse template markup: %v", err)
 			}
+			document.Find("button").Each(func(_ int, button *goquery.Selection) {
+				if !touchTargetRe.MatchString(button.AttrOr("class", "")) && !button.Is(componentTargets) {
+					markup, _ := goquery.OuterHtml(button)
+					t.Errorf("button without a ~44px touch target: %s", markup)
+				}
+			})
 		})
 	}
+}
+
+// Component selectors are accepted only alongside their actual sizing rules.
+// DOM matching keeps scoped rules from exempting unrelated unclassed buttons.
+func verifiedComponentTouchTargets(t *testing.T) string {
+	t.Helper()
+	read := func(path string) string {
+		contents, err := os.ReadFile(filepath.Join("..", "..", "static", path))
+		if err != nil {
+			t.Fatalf("read touch-target component %s: %v", path, err)
+		}
+		return string(contents)
+	}
+	authCSS, measureCSS := read("css/auth.css"), read("css/measure.css")
+	minimumHeight := `(?:min-)?height\s*:\s*(?:4[4-9]|[5-9]\d|\d{3,})px\b`
+	var selectors []string
+	for _, contract := range []struct{ css, rule, selector string }{
+		{authCSS, ".auth-tab", ".auth-tab"},
+		{authCSS, ".auth-password-toggle", ".auth-password-toggle"},
+		{authCSS, ".auth-switch button, .auth-text-action", ".auth-switch button, .auth-text-action"},
+		{measureCSS, ".card-tools-bar>button", ".card-tools-bar > button"},
+		{measureCSS, ".measure-shell button:not(.measure-guide):not(.measure-corner)", ".measure-shell button:not(.measure-guide):not(.measure-corner):not(.measure-text-button)"},
+		{measureCSS, ".measure-shell button.measure-text-button", ".measure-shell button.measure-text-button"},
+	} {
+		rule := regexp.MustCompile(regexp.QuoteMeta(contract.rule) + `\s*\{[^{}]*` + minimumHeight)
+		if !rule.MatchString(contract.css) {
+			t.Errorf("component %s no longer enforces a 44px touch target", contract.rule)
+		}
+		selectors = append(selectors, contract.selector)
+	}
+	// The image stage scales by zoom; guides and perspective handles divide
+	// their target size by that same zoom to preserve 44 physical CSS pixels.
+	measureJS := regexp.MustCompile(`\s+`).ReplaceAllString(read("js/measure.js"), "")
+	for _, snippet := range []string{"transform:scale(${this.zoom})", "--guide-hit:${44/this.zoom}px"} {
+		if !strings.Contains(measureJS, snippet) {
+			t.Errorf("measurement guide scaling contract missing %q", snippet)
+		}
+	}
+	for _, snippet := range []string{"width:var(--guide-hit)", "height:var(--guide-hit)"} {
+		if !strings.Contains(measureCSS, snippet) {
+			t.Errorf("measurement guide target missing %q", snippet)
+		}
+	}
+	selectors = append(selectors, `.measure-shell .measure-guide`, `.measure-shell .measure-corner[\:style*="width:${44/zoom}px;height:${44/zoom}px"]`)
+	return strings.Join(selectors, ", ")
 }
 
 func parseApplicationTemplates(t *testing.T) *template.Template {

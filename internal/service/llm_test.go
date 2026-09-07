@@ -245,7 +245,7 @@ func TestLLMCardResponseConfidenceUsesDeterministicEvidence(t *testing.T) {
 			if err != nil {
 				t.Fatalf("FuzzyMatchCardWithValidation returned error: %v", err)
 			}
-			want := llmEvidenceConfidence(scoreCandidate("pikachu", "pikachu", []string{"pikachu"}, knownCards[0]).Score)
+			want := llmEvidenceConfidence(scoreCandidate("pikachu", "pikachu", []string{"pikachu"}, knownCards[0], nil).Score)
 			if result.Confidence != want {
 				t.Errorf("confidence = %f, want deterministic evidence confidence %f", result.Confidence, want)
 			}

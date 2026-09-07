@@ -37,9 +37,20 @@ import (
 // hardcoded 15s which killed scan responses mid-stream during OCR+LLM processing.
 func newHTTPServer(cfg *config.Config, handler http.Handler) *http.Server {
 	writeTimeout := time.Duration(cfg.App.WriteTimeout) * time.Second
+	// A scan or binder name may wait for a running primary-provider session. Clear only this
+	// response's write deadline before middleware wraps the ResponseWriter;
+	// request cancellation and bounded image analysis remain active.
+	scanAwareHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && (r.URL.Path == "/api/scan" || r.URL.Path == "/binders/auto-name") {
+			if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
+				slog.Warn("Could not clear primary-provider response deadline", "error", err)
+			}
+		}
+		handler.ServeHTTP(w, r)
+	})
 	return &http.Server{
 		Addr:         ":" + cfg.App.Port,
-		Handler:      handler,
+		Handler:      scanAwareHandler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: writeTimeout,
 		IdleTimeout:  60 * time.Second,

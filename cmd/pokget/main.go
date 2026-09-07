@@ -31,6 +31,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -122,6 +123,11 @@ func canonicalFragmentRedirectMiddleware(next http.Handler) http.Handler {
 		if view == "" {
 			next.ServeHTTP(w, r)
 			return
+		}
+		if view == "home" || values.Get("binder") != "" {
+			if page, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && page > 0 {
+				values.Set("page", strconv.Itoa(page))
+			}
 		}
 
 		values.Set("view", view)

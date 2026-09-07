@@ -1,28 +1,34 @@
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="/static/js/i18n.js" defer></script>
+  <script src="/static/js/theme.js"></script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#ddb7ff">
-  <title>Pokget is offline</title>
+  <meta name="theme-color" content="#593997">
+  <title data-i18n>Pokget is offline</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    :root { color-scheme: light; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --page: #f6f7f9; --ink: #22202d; --muted: #606271; --primary: #593997; }
+    :root[data-theme="dark"] { --page: #171821; --ink: #f6f5f8; --muted: #b8b6c3; }
+    :root[data-theme="dark"] main { background: #23232e; border-color: #454350; }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 1.5rem; color: #f5eff7; background: radial-gradient(circle at top, #3b1857 0, #171218 42%, #0e0e0f 100%); }
-    main { width: min(100%, 28rem); padding: 2rem; text-align: center; border: 1px solid rgba(221, 183, 255, .2); border-radius: 2rem; background: rgba(28, 27, 28, .82); box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, .35); }
-    img { width: 4.5rem; height: 4.5rem; object-fit: contain; }
+    body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); color: var(--ink); background: var(--page); }
+    main { width: min(100%, 28rem); min-width: 0; padding: clamp(1rem, 5vw, 2rem); text-align: center; border: 1px solid #e2e4eb; border-radius: .75rem; background: white; overflow-wrap: anywhere; }
+    img { width: 4rem; height: 4rem; object-fit: contain; }
     h1 { margin: 1rem 0 .5rem; font-size: 1.5rem; }
-    p { margin: 0 auto 1.5rem; max-width: 22rem; color: #cfc3d3; line-height: 1.55; }
-    button { min-height: 3rem; padding: .75rem 1.25rem; border: 0; border-radius: 1rem; color: #24132c; background: #ddb7ff; font: inherit; font-weight: 800; cursor: pointer; }
-    button:focus-visible { outline: .2rem solid #fff; outline-offset: .2rem; }
+    p { margin: 0 auto 1.5rem; max-width: 22rem; color: var(--muted); line-height: 1.6; }
+    button { min-height: 3rem; max-width: 100%; padding: .75rem 1.25rem; border: 0; border-radius: .75rem; color: white; background: var(--primary); font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #452d75; }
+    button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+    ::selection { color: var(--ink); background: #eae3f5; }
   </style>
 </head>
 <body>
   <main>
-    <img src="/static/img/logo.png" alt="Pokget">
-    <h1>You’re offline</h1>
-    <p>Pokget keeps the app shell available, but scanning and your private vault need a network connection.</p>
-    <button type="button" onclick="location.reload()">Try again</button>
+    <img data-i18n-attrs="alt" src="/static/img/logo-128.webp" alt="Pokget">
+    <h1 data-i18n>You’re offline</h1>
+    <p data-i18n>Pokget keeps the app shell available, but scanning and your private vault need a network connection.</p>
+    <button data-i18n type="button" onclick="location.reload()">Try again</button>
   </main>
 </body>
 </html>

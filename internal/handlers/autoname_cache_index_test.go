@@ -400,7 +400,7 @@ func TestRefreshCache(t *testing.T) {
 	})
 }
 
-func TestIndex_PortfolioViews(t *testing.T) {
+func TestIndex_BinderView(t *testing.T) {
 	newAuthedIndexRequest := func(t *testing.T, target string) *http.Request {
 		req := httptest.NewRequest(http.MethodGet, target, nil)
 		cookieResponse := httptest.NewRecorder()
@@ -418,7 +418,7 @@ func TestIndex_PortfolioViews(t *testing.T) {
 		return req
 	}
 
-	t.Run("WithPortfolioBindersAndBinderView", func(t *testing.T) {
+	t.Run("WithBinderView", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
@@ -427,14 +427,6 @@ func TestIndex_PortfolioViews(t *testing.T) {
 
 		mock.ExpectQuery("SELECT currency").WithArgs("test-user").
 			WillReturnRows(sqlmock.NewRows([]string{"currency"}).AddRow("EUR"))
-		mock.ExpectQuery("SELECT p.id").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{
-				"id", "condition", "custom_price", "notes", "grade", "is_public", "binder_id",
-				"card_id", "name", "set_name", "image_url", "price_usd", "price_eur", "game",
-			}).AddRow("p1", "NM", 0.0, "", "", false, "binder-1", "c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon"))
-		mock.ExpectQuery("SELECT id, name FROM binders").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow("binder-1", "Main"))
-		renderUserDataExpectation(mock, "test-user")
 
 		h.Index(rr, req)
 
@@ -443,66 +435,4 @@ func TestIndex_PortfolioViews(t *testing.T) {
 		}
 	})
 
-	t.Run("PortfolioQueryError", func(t *testing.T) {
-		h, mock, cleanup := setupTestHandler(t)
-		defer cleanup()
-
-		req := newAuthedIndexRequest(t, "/")
-		rr := httptest.NewRecorder()
-
-		mock.ExpectQuery("SELECT currency").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"currency"}).AddRow("EUR"))
-		mock.ExpectQuery("SELECT p.id").WithArgs("test-user").WillReturnError(sql.ErrConnDone)
-
-		h.Index(rr, req)
-
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("Expected status 500, got %d", rr.Code)
-		}
-	})
-
-	t.Run("PortfolioScanError", func(t *testing.T) {
-		h, mock, cleanup := setupTestHandler(t)
-		defer cleanup()
-
-		req := newAuthedIndexRequest(t, "/")
-		rr := httptest.NewRecorder()
-
-		mock.ExpectQuery("SELECT currency").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"currency"}).AddRow("EUR"))
-		mock.ExpectQuery("SELECT p.id").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{
-				"id", "condition", "custom_price", "notes", "grade", "is_public", "binder_id",
-				"card_id", "name", "set_name", "image_url", "price_usd", "price_eur", "game",
-			}).AddRow("p1", "NM", 0.0, "", "", false, "binder-1", "c1", "Mew", "151", "url", "not-a-price", 9.0, "Pokemon"))
-
-		h.Index(rr, req)
-
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("Expected status 500, got %d", rr.Code)
-		}
-	})
-
-	t.Run("PortfolioRowsError", func(t *testing.T) {
-		h, mock, cleanup := setupTestHandler(t)
-		defer cleanup()
-
-		req := newAuthedIndexRequest(t, "/")
-		rr := httptest.NewRecorder()
-
-		mock.ExpectQuery("SELECT currency").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"currency"}).AddRow("EUR"))
-		rows := sqlmock.NewRows([]string{
-			"id", "condition", "custom_price", "notes", "grade", "is_public", "binder_id",
-			"card_id", "name", "set_name", "image_url", "price_usd", "price_eur", "game",
-		}).AddRow("p1", "NM", 0.0, "", "", false, "binder-1", "c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon").
-			RowError(0, errors.New("row stream failed"))
-		mock.ExpectQuery("SELECT p.id").WithArgs("test-user").WillReturnRows(rows)
-
-		h.Index(rr, req)
-
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("Expected status 500, got %d", rr.Code)
-		}
-	})
 }

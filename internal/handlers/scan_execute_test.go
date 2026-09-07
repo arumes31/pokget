@@ -228,6 +228,7 @@ func TestExecuteScan_DetectionPipeline(t *testing.T) {
 		card := models.Card{
 			ID: "card-1", Name: "Pikachu", Phash: &hash,
 			Game: "pokemon", Language: "en",
+			Set: "Scarlet & Violet", CollectorNumber: "025",
 			PriceEUR: decimal.NewFromInt(12), ImageURL: "/img/pikachu.png",
 		}
 		h := &Handler{
@@ -252,6 +253,15 @@ func TestExecuteScan_DetectionPipeline(t *testing.T) {
 		}
 		if resp["detected"] != "Pikachu" {
 			t.Errorf("unexpected detection payload: %v", resp)
+		}
+		matches, ok := resp["top_matches"].([]interface{})
+		if !ok || len(matches) != 1 {
+			t.Fatalf("expected one top match, got %v", resp["top_matches"])
+		}
+		for _, entry := range []map[string]interface{}{resp, matches[0].(map[string]interface{})} {
+			if entry["set"] != card.Set || entry["collector_number"] != card.CollectorNumber || entry["language"] != card.Language {
+				t.Errorf("scan response omitted printing identity: %v", entry)
+			}
 		}
 		if _, ok := resp["pipeline_metrics"]; !ok {
 			t.Errorf("expected pipeline metrics in diagnostics response, got %v", resp)

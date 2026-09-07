@@ -25,6 +25,8 @@ import (
 	"net/http"
 	"pokget/internal/auth"
 	"pokget/internal/models"
+
+	"github.com/shopspring/decimal"
 )
 
 type wantlistViewItem struct {
@@ -45,7 +47,7 @@ func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT w.id, w.card_id, COALESCE(w.target_price, 0), COALESCE(w.notes, ''), c.name, c.set_name,
-		       COALESCE(c.price_usd, 0), COALESCE(c.price_eur, 0), COALESCE(c.image_url, '')
+		       c.price_usd, c.price_eur, COALESCE(c.image_url, '')
 		FROM wantlist w
 		JOIN cards c ON w.card_id = c.id
 		WHERE w.user_id = $1`, userID)
@@ -59,11 +61,13 @@ func (h *Handler) Wantlist(w http.ResponseWriter, r *http.Request) {
 	items := make([]wantlistViewItem, 0, 64)
 	for rows.Next() {
 		var item wantlistViewItem
-		if err := rows.Scan(&item.ID, &item.CardID, &item.TargetPrice, &item.Notes, &item.Card.Name, &item.Card.Set, &item.Card.PriceUSD, &item.Card.PriceEUR, &item.Card.ImageURL); err != nil {
+		var priceUSD, priceEUR decimal.NullDecimal
+		if err := rows.Scan(&item.ID, &item.CardID, &item.TargetPrice, &item.Notes, &item.Card.Name, &item.Card.Set, &priceUSD, &priceEUR, &item.Card.ImageURL); err != nil {
 			slog.Error("Failed to scan wantlist item", "error", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
+		setCardMarketPrices(&item.Card, priceUSD, priceEUR)
 		item.PriceUSD, _ = item.Card.PriceUSD.Float64()
 		item.PriceEUR, _ = item.Card.PriceEUR.Float64()
 		if item.TargetPrice > 0 {

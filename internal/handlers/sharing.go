@@ -25,11 +25,13 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"pokget/internal/auth"
 	"pokget/internal/models"
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/shopspring/decimal"
 )
 
 func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
@@ -60,14 +62,27 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch public portfolio items
+	var totalCards int
+	err = h.DB.QueryRowContext(r.Context(), `
+		SELECT COUNT(*) FROM portfolio p
+		JOIN cards c ON p.card_id = c.id
+		WHERE p.user_id = $1 AND p.is_public = TRUE`, userID).Scan(&totalCards)
+	if err != nil {
+		slog.Error("Failed to count public vault cards", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	page := boundedCollectionPage(r, totalCards)
+
+	// Fetch one page and one extra card to determine whether a next page exists.
 	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT p.id, p.condition, p.format, p.grade, p.grading_company, p.notes, 
-		       c.name, c.set_name, COALESCE(c.price_usd, 0), COALESCE(c.price_eur, 0),
+		       c.name, c.set_name, c.price_usd, c.price_eur,
 		       COALESCE(c.image_url, ''), COALESCE(c.game, '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
-		WHERE p.user_id = $1 AND p.is_public = TRUE`, userID)
+		WHERE p.user_id = $1 AND p.is_public = TRUE
+		ORDER BY p.added_at DESC, p.id DESC LIMIT $2 OFFSET $3`, userID, collectionPageSize+1, (page-1)*collectionPageSize)
 
 	if err != nil {
 		slog.Error("Failed to fetch public vault", "error", err)
@@ -76,12 +91,13 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	portfolio := make([]models.PortfolioItem, 0, 64) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
+	portfolio := make([]models.PortfolioItem, 0, collectionPageSize+1)
 	for rows.Next() {
 		var p models.PortfolioItem
 		var grade, gradingCompany, notes sql.NullString
+		var priceUSD, priceEUR decimal.NullDecimal
 		if err := rows.Scan(&p.ID, &p.Condition, &p.Format, &grade, &gradingCompany, &notes,
-			&p.Card.Name, &p.Card.Set, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.ImageURL, &p.Card.Game); err != nil {
+			&p.Card.Name, &p.Card.Set, &priceUSD, &priceEUR, &p.Card.ImageURL, &p.Card.Game); err != nil {
 			slog.Error("Failed to scan public vault item", "error", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
@@ -89,12 +105,17 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 		p.Grade = grade.String
 		p.GradingCompany = gradingCompany.String
 		p.Notes = notes.String
+		setCardMarketPrices(&p.Card, priceUSD, priceEUR)
 		portfolio = append(portfolio, p)
 	}
 	if err := rows.Err(); err != nil {
 		slog.Error("Failed while reading public vault", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
+	}
+	pagination := collectionPageLinks(page, len(portfolio) > collectionPageSize, "/vault/"+url.PathEscape(slug), "", url.Values{})
+	if len(portfolio) > collectionPageSize {
+		portfolio = portfolio[:collectionPageSize]
 	}
 	// BOLT OPTIMIZATION: Use strings.IndexByte for more efficient string extraction (one less allocation than Split)
 	username := email
@@ -109,6 +130,8 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, "public_vault.html", map[string]interface{}{
 		"Username":       username,
 		"Portfolio":      portfolio,
+		"TotalCards":     totalCards,
+		"Pagination":     pagination,
 		"Rank":           rank,
 		"XP":             xp,
 		"IsPublic":       true,

@@ -21,7 +21,6 @@
   const MAX_SOURCE_DIMENSION = 12000;
   const MIN_SOURCE_DIMENSION = 180;
   const MAX_OUTPUT_DIMENSION = 1800;
-  const REQUEST_TIMEOUT_MS = 90000;
   const SCAN_PROGRESS_STEPS = 5;
   const NO_CARDS_FOR_LANGUAGE = 'No cards are available for the selected TCG and language';
   const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -284,6 +283,15 @@
     return canvasBlob(canvas);
   }
 
+  function imageDataURL(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error || new Error('The local preview could not be read.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
   async function decodeImage(file) {
     if (typeof createImageBitmap === 'function') {
       const bitmap = await createImageBitmap(file);
@@ -295,21 +303,16 @@
       };
     }
 
-    const objectURL = URL.createObjectURL(file);
-    try {
-      const image = new Image();
-      image.decoding = 'async';
-      image.src = objectURL;
-      await image.decode();
-      return {
-        source: image,
-        width: image.naturalWidth,
-        height: image.naturalHeight,
-        close: () => {},
-      };
-    } finally {
-      URL.revokeObjectURL(objectURL);
-    }
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = await imageDataURL(file);
+    await image.decode();
+    return {
+      source: image,
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      close: () => { image.src = ''; },
+    };
   }
 
   function createCardScanner(config = {}) {
@@ -333,6 +336,9 @@
       confidence: 0,
       needsReview: false,
       matchConfirmed: false,
+      detectedSet: '',
+      detectedNumber: '',
+      detectedLanguage: '',
       topMatches: [],
       adding: false,
       added: false,
@@ -350,6 +356,7 @@
       pendingFile: null,
       previewBlob: null,
       previewURL: '',
+      previewGeneration: 0,
       previewRotation: 0,
       lastScanBlob: null,
       lastScanName: '',
@@ -378,7 +385,7 @@
           return 'Uploading securely, then running OCR and scoped card matching.';
         }
         if (this.scanStep === 2) {
-          return 'Still processing. Detailed or multilingual cards can take up to 75 seconds.';
+          return 'Still processing. Keep this page open while the card is checked. You can cancel at any time.';
         }
         if (this.scanStep === 3) return 'The server replied. Checking the response now.';
         if (this.scanStep === 4) return 'Validating the best printing and confidence.';
@@ -410,7 +417,7 @@
         this.activeStream = null;
         this.torchAvailable = false;
         this.torchOn = false;
-        if (this.previewURL) URL.revokeObjectURL(this.previewURL);
+        this.clearPreview();
         if (this.deviceChangeHandler
           && typeof navigator.mediaDevices?.removeEventListener === 'function') {
           navigator.mediaDevices.removeEventListener('devicechange', this.deviceChangeHandler);
@@ -474,6 +481,9 @@
         this.confidence = 0;
         this.needsReview = false;
         this.matchConfirmed = false;
+        this.detectedSet = '';
+        this.detectedNumber = '';
+        this.detectedLanguage = '';
         this.topMatches = [];
         this.added = false;
         this.scanError = '';
@@ -695,9 +705,8 @@
             height: decoded.height,
           });
           if (operationID !== this.operationID) return;
-          this.clearPreview();
+          if (!await this.setPreviewBlob(previewBlob, operationID)) return;
           this.pendingFile = file;
-          this.setPreviewBlob(previewBlob);
           this.previewRotation = 0;
           this.resetResult();
           this.notify('Photo ready. Adjust the guides, rotate if needed, then scan.', 'info');
@@ -733,7 +742,7 @@
             height: decoded.height,
           }, rotation);
           if (operationID !== this.operationID) return;
-          this.setPreviewBlob(previewBlob);
+          if (!await this.setPreviewBlob(previewBlob, operationID)) return;
           this.previewRotation = rotation;
         } catch (error) {
           if (operationID === this.operationID) {
@@ -750,14 +759,19 @@
         }
       },
 
-      setPreviewBlob(blob) {
-        if (this.previewURL) URL.revokeObjectURL(this.previewURL);
+      async setPreviewBlob(blob, operationID = this.operationID) {
+        const generation = ++this.previewGeneration;
+        // Encode the bounded, prepared JPEG; retain the previous photo until
+        // this replacement is ready. Data images are permitted by our CSP.
+        const dataURL = await imageDataURL(blob);
+        if (generation !== this.previewGeneration || operationID !== this.operationID) return false;
         this.previewBlob = blob;
-        this.previewURL = URL.createObjectURL(blob);
+        this.previewURL = dataURL;
+        return true;
       },
 
       clearPreview() {
-        if (this.previewURL) URL.revokeObjectURL(this.previewURL);
+        this.previewGeneration += 1;
         this.previewBlob = null;
         this.previewURL = '';
         this.previewRotation = 0;
@@ -810,11 +824,7 @@
         const requestID = ++this.requestID;
         const controller = new AbortController();
         this.abortController = controller;
-        const timeout = setTimeout(() => {
-          if (this.abortController !== controller) return;
-          controller.pokgetReason = 'timeout';
-          controller.abort();
-        }, REQUEST_TIMEOUT_MS);
+        let resultReceived = false;
 
         try {
           this.setStatus('Uploading the crop and running detection…', 2);
@@ -832,10 +842,12 @@
               body: formData,
               signal: controller.signal,
             });
+            if (requestID !== this.requestID || controller.signal.aborted) return;
 
             if (response.ok) break;
 
             const body = await response.text();
+            if (requestID !== this.requestID || controller.signal.aborted) return;
             const canRetryAutomatically = response.status === 422
               && body.trim() === NO_CARDS_FOR_LANGUAGE
               && requestedLanguage !== AUTO_LANGUAGE;
@@ -859,8 +871,10 @@
           } catch {
             throw new Error('The scanner returned an unreadable response. Retry the same photo.');
           }
+          if (requestID !== this.requestID || controller.signal.aborted) return;
           this.setStatus('Validating the match…', 4);
           this.applyScanResult(data);
+          resultReceived = true;
           this.setStatus('Scan complete', 5);
 
           if (this.needsReview) {
@@ -876,10 +890,10 @@
             this.handleScanError(error, controller.pokgetReason || '');
           }
         } finally {
-          clearTimeout(timeout);
           if (requestID === this.requestID) {
             this.abortController = null;
             this.setScanning(false);
+            if (resultReceived) this.focusScanResult();
           }
         }
       },
@@ -893,9 +907,7 @@
           return;
         }
         if (error?.name === 'AbortError') {
-          this.scanError = abortReason === 'timeout'
-            ? 'The scan took longer than 90 seconds. Retry the prepared image.'
-            : 'Scan cancelled. The prepared image is still available.';
+          this.scanError = 'Scan cancelled. The prepared image is still available.';
         } else {
           this.scanError = error?.message || 'The scan failed. Retry the prepared image.';
         }
@@ -933,6 +945,9 @@
         this.detectedID = String(payload.id || '');
         this.detectedPrice = payload.price ?? '';
         this.detectedImage = safeImageURL(payload.image_url);
+        this.detectedSet = String(payload.set || '');
+        this.detectedNumber = String(payload.collector_number || '');
+        this.detectedLanguage = String(payload.language || '');
         this.confidence = clamp(Number(payload.confidence) || 0, 0, 100);
         this.needsReview = Boolean(payload.needs_review);
         this.matchConfirmed = !this.needsReview;
@@ -942,6 +957,9 @@
             name: String(match.name || match.id || 'Unknown printing'),
             price: match.price ?? '',
             image_url: safeImageURL(match.image_url),
+            set: String(match.set || ''),
+            collector_number: String(match.collector_number || ''),
+            language: String(match.language || ''),
             confidence: clamp(Number(match.confidence) || 0, 0, 100),
           })).filter((match) => match.id)
           : [];
@@ -949,6 +967,18 @@
           this.lines = sanitizeLines(payload.bounds);
           this.updateMetrics();
         }
+        if (!this.scanning) this.focusScanResult();
+      },
+
+      focusScanResult() {
+        if (!this.detectedCard || typeof this.$nextTick !== 'function') return;
+        const id = this.detectedID;
+        this.$nextTick(() => requestAnimationFrame(() => {
+          const result = this.$refs?.scanResult;
+          if (!this.scanning && this.detectedID === id && result?.isConnected && result.getClientRects().length) {
+            result.focus();
+          }
+        }));
       },
 
       selectMatch(match) {
@@ -958,8 +988,23 @@
         this.detectedPrice = match.price;
         this.detectedImage = match.image_url;
         this.confidence = match.confidence;
-        this.matchConfirmed = true;
+        this.detectedSet = match.set || '';
+        this.detectedNumber = match.collector_number || '';
+        this.detectedLanguage = match.language || '';
+        this.needsReview = true;
+        this.matchConfirmed = false;
         this.added = false;
+      },
+
+      confirmMatch() {
+        if (this.scanning || !this.detectedID) return;
+        this.matchConfirmed = true;
+      },
+
+      reviewMatches() {
+        if (this.scanning || this.adding || this.added) return;
+        this.needsReview = true;
+        this.matchConfirmed = false;
       },
 
       useManualMatch() {

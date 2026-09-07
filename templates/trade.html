@@ -1,6 +1,8 @@
 <div class="app-page max-w-3xl"
     x-data="{
-        myOffer: 0,
+        myOffer: null,
+        catalogPrice: 0,
+        myPriceSource: 'estimate',
         myCard: '',
         myPortfolioId: '',
         myImage: '',
@@ -8,7 +10,8 @@
         theirCards: '',
         copied: false,
         get difference() { return Number(this.theirOffer || 0) - Number(this.myOffer || 0) },
-        get ready() { return Boolean(this.myPortfolioId) && Number(this.myOffer) > 0 && Number(this.theirOffer) > 0 },
+        validValue(value) { return Number.isFinite(Number(value)) && Number(value) > 0 },
+        get ready() { return Boolean(this.myPortfolioId) && this.validValue(this.myOffer) && this.validValue(this.theirOffer) },
         summary() {
             return [
                 'Pokget Trade Summary',
@@ -16,6 +19,7 @@
                 'You give: ' + this.myCard,
                 'Portfolio item: ' + this.myPortfolioId,
                 'Your value: {{ .CurrencySymbol }}' + Number(this.myOffer || 0).toFixed(2),
+                'Your value source: ' + this.myPriceSource,
                 'You receive: ' + (this.theirCards || 'Not specified'),
                 'Their value: {{ .CurrencySymbol }}' + Number(this.theirOffer || 0).toFixed(2),
                 'Difference: {{ .CurrencySymbol }}' + this.difference.toFixed(2),
@@ -46,74 +50,79 @@
     }">
     <div class="page-header">
         <div>
-            <p class="page-eyebrow">Private calculator</p>
-            <h2 class="page-title">Trade analyzer</h2>
-            <p class="page-description">Compare both sides at current market value. Nothing you enter here is saved.</p>
+            <h2 data-i18n class="page-title">Trade analyzer</h2>
+            <p data-i18n class="page-description">Compare estimates for both sides. Nothing you enter here is saved.</p>
         </div>
-        <span class="status-badge self-start border-emerald-200 bg-emerald-50 text-emerald-800"><span class="material-symbols-outlined text-base">lock</span>Local only</span>
+        <span data-i18n class="status-badge self-start border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300"><span class="material-symbols-outlined text-base">lock</span>Local only</span>
     </div>
 
-    <div class="grid gap-4 md:grid-cols-2">
-        <section class="card p-5" aria-labelledby="you-give-title">
-            <div class="mb-4 flex items-center gap-3">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <section class="card min-w-0 p-5" aria-labelledby="you-give-title">
+            <div class="mb-4 flex flex-wrap items-center gap-3">
                 <span class="flex size-10 items-center justify-center rounded-xl bg-rose-100 text-rose-700"><span class="material-symbols-outlined">north_east</span></span>
-                <div><p class="page-eyebrow mb-0">Side one</p><h3 id="you-give-title" class="font-display text-xl font-bold">You give</h3></div>
+                <h3 data-i18n id="you-give-title" class="font-display text-xl font-bold">You give</h3>
             </div>
-            <label for="my-trade-card" class="field-label">Card from your vault</label>
+            <label data-i18n for="my-trade-card" class="field-label">Card from your vault</label>
             <select id="my-trade-card" x-model="myPortfolioId"
-                @change="const option = $event.target.selectedOptions[0]; myOffer = Number(option.dataset.price || 0); myCard = option.dataset.label || ''; myImage = option.dataset.image || ''"
+                @change="const option = $event.target.selectedOptions[0]; catalogPrice = Number(option.dataset.price || 0); myOffer = validValue(catalogPrice) ? catalogPrice : null; myPriceSource = validValue(catalogPrice) ? 'catalog' : 'estimate'; myCard = option.dataset.label || ''; myImage = option.dataset.image || ''"
                 class="form-control">
-                <option value="" data-price="0" data-label="" data-image="">Select a card</option>
+                <option data-i18n value="" data-price="0" data-label="" data-image="">Select a card</option>
                 {{ range .Portfolio }}
                 <option value="{{ .ID }}" data-price="{{ if eq $.UserCurrency "EUR" }}{{ .Card.PriceEUR }}{{ else }}{{ .Card.PriceUSD }}{{ end }}"
                     data-label="{{ .Card.Name }} — {{ .Card.Set }} ({{ .Condition }})" data-image="{{ .Card.ImageURL }}">{{ .Card.Name }} — {{ .Card.Set }}</option>
                 {{ end }}
             </select>
             <div class="mt-4 flex min-h-20 items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
-                <template x-if="myImage"><img :src="myImage" :alt="myCard" class="h-16 w-12 rounded-md object-cover"></template>
+                <template x-if="myImage"><img :src="myImage" :alt="myCard" class="h-16 w-12 rounded-md object-contain"></template>
                 <div class="min-w-0 flex-1">
-                    <p class="truncate text-sm font-semibold" x-text="myCard || 'No card selected'"></p>
-                    <p class="mt-1 font-display text-2xl font-extrabold text-rose-700" x-text="'{{ .CurrencySymbol }}' + Number(myOffer).toFixed(2)"></p>
+                    <p class="truncate text-sm font-semibold"><span x-show="myCard" x-text="myCard"></span><span data-i18n x-show="!myCard">No card selected</span></p>
+                    <p data-i18n class="mt-1 text-sm text-zinc-600 dark:text-zinc-300" x-text="myPortfolioId ? (validValue(catalogPrice) ? 'Catalog estimate available' : 'Price unavailable') : 'Choose a card to compare'"></p>
                 </div>
             </div>
+            <label data-i18n for="my-offer" class="field-label mt-4">Your value</label>
+            <div class="relative">
+                <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-rose-700">{{ .CurrencySymbol }}</span>
+                <input id="my-offer" type="number" min="0.01" step="0.01" inputmode="decimal" x-model.number="myOffer" @input="myPriceSource = 'estimate'" :disabled="!myPortfolioId" aria-describedby="my-price-help" placeholder="0.00" class="form-control pl-9">
+            </div>
+            <p data-i18n id="my-price-help" class="mt-2 text-sm text-zinc-600 dark:text-zinc-300" x-text="!myPortfolioId ? 'Select a card first.' : !validValue(catalogPrice) ? 'No catalog price is available. Enter your estimate to compare.' : 'Adjust the catalog estimate for your card’s condition if needed.'"></p>
         </section>
 
-        <section class="card p-5" aria-labelledby="you-receive-title">
-            <div class="mb-4 flex items-center gap-3">
-                <span class="flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><span class="material-symbols-outlined">south_west</span></span>
-                <div><p class="page-eyebrow mb-0">Side two</p><h3 id="you-receive-title" class="font-display text-xl font-bold">You receive</h3></div>
+        <section class="card min-w-0 p-5" aria-labelledby="you-receive-title">
+            <div class="mb-4 flex flex-wrap items-center gap-3">
+                <span class="flex size-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300"><span class="material-symbols-outlined">south_west</span></span>
+                <h3 data-i18n id="you-receive-title" class="font-display text-xl font-bold">You receive</h3>
             </div>
-            <label for="their-offer" class="field-label">Estimated market value</label>
+            <label data-i18n for="their-offer" class="field-label">Estimated market value</label>
             <div class="relative">
-                <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-emerald-700">{{ .CurrencySymbol }}</span>
-                <input id="their-offer" type="number" min="0" step="0.01" inputmode="decimal" x-model.number="theirOffer" placeholder="0.00" class="form-control pl-9">
+                <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-emerald-700 dark:text-emerald-300">{{ .CurrencySymbol }}</span>
+                <input id="their-offer" type="number" min="0.01" step="0.01" inputmode="decimal" x-model.number="theirOffer" placeholder="0.00" class="form-control pl-9">
             </div>
-            <label for="their-cards" class="field-label mt-4">Cards and notes</label>
-            <textarea id="their-cards" rows="3" maxlength="400" x-model="theirCards" placeholder="Card names, conditions, cash, or deal notes" class="form-control min-h-28 py-3"></textarea>
-            <p class="mt-1 text-right text-xs text-zinc-500"><span x-text="theirCards.length"></span>/400</p>
+            <label data-i18n for="their-cards" class="field-label mt-4">Cards and notes</label>
+            <textarea data-i18n-attrs="placeholder" id="their-cards" rows="3" maxlength="400" x-model="theirCards" placeholder="Card names, conditions, cash, or deal notes" class="form-control min-h-28 py-3"></textarea>
+            <p class="mt-1 text-right text-xs text-zinc-500 dark:text-zinc-400"><span x-text="theirCards.length"></span>/400</p>
         </section>
     </div>
 
     <section class="card overflow-hidden" role="region" aria-labelledby="trade-verdict-title" data-testid="trade-verdict">
         <div class="p-5 sm:p-6">
             <div class="flex flex-wrap items-start justify-between gap-3">
-                <div><p class="page-eyebrow">Market comparison</p><h3 id="trade-verdict-title" class="section-title">Trade verdict</h3></div>
-                <span class="status-badge" :class="!ready ? 'border-stone-200 bg-stone-100 text-zinc-600' : Math.abs(difference) < 0.01 ? 'border-sky-200 bg-sky-50 text-sky-800' : difference > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'"
+                <div><h3 data-i18n id="trade-verdict-title" class="section-title">Trade verdict</h3></div>
+                <span data-i18n class="status-badge" :class="!ready ? 'border-stone-200 bg-stone-100 text-zinc-600 dark:text-zinc-300' : Math.abs(difference) < 0.01 ? 'border-sky-200 bg-sky-50 text-sky-800' : difference > 0 ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300' : 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 text-amber-900 dark:text-amber-300'"
                     x-text="!ready ? 'Waiting for values' : Math.abs(difference) < 0.01 ? 'Even value' : difference > 0 ? 'In your favor' : 'You give more'"></span>
             </div>
             <div class="mt-5 rounded-2xl bg-zinc-950 p-5 text-white">
-                <p class="text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">Net difference</p>
+                <p data-i18n class="text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">Net difference</p>
                 <p class="mt-1 font-display text-4xl font-extrabold tracking-[-0.04em]" :class="ready && difference > 0 ? 'text-emerald-300' : ready && difference < 0 ? 'text-amber-300' : 'text-white'"
-                    x-text="(difference > 0 ? '+' : difference < 0 ? '−' : '') + '{{ .CurrencySymbol }}' + Math.abs(difference).toFixed(2)"></p>
-                <p class="mt-2 text-sm text-zinc-300" x-text="!ready ? 'Complete both sides to see the comparison.' : Math.abs(difference) < 0.01 ? 'Both sides have the same current market value.' : difference > 0 ? 'The cards you receive are worth more at current market prices.' : 'The cards you give are worth more at current market prices.'"></p>
+                    x-text="ready ? (difference > 0 ? '+' : difference < 0 ? '−' : '') + '{{ .CurrencySymbol }}' + Math.abs(difference).toFixed(2) : '—'"></p>
+                <p data-i18n class="mt-2 text-sm text-zinc-300" x-text="!ready ? 'Enter a positive value for each side to compare.' : Math.abs(difference) < 0.01 ? 'Both sides have the same estimated value.' : difference > 0 ? 'At these estimates, the cards you receive are worth more.' : 'At these estimates, the cards you give are worth more.'"></p>
             </div>
         </div>
         <div class="grid gap-2 border-t border-stone-200 bg-stone-50 p-4 sm:grid-cols-2">
-            <button type="button" @click="copySummary()" :disabled="!ready" class="btn-secondary w-full"><span class="material-symbols-outlined">content_copy</span><span x-text="copied ? 'Copied' : 'Copy summary'"></span></button>
-            <button type="button" @click="downloadLog()" :disabled="!ready" class="btn-primary w-full"><span class="material-symbols-outlined">download</span>Download trade log</button>
-            <p x-show="!ready" class="text-center text-xs text-zinc-500 sm:col-span-2">Complete both sides to export</p>
+            <button type="button" @click="copySummary()" :disabled="!ready" class="btn-secondary w-full"><span class="material-symbols-outlined">content_copy</span><span data-i18n x-text="copied ? 'Copied' : 'Copy summary'"></span></button>
+            <button data-i18n type="button" @click="downloadLog()" :disabled="!ready" class="btn-primary w-full"><span class="material-symbols-outlined">download</span>Download trade log</button>
+            <p data-i18n x-show="!ready" class="text-center text-xs text-zinc-500 dark:text-zinc-400 sm:col-span-2">Complete both sides to export</p>
         </div>
     </section>
 
-    <p class="flex items-start gap-2 text-xs leading-5 text-zinc-500"><span class="material-symbols-outlined text-base">info</span>Market prices are estimates, not guarantees. Check condition, authenticity, and recent sales before trading.</p>
+    <p data-i18n class="flex items-start gap-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400"><span class="material-symbols-outlined text-base">info</span>Market prices are estimates, not guarantees. Check condition, authenticity, and recent sales before trading.</p>
 </div>

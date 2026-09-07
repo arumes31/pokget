@@ -68,6 +68,12 @@ func ProcessCardScan(imgBytes []byte, cards []models.Card, lang string, llm *LLM
 }
 
 func ProcessCardScanContext(ctx context.Context, imgBytes []byte, cards []models.Card, lang string, llm *LLMService) (string, string, []byte, error) {
+	llmCtx := ctx
+	if timeout := detectionStageTimeoutFromContext(ctx); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 	if err := ctx.Err(); err != nil {
 		return "", "", nil, err
 	}
@@ -103,6 +109,7 @@ func ProcessCardScanContext(ctx context.Context, imgBytes []byte, cards []models
 
 	results := make([]ocrPassResult, 0, len(passes))
 	failures := make([]error, 0, len(passes))
+	recognitionStarted := time.Now()
 	for _, pass := range passes {
 		if err := ctx.Err(); err != nil {
 			return "", "", nil, err
@@ -119,9 +126,15 @@ func ProcessCardScanContext(ctx context.Context, imgBytes []byte, cards []models
 		return "", "", processedImage, &OCRAllPassesFailedError{Failures: failures}
 	}
 
+	nativeFinished := time.Now()
+	slog.Info("OCR: recognition complete", "passes", len(results), "duration", nativeFinished.Sub(recognitionStarted))
 	text, evidence := combineOCRResults(results)
 	text = norm.NFKC.String(text)
-	detectedCard := matchOCRCard(ctx, text, evidence, cards, lang, llm)
+	detectedCard, err := matchOCRCardWithContexts(ctx, llmCtx, text, evidence, cards, lang, llm)
+	if err != nil {
+		return "", "", nil, err
+	}
+	slog.Info("OCR: local matching complete", "candidates", len(cards), "passes", len(results), "duration", time.Since(nativeFinished))
 	entry := ocrCacheEntry{Text: text, DetectedCard: detectedCard, ProcessedImage: processedImage}
 	ocrCache.Store(cacheKey, entry)
 	return text, detectedCard, append([]byte(nil), processedImage...), nil
@@ -170,14 +183,14 @@ func pageSegMode(value string) gosseract.PageSegMode {
 	}
 }
 
-func matchOCRCard(ctx context.Context, text string, evidence []ocrEvidence, cards []models.Card, lang string, llm *LLMService) string {
+func matchOCRCardWithContexts(ctx, llmCtx context.Context, text string, evidence []ocrEvidence, cards []models.Card, lang string, llm *LLMService) (string, error) {
 	detectedCard := "Unknown Card"
 	normalizedText := normalizeOCRText(text, lang)
 
 	if db.DB != nil && len(cards) == 0 {
 		compactText := normalizeOCRIdentifier(text)
 		var matchedID, matchedName string
-		err := db.DB.QueryRow(`
+		err := db.DB.QueryRowContext(ctx, `
 			SELECT id, name FROM cards
 			WHERE $1 LIKE '%' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(id, '-', ''), '/', ''), ' ', ''), '_', ''), '0', 'o')) || '%'
 			ORDER BY LENGTH(id) DESC, id ASC
@@ -189,7 +202,7 @@ func matchOCRCard(ctx context.Context, text string, evidence []ocrEvidence, card
 
 	if detectedCard == "Unknown Card" && db.DB != nil && len(cards) == 0 {
 		var name string
-		err := db.DB.QueryRow(`
+		err := db.DB.QueryRowContext(ctx, `
 			SELECT name FROM cards
 			WHERE word_similarity(name, $1) > 0.4
 			ORDER BY word_similarity(name, $1) DESC, id ASC
@@ -200,10 +213,17 @@ func matchOCRCard(ctx context.Context, text string, evidence []ocrEvidence, card
 	}
 
 	if detectedCard == "Unknown Card" && len(cards) > 0 {
-		detectedCard = localMatchResult(evidence, cards, lang)
+		matches, err := rankLocalMatchesContext(ctx, evidence, cards, lang)
+		if err != nil {
+			return detectedCard, err
+		}
+		detectedCard = localMatchFromRanked(matches)
+	}
+	if err := ctx.Err(); err != nil {
+		return detectedCard, err
 	}
 	if detectedCard == "Unknown Card" && llm != nil {
-		if match, err := llm.FuzzyMatchCardContext(ctx, normalizedText, cards); err == nil && match != "Unknown Card" {
+		if match, err := llm.FuzzyMatchCardContext(llmCtx, normalizedText, cards); err == nil && match != "Unknown Card" {
 			detectedCard = match
 		}
 	}
@@ -213,7 +233,7 @@ func matchOCRCard(ctx context.Context, text string, evidence []ocrEvidence, card
 			detectedCard = fallback
 		}
 	}
-	return detectedCard
+	return detectedCard, llmCtx.Err()
 }
 
 func corroboratedName(evidence []ocrEvidence, name, lang string) bool {

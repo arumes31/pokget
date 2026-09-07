@@ -28,8 +28,10 @@ func TestPublicVaultKeepsItemsWithNullableGradingFields(t *testing.T) {
 		WithArgs("public-user").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "rank_title", "xp", "currency"}).
 			AddRow("user-1", "collector@example.com", "Collector", 100, "EUR"))
+	mock.ExpectQuery(`SELECT COUNT\(\*\)`).WithArgs("user-1").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 	mock.ExpectQuery("SELECT p.id").
-		WithArgs("user-1").
+		WithArgs("user-1", 25, 0).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "condition", "format", "grade", "grading_company", "notes",
 			"name", "set_name", "price_usd", "price_eur", "image_url", "game",

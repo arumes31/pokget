@@ -154,6 +154,7 @@ func TestCanonicalFragmentRedirectMiddleware(t *testing.T) {
 		path       string
 		wantView   string
 		wantBinder string
+		wantPage   string
 	}{
 		{name: "dashboard", path: "/dashboard", wantView: "home"},
 		{name: "wantlist", path: "/wantlist", wantView: "wantlist"},
@@ -162,6 +163,13 @@ func TestCanonicalFragmentRedirectMiddleware(t *testing.T) {
 		{name: "centering", path: "/centering", wantView: "scan"},
 		{name: "trade", path: "/trade", wantView: "trade"},
 		{name: "settings", path: "/settings", wantView: "settings"},
+		{name: "dashboard page", path: "/dashboard?page=2", wantView: "home", wantPage: "2"},
+		{name: "binder page", path: "/binders/binder-1?page=03", wantView: "binders", wantBinder: "binder-1", wantPage: "3"},
+		{name: "invalid page", path: "/dashboard?page=bad", wantView: "home"},
+		{name: "negative page", path: "/dashboard?page=-1", wantView: "home"},
+		{name: "zero page", path: "/dashboard?page=0", wantView: "home"},
+		{name: "overflow page", path: "/dashboard?page=999999999999999999999999", wantView: "home"},
+		{name: "unpaged binder list", path: "/binders?page=2", wantView: "binders"},
 	}
 
 	for _, test := range tests {
@@ -189,6 +197,9 @@ func TestCanonicalFragmentRedirectMiddleware(t *testing.T) {
 			}
 			if got := location.Query().Get("binder"); got != test.wantBinder {
 				t.Fatalf("binder = %q, want %q", got, test.wantBinder)
+			}
+			if got := location.Query().Get("page"); got != test.wantPage {
+				t.Fatalf("page = %q, want %q", got, test.wantPage)
 			}
 		})
 	}

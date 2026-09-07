@@ -31,14 +31,17 @@ type Card struct {
 	LocalizedNames  []string        `json:"localized_names,omitempty"`
 	PriceUSD        decimal.Decimal `json:"price_usd"`
 	PriceEUR        decimal.Decimal `json:"price_eur"`
-	ImageURL        string          `json:"image_url"`
-	Change24h       float64         `json:"change_24h"`
-	Variant         string          `json:"variant"`  // Holo, Reverse Holo, etc.
-	Language        string          `json:"language"` // en, jp, de, etc.
-	Game            string          `json:"game"`     // Pokemon, One Piece, etc.
-	Rarity          string          `json:"rarity"`   // R, SR, SEC, etc.
-	CatalogActive   *bool           `json:"catalog_active,omitempty"`
-	Phash           *int64          `json:"phash"` // Perceptual hash for visual matching
+	// Validity is presentation metadata; keep the existing catalog API numeric contract.
+	PriceUSDValid bool    `json:"-"`
+	PriceEURValid bool    `json:"-"`
+	ImageURL      string  `json:"image_url"`
+	Change24h     float64 `json:"change_24h"`
+	Variant       string  `json:"variant"`  // Holo, Reverse Holo, etc.
+	Language      string  `json:"language"` // en, jp, de, etc.
+	Game          string  `json:"game"`     // Pokemon, One Piece, etc.
+	Rarity        string  `json:"rarity"`   // R, SR, SEC, etc.
+	CatalogActive *bool   `json:"catalog_active,omitempty"`
+	Phash         *int64  `json:"phash"` // Perceptual hash for visual matching
 }
 
 // IsCatalogActive treats missing activity metadata as active for compatibility

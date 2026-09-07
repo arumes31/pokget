@@ -12,6 +12,7 @@ import (
 	"pokget/internal/auth"
 
 	"github.com/gorilla/csrf"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
@@ -190,6 +191,10 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	// Hash the new password
 	newHash, err := h.hashPassword(newPassword)
 	if err != nil {
+		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			http.Error(w, "Password must be at most 72 bytes; non-ASCII characters may use multiple bytes", http.StatusBadRequest)
+			return
+		}
 		slog.Error("Failed to hash new password", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return

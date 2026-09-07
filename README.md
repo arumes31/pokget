@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Go-1.26+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version">
+  <img src="https://img.shields.io/badge/Go-1.27+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version">
   <img src="https://img.shields.io/badge/HTMX-3366CC?style=for-the-badge&logo=htmx&logoColor=white" alt="HTMX">
   <img src="https://img.shields.io/badge/Tailwind-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind">
   <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="Postgres">
@@ -30,12 +30,24 @@
 
 ---
 
+## Display preferences
+
+Settings offers Light, Dark, and System themes (System by default), and English or German interface language (English by default). Choices are saved in this browser and apply across navigation and reloads. System mode follows live device appearance changes. Card names and personal content are not translated.
+
+Run `npm run test:translations` to check translation behavior and coverage. These checks also run in `npm run test:static` and CI. Mark interface text with `data-i18n` and accessibility text with `data-i18n-attrs="aria-label placeholder"`, then add German copy to `static/js/i18n.js`. Keep user content separate; use numbered placeholders for messages containing values. The coverage guard checks templates, authored JavaScript UI messages, and literal handler errors/notifications, and rejects missing translations or markers.
+
 ## 🛠️ Core Technology Pillars
 
 ### 👁️ Computer Vision & Recognition
 *   **Precision OCR**: Integrated Tesseract engine with intelligent pre-processing (Grayscale, High Contrast, Sharpening) to extract card names even from blurry photos.
 *   **Perceptual Hashing (pHash)**: Uses `goimagehash` to match card images against a reference database, providing "fuzzy" visual matching that ignores minor lighting differences.
 *   **LLM Correction**: Integrated LLM fallback to resolve OCR ambiguities and correct misspelled card names using context-aware matching.
+
+### Card centering measurement
+
+Open **Scan → Measure** to compare the card's outer edges with its printed design. Measure front and back independently or compare both against the listed PSA, BGS, CGC, SGC, TAG and ACE centering thresholds. Photo import, border suggestions, zoom/pan, fine adjustments, rotation, cropping and four-corner perspective correction run in the browser.
+
+Save named/tagged measurements on this device, reopen them from **Saved**, or export PNG results and JSON data. These measurements are separate from the cloud collection. See [the Measure guide](MEASURE.md) for the workflow and limits.
 
 ### 📈 Economic Intelligence
 *   **Multi-Market Scraping**: Automated `colly` and `chromedp` (headless) scrapers for real-time price extraction from Cardmarket (EUR) and USD conversions.
@@ -120,6 +132,20 @@ its 100-card game scope using exact and OCR-normalized text. Same-name
 printings remain explicit ties unless set or collector evidence distinguishes
 them.
 
+Close visual matches now wait for OCR before selecting a printing. Name-only
+OCR keeps same-name printings available for review; a readable printing ID or
+set-and-collector pair takes priority, while disagreement with the artwork
+still requires review. Collector numbers match complete tokens, and photo
+fingerprints honor EXIF orientation and the selected card crop. Confidence is
+an evidence score, not a measured probability of correctness.
+
+On a Linux build with Tesseract installed, run the generated-image integration
+checks (including same-art printing disambiguation) with:
+
+```bash
+go test -tags=ocrintegration -run '^TestTesseract' -timeout=3m ./internal/service
+```
+
 ### Verification gates
 
 Pull requests run bounded unit and race-detector shards, real Linux Tesseract
@@ -171,6 +197,40 @@ docker-compose up --build
     ```bash
     go run ./cmd/pokget
     ```
+
+### Primary LLM with Ollama fallback
+
+Set these variables in `.env` to use an OpenAI-compatible gateway for LLM-assisted
+card matching and binder names:
+
+```env
+LLM_BASE_URL=https://your-gateway.example/v1
+LLM_MODEL=moonshotai/kimi-k3
+LLM_API=your-api-key
+LLM_MAX_TOKENS=1024
+```
+
+The primary model can inspect the cropped card image when a scan needs help.
+When shortlisted printings share identical text metadata, it can compare labeled
+reference artwork from approved catalog image hosts. References are limited to
+eight images in complete groups; incomplete groups are omitted.
+Its answer must still identify a card from the evidence-backed catalog shortlist;
+uncertain printings require confirmation. Provider failures and invalid answers
+are retried up to three total primary attempts, with five seconds between failed
+attempts. A running primary completion has no application-imposed time limit;
+canceling the scan still cancels the request and any pending retry. After three
+failures, the existing `OLLAMA_*` provider receives its own bounded request budget.
+A valid abstention is a completed answer and does not trigger retries or fallback.
+`SCAN_TIMEOUT_SECONDS` still bounds detector queueing and local image analysis;
+it does not terminate an active primary completion. Scan and binder-name requests
+remain cancellable when their caller disconnects. Leave `LLM_BASE_URL` empty for
+Ollama-only operation. Keep the key in `.env`, never in source or logs.
+
+Ollama defaults to 128 output tokens so canonical printing IDs fit in structured
+responses. Compose sets `OMP_THREAD_LIMIT=1` for Tesseract; the application already
+pools OCR clients for concurrent scans. This bounds native OCR threading and
+reduced recognition time in the local card-image tests. The setting is configurable;
+see the [Tesseract threading documentation](https://tesseract-ocr.github.io/tessdoc/FAQ.html#can-i-increase-speed-of-ocr).
 
 ---
 

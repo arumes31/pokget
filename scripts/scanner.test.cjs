@@ -5,6 +5,44 @@ const test = require('node:test');
 
 const scanner = require('../static/js/scanner.js');
 
+test('local preview replacement preserves current image and ignores cancelled or stale reads', async (t) => {
+  const originalReader = global.FileReader;
+  const reads = [];
+  global.FileReader = class {
+    readAsDataURL(blob) { this.blob = blob; reads.push(this); }
+  };
+  t.after(() => { if (originalReader === undefined) delete global.FileReader; else global.FileReader = originalReader; });
+  const complete = (index, value) => { reads[index].result = value; reads[index].onload(); };
+  const component = scanner.createCardScanner();
+  const current = new Blob(['current'], { type: 'image/jpeg' });
+  component.previewBlob = current;
+  component.previewURL = 'data:image/jpeg;base64,current';
+
+  const cancelled = component.setPreviewBlob(new Blob(['cancelled']));
+  assert.equal(component.previewBlob, current, 'keep the current photo while its replacement is being read');
+  component.cancelScan();
+  complete(0, 'data:image/jpeg;base64,cancelled');
+  assert.equal(await cancelled, false);
+  assert.equal(component.previewBlob, current);
+
+  const stale = component.setPreviewBlob(new Blob(['stale']));
+  const newest = new Blob(['newest'], { type: 'image/jpeg' });
+  const replacement = component.setPreviewBlob(newest);
+  complete(2, 'data:image/jpeg;base64,newest');
+  assert.equal(await replacement, true);
+  complete(1, 'data:image/jpeg;base64,stale');
+  assert.equal(await stale, false);
+  assert.equal(component.previewBlob, newest);
+  assert.equal(component.previewURL, 'data:image/jpeg;base64,newest');
+
+  const cleared = component.setPreviewBlob(new Blob(['cleared']));
+  component.clearPreview();
+  complete(3, 'data:image/jpeg;base64,cleared');
+  assert.equal(await cleared, false);
+  assert.equal(component.previewBlob, null);
+  assert.equal(component.previewURL, '');
+});
+
 test('scanner exposes game-specific languages and repairs stale selections', () => {
   assert.deepEqual(
     scanner.languagesForGame('one_piece').map(({ value }) => value),
@@ -169,6 +207,51 @@ test('one submission pipeline sends the selected TCG and language', async () => 
   } finally {
     global.fetch = originalFetch;
   }
+});
+
+test('a late cancelled scan response cannot replace a newer printing selection', async () => {
+  const originalFetch = global.fetch;
+  let complete;
+  global.fetch = () => new Promise((resolve) => { complete = resolve; });
+  try {
+    const component = scanner.createCardScanner();
+    component.notify = () => {};
+    const pending = component.submitPreparedBlob(new Blob(['jpeg']), 'card.jpg');
+    component.cancelScan();
+    component.applyScanResult({ detected: 'New selection', id: 'new-printing', needs_review: true });
+    complete(new Response(JSON.stringify({ detected: 'Old result', id: 'old-printing' }), { status: 200 }));
+    await pending;
+    assert.equal(component.detectedID, 'new-printing');
+    assert.equal(component.matchConfirmed, false);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('an uncertain printing must be inspected and explicitly confirmed before saving', async () => {
+  const component = scanner.createCardScanner();
+  component.notify = () => {};
+  component.applyScanResult({
+    detected: 'Pikachu', id: 'base-58', needs_review: true,
+    set: 'Base Set', collector_number: '58', language: 'en',
+    top_matches: [{ id: 'jungle-60', name: 'Pikachu', set: 'Jungle', collector_number: '60', language: 'de' }],
+  });
+  assert.equal(component.detectedSet, 'Base Set');
+  component.selectMatch(component.topMatches[0]);
+  assert.equal(component.detectedSet, 'Jungle');
+  assert.equal(component.detectedNumber, '60');
+  assert.equal(component.detectedLanguage, 'de');
+  assert.equal(component.matchConfirmed, false);
+  await component.addToCollection();
+  assert.equal(component.adding, false);
+  component.confirmMatch();
+  assert.equal(component.matchConfirmed, true);
+  component.reviewMatches();
+  assert.equal(component.matchConfirmed, false);
+  component.resetResult();
+  assert.equal(component.detectedSet, '');
+  assert.equal(component.detectedNumber, '');
+  assert.equal(component.detectedLanguage, '');
 });
 
 test('missing selected-language cards retry once with automatic language detection', async () => {

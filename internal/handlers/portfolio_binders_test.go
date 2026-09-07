@@ -161,6 +161,9 @@ func TestBinderDetail(t *testing.T) {
 			WillReturnError(sql.ErrNoRows)
 
 		h.BinderDetail(rr, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
 
 		if rr.Code != http.StatusNotFound {
 			t.Errorf("Expected status 404, got %d", rr.Code)
@@ -179,6 +182,9 @@ func TestBinderDetail(t *testing.T) {
 			WillReturnError(sql.ErrConnDone)
 
 		h.BinderDetail(rr, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
@@ -195,10 +201,15 @@ func TestBinderDetail(t *testing.T) {
 
 		mock.ExpectQuery("SELECT id, name, COALESCE").WithArgs("b1", "test-user").
 			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "desc"}).AddRow("b1", "Binder", "Desc"))
-		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("b1", "test-user").
+		mock.ExpectQuery("SELECT COUNT").WithArgs("b1", "test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("b1", "test-user", 25, 0).
 			WillReturnError(sql.ErrConnDone)
 
 		h.BinderDetail(rr, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
@@ -215,12 +226,17 @@ func TestBinderDetail(t *testing.T) {
 
 		mock.ExpectQuery("SELECT id, name, COALESCE").WithArgs("b1", "test-user").
 			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "desc"}).AddRow("b1", "Binder", "Desc"))
+		mock.ExpectQuery("SELECT COUNT").WithArgs("b1", "test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 		// price_usd is not numeric, so scanning into the decimal fails
-		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("b1", "test-user").
+		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("b1", "test-user", 25, 0).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "price", "cid", "name", "set", "url", "usd", "eur", "game"}).
 				AddRow("p1", "NM", nil, "c1", "Mew", "151", "url", "not-a-price", 9.0, "Pokemon"))
 
 		h.BinderDetail(rr, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
@@ -237,12 +253,17 @@ func TestBinderDetail(t *testing.T) {
 
 		mock.ExpectQuery("SELECT id, name, COALESCE").WithArgs("b1", "test-user").
 			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "desc"}).AddRow("b1", "Binder", "Desc"))
+		mock.ExpectQuery("SELECT COUNT").WithArgs("b1", "test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 		rows := sqlmock.NewRows([]string{"id", "cond", "price", "cid", "name", "set", "url", "usd", "eur", "game"}).
 			AddRow("p1", "NM", nil, "c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon").
 			RowError(0, errors.New("row stream failed"))
-		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("b1", "test-user").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("b1", "test-user", 25, 0).WillReturnRows(rows)
 
 		h.BinderDetail(rr, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500, got %d", rr.Code)
@@ -259,12 +280,17 @@ func TestBinderDetail(t *testing.T) {
 
 		mock.ExpectQuery("SELECT id, name, COALESCE").WithArgs("b1", "test-user").
 			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "desc"}).AddRow("b1", "Binder", "Desc"))
-		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("b1", "test-user").
+		mock.ExpectQuery("SELECT COUNT").WithArgs("b1", "test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("b1", "test-user", 25, 0).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "price", "cid", "name", "set", "url", "usd", "eur", "game"}).
 				AddRow("p1", "NM", nil, "c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon"))
 		renderUserDataExpectation(mock, "test-user")
 
 		h.BinderDetail(rr, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d; body=%q", rr.Code, rr.Body.String())
@@ -382,8 +408,8 @@ func TestTrade_Branches(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"id", "condition", "card_id", "name", "set", "price_usd", "price_eur"}).
-				AddRow("p1", "NM", "c1", "Mew", "151", "not-a-price", 9.0))
+			WillReturnRows(sqlmock.NewRows([]string{"id", "condition", "card_id", "name", "set", "price_usd", "price_eur", "image_url"}).
+				AddRow("p1", "NM", "c1", "Mew", "151", "not-a-price", 9.0, "/cards/mew.png"))
 
 		h.Trade(rr, req)
 
@@ -399,8 +425,8 @@ func TestTrade_Branches(t *testing.T) {
 		req := authedRequest(t, http.MethodGet, "/trade", "")
 		rr := httptest.NewRecorder()
 
-		rows := sqlmock.NewRows([]string{"id", "condition", "card_id", "name", "set", "price_usd", "price_eur"}).
-			AddRow("p1", "NM", "c1", "Mew", "151", 10.0, 9.0).
+		rows := sqlmock.NewRows([]string{"id", "condition", "card_id", "name", "set", "price_usd", "price_eur", "image_url"}).
+			AddRow("p1", "NM", "c1", "Mew", "151", 10.0, 9.0, "/cards/mew.png").
 			RowError(0, errors.New("row stream failed"))
 		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("test-user").WillReturnRows(rows)
 
@@ -419,8 +445,8 @@ func TestTrade_Branches(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"id", "condition", "card_id", "name", "set", "price_usd", "price_eur"}).
-				AddRow("p1", "NM", "c1", "Mew", "151", 10.0, 9.0))
+			WillReturnRows(sqlmock.NewRows([]string{"id", "condition", "card_id", "name", "set", "price_usd", "price_eur", "image_url"}).
+				AddRow("p1", "NM", "c1", "Mew", "151", 10.0, 9.0, "/cards/mew.png"))
 		renderUserDataExpectation(mock, "test-user")
 
 		h.Trade(rr, req)

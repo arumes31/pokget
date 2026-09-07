@@ -2,23 +2,27 @@
 <html lang="en">
 
 <head>
+    <script src="/static/js/i18n.js?v={{ .BuildVersion }}" defer></script>
+    <script src="/static/js/theme.js?v={{ .BuildVersion }}"></script>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport" />
-    <title>Pokget — Your TCG Collection</title>
+    <title data-i18n>Pokget — Your TCG Collection</title>
+    <link rel="stylesheet" href="/static/css/pack-navigation.css?v={{ .BuildVersion }}">
+    <script src="/static/js/pack-navigation.js?v={{ .BuildVersion }}"></script>
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Manrope:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
-        rel="stylesheet" />
     <script src="/static/js/scanner.js?v={{ .BuildVersion }}" defer></script>
+    <script src="/static/js/measure.js?v={{ .BuildVersion }}" defer></script>
     <script src="/static/js/alpine.min.js?v=3" defer></script>
     <script src="/static/js/htmx.min.js?v=3"></script>
-    <script src="/static/js/vault.js?v=4" defer></script>
-    <link rel="icon" type="image/png" href="/static/img/logo.png?v=3">
-    <link rel="stylesheet" href="/static/css/styles.css?v=3">
+    <script src="/static/js/vault.js?v={{ .BuildVersion }}" defer></script>
+    <script src="/static/js/dialogs.js?v={{ .BuildVersion }}" defer></script>
+    <link rel="icon" type="image/png" href="/static/img/favicon-32.png">
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ .BuildVersion }}">
+    <link rel="stylesheet" href="/static/css/measure.css?v={{ .BuildVersion }}">
     <link rel="manifest" href="/static/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#6d28d9">
+    <meta name="theme-color" content="#593997">
     <meta name="csrf-token" content="{{ .CSRFToken }}">
     <script>
         if ('serviceWorker' in navigator) {
@@ -30,8 +34,10 @@
     </script>
 </head>
 
-<body class="min-h-dvh overflow-x-hidden" :class="{ 'scanner-active': activeTab === 'scan' }" x-data="{
+<body class="min-h-dvh overflow-x-hidden" :class="{ 'scanner-active': scannerLoaded }" x-data="{
           activeTab: '{{ .InitialView }}',
+          scannerLoaded: false,
+          navigationError: '',
           moreOpen: false,
           showEditModal: false,
           editItemId: '',
@@ -41,6 +47,39 @@
           editIsPublic: false,
           editBinderId: '',
           editError: '',
+          editLoading: false,
+          editReady: false,
+          editCurrencySymbol: '',
+          editBinders: [],
+          editMetadataEpoch: 0,
+          async refreshEditorMetadata() {
+              const epoch = ++this.editMetadataEpoch;
+              this.editReady = false;
+              this.editLoading = true;
+              this.editError = '';
+              try {
+                  const response = await fetch('/portfolio/editor-metadata', { cache: 'no-store', headers: { Accept: 'application/json' } });
+                  if (!response.ok) throw new Error('Metadata unavailable');
+                  const data = await response.json();
+                  const symbol = { EUR: '€', USD: '$' }[data.currency];
+                  if (!symbol || data.currency_symbol !== symbol || !Array.isArray(data.binders) || data.binders.some(binder => typeof binder.id !== 'string' || typeof binder.name !== 'string')) throw new Error('Invalid metadata');
+                  if (epoch !== this.editMetadataEpoch || !this.showEditModal) return;
+                  this.editBinders = data.binders;
+                  this.editCurrencySymbol = symbol;
+                  this.editReady = true;
+                  this.$nextTick(() => {
+                      if (epoch !== this.editMetadataEpoch || !this.showEditModal) return;
+                      this.$refs.editBinder.value = this.editBinderId;
+                      requestAnimationFrame(() => {
+                          if (epoch === this.editMetadataEpoch &amp;&amp; this.showEditModal) this.$refs.editPrice.focus();
+                      });
+                  });
+              } catch {
+                  if (epoch === this.editMetadataEpoch &amp;&amp; this.showEditModal) this.editError = 'Could not load current binders and currency. Try again.';
+              } finally {
+                  if (epoch === this.editMetadataEpoch) this.editLoading = false;
+              }
+          },
           editTrigger: null,
           deferredPrompt: null,
           showPwaPrompt: false,
@@ -48,36 +87,41 @@
           isPwaInstalled: window.matchMedia('(display-mode: standalone)').matches
       }" @beforeinstallprompt.window="$event.preventDefault(); deferredPrompt = $event"
     hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'
-    @open-edit-modal.window="showEditModal = true; editItemId = $event.detail.id; editNotes = $event.detail.notes; editCustomPrice = $event.detail.price; editGrade = $event.detail.grade; editIsPublic = $event.detail.isPublic; editBinderId = $event.detail.binderId; editError = ''; editTrigger = $event.detail.trigger; $nextTick(() => $refs.editPrice.focus())"
-    @pokget-view-change.window="activeTab = $event.detail.view; moreOpen = false">
+    @open-edit-modal.window="showEditModal = true; editItemId = $event.detail.id; editNotes = $event.detail.notes; editCustomPrice = $event.detail.price; editGrade = $event.detail.grade; editIsPublic = $event.detail.isPublic; editBinderId = $event.detail.binderId; editCurrencySymbol = ''; editBinders = []; editTrigger = $event.detail.trigger; $nextTick(() => requestAnimationFrame(() => { if (showEditModal &amp;&amp; !editReady) $refs.editCancel.focus(); })); refreshEditorMetadata()"
+    @pokget-view-change.window="activeTab = $event.detail.view; moreOpen = false"
+    @pokget-scanner-state.window="scannerLoaded = $event.detail.loaded"
+    @pokget-navigation-error.window="navigationError = $event.detail.message"
+    @pokget-navigation-clear.window="navigationError = ''">
+
+    <a data-i18n href="#main-content" class="skip-link">Skip to content</a>
 
     <!-- Top app bar -->
     <header class="app-header"
         style="padding-top: env(safe-area-inset-top)">
         <div class="flex h-16 w-full max-w-6xl items-center justify-between px-4 mx-auto sm:px-6">
             <div class="flex min-w-0 items-center gap-2.5">
-                <img src="/static/img/logo.png" alt="" class="size-8 object-contain" width="32" height="32">
-                <h1 class="font-display text-xl font-extrabold tracking-[-0.035em] text-zinc-950">Pokget</h1>
+                <img src="/static/img/logo-128.webp" alt="" class="size-8 object-contain" width="32" height="32">
+                <h1 data-i18n class="font-display text-xl font-extrabold tracking-[-0.035em] text-zinc-950 dark:text-zinc-50">Pokget</h1>
             </div>
             <div class="flex items-center gap-3">
                 {{ if .UserRank }}
                 <div class="hidden sm:flex flex-col items-end gap-1.5">
-                    <span class="text-[10px] font-semibold uppercase tracking-wider text-violet-700">{{ .UserRank }}</span>
-                    <div class="w-24 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-violet-700 dark:text-violet-300">{{ .UserRank }}</span>
+                    <div class="w-24 h-1.5 bg-zinc-200 dark:bg-stone-200 rounded-full overflow-hidden">
                         <div class="h-full bg-violet-600 rounded-full"
                             x-init="$el.style.width = '{{ .UserXPPercent }}%'"></div>
                     </div>
                 </div>
                 {{ end }}
                 <div class="relative" x-data="{ open: false }">
-                    <button type="button" @click="open = !open" @keydown.escape="open = false"
+                    <button data-i18n-attrs="aria-label" type="button" @click="open = !open" @keydown.escape="open = false"
                         :aria-expanded="open.toString()" aria-haspopup="menu" aria-label="Open account menu"
-                    class="flex size-11 min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-2xl border border-violet-200 bg-violet-100 text-violet-800 transition-colors hover:bg-violet-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
+                    class="flex size-11 min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-2xl border border-violet-200 bg-violet-100 dark:bg-violet-900 text-violet-800 dark:text-violet-200 transition-colors hover:bg-violet-200 dark:hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
                         <span class="material-symbols-outlined">account_circle</span>
                     </button>
 
                     <!-- Dropdown Menu -->
-                    <div x-show="open" @click.away="open = false" x-transition:enter="transition ease-out duration-100"
+                    <div data-i18n-attrs="aria-label" x-show="open" @click.away="open = false" x-transition:enter="transition ease-out duration-100"
                         role="menu" aria-label="Account actions"
                         x-transition:enter-start="transform opacity-0 scale-95"
                         x-transition:enter-end="transform opacity-100 scale-100"
@@ -86,23 +130,23 @@
                         x-transition:leave-end="transform opacity-0 scale-95"
                         class="absolute right-0 mt-2 w-52 card shadow-lg z-[60] overflow-hidden"
                         x-cloak>
-                        <div class="px-4 py-3 border-b border-zinc-200">
-                            <p class="text-[10px] font-semibold text-violet-700 uppercase tracking-wider">{{ .UserRank }}
+                        <div class="px-4 py-3 border-b border-zinc-200 dark:border-stone-200">
+                            <p class="text-xs font-semibold text-violet-700 dark:text-violet-300 uppercase tracking-wider">{{ .UserRank }}
                             </p>
-                            <p class="text-sm font-semibold text-zinc-900 truncate">My account</p>
+                            <p data-i18n class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">My account</p>
                         </div>
                         <div class="p-1.5">
                             <a href="/?view=settings" hx-get="/settings" hx-target="#main-content"
                                 role="menuitem"
                                 hx-push-url="/?view=settings" @click="activeTab = 'settings'; open = false"
-                                class="w-full flex items-center gap-2.5 px-3 min-h-11 text-sm font-medium text-zinc-700 hover:bg-zinc-100 rounded-lg transition-colors">
+                                class="w-full flex items-center gap-2.5 px-3 min-h-11 text-sm font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-stone-100 rounded-lg transition-colors">
                                 <span class="material-symbols-outlined text-[20px]">person</span>
-                                <span>Settings</span>
+                                <span data-i18n>Settings</span>
                             </a>
                             <button type="button" role="menuitem" hx-post="/auth/logout"
-                                class="w-full flex items-center gap-2.5 px-3 min-h-11 text-sm font-medium text-zinc-700 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors">
+                                class="w-full flex items-center gap-2.5 px-3 min-h-11 text-sm font-medium text-zinc-700 dark:text-zinc-200 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950 rounded-lg transition-colors">
                                 <span class="material-symbols-outlined text-[20px]">logout</span>
-                                <span>Log out</span>
+                                <span data-i18n>Log out</span>
                             </button>
                         </div>
                     </div>
@@ -111,7 +155,29 @@
         </div>
     </header>
 
-    <main id="main-content" class="app-main"
+    <aside data-i18n-attrs="aria-label" class="app-sidebar" aria-label="Collection workspace" hx-sync="#main-content:replace">
+        <a data-i18n class="sidebar-link sidebar-scan" href="/?view=scan" hx-get="/centering" hx-target="#main-content" hx-push-url="/?view=scan" @click="activeTab = 'scan'"><span class="material-symbols-outlined" aria-hidden="true">center_focus_strong</span>Scan a card</a>
+        <nav data-i18n-attrs="aria-label" aria-label="Desktop navigation">
+            <a data-i18n class="sidebar-link" href="/?view=home" hx-get="/dashboard" hx-target="#main-content" hx-push-url="/?view=home" @click="activeTab = 'home'" :aria-current="activeTab === 'home' ? 'page' : null"><span class="material-symbols-outlined" aria-hidden="true">style</span>My collection</a>
+            <a data-i18n class="sidebar-link" href="/?view=wantlist" hx-get="/wantlist" hx-target="#main-content" hx-push-url="/?view=wantlist" @click="activeTab = 'wantlist'" :aria-current="activeTab === 'wantlist' ? 'page' : null"><span class="material-symbols-outlined" aria-hidden="true">favorite</span>Grails</a>
+            <a data-i18n class="sidebar-link" href="/?view=binders" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders" @click="activeTab = 'binders'" :aria-current="activeTab === 'binders' ? 'page' : null"><span class="material-symbols-outlined" aria-hidden="true">folder</span>Binders</a>
+            <a data-i18n class="sidebar-link" href="/?view=trade" hx-get="/trade" hx-target="#main-content" hx-push-url="/?view=trade" @click="activeTab = 'trade'" :aria-current="activeTab === 'trade' ? 'page' : null"><span class="material-symbols-outlined" aria-hidden="true">swap_horiz</span>Trade analyzer</a>
+            <a data-i18n class="sidebar-link" href="/?view=errors" hx-get="/errors" hx-target="#main-content" hx-push-url="/?view=errors" @click="activeTab = 'errors'" :aria-current="activeTab === 'errors' ? 'page' : null"><span class="material-symbols-outlined" aria-hidden="true">warning</span>Misprints</a>
+            <a data-i18n class="sidebar-link" href="/?view=settings" hx-get="/settings" hx-target="#main-content" hx-push-url="/?view=settings" @click="activeTab = 'settings'" :aria-current="activeTab === 'settings' ? 'page' : null"><span class="material-symbols-outlined" aria-hidden="true">settings</span>Settings</a>
+        </nav>
+        <p data-i18n class="mt-auto px-3 pt-6 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Your cards.<br>Your collection.</p>
+    </aside>
+
+    <div data-i18n x-show="navigationError" x-cloak role="alert" data-testid="navigation-error"
+        class="fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[90] mx-auto max-w-md rounded-xl border border-red-200 dark:border-red-800 bg-surface p-4 text-sm text-red-900 dark:text-red-300 shadow-lg">
+        <p data-i18n x-text="navigationError"></p>
+        <div class="mt-3 flex flex-wrap gap-2">
+            <button data-i18n type="button" class="btn-primary" onclick="retryNavigation()" data-testid="navigation-retry">Try again</button>
+            <button data-i18n type="button" class="btn-secondary" @click="navigationError = ''">Dismiss</button>
+        </div>
+    </div>
+
+    <main id="main-content" tabindex="-1" class="app-main"
         hx-get="{{ .InitialPath }}" hx-trigger="load" hx-sync="this:replace">
         <!-- Content will be loaded here via HTMX -->
         <!-- Skeleton Content: Shown during initial load -->
@@ -134,59 +200,59 @@
     </main>
 
     <!-- Bottom tab bar -->
-    <nav hx-sync="#main-content:replace" class="app-bottom-nav" aria-label="Primary">
+    <nav data-i18n-attrs="aria-label" hx-sync="#main-content:replace" class="app-bottom-nav" aria-label="Primary">
         <div class="relative mx-auto flex w-full max-w-lg items-stretch gap-0.5 px-2">
             <button data-nav-item @click="activeTab = 'home'; moreOpen = false" hx-get="/dashboard" hx-target="#main-content" hx-push-url="/?view=home"
                 class="nav-item min-h-11 min-w-11" :class="activeTab === 'home' && 'nav-item-active'"
                 :aria-current="activeTab === 'home' ? 'page' : null">
-                <span class="material-symbols-outlined nav-icon" :class="activeTab === 'home' && 'fill-icon'">home</span>
-                <span class="nav-label">Vault</span>
+                <span class="material-symbols-outlined nav-icon" aria-hidden="true" :class="activeTab === 'home' && 'fill-icon'">home</span>
+                <span data-i18n class="nav-label">Vault</span>
             </button>
             <button data-nav-item @click="activeTab = 'wantlist'; moreOpen = false" hx-get="/wantlist" hx-target="#main-content" hx-push-url="/?view=wantlist"
                 class="nav-item min-h-11 min-w-11" :class="activeTab === 'wantlist' && 'nav-item-active'"
                 :aria-current="activeTab === 'wantlist' ? 'page' : null">
-                <span class="material-symbols-outlined nav-icon" :class="activeTab === 'wantlist' && 'fill-icon'">favorite</span>
-                <span class="nav-label">Grails</span>
+                <span class="material-symbols-outlined nav-icon" aria-hidden="true" :class="activeTab === 'wantlist' && 'fill-icon'">favorite</span>
+                <span data-i18n class="nav-label">Grails</span>
             </button>
             <button data-nav-item @click="activeTab = 'scan'; moreOpen = false" hx-get="/centering" hx-target="#main-content" hx-push-url="/?view=scan"
                 class="nav-item min-h-11 min-w-11" :class="activeTab === 'scan' && 'nav-item-active'"
                 :aria-current="activeTab === 'scan' ? 'page' : null">
-                <span class="material-symbols-outlined nav-icon rounded-xl bg-violet-700 px-2 py-1 text-white shadow-md shadow-violet-900/20">center_focus_strong</span>
-                <span class="nav-label">Scan</span>
+                <span class="material-symbols-outlined nav-icon rounded-xl bg-violet-700 px-2 py-1 text-white shadow-md shadow-violet-900/20" aria-hidden="true">center_focus_strong</span>
+                <span data-i18n class="nav-label">Scan</span>
             </button>
             <button data-nav-item @click="activeTab = 'binders'; moreOpen = false" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
                 class="nav-item min-h-11 min-w-11" :class="activeTab === 'binders' && 'nav-item-active'"
                 :aria-current="activeTab === 'binders' ? 'page' : null">
-                <span class="material-symbols-outlined nav-icon" :class="activeTab === 'binders' && 'fill-icon'">style</span>
-                <span class="nav-label">Binders</span>
+                <span class="material-symbols-outlined nav-icon" aria-hidden="true" :class="activeTab === 'binders' && 'fill-icon'">style</span>
+                <span data-i18n class="nav-label">Binders</span>
             </button>
             <button data-nav-item type="button" @click="moreOpen = !moreOpen"
                 class="nav-item min-h-11 min-w-11" :class="(activeTab === 'errors' || activeTab === 'trade' || moreOpen) && 'nav-item-active'"
                 :aria-expanded="moreOpen.toString()" aria-controls="more-navigation">
-                <span class="material-symbols-outlined nav-icon">more_horiz</span>
-                <span class="nav-label">More</span>
+                <span class="material-symbols-outlined nav-icon" aria-hidden="true">more_horiz</span>
+                <span data-i18n class="nav-label">More</span>
             </button>
 
-            <div id="more-navigation" data-testid="more-navigation" x-show="moreOpen" x-cloak
+            <div data-i18n-attrs="aria-label" id="more-navigation" data-testid="more-navigation" x-show="moreOpen" x-cloak
                 @click.outside="moreOpen = false" @keydown.escape.window="moreOpen = false"
                 x-transition.origin.bottom.right
                 class="card absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-3 z-[70] w-56 overflow-hidden p-2 shadow-xl"
                 role="menu" aria-label="More destinations">
                 <button role="menuitem" @click="activeTab = 'errors'; moreOpen = false" hx-get="/errors" hx-target="#main-content" hx-push-url="/?view=errors"
                     class="btn-ghost w-full justify-start">
-                    <span class="material-symbols-outlined">warning</span><span>Misprints</span>
+                    <span class="material-symbols-outlined">warning</span><span data-i18n>Misprints</span>
                 </button>
                 <button role="menuitem" @click="activeTab = 'trade'; moreOpen = false" hx-get="/trade" hx-target="#main-content" hx-push-url="/?view=trade"
                     class="btn-ghost w-full justify-start">
-                    <span class="material-symbols-outlined">swap_horiz</span><span>Trade analyzer</span>
+                    <span class="material-symbols-outlined">swap_horiz</span><span data-i18n>Trade analyzer</span>
                 </button>
                 <button role="menuitem" @click="activeTab = 'settings'; moreOpen = false" hx-get="/settings" hx-target="#main-content" hx-push-url="/?view=settings"
                     class="btn-ghost w-full justify-start">
-                    <span class="material-symbols-outlined">settings</span><span>Settings</span>
+                    <span class="material-symbols-outlined">settings</span><span data-i18n>Settings</span>
                 </button>
                 <button role="menuitem" x-show="deferredPrompt || (isIOS && !isPwaInstalled)" @click="moreOpen = false; showPwaPrompt = true"
                     class="btn-ghost w-full justify-start">
-                    <span class="material-symbols-outlined">install_mobile</span><span>Install app</span>
+                    <span class="material-symbols-outlined">install_mobile</span><span data-i18n>Install app</span>
                 </button>
             </div>
         </div>
@@ -197,77 +263,79 @@
         @notify.window="toasts.push({ id: Date.now(), msg: $event.detail.msg, type: $event.detail.type }); setTimeout(() => toasts.shift(), 3000)"
         class="fixed top-4 inset-x-4 z-[100] flex flex-col items-center gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
-            <div x-transition.duration.300ms class="card px-4 py-3 shadow-lg flex items-center gap-3 border-l-4 w-full max-w-sm"
+            <div x-transition.duration.300ms class="card px-4 py-3 shadow-lg flex items-center gap-3 w-full max-w-sm"
                 :class="toast.type === 'error' ? 'border-red-500' : 'border-violet-600'">
                 <span class="material-symbols-outlined text-lg"
-                    :class="toast.type === 'error' ? 'text-red-600' : 'text-violet-700'"
+                    :class="toast.type === 'error' ? 'text-red-600 dark:text-red-300' : 'text-violet-700 dark:text-violet-300'"
                     x-text="toast.type === 'error' ? 'error' : 'check_circle'"></span>
-                <p class="text-sm font-semibold" x-text="toast.msg"></p>
+                <p data-i18n class="text-sm font-semibold" x-text="toast.msg"></p>
             </div>
         </template>
     </div>
 
     <!-- Edit Modal -->
     <div id="edit-modal" x-show="showEditModal" x-cloak role="dialog" aria-modal="true"
-        aria-labelledby="edit-modal-title" @keydown.escape.window="if (showEditModal) { showEditModal = false; $nextTick(() => editTrigger?.focus()) }"
+        aria-labelledby="edit-modal-title" @keydown.escape.window="if (showEditModal) { showEditModal = false; $nextTick(() => { if (!showEditModal) editTrigger?.focus() }) }"
         class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-zinc-900/50"
-        @click.self="showEditModal = false; $nextTick(() => editTrigger?.focus())">
+        @click.self="showEditModal = false; $nextTick(() => { if (!showEditModal) editTrigger?.focus() })">
         <div class="card w-full sm:max-w-md rounded-b-none sm:rounded-b-2xl p-5 sm:p-6 space-y-4 max-h-[90dvh] overflow-y-auto"
             style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))">
-            <h3 id="edit-modal-title" class="text-xl font-bold text-zinc-900">Edit Card Details</h3>
-            <p x-show="editError" x-text="editError" role="alert" aria-live="assertive"
-                class="rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700"></p>
-            <form id="edit-form" hx-post="/portfolio/edit" hx-swap="none"
-                @htmx:after-request="if ($event.detail.successful) { showEditModal = false; htmx.ajax('GET', '/dashboard', { target: '#main-content', source: document.body }); $nextTick(() => editTrigger?.focus()) } else { editError = $event.detail.xhr.responseText.trim() || 'Unable to save card details' }"
+            <h3 data-i18n id="edit-modal-title" class="text-xl font-bold text-zinc-900 dark:text-zinc-100">Edit Card Details</h3>
+            <p data-i18n x-show="editLoading" role="status" class="text-sm text-zinc-600 dark:text-zinc-300">Loading current binders and currency…</p>
+            <p data-i18n x-show="editError" x-text="editError" role="alert" aria-live="assertive"
+                class="rounded-xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 px-3.5 py-3 text-sm font-medium text-red-700 dark:text-red-300"></p>
+            <button data-i18n type="button" x-show="!editReady &amp;&amp; !editLoading" @click="refreshEditorMetadata()"
+                data-testid="edit-metadata-retry" class="btn-secondary">Try again</button>
+            <form id="edit-form" hx-post="/portfolio/edit" hx-swap="none" @submit="if (!editReady) $event.preventDefault()"
+                @htmx:after-request="if ($event.detail.successful) { showEditModal = false; htmx.ajax('GET', currentFragmentPath(), { target: '#main-content', source: document.getElementById('main-content') }).catch(() => {}); $nextTick(() => { if (!showEditModal) editTrigger?.focus() }) } else { editError = $event.detail.xhr.responseText.trim() || 'Unable to save card details' }"
                 class="space-y-4">
                 <input id="edit-item-id" type="hidden" name="item_id" :value="editItemId">
                 <div>
-                    <label for="edit-custom-price" class="label">Custom price override ({{
-                        .CurrencySymbol }})</label>
-                    <input id="edit-custom-price" x-ref="editPrice" type="number" step="0.01" name="custom_price" :value="editCustomPrice"
+                    <label data-i18n for="edit-custom-price" class="label">Custom price override <span x-show="editCurrencySymbol">(<span x-text="editCurrencySymbol"></span>)</span></label>
+                    <input id="edit-custom-price" x-ref="editPrice" :disabled="!editReady" type="number" step="0.01" name="custom_price" :value="editCustomPrice"
                         @input="editCustomPrice = $event.target.value"
                         class="input">
                 </div>
                 <div>
-                    <label for="edit-notes" class="label">Private notes (e.g. miscut, error)</label>
-                    <textarea id="edit-notes" name="notes" :value="editNotes" @input="editNotes = $event.target.value"
+                    <label data-i18n for="edit-notes" class="label">Private notes (e.g. miscut, error)</label>
+                    <textarea id="edit-notes" :disabled="!editReady" name="notes" :value="editNotes" @input="editNotes = $event.target.value"
                         class="input min-h-24 py-2.5"></textarea>
                 </div>
                 <div>
-                    <label for="edit-grade" class="label">Grade</label>
-                    <input id="edit-grade" type="text" name="grade" x-model="editGrade" placeholder="e.g. 9.5"
+                    <label data-i18n for="edit-grade" class="label">Grade</label>
+                    <input data-i18n-attrs="placeholder" id="edit-grade" :disabled="!editReady" type="text" name="grade" x-model="editGrade" placeholder="e.g. 9.5"
                         class="input">
                 </div>
-                <label class="flex items-center gap-2.5 min-h-11 text-sm text-zinc-700 cursor-pointer">
-                    <input type="checkbox" name="is_public" value="true" x-model="editIsPublic"
+                <label data-i18n class="flex items-center gap-2.5 min-h-11 text-sm text-zinc-700 dark:text-zinc-200 cursor-pointer">
+                    <input type="checkbox" :disabled="!editReady" name="is_public" value="true" x-model="editIsPublic"
                         class="w-5 h-5 accent-violet-600">
                     Show this card in my public vault
                 </label>
                 <div class="flex gap-3">
-                    <button type="button" class="btn-secondary flex-1"
-                        @click="showEditModal = false; $nextTick(() => editTrigger?.focus())">Cancel</button>
-                    <button type="submit" class="btn-primary flex-1">Save changes</button>
+                    <button data-i18n type="button" x-ref="editCancel" class="btn-secondary flex-1"
+                        @click="showEditModal = false; $nextTick(() => { if (!showEditModal) editTrigger?.focus() })">Cancel</button>
+                    <button data-i18n type="submit" :disabled="!editReady" class="btn-primary flex-1">Save changes</button>
                 </div>
             </form>
-            <form hx-post="/portfolio/binder" hx-swap="none"
-                @htmx:after-request="if ($event.detail.successful) { showEditModal = false; htmx.ajax('GET', '/dashboard', { target: '#main-content', source: document.body }); $nextTick(() => editTrigger?.focus()) } else { editError = $event.detail.xhr.responseText.trim() || 'Unable to move card' }"
-                class="space-y-3 border-t border-zinc-200 pt-4">
+            <form hx-post="/portfolio/binder" hx-swap="none" @submit="if (!editReady) $event.preventDefault()"
+                @htmx:after-request="if ($event.detail.successful) { showEditModal = false; htmx.ajax('GET', currentFragmentPath(), { target: '#main-content', source: document.getElementById('main-content') }).catch(() => {}); $nextTick(() => { if (!showEditModal) editTrigger?.focus() }) } else { editError = $event.detail.xhr.responseText.trim() || 'Unable to move card' }"
+                class="space-y-3 border-t border-zinc-200 dark:border-stone-200 pt-4">
                 <input type="hidden" name="item_id" :value="editItemId">
-                <label for="edit-binder" class="label">Binder</label>
+                <label data-i18n for="edit-binder" class="label">Binder</label>
                 <div class="flex gap-3">
-                    <select id="edit-binder" name="binder_id" x-model="editBinderId"
+                    <select id="edit-binder" x-ref="editBinder" :disabled="!editReady" name="binder_id" x-model="editBinderId"
                         class="input flex-1">
-                        <option value="">Main vault (unfiled)</option>
-                        {{ range .Binders }}
-                        <option value="{{ .ID }}">{{ .Name }}</option>
-                        {{ end }}
+                        <option data-i18n value="">Main vault (unfiled)</option>
+                        <template x-for="binder in editBinders" :key="binder.id">
+                            <option :value="binder.id" x-text="binder.name"></option>
+                        </template>
                     </select>
-                    <button type="submit" class="btn-primary">Move</button>
+                    <button data-i18n type="submit" :disabled="!editReady" class="btn-primary">Move</button>
                 </div>
             </form>
-            <button type="button" hx-post="/portfolio/delete" hx-include="#edit-item-id" hx-swap="none"
+            <button data-i18n type="button" :disabled="!editReady" hx-post="/portfolio/delete" hx-include="#edit-item-id" hx-swap="none"
                 hx-confirm="Remove this card from your vault?"
-                @htmx:after-request="if ($event.detail.successful) { showEditModal = false; htmx.ajax('GET', '/dashboard', { target: '#main-content', source: document.body }); $nextTick(() => editTrigger?.focus()) } else { editError = $event.detail.xhr.responseText.trim() || 'Unable to remove card' }"
+                @htmx:after-request="if ($event.detail.successful) { showEditModal = false; htmx.ajax('GET', currentFragmentPath(), { target: '#main-content', source: document.getElementById('main-content') }).catch(() => {}); $nextTick(() => { if (!showEditModal) editTrigger?.focus() }) } else { editError = $event.detail.xhr.responseText.trim() || 'Unable to remove card' }"
                 class="btn-danger w-full">
                 Remove from vault
             </button>
@@ -281,15 +349,15 @@
         <div class="card p-5 shadow-xl border-violet-200">
             <div class="flex items-start gap-4">
                 <div
-                    class="w-12 h-12 rounded-2xl bg-violet-100 flex items-center justify-center flex-shrink-0">
-                    <img src="/static/img/logo.png" alt="Pokget" class="w-8 h-8">
+                    class="w-12 h-12 rounded-2xl bg-violet-100 dark:bg-violet-900 flex items-center justify-center flex-shrink-0">
+                    <img data-i18n-attrs="alt" src="/static/img/logo-128.webp" alt="Pokget" class="w-8 h-8">
                 </div>
                 <div class="flex-1">
-                    <h4 class="text-base font-bold text-zinc-900 tracking-tight">Add to home screen</h4>
-                    <p class="text-sm text-zinc-500 mt-1 leading-relaxed">Install Pokget as an app
+                    <h4 data-i18n class="text-base font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">Add to home screen</h4>
+                    <p data-i18n class="text-sm text-zinc-500 dark:text-zinc-400 mt-1 leading-relaxed">Install Pokget as an app
                         for the fastest collection experience.</p>
                 </div>
-                <button @click="showPwaPrompt = false" class="btn-ghost min-h-11 px-2 -mr-2 -mt-1"
+                <button data-i18n-attrs="aria-label" @click="showPwaPrompt = false" class="btn-ghost min-h-11 px-2 -mr-2 -mt-1"
                     aria-label="Dismiss install prompt">
                     <span class="material-symbols-outlined text-lg">close</span>
                 </button>
@@ -297,7 +365,7 @@
 
             <div class="mt-4 flex gap-3">
                 <template x-if="!isIOS">
-                    <button @click="
+                    <button data-i18n @click="
                         if (deferredPrompt) {
                             deferredPrompt.prompt();
                             deferredPrompt.userChoice.then((choiceResult) => {
@@ -314,15 +382,15 @@
 
                 <template x-if="isIOS">
                     <div class="flex-1 flex flex-col gap-3">
-                        <div class="bg-zinc-100 rounded-xl p-3 flex items-center gap-3">
-                            <span class="material-symbols-outlined text-violet-700 text-lg">ios_share</span>
-                            <span class="text-xs font-semibold text-zinc-700">Tap Share</span>
+                        <div class="bg-zinc-100 dark:bg-stone-100 rounded-xl p-3 flex items-center gap-3">
+                            <span class="material-symbols-outlined text-violet-700 dark:text-violet-300 text-lg">ios_share</span>
+                            <span data-i18n class="text-xs font-semibold text-zinc-700 dark:text-zinc-200">Tap Share</span>
                         </div>
-                        <div class="bg-zinc-100 rounded-xl p-3 flex items-center gap-3">
-                            <span class="material-symbols-outlined text-violet-700 text-lg">add_box</span>
-                            <span class="text-xs font-semibold text-zinc-700">Add to Home Screen</span>
+                        <div class="bg-zinc-100 dark:bg-stone-100 rounded-xl p-3 flex items-center gap-3">
+                            <span class="material-symbols-outlined text-violet-700 dark:text-violet-300 text-lg">add_box</span>
+                            <span data-i18n class="text-xs font-semibold text-zinc-700 dark:text-zinc-200">Add to Home Screen</span>
                         </div>
-                        <button @click="showPwaPrompt = false"
+                        <button data-i18n @click="showPwaPrompt = false"
                             class="btn-ghost self-center text-sm">I'll do it later</button>
                     </div>
                 </template>

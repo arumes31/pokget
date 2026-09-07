@@ -95,30 +95,6 @@ func combineScores(fp *ConfidenceScore, ocr *ConfidenceScore, llm *ConfidenceSco
 	return weightedSum
 }
 
-func ambiguousSameNameFingerprints(result *MatchResult, threshold int) []FingerprintMatch {
-	if result == nil {
-		return nil
-	}
-	matches := make([]FingerprintMatch, 0, len(result.Potential))
-	name := ""
-	for _, match := range result.Potential {
-		if match.Distance > threshold {
-			break
-		}
-		if match.Card == nil {
-			continue
-		}
-		if name == "" {
-			name = strings.ToLower(strings.TrimSpace(match.Card.Name))
-		}
-		if strings.ToLower(strings.TrimSpace(match.Card.Name)) != name {
-			return nil
-		}
-		matches = append(matches, match)
-	}
-	return matches
-}
-
 func exactFingerprintMatches(result *MatchResult) []FingerprintMatch {
 	if result == nil {
 		return nil

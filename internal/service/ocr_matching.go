@@ -2,6 +2,7 @@ package service
 
 import (
 	"cmp"
+	"context"
 	"pokget/internal/models"
 	"slices"
 	"strings"
@@ -83,15 +84,49 @@ func inferOCRGame(cards []models.Card) string {
 }
 
 func rankLocalMatches(evidence []ocrEvidence, cards []models.Card, lang string) []rankedOCRMatch {
+	matches, _ := rankLocalMatchesContext(context.Background(), evidence, cards, lang)
+	return matches
+}
+
+func rankLocalMatchesContext(ctx context.Context, evidence []ocrEvidence, cards []models.Card, lang string) ([]rankedOCRMatch, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if len(evidence) == 0 || len(cards) == 0 {
-		return nil
+		return nil, nil
+	}
+
+	type preparedEvidence struct {
+		ocrEvidence
+		normalizedText string
+		compactText    string
+		matchTokens    []string
+	}
+	prepared := make([]preparedEvidence, len(evidence))
+	for index, item := range evidence {
+		if item.Pass == "" {
+			item.Pass = "pass-" + string(rune(index))
+		}
+		normalizedText := normalizeOCRText(item.Text, lang)
+		prepared[index] = preparedEvidence{
+			ocrEvidence: item, normalizedText: normalizedText,
+			compactText: strings.ReplaceAll(normalizedText, " ", ""),
+			matchTokens: strings.Fields(normalizeMatchText(item.Text)),
+		}
 	}
 
 	uniqueCards := make(map[string]models.Card, len(cards))
-	for _, card := range cards {
+	for index, card := range cards {
+		if index%64 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		}
 		key := normalizeGame(card.Game) + "\x00"
 		if card.ID != "" {
-			key += "id:" + normalizeOCRIdentifier(card.ID)
+			// Source IDs are opaque identities, not OCR text: 0 and O may
+			// identify different printings and must never be deduplicated.
+			key += "id:" + card.ID
 		} else {
 			key += "name:" + normalizeOCRText(card.Name, lang) + "\x00" + strings.ToLower(card.Language)
 		}
@@ -100,53 +135,71 @@ func rankLocalMatches(evidence []ocrEvidence, cards []models.Card, lang string) 
 		}
 	}
 
-	matches := make([]rankedOCRMatch, 0, len(uniqueCards))
+	// Alternate printings share their name evidence. Compute each name once,
+	// while retaining separate identifier evidence and scores for every card.
+	type nameEvidence struct {
+		score  float64
+		passes int
+	}
+	nameCache := make(map[string]nameEvidence)
+	matches := make([]rankedOCRMatch, 0, min(64, len(uniqueCards)))
+	cjk := isCJKLanguage(lang)
 	for _, card := range uniqueCards {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		name := normalizeOCRText(card.Name, lang)
 		identifier := normalizeOCRIdentifier(card.ID)
 		if name == "" && identifier == "" {
 			continue
 		}
 
-		match := rankedOCRMatch{Card: card}
-		namePasses := make(map[string]struct{})
-		for index, item := range evidence {
-			text := normalizeOCRText(item.Text, lang)
-			compact := normalizeOCRIdentifier(item.Text)
-			pass := item.Pass
-			if pass == "" {
-				pass = "pass-" + string(rune(index))
+		cachedName, exists := nameCache[name]
+		if !exists {
+			namePasses := make(map[string]struct{})
+			compactName := strings.ReplaceAll(name, " ", "")
+			for _, item := range prepared {
+				text := item.normalizedText
+				if strings.Contains(text, "evolves") && strings.Contains(item.compactText, compactName) {
+					var referenceOnly bool
+					text, referenceOnly = nameRoleEvidence(text, name)
+					if referenceOnly {
+						continue
+					}
+				}
+				if name == "" || !fuzzySubstringMatch(text, name) {
+					continue
+				}
+				namePasses[item.Pass] = struct{}{}
+				score := 70.0 + min(item.Quality, 20)
+				if strings.Contains(text, name) {
+					score += 15
+				}
+				if item.Role == "name" {
+					score += 10
+				}
+				cachedName.score = max(cachedName.score, score)
 			}
+			cachedName.passes = len(namePasses)
+			nameCache[name] = cachedName
+		}
 
-			if len(identifier) >= 4 && strings.Contains(compact, identifier) {
+		match := rankedOCRMatch{Card: card, Score: cachedName.score, NamePasses: cachedName.passes}
+		if len(identifier) >= 4 {
+			matchIdentifier := normalizeMatchText(card.ID)
+			for _, item := range prepared {
+				if !containsPrintedIdentifierTokens(item.matchTokens, matchIdentifier) {
+					continue
+				}
 				score := 110.0 + min(item.Quality, 20)
 				if item.Role == "identifier" {
 					score += 20
 				}
-				if score > match.Score {
-					match.Score = score
-				}
+				match.Score = max(match.Score, score)
 				match.IdentifierHit = true
 			}
-
-			if name == "" || !fuzzySubstringMatch(text, name) {
-				continue
-			}
-			namePasses[pass] = struct{}{}
-			score := 70.0 + min(item.Quality, 20)
-			if strings.Contains(text, name) {
-				score += 15
-			}
-			if item.Role == "name" {
-				score += 10
-			}
-			if score > match.Score {
-				match.Score = score
-			}
 		}
-
-		match.NamePasses = len(namePasses)
-		if isCJKLanguage(lang) && !match.IdentifierHit && match.NamePasses < 2 {
+		if cjk && !match.IdentifierHit && match.NamePasses < 2 {
 			continue
 		}
 		if match.Score > 0 {
@@ -166,7 +219,7 @@ func rankLocalMatches(evidence []ocrEvidence, cards []models.Card, lang string) 
 		}
 		return cmp.Compare(normalizeOCRText(left.Card.Name, lang), normalizeOCRText(right.Card.Name, lang))
 	})
-	return matches
+	return matches, nil
 }
 
 func compareCards(left, right models.Card, lang string) int {
@@ -178,7 +231,17 @@ func compareCards(left, right models.Card, lang string) int {
 
 func localMatchResult(evidence []ocrEvidence, cards []models.Card, lang string) string {
 	matches := rankLocalMatches(evidence, cards, lang)
+	return localMatchFromRanked(matches)
+}
+
+func localMatchFromRanked(matches []rankedOCRMatch) string {
 	if len(matches) == 0 {
+		return "Unknown Card"
+	}
+	if len(matches) > 1 && matches[0].Score-matches[1].Score <= 5 {
+		if normalizeMatchText(matches[0].Card.Name) == normalizeMatchText(matches[1].Card.Name) {
+			return matches[0].Card.Name
+		}
 		return "Unknown Card"
 	}
 	if matches[0].Card.ID != "" {
@@ -221,26 +284,52 @@ func fuzzySubstringMatch(text, target string) bool {
 	if targetLen > 7 {
 		maxDistance = min(targetLen/4, 3)
 	}
-	for i := 0; i <= len(textRunes)-targetLen; i++ {
-		if levenshtein(string(textRunes[i:i+targetLen]), targetStr) <= maxDistance {
-			return true
+	previous := make([]int, targetLen+1)
+	current := make([]int, targetLen+1)
+	for _, windowLength := range [...]int{targetLen, targetLen - 1, targetLen + 1} {
+		if targetLen <= 4 && windowLength != targetLen {
+			continue
 		}
-	}
-	if targetLen > 4 {
-		for i := 0; i <= len(textRunes)-(targetLen-1); i++ {
-			if levenshtein(string(textRunes[i:i+targetLen-1]), targetStr) <= maxDistance {
+		for start := 0; start+windowLength <= len(textRunes); start++ {
+			if withinEditDistance(textRunes[start:start+windowLength], targetRunes, maxDistance, previous, current) {
 				return true
-			}
-		}
-		if len(textRunes) >= targetLen+1 {
-			for i := 0; i <= len(textRunes)-(targetLen+1); i++ {
-				if levenshtein(string(textRunes[i:i+targetLen+1]), targetStr) <= maxDistance {
-					return true
-				}
 			}
 		}
 	}
 	return false
+}
+
+// withinEditDistance visits only the diagonal band that can satisfy the limit.
+// The caller reuses both rows across windows, avoiding per-window allocations.
+func withinEditDistance(text, target []rune, limit int, previous, current []int) bool {
+	for index := range previous {
+		previous[index] = min(index, limit+1)
+	}
+	for row, r := range text {
+		i := row + 1
+		current[0] = min(i, limit+1)
+		from, to := max(1, i-limit), min(len(target), i+limit)
+		if from > 1 {
+			current[from-1] = limit + 1
+		}
+		best := limit + 1
+		for column := from; column <= to; column++ {
+			cost := 1
+			if r == target[column-1] {
+				cost = 0
+			}
+			current[column] = min(current[column-1]+1, previous[column]+1, previous[column-1]+cost)
+			best = min(best, current[column])
+		}
+		if best > limit {
+			return false
+		}
+		if to < len(target) {
+			current[to+1] = limit + 1
+		}
+		previous, current = current, previous
+	}
+	return previous[len(target)] <= limit
 }
 
 func isShortLatinName(name []rune) bool {

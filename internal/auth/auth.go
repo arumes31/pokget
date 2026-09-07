@@ -311,7 +311,10 @@ func clientIP(r *http.Request) string {
 
 func RateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/static/") {
+		// The root service-worker script is a static asset too. Browser
+		// installation/update checks must not spend the navigation budget.
+		serviceWorkerRead := r.URL.Path == "/sw.js" && (r.Method == http.MethodGet || r.Method == http.MethodHead)
+		if strings.HasPrefix(r.URL.Path, "/static/") || serviceWorkerRead {
 			next.ServeHTTP(w, r)
 			return
 		}

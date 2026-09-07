@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Pokget | Sign in</title>
+    <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
+    <script src="/static/js/alpine.min.js?v=3" defer></script>
+    <script src="/static/js/htmx.min.js?v=3"></script>
+    <link rel="icon" type="image/png" href="/static/img/favicon-32.png">
+    <link rel="stylesheet" href="/static/css/styles.css?v=3">
+    <script>
+        document.addEventListener('htmx:responseError', function (evt) {
+            const form = evt.detail.elt && evt.detail.elt.closest('form');
+            const errorDiv = form && form.querySelector('[role="alert"]');
+            if (errorDiv) {
+                errorDiv.innerText = evt.detail.xhr.responseText;
+                errorDiv.focus();
+                setTimeout(() => errorDiv.innerText = '', 5000);
+            }
+        });
+    </script>
+</head>
+
+<body class="min-h-dvh flex flex-col text-zinc-900 selection:bg-violet-200">
+    <main id="main-content"
+        class="flex-grow flex flex-col justify-center px-4 py-8 sm:py-12"
+        style="padding-top: max(2rem, env(safe-area-inset-top)); padding-bottom: max(2rem, env(safe-area-inset-bottom))">
+        {{template "auth_fragment.html" .}}
+    </main>
+
+    <!-- Notification Toast -->
+    <div x-data="{ show: false, msg: '', type: 'info' }"
+        @notify.window="show = true; msg = $event.detail.msg; type = $event.detail.type; setTimeout(() => show = false, 3000)"
+        x-show="show" x-transition x-cloak
+        class="fixed bottom-6 inset-x-4 z-50 flex justify-center pointer-events-none">
+        <div class="card px-4 py-3 shadow-lg"
+            :class="type === 'error' ? 'border-red-300' : 'border-violet-300'">
+            <p class="text-sm font-semibold" x-text="msg"></p>
+        </div>
+    </div>
+</body>
+
+</html>

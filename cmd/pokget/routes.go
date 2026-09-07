@@ -71,6 +71,9 @@ func buildRouter(cfg *config.Config, database *sql.DB, h *handlers.Handler) *mux
 	web.HandleFunc("/vault/{slug}", h.PublicVault).Methods("GET")
 	web.HandleFunc("/errors", h.ErrorDatabase).Methods("GET")
 
+	// Authenticated JSON endpoint uses status codes for expired sessions.
+	web.Handle("/portfolio/editor-metadata", auth.APIAuthMiddleware(database)(http.HandlerFunc(h.EditorMetadata))).Methods("GET")
+
 	// Protected Routes (Require Authentication + CSRF)
 	protected := web.PathPrefix("/").Subrouter()
 	protected.Use(auth.Middleware(database))

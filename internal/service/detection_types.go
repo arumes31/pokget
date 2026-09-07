@@ -90,6 +90,9 @@ type CardMatch struct {
 	OCRScore         *ConfidenceScore
 	LLMScore         *ConfidenceScore
 	NeedsReview      bool // Flag for low-confidence results (SCAN-09)
+	printingEvidence bool // A unique printed ID or set/collector pair read by OCR.
+	visionSelection  bool // A vision recommendation can rank a reviewable printing, never override a printed ID.
+	textSelection    bool // Text can rank a reviewable candidate without counting OCR twice.
 }
 
 // DetectionResult is the output of the full detection pipeline (SCAN-07, SCAN-09, SCAN-16).

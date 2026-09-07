@@ -1,75 +1,114 @@
-<div class="app-page" x-data="{ showSubmitErrorModal: false, submitError: '', query: '', errorType: 'all' }">
+<div class="app-page" x-data="{ showSubmitErrorModal: false, submitError: '', reportsLoading: false, reportsError: '' }"
+    @htmx:before-request="if ($event.detail.elt?.closest('[data-misprint-query]')) { reportsLoading = true; reportsError = '' }"
+    @htmx:after-request="if ($event.detail.elt?.closest('[data-misprint-query]')) { reportsLoading = false; if ($event.detail.successful) { const focusId = $event.detail.elt.closest('[data-misprint-clear]') ? 'misprint-query' : 'misprint-results'; requestAnimationFrame(() => document.getElementById(focusId)?.focus()) } }"
+    @htmx:response-error="if ($event.detail.elt?.closest('[data-misprint-query]')) { reportsLoading = false; reportsError = 'Could not load reports. Try again.' }"
+    @htmx:send-error="if ($event.detail.elt?.closest('[data-misprint-query]')) { reportsLoading = false; reportsError = 'Could not connect. Check your connection and try again.' }">
     <div class="page-header">
         <div>
-            <p class="page-eyebrow">Community catalog</p>
-            <h2 class="page-title">Misprints</h2>
-            <p class="page-description">Known printing errors, miscuts, and holo shifts documented by collectors.</p>
+            <h2 data-i18n class="page-title">Misprints</h2>
+            <p data-i18n class="page-description">Printing errors, miscuts, and holo shifts reported by collectors. Entries and value estimates are community contributions.</p>
         </div>
-        {{ if .Errors }}
+        {{ if or .Errors .MisprintFiltered .MisprintPreviousURL }}
         {{ if .CanSubmit }}
-        <button type="button" x-ref="submitErrorTrigger" @click="submitError = ''; showSubmitErrorModal = true; $nextTick(() => $refs.errorCardId.focus())"
+        <button data-i18n type="button" x-ref="submitErrorTrigger" @click="submitError = ''; showSubmitErrorModal = true; $nextTick(() => $refs.errorCardId.focus())"
             class="btn-primary w-full sm:w-auto shrink-0">
             <span class="material-symbols-outlined text-[20px]">add</span>
-            Submit entry
+            Add a report
         </button>
         {{ else }}
-        <a href="/auth" class="btn-secondary w-full sm:w-auto shrink-0">Sign in to contribute</a>
+        <a data-i18n href="/auth" class="btn-secondary w-full sm:w-auto shrink-0">Sign in to contribute</a>
         {{ end }}
         {{ end }}
     </div>
 
-    {{ if .Errors }}
-    <div class="card grid gap-3 p-3 sm:grid-cols-[1fr_12rem]" role="search" aria-label="Filter misprints">
-        <label class="relative">
-            <span class="sr-only">Search misprints</span>
-            <span class="material-symbols-outlined pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xl text-zinc-500">search</span>
-            <input type="search" x-model.debounce.150ms="query" class="form-control pl-11" placeholder="Search card, set, or error">
+    <form data-i18n-attrs="aria-label" id="misprint-search" data-misprint-query method="get" action="/errors" hx-get="/errors" hx-target="#main-content"
+        hx-sync="#main-content:replace" hx-push-url="true"
+        class="card flex flex-wrap items-end gap-3 p-3" role="search" aria-label="Filter misprints">
+        <label class="relative min-w-0 basis-full grow sm:basis-48">
+            <span data-i18n class="sr-only">Search misprints</span>
+            <span class="material-symbols-outlined pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xl text-zinc-500 dark:text-zinc-400">search</span>
+            <input data-i18n-attrs="placeholder" type="search" id="misprint-query" x-ref="misprintSearch" name="q" value="{{ .MisprintQuery }}" maxlength="200"
+                class="form-control pl-11" placeholder="Search all reports">
         </label>
-        <label><span class="sr-only">Error type</span><select x-model="errorType" class="form-control">
-            <option value="all">All error types</option><option value="miscut">Miscut</option><option value="ink">Ink error</option><option value="holo">Holo shift</option>
+        <label class="min-w-0 grow basis-40"><span data-i18n class="sr-only">Error type</span><select name="type" class="form-control">
+            <option data-i18n value="all"{{ if eq .MisprintType "all" }} selected{{ end }}>All error types</option>
+            <option data-i18n value="miscut"{{ if eq .MisprintType "miscut" }} selected{{ end }}>Miscut</option>
+            <option data-i18n value="ink"{{ if eq .MisprintType "ink" }} selected{{ end }}>Ink error</option>
+            <option data-i18n value="holo"{{ if eq .MisprintType "holo" }} selected{{ end }}>Holo shift</option>
         </select></label>
-    </div>
-    {{ end }}
+        <button data-i18n type="submit" :disabled="reportsLoading" class="btn-primary grow sm:grow-0">Search</button>
+        {{ if .MisprintFiltered }}
+        <a data-i18n data-misprint-clear href="/errors" hx-get="/errors" hx-target="#main-content" hx-push-url="true" class="btn-secondary grow sm:grow-0">Clear filters</a>
+        {{ end }}
+    </form>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <p data-i18n x-show="reportsLoading" x-cloak role="status" aria-live="polite" class="text-sm text-zinc-600 dark:text-zinc-300">Loading reports…</p>
+    <p data-i18n x-show="reportsError" x-cloak x-text="reportsError" role="alert" class="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 p-3 text-sm text-red-800 dark:text-red-300"></p>
+    <p id="misprint-results" tabindex="-1" class="text-sm text-zinc-600 dark:text-zinc-300"><span data-i18n>Showing</span> {{ if .Errors }}{{ len .Errors }} <span data-i18n>{{ if eq (len .Errors) 1 }}report{{ else }}reports{{ end }}</span>{{ else }}0 <span data-i18n>reports</span>{{ end }}{{ if or .MisprintPreviousURL .MisprintNextURL }} <span data-i18n>on this page</span>{{ end }}.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4" :aria-busy="reportsLoading">
         {{ range .Errors }}
-        <article data-misprint data-type="{{ .ErrorType }}" x-show="(!query || $el.textContent.toLowerCase().includes(query.toLowerCase())) && (errorType === 'all' || $el.dataset.type.toLowerCase().includes(errorType))"
-            class="card flex gap-4 p-4 transition-colors hover:border-violet-300">
-            <div class="w-24 sm:w-28 aspect-[3/4] rounded-xl overflow-hidden flex-shrink-0 bg-zinc-100 border border-zinc-200">
-                <img src="{{ .ImageURL }}" alt="{{ .CardName }}" class="w-full h-full object-cover">
+        <article data-misprint data-type="{{ .ErrorType }}"
+            class="card card-summary p-4 transition-colors hover:border-violet-300">
+            <div class="card-summary-image aspect-[3/4] rounded-xl overflow-hidden bg-zinc-100 dark:bg-stone-100 border border-zinc-200 dark:border-stone-200">
+                {{ if .ImageURL }}
+                <img src="{{ .ImageURL }}" alt="{{ .CardName }}" loading="lazy" decoding="async" class="w-full h-full object-contain">
+                {{ else }}
+                <div data-i18n-attrs="aria-label" class="flex h-full items-center justify-center p-3 text-zinc-500 dark:text-zinc-400" role="img" aria-label="No image available for {{ .CardName }}"><span class="material-symbols-outlined text-3xl" aria-hidden="true">image</span></div>
+                {{ end }}
             </div>
-            <div class="flex flex-col justify-between gap-3 py-0.5 min-w-0">
+            <div class="card-summary-body flex flex-col justify-between gap-3 py-0.5">
                 <div>
-                    <span class="status-badge border-violet-200 bg-violet-50 text-violet-800">{{ .ErrorType }}</span>
-                    <h3 class="font-bold text-zinc-900 mt-2">{{ .CardName }}</h3>
-                    <p class="text-[10px] text-zinc-500 uppercase tracking-widest">{{ .SetName }}</p>
+                    <span class="status-badge border-violet-200 bg-violet-50 dark:bg-violet-900 text-violet-800 dark:text-violet-200">{{ .ErrorType }}</span>
+                    <h3 class="font-bold text-zinc-900 dark:text-zinc-100 mt-2">{{ .CardName }}</h3>
+                    <p class="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">{{ .SetName }}</p>
                 </div>
                 <div class="space-y-1.5">
-                    <p class="text-sm text-zinc-600 line-clamp-3">{{ .Description }}</p>
-                    <div class="flex items-center gap-2 mt-2">
-                        <span class="text-[10px] text-zinc-500 uppercase font-bold">Est. Value:</span>
-                        <span class="text-violet-700 font-bold">x{{ .EstimatedValueMultiplier }} Market</span>
+                    <details>
+                        <summary data-i18n class="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-violet-800 dark:text-violet-200">Read description</summary>
+                        <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-600 dark:text-zinc-300">{{ .Description }}</p>
+                    </details>
+                    <div class="flex flex-wrap items-center gap-2 mt-2">
+                        <span data-i18n class="text-xs text-zinc-600 dark:text-zinc-300 font-semibold">Collector estimate:</span>
+                        <span class="text-violet-700 dark:text-violet-300 font-bold">×{{ .EstimatedValueMultiplier }} <span data-i18n>Market</span></span>
                     </div>
                 </div>
             </div>
         </article>
         {{ else }}
         <div class="col-span-full py-6 sm:py-12">
-            <div class="empty-state">
+            <div class="empty-state" role="status" aria-live="polite">
             <div class="empty-state-icon">
                 <span class="material-symbols-outlined text-3xl">find_in_page</span>
             </div>
-            <h3 class="font-display text-xl font-bold text-zinc-950">Nothing documented yet</h3>
-            <p class="mt-2 max-w-sm text-sm leading-6 text-zinc-600">Be the first to add a verified printing error to the community catalog.</p>
-            {{ if .CanSubmit }}
-            <button type="button" class="btn-primary mt-6" @click="submitError = ''; showSubmitErrorModal = true; $nextTick(() => $refs.errorCardId.focus())"><span class="material-symbols-outlined">add</span>Submit first entry</button>
+            {{ if .MisprintPreviousURL }}
+            <h3 data-i18n class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">No reports on this page</h3>
+            <p data-i18n class="mt-2 max-w-sm text-sm leading-6 text-zinc-600 dark:text-zinc-300">Try the previous page or change your search.</p>
+            {{ else if .MisprintFiltered }}
+            <h3 data-i18n class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">No matches</h3>
+            <p data-i18n class="mt-2 max-w-sm text-sm leading-6 text-zinc-600 dark:text-zinc-300">Try another card name, set, description, or error type, or clear your filters above.</p>
             {{ else }}
-            <a href="/auth" class="btn-primary mt-6">Sign in to contribute</a>
+            <h3 data-i18n class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">Nothing documented yet</h3>
+            <p data-i18n class="mt-2 max-w-sm text-sm leading-6 text-zinc-600 dark:text-zinc-300">Share a printing error you have found. Your report will appear in the public community catalog.</p>
+            {{ if .CanSubmit }}
+            <button data-i18n type="button" x-ref="submitErrorTrigger" class="btn-primary mt-6" @click="submitError = ''; showSubmitErrorModal = true; $nextTick(() => $refs.errorCardId.focus())"><span class="material-symbols-outlined" aria-hidden="true">add</span>Add the first report</button>
+            {{ else }}
+            <a data-i18n href="/auth" class="btn-primary mt-6">Sign in to contribute</a>
+            {{ end }}
             {{ end }}
             </div>
         </div>
         {{ end }}
     </div>
+
+    {{ if or .MisprintPreviousURL .MisprintNextURL }}
+    <nav data-i18n-attrs="aria-label" data-misprint-query class="flex flex-wrap items-center justify-between gap-3" aria-label="Misprint pages"
+        hx-target="#main-content" hx-sync="#main-content:replace" hx-push-url="true">
+        {{ if .MisprintPreviousURL }}<a data-i18n rel="prev" href="{{ .MisprintPreviousURL }}" hx-get="{{ .MisprintPreviousURL }}" class="btn-secondary">Previous</a>{{ end }}
+        <p data-i18n class="text-sm text-zinc-600 dark:text-zinc-300">Page {{ .MisprintPage }}</p>
+        {{ if .MisprintNextURL }}<a data-i18n rel="next" href="{{ .MisprintNextURL }}" hx-get="{{ .MisprintNextURL }}" class="btn-secondary">Next</a>{{ end }}
+    </nav>
+    {{ end }}
 
     {{ if .CanSubmit }}
     <div x-show="showSubmitErrorModal" x-cloak @keydown.escape.window="if (showSubmitErrorModal) { showSubmitErrorModal = false; $nextTick(() => $refs.submitErrorTrigger?.focus()) }"
@@ -78,39 +117,40 @@
             style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))"
             @click.outside="showSubmitErrorModal = false; $nextTick(() => $refs.submitErrorTrigger?.focus())">
             <div class="flex items-center justify-between">
-                <div><p class="page-eyebrow">Community catalog</p><h3 id="submit-error-title" class="font-display text-xl font-bold text-zinc-950">Submit a misprint</h3></div>
-                <button type="button" @click="showSubmitErrorModal = false; $nextTick(() => $refs.submitErrorTrigger?.focus())" aria-label="Close submission dialog"
+                <div><h3 data-i18n id="submit-error-title" class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">Report a misprint</h3></div>
+                <button data-i18n-attrs="aria-label" type="button" @click="showSubmitErrorModal = false; $nextTick(() => $refs.submitErrorTrigger?.focus())" aria-label="Close submission dialog"
                     class="btn-ghost -mr-2 min-h-11 px-2">
                     <span class="material-symbols-outlined text-lg">close</span>
                 </button>
             </div>
             <form hx-post="/errors/submit" hx-swap="none" @htmx:before-request="submitError = ''"
-                @htmx:after-request="if ($event.detail.successful) { showSubmitErrorModal = false; htmx.ajax('GET', '/errors', { target: '#main-content', source: document.body }); $nextTick(() => $refs.submitErrorTrigger?.focus()) } else { submitError = $event.detail.xhr.responseText.trim() || 'Unable to submit misprint' }"
+                @htmx:after-request="if ($event.detail.successful) { showSubmitErrorModal = false; const reportsURL = window.location.pathname === '/errors' ? window.location.pathname + window.location.search : '/errors'; htmx.ajax('GET', reportsURL, { target: '#main-content', source: document.body }); $nextTick(() => $refs.submitErrorTrigger?.focus()) } else { submitError = $event.detail.xhr.responseText.trim() || 'Unable to submit misprint' }"
                 class="mt-5 space-y-4">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
-                <p x-show="submitError" x-text="submitError" role="alert" aria-live="assertive"
-                    class="rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700"></p>
+                <p data-i18n x-show="submitError" x-text="submitError" role="alert" aria-live="assertive"
+                    class="rounded-xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 px-3.5 py-3 text-sm font-medium text-red-700 dark:text-red-300"></p>
                 <div>
-                    <label for="error-card-id" class="label">Card ID</label>
-                    <input id="error-card-id" x-ref="errorCardId" type="search" name="card_id" required placeholder="Search or paste a catalog ID" class="input">
+                    <label data-i18n for="error-card-id" class="label">Exact catalog ID</label>
+                    <input data-i18n-attrs="placeholder" id="error-card-id" x-ref="errorCardId" type="text" name="card_id" required placeholder="e.g. swsh4-19" aria-describedby="error-card-id-help" class="input">
+                    <p data-i18n id="error-card-id-help" class="mt-2 text-sm text-zinc-600 dark:text-zinc-300">Use the ID shown with your scan result. A card name alone will not identify its printing.</p>
                 </div>
                 <div>
-                    <label for="error-type" class="label">Error type</label>
-                    <input id="error-type" name="error_type" required placeholder="Miscut, ink error, holoshift…"
+                    <label data-i18n for="error-type" class="label">Error type</label>
+                    <input data-i18n-attrs="placeholder" id="error-type" name="error_type" required placeholder="Miscut, ink error, holoshift…"
                         class="input">
                 </div>
                 <div>
-                    <label for="error-description" class="label">Description</label>
-                    <textarea id="error-description" name="description" required rows="3" maxlength="800" placeholder="Describe what differs from a standard copy"
+                    <label data-i18n for="error-description" class="label">Description</label>
+                    <textarea data-i18n-attrs="placeholder" id="error-description" name="description" required rows="3" maxlength="800" placeholder="Describe what differs from a standard copy"
                         class="input min-h-24 py-2.5"></textarea>
                 </div>
                 <div>
-                    <label for="error-multiplier" class="label">Estimated market multiplier</label>
+                    <label data-i18n for="error-multiplier" class="label">Estimated market multiplier</label>
                     <input id="error-multiplier" type="number" name="multiplier" value="1" min="0.01" max="100" step="0.01" required
                         class="input">
                 </div>
-                <p class="rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900"><strong>Before submitting:</strong> compare with another copy and use a clear, neutral description.</p>
-                <button type="submit" class="btn-primary w-full min-h-12 text-base">Submit for review</button>
+                <p data-i18n class="rounded-xl bg-amber-50 dark:bg-amber-950 px-3 py-2 text-sm leading-6 text-amber-900 dark:text-amber-300"><strong data-i18n>This report becomes public immediately.</strong> Check the card ID, compare with a standard copy, and describe what differs. Reports are not reviewed before publication.</p>
+                <button data-i18n type="submit" class="btn-primary w-full min-h-12 text-base">Publish report</button>
             </form>
         </div>
     </div>

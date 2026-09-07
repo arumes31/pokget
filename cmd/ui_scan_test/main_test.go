@@ -28,6 +28,9 @@ func TestParseFlags(t *testing.T) {
 		"-lang", "jpn",
 		"-timeout", "45s",
 		"-headless=false",
+		"-full-image",
+		"-screenshot", filepath.Join(t.TempDir(), "scan.png"),
+		"-artifacts", t.TempDir(),
 	}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("parseFlags returned error: %v", err)
@@ -50,6 +53,9 @@ func TestParseFlags(t *testing.T) {
 	}
 	if cfg.headless {
 		t.Error("headless = true, expected false")
+	}
+	if !cfg.fullImage || cfg.screenshot == "" || cfg.artifactDir == "" {
+		t.Error("full-image, screenshot, and artifacts flags were not retained")
 	}
 }
 
@@ -145,6 +151,11 @@ func TestValidateScanResult(t *testing.T) {
 				StateName: "Exact Card",
 				Visible:   true,
 			},
+		},
+		{
+			name:          "internal ID visible in product copy",
+			result:        scanResult{ID: "card-123", Name: "Exact Card", StateID: "card-123", StateName: "Exact Card", Visible: true, InternalIDVisible: true},
+			expectedError: "internal catalog ID",
 		},
 		{
 			name: "hidden result",

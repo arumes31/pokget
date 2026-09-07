@@ -8,16 +8,15 @@
             : a.dataset.name.localeCompare(b.dataset.name));
         cards.forEach(card => this.$refs.binderGrid.appendChild(card));
     }
-}">
+}" x-init="$nextTick(() => sortBinders('name'))">
     <!-- Header -->
     <div class="page-header">
         <div>
-            <p class="page-eyebrow">Organization</p>
-            <h2 class="page-title">Binders</h2>
-            <p class="page-description">Group your cards by set, collection, deck, or any system that works for you.</p>
+            <h2 data-i18n class="page-title">Binders</h2>
+            <p data-i18n class="page-description">Group your cards by set, collection, deck, or any system that works for you.</p>
         </div>
         {{ if .Binders }}
-        <button type="button" x-ref="newBinderTrigger" @click="createError = ''; showNewBinderModal = true; $nextTick(() => $refs.binderName.focus())"
+        <button data-i18n type="button" x-ref="newBinderTrigger" @click="createError = ''; showNewBinderModal = true; $nextTick(() => $refs.binderName.focus())"
                 class="btn-primary w-full sm:w-auto">
             <span class="material-symbols-outlined text-[20px]">book</span>
             New binder
@@ -27,11 +26,11 @@
 
     <!-- Binders Grid -->
     {{ if .Binders }}
-    <div class="flex items-center justify-between gap-3">
-        <p class="text-sm font-semibold text-zinc-600">{{ len .Binders }} binder{{ if ne (len .Binders) 1 }}s{{ end }}</p>
-        <label class="flex items-center gap-2 text-xs font-bold text-zinc-600">Sort
-            <select class="form-control min-h-11 w-auto py-0 pr-9" @change="sortBinders($event.target.value)" aria-label="Sort binders">
-                <option value="name">Name</option><option value="count">Most cards</option>
+    <div class="binder-sort-row">
+        <p class="text-sm font-semibold text-zinc-600 dark:text-zinc-300">{{ len .Binders }} <span data-i18n>{{ if ne (len .Binders) 1 }}binders{{ else }}binder{{ end }}</span></p>
+        <label data-i18n class="binder-sort text-xs font-bold text-zinc-600 dark:text-zinc-300">Sort
+            <select data-i18n-attrs="aria-label" class="form-control min-h-11 min-w-0 flex-1 py-0 pr-9" @change="sortBinders($event.target.value)" aria-label="Sort binders">
+                <option data-i18n value="name">Name</option><option data-i18n value="count">Most cards</option>
             </select>
         </label>
     </div>
@@ -41,28 +40,28 @@
         <button type="button" hx-get="/binders/{{ .ID }}" hx-target="#main-content"
              hx-push-url="/?view=binders&amp;binder={{ .ID }}"
              data-binder-card data-name="{{ .Name }}" data-count="{{ .CardCount }}"
-             class="card group flex min-h-28 w-full items-center gap-4 overflow-hidden p-4 text-left transition hover:border-violet-300 hover:shadow-md active:scale-[0.99]">
+             class="card group flex min-h-28 w-full items-center gap-4 overflow-hidden p-4 text-left transition hover:border-violet-300">
 
             <!-- Binder Icon/Art -->
-            <div class="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 transition-transform group-hover:scale-105">
+            <div class="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 transition-transform group-hover:scale-105">
                 <span class="material-symbols-outlined text-2xl">auto_stories</span>
             </div>
             <div class="min-w-0 flex-1">
-                <h3 class="truncate text-base font-bold text-zinc-950 transition-colors group-hover:text-violet-800">{{ .Name }}</h3>
-                <p class="mt-1 line-clamp-2 text-xs leading-5 text-zinc-600">{{ if .Description }}{{ .Description }}{{ else }}No description yet{{ end }}</p>
-                <span class="status-badge mt-2 border-stone-200 bg-stone-50 text-zinc-700">{{ .CardCount }} card{{ if ne .CardCount 1 }}s{{ end }}</span>
+                <h3 class="truncate text-base font-bold text-zinc-950 dark:text-zinc-50 transition-colors group-hover:text-violet-800 dark:group-hover:text-violet-200">{{ .Name }}</h3>
+                <p class="mt-1 line-clamp-2 text-xs leading-5 text-zinc-600 dark:text-zinc-300">{{ if .Description }}{{ .Description }}{{ else }}<span data-i18n>No description yet</span>{{ end }}</p>
+                <span class="status-badge mt-2 border-stone-200 bg-stone-50 text-zinc-700 dark:text-zinc-200">{{ .CardCount }} <span data-i18n>{{ if ne .CardCount 1 }}cards{{ else }}card{{ end }}</span></span>
             </div>
-            <span class="material-symbols-outlined flex size-11 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-zinc-600 transition group-hover:bg-violet-700 group-hover:text-white">arrow_forward</span>
+            <span class="material-symbols-outlined flex size-11 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-zinc-600 dark:text-zinc-300 transition group-hover:bg-violet-700 group-hover:text-white">arrow_forward</span>
         </button>
         {{ else }}
-        <div class="col-span-full py-6 sm:py-12">
+        <div class="col-span-full py-3 sm:py-6">
             <div class="empty-state">
                 <div class="empty-state-icon">
-                    <span class="material-symbols-outlined text-3xl text-violet-700">inventory_2</span>
+                    <span class="material-symbols-outlined text-3xl text-violet-700 dark:text-violet-300">inventory_2</span>
                 </div>
-                <h3 class="font-display text-xl font-bold text-zinc-950">Create your first binder</h3>
-                <p class="mt-2 max-w-sm text-sm leading-6 text-zinc-600">Keep a set, deck, or personal collection together and see its card count at a glance.</p>
-                <button type="button" @click="createError = ''; showNewBinderModal = true; $nextTick(() => $refs.binderName.focus())"
+                <h3 data-i18n class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">Create your first binder</h3>
+                <p data-i18n class="mt-2 max-w-sm text-sm leading-6 text-zinc-600 dark:text-zinc-300">Keep a set, deck, or personal collection together and see its card count at a glance.</p>
+                <button data-i18n type="button" x-ref="newBinderTrigger" @click="createError = ''; showNewBinderModal = true; $nextTick(() => $refs.binderName.focus())"
                         class="btn-primary mt-6 w-full sm:w-auto">
                     <span class="material-symbols-outlined">bookmark_add</span>Create first binder
                 </button>
@@ -80,10 +79,10 @@
          class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-zinc-900/50"
          x-cloak>
          <div class="card w-full sm:max-w-md rounded-b-none sm:rounded-b-2xl p-5 sm:p-6 space-y-4 max-h-[90dvh] overflow-y-auto"
-              style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))" @click.away="showNewBinderModal = false">
+              style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))" @click.away="showNewBinderModal = false; $nextTick(() => $refs.newBinderTrigger?.focus())">
             <div class="flex justify-between items-center">
-                 <div><p class="page-eyebrow">Organization</p><h3 id="new-binder-title" class="font-display text-xl font-bold text-zinc-950">New binder</h3></div>
-                 <button type="button" aria-label="Close new binder dialog" @click="showNewBinderModal = false; $nextTick(() => $refs.newBinderTrigger?.focus())" class="btn-ghost min-h-11 px-2.5 -mr-2 -mt-1">
+                 <h3 data-i18n id="new-binder-title" class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">New binder</h3>
+                 <button data-i18n-attrs="aria-label" type="button" aria-label="Close new binder dialog" @click="showNewBinderModal = false; $nextTick(() => $refs.newBinderTrigger?.focus())" class="btn-ghost min-h-11 px-2.5 -mr-2 -mt-1">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
@@ -93,22 +92,22 @@
                 @htmx:after-request="if ($event.detail.successful) { showNewBinderModal = false; $nextTick(() => $refs.newBinderTrigger?.focus()) } else { createError = $event.detail.xhr.responseText.trim() || 'Unable to create binder' }"
                 class="space-y-4">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
-                <p x-show="createError" x-text="createError" role="alert" aria-live="assertive"
-                    class="rounded-xl bg-red-50 border border-red-200 px-3.5 py-3 text-sm font-medium text-red-700"></p>
+                <p data-i18n x-show="createError" x-text="createError" role="alert" aria-live="assertive"
+                    class="rounded-xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 px-3.5 py-3 text-sm font-medium text-red-700 dark:text-red-300"></p>
 
                 <div>
-                    <label for="new-binder-name" class="label">Binder name</label>
-                    <input id="new-binder-name" x-ref="binderName" type="text" name="name" required maxlength="80" placeholder="e.g. Base Set master set"
+                    <label data-i18n for="new-binder-name" class="label">Binder name</label>
+                    <input data-i18n-attrs="placeholder" id="new-binder-name" x-ref="binderName" type="text" name="name" required maxlength="80" placeholder="e.g. Base Set master set"
                            class="input">
                 </div>
 
                 <div>
-                    <label for="new-binder-description" class="label">Description <span class="normal-case tracking-normal text-zinc-400">(optional)</span></label>
-                    <textarea id="new-binder-description" name="description" maxlength="240" placeholder="What belongs in this binder?" rows="3"
+                    <label data-i18n for="new-binder-description" class="label">Description <span data-i18n class="normal-case tracking-normal text-zinc-600 dark:text-zinc-300">(optional)</span></label>
+                    <textarea data-i18n-attrs="placeholder" id="new-binder-description" name="description" maxlength="240" placeholder="What belongs in this binder?" rows="3"
                               class="input min-h-24 py-2.5"></textarea>
                 </div>
 
-                <button type="submit" class="btn-primary w-full min-h-12 text-base">
+                <button data-i18n type="submit" class="btn-primary w-full min-h-12 text-base">
                     <span class="material-symbols-outlined text-[20px]">bookmark_add</span>
                     Create binder
                 </button>

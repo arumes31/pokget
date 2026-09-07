@@ -21,14 +21,9 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"image"
-	_ "image/gif"  // Register GIF decoding with image.Decode.
-	_ "image/jpeg" // Register JPEG decoding with image.Decode.
-	_ "image/png"  // Register PNG decoding with image.Decode.
 	"log/slog"
 	"slices"
 	"sort"
@@ -36,8 +31,6 @@ import (
 	"time"
 
 	"pokget/internal/models"
-
-	_ "golang.org/x/image/webp" // Register WebP decoding with image.Decode.
 )
 
 type fingerprintStageRunner func(context.Context, []byte, []models.Card, *ScanScope) (*MatchResult, error)
@@ -215,6 +208,10 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 	totalStart := time.Now()
 	result := &DetectionResult{Status: DetectionStatusUnknown}
 	stageCtx, cancel := context.WithCancel(ctx)
+	if timeout := detectionStageTimeoutFromContext(ctx); timeout > 0 {
+		cancel()
+		stageCtx, cancel = context.WithTimeout(ctx, timeout)
+	}
 	defer cancel()
 
 	fingerprintCards := slices.Clone(request.Cards)
@@ -265,12 +262,12 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 			}
 		case ocrOutput = <-ocrChannel:
 			ocrChannel = nil
-		case <-ctx.Done():
+		case <-stageCtx.Done():
 			cancel()
 			result.Status = DetectionStatusCanceled
-			result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{Name: "context", Error: ctx.Err()})
+			result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{Name: "context", Error: stageCtx.Err()})
 			result.Metrics.TotalTime = time.Since(totalStart)
-			return result, ctx.Err()
+			return result, stageCtx.Err()
 		}
 	}
 	result.OCRText = ocrOutput.text
@@ -279,7 +276,7 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 		DetectionStageMetrics{Name: "fingerprint", Duration: fingerprintOutput.duration, Error: fingerprintOutput.err},
 		DetectionStageMetrics{Name: "ocr", Duration: ocrOutput.duration, Error: ocrOutput.err},
 	)
-	if err := ctx.Err(); err != nil {
+	if err := stageCtx.Err(); err != nil {
 		result.Status = DetectionStatusCanceled
 		result.Metrics.TotalTime = time.Since(totalStart)
 		return result, err
@@ -290,13 +287,18 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 	combineStart := time.Now()
 	candidateMap := make(map[string]*CardMatch)
 	addFingerprintCandidates(candidateMap, fingerprintResult, p.Fingerprint)
-	for _, candidate := range resolveOCRCandidates(ocrOutput.detectedCardID, ocrOutput.text, request.Cards) {
+	ocrCandidates := resolveOCRCandidates(ocrOutput.detectedCardID, ocrOutput.text, request.Cards)
+	printingID := uniqueOCRPrintingID(ocrCandidates)
+	for _, candidate := range ocrCandidates {
 		card := cardByID(request.Cards, candidate.Card.ID)
 		if card == nil {
 			continue
 		}
-		score := max(ocrScoreFromLevenshtein(ocrOutput.text, card.Name), min(99, float64(50+candidate.Score/25)))
+		// Name evidence identifies the card family; printed identifiers must
+		// retain a higher score so a name substring cannot erase that detail.
+		score := min(99, float64(50+candidate.Score/25))
 		match := getOrCreateMatch(candidateMap, card)
+		match.printingEvidence = card.ID == printingID
 		match.OCRScore = &ConfidenceScore{
 			Method: "ocr", Score: score, CardName: card.Name, CardID: card.ID, RawText: ocrOutput.text,
 		}
@@ -305,34 +307,56 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 	for _, match := range candidateMap {
 		match.Confidence = combineScores(match.FingerprintScore, match.OCRScore, match.LLMScore)
 	}
-	if p.LLM != nil && !hasHighConfidenceCandidate(candidateMap, 70) {
+	if p.LLM != nil && (!hasHighConfidenceCandidate(candidateMap, 70) || (p.LLM.PrimaryBaseURL != "" && hasAmbiguousVisionCandidates(candidateMap))) {
 		llmCards := candidateCards(candidateMap)
 		if len(llmCards) > 0 {
 			llmStart := time.Now()
 			var llmResponse *LLMCardResponse
 			var llmErr error
+			var llmImage []byte
+			if p.LLM.PrimaryBaseURL != "" {
+				var imageErr error
+				llmImage, imageErr = prepareLLMCardImage(ctx, request.Image)
+				if imageErr != nil {
+					llmImage = ocrOutput.processedImage
+				}
+			}
 			if scoped {
-				llmResponse, llmErr = p.LLM.FuzzyMatchCardScopedContext(ctx, ocrOutput.text, llmCards, request.Scope)
+				llmResponse, llmErr = p.LLM.fuzzyMatchCardScopedWithArtworkContext(ctx, ocrOutput.text, llmImage, llmCards, request.Cards, request.Scope)
 			} else {
-				llmResponse, llmErr = p.LLM.FuzzyMatchCardWithValidationContext(ctx, ocrOutput.text, llmCards)
+				llmResponse, llmErr = p.LLM.fuzzyMatchCardWithArtworkContext(ctx, ocrOutput.text, llmImage, llmCards, request.Cards)
 			}
 			result.Metrics.Stages = append(result.Metrics.Stages,
 				DetectionStageMetrics{Name: "llm", Duration: time.Since(llmStart), Error: llmErr},
 			)
+			if err := ctx.Err(); err != nil {
+				result.Status = DetectionStatusCanceled
+				result.Metrics.TotalTime = time.Since(totalStart)
+				return result, err
+			}
 			if llmErr == nil && llmResponse != nil && !llmResponse.Abstained && llmResponse.CardID != "" {
 				if match := candidateMap[llmResponse.CardID]; match != nil {
-					match.LLMScore = &ConfidenceScore{
-						Method: "llm", Score: llmResponse.Confidence * 100,
-						CardName: match.Card.Name, CardID: match.Card.ID,
+					if llmResponse.visionSelected {
+						match.visionSelection = true
+						match.LLMScore = &ConfidenceScore{Method: "llm", Score: llmResponse.Confidence * 100, CardName: match.Card.Name, CardID: match.Card.ID}
+					} else if textSelectionPreservesIdentity(match.Card, ocrCandidates) && !conflictingFingerprint(match, candidateMap) {
+						match.textSelection = true
 					}
 				}
 			}
 		}
 	}
 
+	ambiguousNames := ambiguousPrintingNames(request.Cards)
 	for _, match := range candidateMap {
 		match.Confidence = combineScores(match.FingerprintScore, match.OCRScore, match.LLMScore)
 		match.NeedsReview = match.Confidence < 70
+		if !match.printingEvidence && ambiguousNames[normalizeMatchText(match.Card.Name)] {
+			match.NeedsReview = true
+		}
+		if match.printingEvidence && conflictingFingerprint(match, candidateMap) {
+			match.NeedsReview = true
+		}
 	}
 	result.TopMatches = sortedTopMatches(candidateMap, 5)
 	result.Metrics.Stages = append(result.Metrics.Stages,
@@ -352,38 +376,14 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 
 func (p *DetectionPipeline) applyFingerprintFastPath(result *DetectionResult, fingerprintResult *MatchResult) bool {
 	matches := exactFingerprintMatches(fingerprintResult)
-	if len(matches) > 0 {
-		setExactFingerprintResult(result, matches)
-		return true
-	}
-
 	highConfidenceThreshold := DefaultPhashThresholdHighConf
 	if p.Fingerprint != nil {
 		highConfidenceThreshold = p.Fingerprint.PhashHighConf
 	}
-	if exact, distance := uniqueHighConfidenceFingerprint(fingerprintResult, highConfidenceThreshold); exact != nil {
-		confidence := max(75, 100-float64(distance*5))
-		result.TopMatches = []CardMatch{{
-			Card: exact,
-			FingerprintScore: &ConfidenceScore{
-				Method: "fingerprint", Score: confidence, CardName: exact.Name, CardID: exact.ID, Distance: distance,
-			},
-			Confidence: confidence,
-		}}
-		return true
-	}
-	if matches := ambiguousSameNameFingerprints(fingerprintResult, highConfidenceThreshold); len(matches) > 1 {
-		for _, match := range matches {
-			confidence := 0.5 * fingerprintScoreFromDistance(match.Distance, highConfidenceThreshold)
-			result.TopMatches = append(result.TopMatches, CardMatch{
-				Card: match.Card,
-				FingerprintScore: &ConfidenceScore{
-					Method: "fingerprint", Score: confidence * 2, CardName: match.Card.Name,
-					CardID: match.Card.ID, Distance: match.Distance,
-				},
-				Confidence: confidence, NeedsReview: true,
-			})
-		}
+	// Perceptual hashes discard small printing details. Only an isolated
+	// exact hash may skip OCR; near matches and collisions need both stages.
+	if exact, _ := uniqueHighConfidenceFingerprint(fingerprintResult, highConfidenceThreshold); len(matches) == 1 && exact != nil {
+		setExactFingerprintResult(result, matches)
 		return true
 	}
 	return false
@@ -396,9 +396,17 @@ func (p *DetectionPipeline) runFingerprintStage(ctx context.Context, imageBytes 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	config := ocrScanConfigFromContext(ctx)
+	decoded, _, err := decodeOCRImage(imageBytes, config)
 	if err != nil {
 		return nil, fmt.Errorf("fingerprint: decode image: %w", err)
+	}
+	decoded = applyEXIFOrientation(imageBytes, decoded)
+	if config.GuideCrop != nil {
+		decoded, err = cropNormalized(decoded, *config.GuideCrop)
+		if err != nil {
+			return nil, fmt.Errorf("fingerprint: crop card region: %w", err)
+		}
 	}
 	hash, err := p.Fingerprint.CalculateHash(decoded)
 	if err != nil {
@@ -440,10 +448,8 @@ func addFingerprintCandidates(candidateMap map[string]*CardMatch, result *MatchR
 	if result == nil {
 		return
 	}
-	highThreshold := DefaultPhashThresholdHighConf
 	potentialThreshold := DefaultPhashThresholdPotential
 	if fingerprint != nil {
-		highThreshold = fingerprint.PhashHighConf
 		potentialThreshold = fingerprint.PhashPotential
 	}
 	if result.HighConfidence != nil {
@@ -453,7 +459,7 @@ func addFingerprintCandidates(candidateMap map[string]*CardMatch, result *MatchR
 			return
 		}
 		match.FingerprintScore = &ConfidenceScore{
-			Method: "fingerprint", Score: fingerprintScoreFromDistance(result.BestDistance, highThreshold),
+			Method: "fingerprint", Score: fingerprintScoreFromDistance(result.BestDistance, potentialThreshold),
 			CardName: card.Name, CardID: card.ID, Distance: result.BestDistance,
 		}
 	}
@@ -473,28 +479,37 @@ func addFingerprintCandidates(candidateMap map[string]*CardMatch, result *MatchR
 }
 
 func resolveOCRCandidates(detected, ocrText string, cards []models.Card) []candidateEvidence {
-	detectedNormalized := normalizeMatchText(detected)
-	if detectedNormalized != "" && detectedNormalized != normalizeMatchText("Unknown Card") {
-		for index := range cards {
-			if cards[index].ID == detected {
-				evidence := scoreCandidate(normalizeMatchText(ocrText), compactMatchText(ocrText), strings.Fields(normalizeMatchText(ocrText)), cards[index])
-				evidence.Score = max(evidence.Score, 1000)
-				evidence.Reasons = append(evidence.Reasons, "ocr_card_id")
-				return []candidateEvidence{evidence}
+	// The OCR runner's ID is a suggested candidate, often chosen from a name
+	// tie. Score the actual text across the catalog instead of treating that
+	// suggestion as an identifier visibly printed on the card.
+	ranked := rankCandidates(ocrText, cards, min(10, len(cards)))
+	// A fuzzy OCR name can still be useful when the full-text ranker has no
+	// exact name token. Carry its entire printing family at review confidence.
+	name := normalizeMatchText(detected)
+	if suggested := cardByID(cards, detected); suggested != nil {
+		name = normalizeMatchText(suggested.Name)
+	}
+	if name != "" && name != "unknown card" {
+		for _, card := range cards {
+			if normalizeMatchText(card.Name) != name && !localizedNameMatches(card, name) {
+				continue
+			}
+			if !fuzzySubstringMatch(normalizeMatchText(ocrText), name) {
+				continue
+			}
+			index := slices.IndexFunc(ranked, func(candidate candidateEvidence) bool { return candidate.Card.ID == card.ID })
+			if index < 0 {
+				ranked = append(ranked, candidateEvidence{Card: card, Score: defaultLLMMinEvidence, Reasons: []string{"fuzzy_name_hint"}})
+			} else if ranked[index].Score < defaultLLMMinEvidence {
+				ranked[index].Score = defaultLLMMinEvidence
+				ranked[index].Reasons = append(ranked[index].Reasons, "fuzzy_name_hint")
 			}
 		}
-		nameMatches := make([]models.Card, 0, 1)
-		for index := range cards {
-			if normalizeMatchText(cards[index].Name) == detectedNormalized || localizedNameMatches(cards[index], detectedNormalized) {
-				nameMatches = append(nameMatches, cards[index])
-			}
-		}
-		if len(nameMatches) > 0 {
-			return rankCandidates(ocrText, nameMatches, min(10, len(nameMatches)))
+		sort.Slice(ranked, func(i, j int) bool { return betterCandidateEvidence(ranked[i], ranked[j]) })
+		if len(ranked) > 10 {
+			ranked = ranked[:10]
 		}
 	}
-
-	ranked := rankCandidates(ocrText, cards, min(10, len(cards)))
 	matched := ranked[:0]
 	for _, candidate := range ranked {
 		if candidate.Score >= defaultLLMMinEvidence {
@@ -502,6 +517,73 @@ func resolveOCRCandidates(detected, ocrText string, cards []models.Card) []candi
 		}
 	}
 	return matched
+}
+
+func uniqueOCRPrintingID(candidates []candidateEvidence) string {
+	id := ""
+	for _, candidate := range candidates {
+		if !slices.Contains(candidate.Reasons, "card_id") && !slices.Contains(candidate.Reasons, "set_and_collector") {
+			continue
+		}
+		if id != "" && id != candidate.Card.ID {
+			return ""
+		}
+		id = candidate.Card.ID
+	}
+	return id
+}
+
+func textSelectionPreservesIdentity(selected *models.Card, candidates []candidateEvidence) bool {
+	hasIdentity := false
+	for _, candidate := range candidates {
+		printedID := hasCandidateReason(candidate, "card_id", "set_and_collector")
+		strong := printedID
+		if !strong && hasCandidateReason(candidate, "collector_fraction") {
+			for _, reason := range candidate.Reasons {
+				strong = strong || strings.HasSuffix(reason, "_name")
+			}
+		}
+		if !strong {
+			continue
+		}
+		hasIdentity = true
+		if candidate.Card.ID == selected.ID || (!printedID && normalizeMatchText(candidate.Card.Name) == normalizeMatchText(selected.Name) && collectorNumberKey(candidate.Card.CollectorNumber) != "" && collectorNumberKey(candidate.Card.CollectorNumber) == collectorNumberKey(selected.CollectorNumber)) {
+			return true
+		}
+	}
+	return !hasIdentity
+}
+
+func ambiguousPrintingNames(cards []models.Card) map[string]bool {
+	firstID := make(map[string]string, len(cards))
+	ambiguous := make(map[string]bool)
+	for _, card := range cards {
+		names := append([]string{card.Name}, card.LocalizedNames...)
+		for _, value := range names {
+			name := normalizeMatchText(value)
+			if name == "" {
+				continue
+			}
+			if id, exists := firstID[name]; exists && id != card.ID {
+				ambiguous[name] = true
+			} else {
+				firstID[name] = card.ID
+			}
+		}
+	}
+	return ambiguous
+}
+
+func conflictingFingerprint(match *CardMatch, candidates map[string]*CardMatch) bool {
+	for _, other := range candidates {
+		if other.Card.ID == match.Card.ID || other.FingerprintScore == nil {
+			continue
+		}
+		if match.FingerprintScore == nil || other.FingerprintScore.Distance+2 < match.FingerprintScore.Distance {
+			return true
+		}
+	}
+	return false
 }
 
 func localizedNameMatches(card models.Card, normalized string) bool {
@@ -531,6 +613,25 @@ func hasHighConfidenceCandidate(candidates map[string]*CardMatch, threshold floa
 	return false
 }
 
+// Vision can help rank nearby printings even when name OCR and similar artwork
+// jointly produce a high score. A unique printed identifier remains authoritative.
+func hasAmbiguousVisionCandidates(candidates map[string]*CardMatch) bool {
+	ranked := sortedTopMatches(candidates, 2)
+	if len(ranked) < 2 || ranked[0].printingEvidence {
+		return false
+	}
+	name := normalizeMatchText(ranked[0].Card.Name)
+	for _, candidate := range candidates {
+		if candidate == nil || candidate.Card == nil {
+			continue
+		}
+		if candidate.Card.ID != ranked[0].Card.ID && normalizeMatchText(candidate.Card.Name) == name && candidate.Confidence >= ranked[0].Confidence-10 {
+			return true
+		}
+	}
+	return false
+}
+
 func candidateCards(candidates map[string]*CardMatch) []models.Card {
 	ids := make([]string, 0, len(candidates))
 	for id, candidate := range candidates {
@@ -554,12 +655,25 @@ func sortedTopMatches(candidates map[string]*CardMatch, limit int) []CardMatch {
 		}
 	}
 	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].printingEvidence != matches[j].printingEvidence {
+			return matches[i].printingEvidence
+		}
+		leftVision := matches[i].visionSelection && matches[i].NeedsReview
+		rightVision := matches[j].visionSelection && matches[j].NeedsReview
+		if leftVision != rightVision {
+			return leftVision
+		}
+		leftText := matches[i].textSelection && matches[i].NeedsReview
+		rightText := matches[j].textSelection && matches[j].NeedsReview
+		if leftText != rightText {
+			return leftText
+		}
 		if matches[i].Confidence != matches[j].Confidence {
 			return matches[i].Confidence > matches[j].Confidence
 		}
 		return matches[i].Card.ID < matches[j].Card.ID
 	})
-	if len(matches) > 1 && matches[0].Confidence-matches[1].Confidence <= 5 {
+	if len(matches) > 1 && !matches[0].printingEvidence && matches[0].Confidence-matches[1].Confidence <= 5 {
 		matches[0].NeedsReview = true
 		matches[1].NeedsReview = true
 	}

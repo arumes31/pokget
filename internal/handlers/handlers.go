@@ -47,6 +47,7 @@ import (
 
 	"github.com/gorilla/csrf"
 	"github.com/gorilla/mux"
+	"github.com/shopspring/decimal"
 )
 
 type Binder struct {
@@ -162,9 +163,6 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// BUG-M02 FIX: Query the user's actual portfolio instead of using MockCards.
-	// Previously, the index page displayed mock/seed cards instead of the
-	// authenticated user's real portfolio data.
 	var currency sql.NullString
 	if err := h.DB.QueryRowContext(r.Context(), "SELECT currency FROM users WHERE id = $1", userID).Scan(&currency); err != nil {
 		slog.Error("Failed to load currency for index", "user_id", userID, "error", err)
@@ -176,37 +174,6 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		userCurrency = "EUR"
 	}
 
-	rows, err := h.DB.QueryContext(r.Context(), `
-		SELECT p.id, p.condition, p.custom_price, COALESCE(p.notes, ''), COALESCE(p.grade, ''), p.is_public,
-		       COALESCE(p.binder_id::text, ''),
-		       c.id, c.name, c.set_name, COALESCE(c.image_url, ''), COALESCE(c.price_usd, 0),
-		       COALESCE(c.price_eur, 0), COALESCE(c.game, '')
-		FROM portfolio p
-		JOIN cards c ON p.card_id = c.id
-		WHERE p.user_id = $1`, userID)
-	if err != nil {
-		slog.Error("Failed to query portfolio for index", "user_id", userID, "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	portfolio := make([]models.PortfolioItem, 0, 64)
-	for rows.Next() {
-		var p models.PortfolioItem
-		if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Notes, &p.Grade, &p.IsPublic, &p.BinderID,
-			&p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
-			slog.Error("Failed to scan portfolio row for index", "user_id", userID, "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		portfolio = append(portfolio, p)
-	}
-	if err := rows.Err(); err != nil {
-		slog.Error("Failed while reading portfolio for index", "user_id", userID, "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
 	initialView := r.URL.Query().Get("view")
 	viewPaths := map[string]string{
 		"home": "/dashboard", "wantlist": "/wantlist", "binders": "/binders",
@@ -224,30 +191,13 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	binders := make([]Binder, 0, 8)
-	binderRows, err := h.DB.QueryContext(
-		r.Context(),
-		"SELECT id, name FROM binders WHERE user_id = $1 ORDER BY is_default DESC, created_at DESC",
-		userID,
-	)
-	if err == nil {
-		defer binderRows.Close()
-		for binderRows.Next() {
-			var binder Binder
-			if err := binderRows.Scan(&binder.ID, &binder.Name); err != nil {
-				slog.Warn("Failed to scan binder for portfolio editor", "error", err)
-				continue
-			}
-			binders = append(binders, binder)
-		}
-		if err := binderRows.Err(); err != nil {
-			slog.Warn("Failed while reading binders for portfolio editor", "error", err)
+	if initialView == "home" || strings.HasPrefix(initialPath, "/binders/") {
+		if page := requestedCollectionPage(r); page > 1 {
+			initialPath += fmt.Sprintf("?page=%d", page)
 		}
 	}
 
 	h.render(w, r, "index.html", map[string]interface{}{
-		"Portfolio":   portfolio,
-		"Binders":     binders,
 		"Currency":    userCurrency,
 		"InitialView": initialView,
 		"InitialPath": initialPath,
@@ -319,15 +269,56 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fetch Portfolio with multipliers
+	// Aggregate the whole collection without materializing every card row.
+	var multipliers map[string]float64
+	var multStr, userCurrency string
+	_ = h.DB.QueryRowContext(r.Context(), "SELECT condition_multipliers, currency FROM users WHERE id = $1", userID).Scan(&multStr, &userCurrency)
+	if err := json.Unmarshal([]byte(multStr), &multipliers); err != nil {
+		slog.Warn("Failed to parse condition multipliers, using defaults", "error", err)
+		multipliers = nil
+	}
+	if multipliers == nil {
+		multipliers = make(map[string]float64, 5)
+		for _, condition := range []string{"NM", "LP", "MP", "HP", "DMG"} {
+			multipliers[condition] = h.PriceClient.ApplyMultiplier(1, condition, nil)
+		}
+	}
+	multiplierJSON, err := json.Marshal(multipliers)
+	if err != nil {
+		slog.Error("Failed to encode condition multipliers", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if userCurrency == "" {
+		userCurrency = currency
+	}
+	var totalCards, pricedCardCount int
+	var totalValuation float64
+	err = h.DB.QueryRowContext(r.Context(), `
+		SELECT COUNT(*),
+		       COUNT(COALESCE(p.custom_price, CASE WHEN $3 = 'EUR' THEN c.price_eur ELSE c.price_usd END)),
+		       COALESCE(SUM(CASE WHEN p.custom_price IS NOT NULL THEN p.custom_price
+		         ELSE (CASE WHEN $3 = 'EUR' THEN c.price_eur ELSE c.price_usd END)
+		              * COALESCE(($2::jsonb ->> p.condition)::numeric, 1) END), 0)
+		FROM portfolio p JOIN cards c ON p.card_id = c.id
+		WHERE p.user_id = $1`, userID, string(multiplierJSON), userCurrency).Scan(&totalCards, &pricedCardCount, &totalValuation)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		slog.Error("Failed to load collection summary", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	page := boundedCollectionPage(r, totalCards)
 	rowsPortfolio, err := h.DB.QueryContext(r.Context(), `
 		SELECT p.id, p.condition, p.custom_price, COALESCE(p.notes, ''), COALESCE(p.grade, ''), p.is_public,
 		       COALESCE(p.binder_id::text, ''),
-		       c.id, c.name, c.set_name, COALESCE(c.image_url, ''), COALESCE(c.price_usd, 0),
-		       COALESCE(c.price_eur, 0), COALESCE(c.game, '')
+		       c.id, c.name, c.set_name, COALESCE(c.image_url, ''), c.price_usd, c.price_eur, COALESCE(c.game, '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
-		WHERE p.user_id = $1`, userID)
+		WHERE p.user_id = $1
+		ORDER BY p.added_at DESC, p.id DESC LIMIT $2 OFFSET $3`, userID, collectionPageSize+1, (page-1)*collectionPageSize)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
@@ -336,47 +327,30 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	portfolio := make([]models.PortfolioItem, 0, 64) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
 	defer rowsPortfolio.Close()
+	portfolio := make([]models.PortfolioItem, 0, collectionPageSize+1)
 	for rowsPortfolio.Next() {
 		var p models.PortfolioItem
+		var usd, eur decimal.NullDecimal
 		if err := rowsPortfolio.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Notes, &p.Grade, &p.IsPublic, &p.BinderID,
-			&p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
-			slog.Warn("Failed to scan row in dashboard query", "error", err)
-		} else {
-			portfolio = append(portfolio, p)
+			&p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &usd, &eur, &p.Card.Game); err != nil {
+			slog.Error("Failed to scan dashboard card", "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
 		}
+		setCardMarketPrices(&p.Card, usd, eur)
+		portfolio = append(portfolio, p)
 	}
-
-	// Calculate Total Valuation with multipliers
-	var totalValuation float64
-	var multipliers map[string]float64
-	var multStr string
-	var userCurrency string
-	_ = h.DB.QueryRowContext(r.Context(), "SELECT condition_multipliers, currency FROM users WHERE id = $1", userID).Scan(&multStr, &userCurrency)
-	if err := json.Unmarshal([]byte(multStr), &multipliers); err != nil {
-		slog.Warn("Failed to parse condition multipliers, using defaults", "error", err)
+	if err := rowsPortfolio.Err(); err != nil {
+		slog.Error("Failed while reading dashboard cards", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
-
-	if userCurrency == "" {
-		userCurrency = "EUR"
+	hasNext := len(portfolio) > collectionPageSize
+	if hasNext {
+		portfolio = portfolio[:collectionPageSize]
 	}
-
-	priceService := h.PriceClient
-	for _, item := range portfolio {
-		if item.CustomPrice != nil {
-			totalValuation += *item.CustomPrice
-		} else {
-			var price float64
-			if userCurrency == "EUR" {
-				price, _ = item.Card.PriceEUR.Float64()
-			} else {
-				price, _ = item.Card.PriceUSD.Float64()
-			}
-			totalValuation += priceService.ApplyMultiplier(price, item.Condition, multipliers)
-		}
-	}
+	pagination := collectionPageLinks(page, hasNext, "/", "/dashboard", url.Values{"view": {"home"}})
 
 	// Fetch User XP and Rank
 	var xp int
@@ -403,16 +377,19 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.render(w, r, "dashboard.html", map[string]interface{}{
-		"Currency":       currency,
-		"TotalValuation": totalValuation,
-		"Change24h":      change24h,
-		"BinderCount":    binderCount,
-		"SetCompletion":  setCompletion,
-		"Portfolio":      portfolio,
-		"XP":             xp,
-		"Rank":           rankTitle,
-		"RankIcon":       rank.IconURL,
-		"XPPercent":      xpPercent,
+		"Currency":        currency,
+		"TotalValuation":  totalValuation,
+		"TotalCards":      totalCards,
+		"PricedCardCount": pricedCardCount,
+		"Pagination":      pagination,
+		"Change24h":       change24h,
+		"BinderCount":     binderCount,
+		"SetCompletion":   setCompletion,
+		"Portfolio":       portfolio,
+		"XP":              xp,
+		"Rank":            rankTitle,
+		"RankIcon":        rank.IconURL,
+		"XPPercent":       xpPercent,
 	})
 }
 
@@ -781,7 +758,7 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "AI naming is unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	newName, err := llm.GenerateBinderName(cards)
+	newName, err := llm.GenerateBinderNameContext(r.Context(), cards)
 	if err != nil {
 		slog.Error("LLM: Failed to generate binder name", "error", err)
 		http.Error(w, "AI generation failed", http.StatusInternalServerError)
@@ -923,13 +900,23 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var totalCards int
+	if err := h.DB.QueryRowContext(r.Context(), `
+		SELECT COUNT(*) FROM portfolio p JOIN cards c ON p.card_id = c.id
+		WHERE p.binder_id = $1 AND p.user_id = $2`, binderID, userID).Scan(&totalCards); err != nil {
+		slog.Error("Failed to count binder cards", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	page := boundedCollectionPage(r, totalCards)
 	// Fetch cards in binder
 	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name,
-		       COALESCE(c.image_url, ''), COALESCE(c.price_usd, 0), COALESCE(c.price_eur, 0), COALESCE(c.game, '')
+		       COALESCE(c.image_url, ''), c.price_usd, c.price_eur, COALESCE(c.game, '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
-		WHERE p.binder_id = $1 AND p.user_id = $2`, binderID, userID)
+		WHERE p.binder_id = $1 AND p.user_id = $2
+		ORDER BY p.added_at DESC, p.id DESC LIMIT $3 OFFSET $4`, binderID, userID, collectionPageSize+1, (page-1)*collectionPageSize)
 
 	if err != nil {
 		slog.Error("Failed to load binder cards", "error", err)
@@ -938,14 +925,16 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	cards := make([]models.PortfolioItem, 0, 64) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
+	cards := make([]models.PortfolioItem, 0, collectionPageSize+1)
 	for rows.Next() {
 		var p models.PortfolioItem
-		if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &p.Card.PriceUSD, &p.Card.PriceEUR, &p.Card.Game); err != nil {
+		var usd, eur decimal.NullDecimal
+		if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &usd, &eur, &p.Card.Game); err != nil {
 			slog.Error("Failed to scan binder card", "error", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
+		setCardMarketPrices(&p.Card, usd, eur)
 		cards = append(cards, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -954,9 +943,17 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	hasNext := len(cards) > collectionPageSize
+	if hasNext {
+		cards = cards[:collectionPageSize]
+	}
+	pagination := collectionPageLinks(page, hasNext, "/", "/binders/"+url.PathEscape(binderID), url.Values{"view": {"binders"}, "binder": {binderID}})
+
 	h.render(w, r, "binder_detail.html", map[string]interface{}{
-		"Binder": binder,
-		"Cards":  cards,
+		"Binder":     binder,
+		"Cards":      cards,
+		"TotalCards": totalCards,
+		"Pagination": pagination,
 	})
 }
 
@@ -969,7 +966,7 @@ func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := h.DB.QueryContext(r.Context(), `
 		SELECT p.id, p.condition, c.id, c.name, c.set_name,
-		       COALESCE(c.price_usd, 0), COALESCE(c.price_eur, 0)
+		       COALESCE(c.price_usd, 0), COALESCE(c.price_eur, 0), COALESCE(c.image_url, '')
 		FROM portfolio p JOIN cards c ON c.id = p.card_id
 		WHERE p.user_id = $1 ORDER BY c.name`, userID)
 	if err != nil {
@@ -981,7 +978,10 @@ func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
 	items := make([]models.PortfolioItem, 0, 64)
 	for rows.Next() {
 		var item models.PortfolioItem
-		if err := rows.Scan(&item.ID, &item.Condition, &item.Card.ID, &item.Card.Name, &item.Card.Set, &item.Card.PriceUSD, &item.Card.PriceEUR); err != nil {
+		if err := rows.Scan(
+			&item.ID, &item.Condition, &item.Card.ID, &item.Card.Name, &item.Card.Set,
+			&item.Card.PriceUSD, &item.Card.PriceEUR, &item.Card.ImageURL,
+		); err != nil {
 			slog.Error("Failed to scan trade portfolio", "error", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
@@ -1132,12 +1132,23 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		userCurrency = "EUR"
 	}
 
-	// Create a context with timeout for OCR
+	// Bound local analysis separately so a configured primary request can finish
+	// while the caller remains connected.
 	scanTimeout := h.ScanTimeout
 	if scanTimeout <= 0 {
 		scanTimeout = 75 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), scanTimeout)
+	ctx := service.WithDetectionStageTimeout(r.Context(), scanTimeout)
+	var cancel context.CancelFunc
+	primaryConfigured := h.LLM != nil && h.LLM.PrimaryBaseURL != ""
+	if h.Detection != nil {
+		primaryConfigured = h.Detection.LLM != nil && h.Detection.LLM.PrimaryBaseURL != ""
+	}
+	if primaryConfigured {
+		ctx, cancel = context.WithCancel(ctx)
+	} else {
+		ctx, cancel = context.WithTimeout(ctx, scanTimeout)
+	}
 	defer cancel()
 	if game != "" {
 		ctx = service.WithOCRScanConfig(ctx, service.OCRScanConfig{
@@ -1162,9 +1173,12 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 
 	// SCAN-07, SCAN-09, SCAN-16: Use detection pipeline if available
 	if h.Detection != nil {
+		capacityCtx, capacityCancel := context.WithTimeout(ctx, scanTimeout)
 		select {
 		case scanDetectionSlots <- struct{}{}:
-		case <-ctx.Done():
+			capacityCancel()
+		case <-capacityCtx.Done():
+			capacityCancel()
 			http.Error(w, "Scan timed out while waiting for detector capacity", http.StatusRequestTimeout)
 			return
 		}
@@ -1221,10 +1235,13 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		topMatches := make([]map[string]interface{}, 0, len(result.TopMatches))
 		for _, m := range result.TopMatches {
 			matchEntry := map[string]interface{}{
-				"name":         m.Card.Name,
-				"id":           m.Card.ID,
-				"confidence":   m.Confidence,
-				"needs_review": m.NeedsReview,
+				"name":             m.Card.Name,
+				"id":               m.Card.ID,
+				"set":              m.Card.Set,
+				"collector_number": m.Card.CollectorNumber,
+				"language":         m.Card.Language,
+				"confidence":       m.Confidence,
+				"needs_review":     m.NeedsReview,
 			}
 			if userCurrency == "EUR" {
 				matchEntry["price"], _ = m.Card.PriceEUR.Float64()
@@ -1245,6 +1262,11 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 			"confidence":   result.BestMatchConfidence(),
 			"needs_review": result.BestMatchNeedsReview(),
 			"top_matches":  topMatches,
+		}
+		if best := result.BestMatchCard(); best != nil {
+			resp["set"] = best.Set
+			resp["collector_number"] = best.CollectorNumber
+			resp["language"] = best.Language
 		}
 		if diagnostics {
 			resp["pipeline_metrics"] = result.Metrics.Format()

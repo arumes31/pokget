@@ -3,6 +3,11 @@
 /.claudeignore
 /.kimi-code/
 /.jules/
+/.impeccable/
+/design.md
+/product.md
+/DESIGN.md
+/PRODUCT.md
 
 # Local executables and Go build output
 /main

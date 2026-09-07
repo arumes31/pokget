@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/PuerkitoBio/goquery"
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -100,6 +101,52 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 	}
 }
 
+func TestTradeRendersPortfolioImages(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+	h.Templates = parseApplicationTemplates(t)
+
+	const imageURL = "https://images.pokemontcg.io/sv3pt5/151_hires.png?width=240&format=webp"
+	mock.ExpectQuery(`SELECT p.id, p.condition.*COALESCE\(c.image_url, ''\)`).
+		WithArgs("test-user").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "condition", "card_id", "name", "set", "price_usd", "price_eur", "image_url",
+		}).
+			AddRow("portfolio-mew", "NM", "sv3pt5-151", "Mew ex", "151", 10.0, 9.0, imageURL).
+			AddRow("portfolio-missing-image", "LP", "card-no-image", "No artwork", "Base", 2.0, 1.0, ""))
+	renderUserDataExpectation(mock, "test-user")
+
+	rr := httptest.NewRecorder()
+	h.Trade(rr, authedRequest(t, http.MethodGet, "/trade", ""))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Trade status = %d, want 200: %s", rr.Code, rr.Body.String())
+	}
+	doc, err := goquery.NewDocumentFromReader(rr.Body)
+	if err != nil {
+		t.Fatalf("parse Trade response: %v", err)
+	}
+	for _, tc := range []struct {
+		portfolioID string
+		imageURL    string
+	}{
+		{portfolioID: "portfolio-mew", imageURL: imageURL},
+		{portfolioID: "portfolio-missing-image", imageURL: ""},
+	} {
+		t.Run(tc.portfolioID, func(t *testing.T) {
+			option := doc.Find(`#my-trade-card option[value="` + tc.portfolioID + `"]`)
+			if option.Length() != 1 {
+				t.Fatalf("portfolio option count = %d, want 1", option.Length())
+			}
+			if got, ok := option.Attr("data-image"); !ok || got != tc.imageURL {
+				t.Errorf("portfolio image = %q (present %t), want %q", got, ok, tc.imageURL)
+			}
+		})
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet database expectations: %v", err)
+	}
+}
+
 func TestHandlers(t *testing.T) {
 	t.Run("Index_Unauthenticated", func(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
@@ -131,12 +178,6 @@ func TestHandlers(t *testing.T) {
 		mock.ExpectQuery("SELECT currency").
 			WithArgs("test-user").
 			WillReturnRows(sqlmock.NewRows([]string{"currency"}).AddRow("EUR"))
-		mock.ExpectQuery("SELECT p.id").
-			WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{
-				"id", "condition", "custom_price", "notes", "grade", "is_public", "binder_id",
-				"card_id", "name", "set_name", "image_url", "price_usd", "price_eur", "game",
-			}))
 
 		h.Index(rr, req)
 
@@ -177,7 +218,14 @@ func TestHandlers(t *testing.T) {
 			AddRow("151", 10, 165)
 		mock.ExpectQuery("SELECT").WithArgs("test-user").WillReturnRows(rowsSet)
 
-		// 2. Fetch Portfolio
+		// 2. Fetch multipliers and currency
+		mock.ExpectQuery("SELECT condition_multipliers").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"mult", "curr"}).AddRow(`{"NM": 1.0}`, "EUR"))
+
+		mock.ExpectQuery("SELECT COUNT").WithArgs("test-user", `{"NM":1}`, "EUR").
+			WillReturnRows(sqlmock.NewRows([]string{"total", "priced", "value"}).AddRow(1, 1, 0.0))
+
+		// 4. Fetch the current portfolio page
 		rowsPortfolio := sqlmock.NewRows([]string{
 			"id", "condition", "custom_price", "notes", "grade", "is_public", "binder_id",
 			"card_id", "name", "set", "url", "price_usd", "price_eur", "game",
@@ -185,11 +233,7 @@ func TestHandlers(t *testing.T) {
 			"p1", "NM", 0.0, "", "", false, "binder-1",
 			"c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon",
 		)
-		mock.ExpectQuery("SELECT").WithArgs("test-user").WillReturnRows(rowsPortfolio)
-
-		// 3. Fetch multipliers and currency
-		mock.ExpectQuery("SELECT condition_multipliers").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"mult", "curr"}).AddRow(`{"NM": 1.0}`, "EUR"))
+		mock.ExpectQuery("SELECT").WithArgs("test-user", 25, 0).WillReturnRows(rowsPortfolio)
 
 		// 4. Fetch User XP and Rank
 		mock.ExpectQuery("SELECT xp, rank_title").WithArgs("test-user").
@@ -788,8 +832,11 @@ func TestHandlers(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id", "email", "rank_title", "xp", "currency"}).
 				AddRow("test-user-id", "test@example.com", "Hobbyist", 1600, "EUR"))
 
+		mock.ExpectQuery("SELECT COUNT").WithArgs("test-user-id").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
 		// 2. Fetch public portfolio items
-		mock.ExpectQuery("SELECT p.id").WithArgs("test-user-id").
+		mock.ExpectQuery("SELECT p.id").WithArgs("test-user-id", 25, 0).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "fmt", "gr", "comp", "notes", "name", "set", "price_usd", "price_eur", "url", "game"}).
 				AddRow("1", "NM", "Raw", "", "", "note", "Charizard", "Base", 100.0, 90.0, "url", "Pokemon"))
 
@@ -991,7 +1038,7 @@ func TestHandlers(t *testing.T) {
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"id", "condition", "card_id", "name", "set", "price_usd", "price_eur"}))
+			WillReturnRows(sqlmock.NewRows([]string{"id", "condition", "card_id", "name", "set", "price_usd", "price_eur", "image_url"}))
 
 		h.Trade(rr, req)
 
@@ -1110,8 +1157,8 @@ func TestHandlers(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", rr.Code)
 		}
-		if !strings.Contains(rr.Header().Get("HX-Trigger"), "Misprint submitted") {
-			t.Errorf("Expected submission notification trigger, got %q", rr.Header().Get("HX-Trigger"))
+		if got := rr.Header().Get("HX-Trigger"); got != `{"notify":{"msg":"Misprint published","type":"success"}}` {
+			t.Errorf("Expected publication success notification trigger, got %q", got)
 		}
 	})
 

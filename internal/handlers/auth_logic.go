@@ -24,6 +24,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -33,6 +34,7 @@ import (
 	"time"
 
 	"github.com/gorilla/csrf"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +66,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	// Performance: Only hash password if registration can proceed
 	hash, errHash := h.hashPassword(password)
 	if errHash != nil {
+		if errors.Is(errHash, bcrypt.ErrPasswordTooLong) {
+			http.Error(w, "Password must be at most 72 bytes; non-ASCII characters may use multiple bytes", http.StatusBadRequest)
+			return
+		}
 		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 		return
 	}

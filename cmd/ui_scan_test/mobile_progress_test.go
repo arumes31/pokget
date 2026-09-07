@@ -120,6 +120,57 @@ func TestMobileScannerSeparatesCameraAndControls(t *testing.T) {
 	}
 }
 
+func TestScannerResponsiveWorkspace(t *testing.T) {
+	chromePath := mobileTestChromePath()
+	if chromePath == "" {
+		t.Skip("Chrome or Edge is not installed")
+	}
+	server := newScannerProgressServer(t)
+	defer server.Close()
+	browser := newHeadlessBrowserContext(t, chromePath)
+	for _, viewport := range []struct {
+		name          string
+		width, height int64
+	}{{"small-phone", 320, 568}, {"desktop", 1440, 1000}} {
+		t.Run(viewport.name, func(t *testing.T) {
+			ctx, cancel := chromedp.NewContext(browser)
+			defer cancel()
+			ctx, timeout := context.WithTimeout(ctx, 30*time.Second)
+			defer timeout()
+			var issues []string
+			if err := chromedp.Run(ctx, chromedp.EmulateViewport(viewport.width, viewport.height), chromedp.Navigate(server.URL), chromedp.WaitVisible(`[data-testid="scanner-controls"]`), chromedp.Evaluate(`(() => {
+				const issues = [];
+				const frame = document.querySelector('[data-testid="scanner-frame"]').getBoundingClientRect();
+				const controls = document.querySelector('[data-testid="scanner-controls"]').getBoundingClientRect();
+				if (document.documentElement.scrollWidth > innerWidth + 1) issues.push('horizontal overflow');
+				for (const [name, box] of [['camera', frame], ['controls', controls]]) {
+					if (box.left < -1 || box.right > innerWidth + 1 || box.top < -1 || box.bottom > innerHeight + 1) issues.push(name + ' outside viewport');
+					if (box.height < 150) issues.push(name + ' has insufficient usable height');
+				}
+				if (innerWidth >= 768 ? frame.right > controls.left + 1 : frame.bottom > controls.top + 1) issues.push('camera and controls overlap');
+				return issues;
+			})()`, &issues)); err != nil {
+				t.Fatal(err)
+			}
+			if len(issues) != 0 {
+				t.Errorf("scanner layout: %v", issues)
+			}
+			if dir := os.Getenv("POKGET_UI_SCREENSHOT_DIR"); dir != "" {
+				var shot []byte
+				if err := chromedp.Run(ctx, chromedp.CaptureScreenshot(&shot)); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.MkdirAll(dir, 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "scanner-"+viewport.name+".png"), shot, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func TestMobileScanProgressOccupiesViewportAndCancels(t *testing.T) {
 	chromePath := mobileTestChromePath()
 	if chromePath == "" {
@@ -196,12 +247,15 @@ func inspectProgressAtViewport(
 	actions := []chromedp.Action{
 		chromedp.EmulateViewport(width, height),
 		chromedp.Navigate(pageURL),
-		chromedp.Poll(`document.querySelector('#scanner-root > [x-data]') && window.Alpine && Alpine.$data(document.querySelector('#scanner-root > [x-data]')).setScanning`, nil,
+		chromedp.Poll(`document.querySelector('#scanner-root .scanner-shell') && window.Alpine && Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).setScanning`, nil,
 			chromedp.WithPollingTimeout(10*time.Second)),
 		chromedp.Evaluate(`(() => {
-			const state = Alpine.$data(document.querySelector('#scanner-root > [x-data]'));
+			const state = Alpine.$data(document.querySelector('#scanner-root .scanner-shell'));
 			state.setStatus('Uploading the crop and running detection…', 2);
 			state.setScanning(true);
+			// This fixture owns elapsed time; freeze the real interval before assigning it.
+			clearInterval(state.scanTimer);
+			state.scanTimer = null;
 			state.scanElapsedSeconds = 16;
 		})()`, nil),
 		chromedp.WaitVisible(`[data-testid="scan-progress-overlay"]`, chromedp.ByQuery),
@@ -244,7 +298,7 @@ func inspectProgressAtViewport(
 	actions = append(actions,
 		chromedp.Click(`[data-testid="scan-progress-cancel"]`, chromedp.ByQuery),
 		chromedp.Poll(`(() => {
-			const root = document.querySelector('#scanner-root > [x-data]');
+			const root = document.querySelector('#scanner-root .scanner-shell');
 			return !Alpine.$data(root).scanning && !document.documentElement.classList.contains('scan-progress-open');
 		})()`, nil, chromedp.WithPollingTimeout(5*time.Second)),
 	)
@@ -267,7 +321,10 @@ func newScannerProgressServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatalf("resolve repository root: %v", err)
 	}
-	templates, err := template.ParseFiles(filepath.Join(root, "templates", "centering_tool.html"))
+	templates, err := template.ParseFiles(
+		filepath.Join(root, "templates", "centering_tool.html"),
+		filepath.Join(root, "templates", "card_measure.html"),
+	)
 	if err != nil {
 		t.Fatalf("parse scanner template: %v", err)
 	}
@@ -281,7 +338,8 @@ func newScannerProgressServer(t *testing.T) *httptest.Server {
 	page := fmt.Sprintf(`<!doctype html><html class="dark" lang="en"><head>
 		<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 		<link rel="stylesheet" href="/static/css/tailwind.css"><link rel="stylesheet" href="/static/css/styles.css">
-		<script src="/static/js/scanner.js" defer></script><script src="/static/js/alpine.min.js" defer></script>
+		<link rel="stylesheet" href="/static/css/measure.css">
+		<script src="/static/js/scanner.js" defer></script><script src="/static/js/measure.js" defer></script><script src="/static/js/alpine.min.js" defer></script>
 		</head><body><main id="scanner-root">%s</main></body></html>`, scanner.String())
 	staticFiles := http.StripPrefix("/static/", http.FileServer(http.Dir(filepath.Join(root, "static"))))
 	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

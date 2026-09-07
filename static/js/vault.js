@@ -21,6 +21,7 @@ function initVault() {
 	initPullToRefresh();
 	initSwipeToDelete();
 	syncActiveView();
+	syncScannerState();
 }
 
 // Use HTMX's afterSettle event when available, fallback to DOMContentLoaded
@@ -33,8 +34,15 @@ if (typeof htmx !== 'undefined') {
 	document.body.addEventListener('htmx:afterSettle', (event) => {
 		initRollingNumbers();
 		initSwipeToDelete(event.detail.target || document);
+		if (event.detail.target?.id === 'main-content') {
+			syncScannerState();
+			syncActiveView();
+		}
 	});
-	document.body.addEventListener('htmx:historyRestore', syncActiveView);
+	document.body.addEventListener('htmx:historyRestore', () => {
+		syncActiveView();
+		syncScannerState();
+	});
 }
 
 window.addEventListener('popstate', () => requestAnimationFrame(syncActiveView));
@@ -61,13 +69,68 @@ function syncActiveView() {
 	}));
 }
 
+function syncScannerState() {
+	window.dispatchEvent(new CustomEvent('pokget-scanner-state', {
+		detail: { loaded: Boolean(document.querySelector('#main-content .scanner-shell, #main-content .card-tools')) }
+	}));
+}
+
+let activeNavigationRequest = null;
+let failedNavigationRequest = null;
+
+function clearNavigationError() {
+	failedNavigationRequest = null;
+	window.dispatchEvent(new CustomEvent('pokget-navigation-clear'));
+}
+
+document.body.addEventListener('htmx:beforeRequest', (event) => {
+	const detail = event.detail;
+	if (detail.target?.id !== 'main-content' || detail.requestConfig?.verb?.toLowerCase() !== 'get') return;
+	// Misprint query controls already provide their own persistent error/retry state.
+	if (detail.elt?.closest('[data-misprint-query]')) return;
+	clearNavigationError();
+	activeNavigationRequest = {
+		xhr: detail.xhr,
+		path: detail.requestConfig.path,
+		source: detail.elt
+	};
+});
+
+document.body.addEventListener('htmx:afterSwap', (event) => {
+	if (event.detail.target?.id !== 'main-content') return;
+	clearNavigationError();
+	syncScannerState();
+});
+
+function navigationFailed(event) {
+	if (!activeNavigationRequest || activeNavigationRequest.xhr !== event.detail.xhr) return;
+	failedNavigationRequest = activeNavigationRequest;
+	syncActiveView();
+	syncScannerState();
+	window.dispatchEvent(new CustomEvent('pokget-navigation-error', {
+		detail: { message: 'Could not load this page. Check your connection and try again.' }
+	}));
+}
+
+for (const eventName of ['htmx:sendError', 'htmx:responseError', 'htmx:timeout']) {
+	document.body.addEventListener(eventName, navigationFailed);
+}
+
+function retryNavigation() {
+	if (!failedNavigationRequest) return;
+	const request = failedNavigationRequest;
+	const source = request.source?.isConnected ? request.source : document.getElementById('main-content');
+	htmx.ajax('GET', request.path, { target: '#main-content', source }).catch(() => {});
+}
+
 function currentFragmentPath() {
-	if (window.location.pathname !== '/') return window.location.pathname;
+	if (window.location.pathname !== '/') return window.location.pathname + window.location.search;
 
 	const params = new URLSearchParams(window.location.search);
 	const view = params.get('view') || 'home';
+	const pageQuery = params.has('page') ? '?' + new URLSearchParams({ page: params.get('page') }) : '';
 	if (view === 'binders' && params.get('binder')) {
-		return '/binders/' + encodeURIComponent(params.get('binder'));
+		return '/binders/' + encodeURIComponent(params.get('binder')) + pageQuery;
 	}
 
 	const routes = {
@@ -79,7 +142,7 @@ function currentFragmentPath() {
 		trade: '/trade',
 		settings: '/settings'
 	};
-	return routes[view] || routes.home;
+	return (routes[view] || routes.home) + pageQuery;
 }
 
 // Improvement #8: Rolling Number Animation
@@ -182,8 +245,10 @@ function initPullToRefresh() {
 	if (!mainContent) return;
 
 	mainContent.addEventListener('touchstart', (e) => {
-		// Only activate when scrolled to top
-		if (mainContent.scrollTop > 0) return;
+		pulling = false;
+		// Card tools and form controls own their gestures; they must never reload the page.
+		if (mainContent.scrollTop > 0 || e.touches.length !== 1 ||
+			e.target.closest('.card-tools, .scanner-shell, [role="dialog"], [role="slider"], button, a, input, select, textarea, summary')) return;
 		startY = e.touches[0].clientY;
 		pulling = true;
 	}, { passive: true });
@@ -197,7 +262,7 @@ function initPullToRefresh() {
 				const indicator = document.createElement('div');
 				indicator.className = 'ptr-indicator';
 				indicator.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;animation:spin 1s linear infinite">sync</span>';
-				indicator.style.cssText = 'text-align:center;padding:8px;color:#ddb7ff;opacity:0.6;transition:transform 0.2s';
+				indicator.style.cssText = 'text-align:center;padding:8px;color:var(--color-foil);transition:transform 0.2s';
 				mainContent.prepend(indicator);
 			}
 		}
@@ -212,7 +277,7 @@ function initPullToRefresh() {
 		if (progress >= 1) {
 			// Trigger HTMX refresh on the main content
 			if (typeof htmx !== 'undefined') {
-				htmx.ajax('GET', currentFragmentPath(), { target: '#main-content', source: document.body });
+				htmx.ajax('GET', currentFragmentPath(), { target: '#main-content', source: mainContent }).catch(() => {});
 				triggerHaptic([10, 30, 10]);
 			}
 		}
@@ -220,6 +285,11 @@ function initPullToRefresh() {
 		if (indicator) {
 			indicator.remove();
 		}
+		mainContent.style.removeProperty('--ptr-progress');
+	}, { passive: true });
+	mainContent.addEventListener('touchcancel', () => {
+		pulling = false;
+		mainContent.querySelector('.ptr-indicator')?.remove();
 		mainContent.style.removeProperty('--ptr-progress');
 	}, { passive: true });
 }
@@ -298,7 +368,7 @@ function initSwipeToDelete(root = document) {
 							window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Card removed from vault', type: 'success' } }));
 							setTimeout(() => {
 								item.remove();
-								htmx.ajax('GET', '/dashboard', { target: '#main-content', source: document.body });
+								htmx.ajax('GET', currentFragmentPath(), { target: '#main-content', source: document.getElementById('main-content') }).catch(() => {});
 							}, 300);
 						} else {
 							window.dispatchEvent(new CustomEvent('notify', { detail: { msg: 'Swipe delete triggered', type: 'info' } }));

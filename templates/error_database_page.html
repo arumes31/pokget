@@ -2,32 +2,30 @@
 <html lang="en">
 
 <head>
+    <script src="/static/js/i18n.js?v={{ .BuildVersion }}" defer></script>
+    <script src="/static/js/theme.js?v={{ .BuildVersion }}"></script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>Pokget Misprint Encyclopedia</title>
+    <title data-i18n>Pokget Misprint Encyclopedia</title>
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-        rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
-        rel="stylesheet" />
     <script src="/static/js/alpine.min.js?v=3" defer></script>
+    <script src="/static/js/dialogs.js?v={{ .BuildVersion }}" defer></script>
     <script src="/static/js/htmx.min.js?v=3"></script>
-    <link rel="icon" type="image/png" href="/static/img/logo.png?v=3">
+    <link rel="icon" type="image/png" href="/static/img/favicon-32.png">
     <link rel="stylesheet" href="/static/css/styles.css?v=3">
     <meta name="csrf-token" content="{{ .CSRFToken }}">
 </head>
 
-<body class="bg-zinc-100 text-zinc-900 min-h-dvh overflow-x-hidden"
+<body class="bg-zinc-100 dark:bg-stone-100 text-zinc-900 dark:text-zinc-100 min-h-dvh overflow-x-hidden"
     hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'>
-    <header class="bg-white/85 backdrop-blur-xl border-b border-zinc-200"
+    <header class="bg-surface/85 backdrop-blur-xl border-b border-zinc-200 dark:border-stone-200"
         style="padding-top: env(safe-area-inset-top)">
         <div class="flex items-center justify-between px-4 h-16 w-full max-w-6xl mx-auto">
             <a href="/" class="flex items-center gap-2.5 min-h-11">
-                <img src="/static/img/logo.png" alt="" class="w-8 h-8">
-                <span class="text-lg font-extrabold tracking-tight text-zinc-900">Pokget</span>
+                <img src="/static/img/logo-128.webp" alt="" class="w-8 h-8">
+                <span data-i18n class="text-lg font-extrabold tracking-tight text-zinc-900 dark:text-zinc-100">Pokget</span>
             </a>
-            <a href="/auth" class="btn-ghost -mr-2 text-sm">Sign in</a>
+            <a data-i18n href="/auth" class="btn-ghost -mr-2 text-sm">Sign in</a>
         </div>
     </header>
     <main id="main-content" class="px-4 py-8 sm:py-10 w-full max-w-6xl mx-auto">
@@ -37,12 +35,12 @@
         @notify.window="toasts.push({ id: Date.now(), msg: $event.detail.msg, type: $event.detail.type }); setTimeout(() => toasts.shift(), 3000)"
         class="fixed top-4 inset-x-4 z-[100] flex flex-col items-center gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
-            <div x-transition.duration.300ms class="card px-4 py-3 shadow-lg flex items-center gap-3 border-l-4 w-full max-w-sm"
+            <div x-transition.duration.300ms class="card px-4 py-3 shadow-lg flex items-center gap-3 w-full max-w-sm"
                 :class="toast.type === 'error' ? 'border-red-500' : 'border-violet-600'">
                 <span class="material-symbols-outlined text-lg"
-                    :class="toast.type === 'error' ? 'text-red-600' : 'text-violet-700'"
+                    :class="toast.type === 'error' ? 'text-red-600 dark:text-red-300' : 'text-violet-700 dark:text-violet-300'"
                     x-text="toast.type === 'error' ? 'error' : 'check_circle'"></span>
-                <p class="text-sm font-semibold" x-text="toast.msg"></p>
+                <p data-i18n class="text-sm font-semibold" x-text="toast.msg"></p>
             </div>
         </template>
     </div>

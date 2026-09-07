@@ -13,6 +13,41 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
+func TestChangePasswordRejectsPasswordBeyondBcryptLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		password string
+	}{
+		{name: "ascii", password: strings.Repeat("a", 73)},
+		{name: "multibyte", password: strings.Repeat("界", 25)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, mock, cleanup := setupTestHandler(t)
+			defer cleanup()
+			mock.ExpectBegin()
+			mock.ExpectQuery("SELECT password_hash FROM users").
+				WithArgs("test-user").
+				WillReturnRows(sqlmock.NewRows([]string{"password_hash"}).AddRow(fastPasswordHash(t, "current-password")))
+			mock.ExpectRollback()
+			form := url.Values{
+				"current_password": {"current-password"}, "new_password": {tc.password},
+				"confirm_password": {tc.password},
+			}
+			request := authedRequest(t, http.MethodPost, "/settings/change-password", form.Encode())
+			response := httptest.NewRecorder()
+
+			h.ChangePassword(response, request)
+
+			if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "72 bytes") {
+				t.Fatalf("status = %d, body = %q; want 400 explaining the 72-byte limit", response.Code, response.Body.String())
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestChangePasswordRotatesSessionVersion(t *testing.T) {
 	database, mock, err := sqlmock.New()
 	if err != nil {

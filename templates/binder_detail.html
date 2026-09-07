@@ -1,61 +1,74 @@
-<div class="space-y-6" x-data="{ autoNameError: '' }">
+<div class="app-page" x-data="{ autoNameError: '' }">
     <div class="flex items-center gap-2">
-        <button type="button" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
+        <button data-i18n-attrs="aria-label" type="button" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
             aria-label="Back to binders" class="btn-ghost min-h-11 px-2.5 -ml-2">
             <span class="material-symbols-outlined">arrow_back</span>
         </button>
         <div class="min-w-0">
             <div class="flex items-center gap-1">
-                <h2 id="binder-title" class="text-xl sm:text-2xl font-extrabold tracking-tight text-zinc-900 truncate">{{ .Binder.Name }}</h2>
-                <button type="button" hx-post="/binders/auto-name" hx-swap="none"
+                <h2 id="binder-title" class="page-title min-w-0 break-words">{{ .Binder.Name }}</h2>
+                <button data-i18n-attrs="aria-label" type="button" hx-post="/binders/auto-name" hx-swap="none"
                     hx-vals='{"binder_id":"{{ .Binder.ID }}"}'
                     @htmx:before-request="autoNameError = ''"
                     @htmx:after-request="if ($event.detail.successful) { document.getElementById('binder-title').textContent = JSON.parse($event.detail.xhr.responseText).name } else { autoNameError = $event.detail.xhr.responseText.trim() || 'Unable to generate a name' }"
                     aria-label="Generate a binder name from its cards"
-                    class="material-symbols-outlined text-[20px] text-violet-600 hover:text-violet-700 transition-colors min-h-11 min-w-11 inline-flex items-center justify-center shrink-0">auto_awesome</button>
+                    class="material-symbols-outlined text-[20px] text-violet-600 dark:text-violet-300 hover:text-violet-700 dark:hover:text-violet-300 transition-colors min-h-11 min-w-11 inline-flex items-center justify-center shrink-0">auto_awesome</button>
             </div>
-            <p class="text-sm text-zinc-500">{{ .Binder.Description }}</p>
-            <p x-show="autoNameError" x-text="autoNameError" role="alert" aria-live="assertive"
-                class="mt-1 text-sm font-medium text-red-700"></p>
+            <p class="page-description break-words">{{ .Binder.Description }}</p>
+            <p data-collection-total class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{{ .TotalCards }} <span data-i18n>{{ if ne .TotalCards 1 }}cards{{ else }}card{{ end }}</span></p>
+            <p data-i18n x-show="autoNameError" x-text="autoNameError" role="alert" aria-live="assertive"
+                class="mt-1 text-sm font-medium text-red-700 dark:text-red-300"></p>
         </div>
     </div>
 
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 pb-8">
         {{ range .Cards }}
-        <div
-            class="card rounded-xl p-2 flex flex-col gap-2 group hover:border-violet-300 hover:shadow-md transition-all cursor-pointer">
-            <div class="aspect-[3/4] rounded-lg overflow-hidden relative bg-zinc-100">
+        <div data-collection-item
+            class="card p-2.5 flex min-w-0 flex-col gap-2">
+            <div class="aspect-[3/4] rounded-lg overflow-hidden relative bg-zinc-100 dark:bg-stone-100">
                 <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}"
-                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                    class="w-full h-full object-contain" loading="lazy" decoding="async">
             </div>
             <div class="px-1 pb-1">
-                <p class="text-[10px] font-semibold text-violet-700 uppercase tracking-wider">{{
+                <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{{
                     .Card.Game }}</p>
-                <p class="text-xs text-zinc-600 truncate">{{ .Card.Name }}</p>
-                <div class="flex justify-between items-center mt-1 gap-1">
-                    <span class="font-bold text-sm text-zinc-900">
-                        {{ $.CurrencySymbol }}{{ if .CustomPrice }}
+                <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 break-words">{{ .Card.Set }}</p>
+                <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 break-words">{{ .Card.Name }}</h3>
+                {{ $hasPrice := or (and (eq $.UserCurrency "EUR") .Card.PriceEURValid) (and (ne $.UserCurrency "EUR") .Card.PriceUSDValid) }}
+                <div class="flex flex-wrap justify-between items-center mt-1 gap-1">
+                    <span class="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                        {{ if or .CustomPrice $hasPrice }}{{ $.CurrencySymbol }}{{ if .CustomPrice }}
                         {{ printf "%.2f" .GetCustomPrice }}
                         {{ else }}
                         {{ if eq $.UserCurrency "EUR" }}
-                        {{ .Card.PriceEUR }}
+                        {{ .Card.PriceEUR.StringFixed 2 }}
                         {{ else }}
-                        {{ .Card.PriceUSD }}
+                        {{ .Card.PriceUSD.StringFixed 2 }}
                         {{ end }}
                         {{ end }}
+                        {{ else }}<span data-i18n class="font-medium text-zinc-500 dark:text-zinc-400">Price unavailable</span>{{ end }}
                     </span>
-                    <span class="text-[10px] font-semibold text-zinc-500 uppercase shrink-0">{{ .Condition }}</span>
+                    <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400 shrink-0">{{ .Condition }}</span>
                 </div>
             </div>
         </div>
         {{ else }}
-        <div class="col-span-full py-16 flex flex-col items-center justify-center text-center">
-            <div class="w-16 h-16 bg-zinc-200/60 rounded-full flex items-center justify-center mb-4">
-                <span class="material-symbols-outlined text-3xl text-zinc-400">inventory_2</span>
+        <div class="col-span-full empty-state">
+            <div class="empty-state-icon">
+                <span class="material-symbols-outlined text-3xl">inventory_2</span>
             </div>
-            <p class="text-sm font-semibold text-zinc-700">This binder is empty</p>
-            <p class="text-xs mt-1 text-zinc-500">Add cards to this binder from your main collection!</p>
+            <h3 data-i18n class="text-xl font-bold text-zinc-900 dark:text-zinc-100">This binder is empty</h3>
+            <p data-i18n class="text-sm mt-2 max-w-sm leading-6 text-zinc-600 dark:text-zinc-300">Choose a card in your vault, open its edit menu, and assign it to this binder.</p>
+            <button data-i18n type="button" class="btn-primary mt-5" hx-get="/dashboard" hx-target="#main-content" hx-push-url="/?view=home"
+                hx-on::before-request="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'home' } }))">Open your vault</button>
         </div>
         {{ end }}
     </div>
+    {{ with .Pagination }}{{ if or .PreviousURL .NextURL }}
+    <nav data-i18n-attrs="aria-label" aria-label="Collection pages" class="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 pt-5">
+        {{ if .PreviousURL }}<a data-i18n rel="prev" href="{{ .PreviousURL }}" hx-get="{{ .PreviousFragmentURL }}" hx-target="#main-content" hx-push-url="{{ .PreviousURL }}" class="btn-secondary">Previous</a>{{ else }}<span></span>{{ end }}
+        <span data-i18n class="text-sm text-zinc-600 dark:text-zinc-300">Page {{ .Page }}</span>
+        {{ if .NextURL }}<a data-i18n rel="next" href="{{ .NextURL }}" hx-get="{{ .NextFragmentURL }}" hx-target="#main-content" hx-push-url="{{ .NextURL }}" class="btn-secondary">Next</a>{{ end }}
+    </nav>
+    {{ end }}{{ end }}
 </div>
