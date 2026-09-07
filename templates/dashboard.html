@@ -14,7 +14,7 @@
     {{ end }}
     <section aria-labelledby="main-vault-title">
         {{ if .Portfolio }}
-        <div class="mb-4 flex items-center justify-between gap-3">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div><h2 data-i18n id="main-vault-title" class="section-title">Main vault</h2></div>
             <button data-i18n class="btn-ghost text-violet-800 dark:text-violet-200" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
                 hx-on::before-request="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'binders' } }))">View binders</button>
@@ -22,7 +22,7 @@
         {{ else }}<h2 data-i18n id="main-vault-title" class="sr-only">Main vault</h2>{{ end }}
 
         {{ if .Portfolio }}
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+        <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
             {{ range .Portfolio }}
             <article data-collection-item data-portfolio-item data-id="{{ .ID }}" data-binder-id="{{ .BinderID }}" class="card portfolio-card group min-w-0 overflow-hidden p-2.5 transition hover:border-violet-300">
                 <div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-stone-100">

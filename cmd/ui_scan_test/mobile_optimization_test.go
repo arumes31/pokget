@@ -199,22 +199,14 @@ func TestMobileOptimizationFailedMisprintSearchCanRecover(t *testing.T) {
 	if err := submitMisprintSearch(ctx, "fail-request", "all"); err != nil {
 		t.Fatal(err)
 	}
-	var recoverable bool
-	if err := chromedp.Run(ctx, chromedp.Evaluate(`document.querySelectorAll('[data-misprint]').length === 24 && [...document.querySelectorAll('[role="alert"]')].some(element => element.getClientRects().length && element.textContent.trim()) && !document.querySelector('#misprint-search button[type="submit"]').disabled`, &recoverable)); err != nil {
-		t.Fatal(err)
-	}
-	if !recoverable {
-		t.Fatal("failed search does not preserve results, announce the failure, and allow retry")
+	if err := chromedp.Run(ctx, chromedp.Poll(`document.querySelectorAll('[data-misprint]').length === 24 && [...document.querySelectorAll('[role="alert"]')].some(element => element.getClientRects().length && element.textContent.trim()) && !document.querySelector('#misprint-search button[type="submit"]').disabled`, nil, chromedp.WithPollingTimeout(3*time.Second))); err != nil {
+		t.Fatalf("failed search does not preserve results, announce the failure, and allow retry: %v", err)
 	}
 	if err := submitMisprintSearch(ctx, "Archive target", "ink"); err != nil {
 		t.Fatal(err)
 	}
-	var recovered bool
-	if err := chromedp.Run(ctx, chromedp.Evaluate(`document.querySelectorAll('[data-misprint]').length === 1 && document.querySelector('[data-misprint]').textContent.includes('Archive target report') && ![...document.querySelectorAll('[role="alert"]')].some(element => element.getClientRects().length)`, &recovered)); err != nil {
-		t.Fatal(err)
-	}
-	if !recovered {
-		t.Error("corrected search did not recover from the request failure")
+	if err := chromedp.Run(ctx, chromedp.Poll(`document.querySelectorAll('[data-misprint]').length === 1 && document.querySelector('[data-misprint]').textContent.includes('Archive target report') && ![...document.querySelectorAll('[role="alert"]')].some(element => element.getClientRects().length)`, nil, chromedp.WithPollingTimeout(3*time.Second))); err != nil {
+		t.Errorf("corrected search did not recover from the request failure: %v", err)
 	}
 }
 

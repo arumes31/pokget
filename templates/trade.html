@@ -75,7 +75,7 @@
             <div class="mt-4 flex min-h-20 items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
                 <template x-if="myImage"><img :src="myImage" :alt="myCard" class="h-16 w-12 rounded-md object-contain"></template>
                 <div class="min-w-0 flex-1">
-                    <p class="truncate text-sm font-semibold"><span x-show="myCard" x-text="myCard"></span><span data-i18n x-show="!myCard">No card selected</span></p>
+                    <p class="break-words text-sm font-semibold"><span x-show="myCard" x-text="myCard"></span><span data-i18n x-show="!myCard">No card selected</span></p>
                     <p data-i18n class="mt-1 text-sm text-zinc-600 dark:text-zinc-300" x-text="myPortfolioId ? (validValue(catalogPrice) ? 'Catalog estimate available' : 'Price unavailable') : 'Choose a card to compare'"></p>
                 </div>
             </div>
@@ -117,7 +117,7 @@
                 <p data-i18n class="mt-2 text-sm text-zinc-300" x-text="!ready ? 'Enter a positive value for each side to compare.' : Math.abs(difference) < 0.01 ? 'Both sides have the same estimated value.' : difference > 0 ? 'At these estimates, the cards you receive are worth more.' : 'At these estimates, the cards you give are worth more.'"></p>
             </div>
         </div>
-        <div class="grid gap-2 border-t border-stone-200 bg-stone-50 p-4 sm:grid-cols-2">
+        <div class="grid grid-cols-1 gap-2 border-t border-stone-200 bg-stone-50 p-4 sm:grid-cols-2">
             <button type="button" @click="copySummary()" :disabled="!ready" class="btn-secondary w-full"><span class="material-symbols-outlined">content_copy</span><span data-i18n x-text="copied ? 'Copied' : 'Copy summary'"></span></button>
             <button data-i18n type="button" @click="downloadLog()" :disabled="!ready" class="btn-primary w-full"><span class="material-symbols-outlined">download</span>Download trade log</button>
             <p data-i18n x-show="!ready" class="text-center text-xs text-zinc-500 dark:text-zinc-400 sm:col-span-2">Complete both sides to export</p>
