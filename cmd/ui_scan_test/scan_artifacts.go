@@ -73,7 +73,7 @@ func (capture *scanArtifactCapture) save(ctx context.Context, directory string, 
 	})); err != nil {
 		return fmt.Errorf("read actual scan response: %w", err)
 	}
-	if err := os.MkdirAll(directory, 0755); err != nil {
+	if err := os.MkdirAll(directory, 0750); err != nil {
 		return err
 	}
 	rendered, err := json.MarshalIndent(struct {

@@ -273,10 +273,10 @@ func run(cfg config) error {
 		); err != nil {
 			return fmt.Errorf("capturing rendered scan result: %w", err)
 		}
-		if err := os.MkdirAll(filepath.Dir(cfg.screenshot), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(cfg.screenshot), 0750); err != nil {
 			return fmt.Errorf("creating screenshot directory: %w", err)
 		}
-		if err := os.WriteFile(cfg.screenshot, screenshot, 0644); err != nil {
+		if err := os.WriteFile(cfg.screenshot, screenshot, 0600); err != nil {
 			return fmt.Errorf("writing scan screenshot: %w", err)
 		}
 	}

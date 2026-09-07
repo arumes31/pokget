@@ -162,7 +162,17 @@ func loadReviewRoute(route string) chromedp.Tasks {
 	view := map[string]string{"/dashboard": "home", "/wantlist": "wantlist", "/binders": "binders", "/binders/test": "binders", "/errors": "errors", "/trade": "trade", "/settings": "settings"}[route]
 	return chromedp.Tasks{
 		chromedp.Evaluate(`window.dispatchEvent(new CustomEvent('pokget-view-change', {detail: {view: '`+view+`'}}))`, nil),
-		chromedp.Evaluate(`(() => { const main = document.querySelector('#main-content'); delete main.dataset.reviewReady; htmx.ajax('GET', '`+route+`', {target: main, source: document.body}).then(() => { main.dataset.reviewReady = '1'; }); })()`, nil),
+		chromedp.Evaluate(`(() => {
+			const main = document.querySelector('#main-content');
+			delete main.dataset.reviewReady;
+			const settled = event => {
+				if (event.detail.target !== main) return;
+				main.dataset.reviewReady = '1';
+				document.body.removeEventListener('htmx:afterSettle', settled);
+			};
+			document.body.addEventListener('htmx:afterSettle', settled);
+			htmx.ajax('GET', '`+route+`', {target: main, source: document.body});
+		})()`, nil),
 		chromedp.Poll(`document.querySelector('#main-content').dataset.reviewReady === '1'`, nil, chromedp.WithPollingTimeout(5*time.Second)),
 	}
 }

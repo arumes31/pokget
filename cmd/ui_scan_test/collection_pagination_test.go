@@ -180,7 +180,21 @@ func clickCollectionPage(ctx context.Context, standalone bool, relation string) 
 		_, err := chromedp.RunResponse(ctx, action)
 		return err
 	}
-	return chromedp.Run(ctx, action)
+	// The new cards appear before HTMX initializes the next page's links.
+	// Wait for settlement so the next click cannot fall through to a full load.
+	return chromedp.Run(ctx,
+		chromedp.Evaluate(`(() => {
+			window.collectionPageSettled = false;
+			const settled = event => {
+				if (event.detail.target?.id !== 'main-content') return;
+				window.collectionPageSettled = true;
+				document.body.removeEventListener('htmx:afterSettle', settled);
+			};
+			document.body.addEventListener('htmx:afterSettle', settled);
+		})()`, nil),
+		action,
+		chromedp.Poll(`window.collectionPageSettled`, nil, chromedp.WithPollingTimeout(3*time.Second)),
+	)
 }
 
 func TestMobileCollectionNamesAndMissingPricesRemainClear(t *testing.T) {
