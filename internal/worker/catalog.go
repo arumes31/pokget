@@ -54,7 +54,6 @@ func (w *CatalogWorker) Start(ctx context.Context) {
 }
 
 func (w *CatalogWorker) syncAll(ctx context.Context) {
-	changed := false
 	for _, provider := range w.providers {
 		if ctx.Err() != nil {
 			return
@@ -90,7 +89,10 @@ func (w *CatalogWorker) syncAll(ctx context.Context) {
 		if completion.Changes.CardsInserted > 0 || completion.Changes.CardsUpdated > 0 ||
 			completion.Changes.CardsDeactivated > 0 || completion.Changes.ImagesInserted > 0 ||
 			completion.Changes.ImagesUpdated > 0 {
-			changed = true
+			// Publish completed catalogs before another source's lengthy import.
+			if w.OnChanged != nil {
+				w.OnChanged()
+			}
 		}
 		slog.Info("Catalog: source sync complete",
 			"source", provider.ID(),
@@ -111,9 +113,6 @@ func (w *CatalogWorker) syncAll(ctx context.Context) {
 			"cards_deactivated", completion.Changes.CardsDeactivated,
 			"printings_deactivated", completion.Changes.PrintingsDeactivated,
 		)
-	}
-	if changed && w.OnChanged != nil {
-		w.OnChanged()
 	}
 }
 

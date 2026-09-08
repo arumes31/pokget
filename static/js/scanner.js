@@ -192,11 +192,16 @@
 
   function friendlyHTTPError(status, body) {
     const safeBody = String(body || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+    if (status === 422 && safeBody === NO_CARDS_FOR_LANGUAGE) {
+      return 'The catalog has no cards for this game and language. Ask the administrator to sync this language, then retry your saved image.';
+    }
     const known = {
       400: 'The image or scan options were not accepted.',
       401: 'Your session expired. Sign in again before scanning.',
       403: 'The scan was blocked. Refresh the page and try again.',
       404: 'The scanner endpoint is unavailable.',
+      408: 'The scan timed out. Your image remains available for retry.',
+      504: 'The scan timed out. Your image remains available for retry.',
       413: 'The prepared image is still too large.',
       415: 'That image format is not supported.',
       422: 'The card could not be read from this image.',
@@ -319,6 +324,7 @@
     return {
       scanning: false,
       scanStatus: '',
+      scanPreviewURL: '',
       scanStep: 0,
       scanError: '',
       scanStartedAt: 0,
@@ -435,6 +441,7 @@
 
       setScanning(active) {
         const next = Boolean(active);
+        if (!next) this.scanPreviewURL = '';
         if (this.scanning === next) return;
         this.scanning = next;
 
@@ -825,43 +832,33 @@
         const controller = new AbortController();
         this.abortController = controller;
         let resultReceived = false;
+        // The loading preview is the exact local crop sent in this request.
+        // Reading it never delays detection; stale reads cannot replace a newer scan.
+        imageDataURL(blob).then((dataURL) => {
+          if (this.scanning && requestID === this.requestID && !controller.signal.aborted) {
+            this.scanPreviewURL = dataURL;
+          }
+        }).catch(() => { /* Keep the scanner icon if the thumbnail cannot be read. */ });
 
         try {
           this.setStatus('Uploading the crop and running detection…', 2);
-          let requestedLanguage = normalizeLanguage(this.game, this.lang);
-          let response;
-          for (let attempt = 0; attempt < 2; attempt += 1) {
-            const formData = new FormData();
-            formData.append('card_image', blob, filename);
-            formData.append('lang', requestedLanguage);
-            formData.append('game', this.game);
-
-            response = await fetch('/api/scan', {
-              method: 'POST',
-              headers: { 'X-CSRF-Token': this.csrfToken },
-              body: formData,
-              signal: controller.signal,
-            });
-            if (requestID !== this.requestID || controller.signal.aborted) return;
-
-            if (response.ok) break;
-
+          const formData = new FormData();
+          formData.append('card_image', blob, filename);
+          formData.append('lang', normalizeLanguage(this.game, this.lang));
+          formData.append('game', this.game);
+          const response = await fetch('/api/scan', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': this.csrfToken },
+            body: formData,
+            signal: controller.signal,
+          });
+          if (requestID !== this.requestID || controller.signal.aborted) return;
+          if (!response.ok) {
             const body = await response.text();
             if (requestID !== this.requestID || controller.signal.aborted) return;
-            const canRetryAutomatically = response.status === 422
-              && body.trim() === NO_CARDS_FOR_LANGUAGE
-              && requestedLanguage !== AUTO_LANGUAGE;
-            if (!canRetryAutomatically) {
-              const error = new Error(friendlyHTTPError(response.status, body));
-              error.status = response.status;
-              throw error;
-            }
-
-            requestedLanguage = AUTO_LANGUAGE;
-            this.lang = AUTO_LANGUAGE;
-            storageSet(STORAGE_KEYS.language, AUTO_LANGUAGE);
-            this.setStatus('No exact-language catalog is loaded. Retrying with Auto detect…', 2);
-            this.notify('No exact-language catalog is loaded; using Auto detect.', 'info');
+            const error = new Error(friendlyHTTPError(response.status, body));
+            error.status = response.status;
+            throw error;
           }
 
           this.setStatus('Reading the scanner response…', 3);
@@ -914,7 +911,10 @@
         this.scanStatus = '';
         this.scanStep = 0;
         this.setScanning(false);
-        this.notify(this.scanError, abortReason === 'cancelled' ? 'info' : 'error');
+        // The inline alert is persistent and leaves scanner navigation visible.
+        if (typeof this.$nextTick === 'function') {
+          this.$nextTick(() => this.$refs?.scanError?.focus());
+        }
       },
 
       cancelScan(reason = 'cancelled') {

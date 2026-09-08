@@ -108,6 +108,21 @@ go run ./cmd/catalog verify
 go run ./cmd/catalog images
 ```
 
+`CATALOG_LANGUAGE` accepts a comma-separated list and defaults to
+`en,de,ja,fr,zh-cn,zh-tw,ko`: English, German, Japanese, French, both Chinese
+scripts, and Korean. Existing installations with `CATALOG_LANGUAGE=en` in their
+deployment environment must update that value and recreate the application
+container. The next catalog sync imports the selected languages. The catalog CLI
+accepts the same list through `--lang`. TCGdex imports all selected languages in
+one source snapshot, preserving separate card and printing identities. LorcanaJSON
+imports the supported subset (English, German, French, Italian); other sources
+retain their upstream language coverage. A missing language never silently changes
+the scanner selection; the prepared image remains available to retry after sync.
+
+Scryfall bulk data is downloaded to a bounded temporary file before database
+import, so database processing cannot exhaust the HTTP download timeout. The
+temporary file is removed after success or failure.
+
 The first full import can take substantial time and disk space because it downloads large catalogs and reference images. Public sources can change or be temporarily unavailable, and no free public source can guarantee every language, promotional printing, or future physical variant. Sync history and verification commands make such gaps visible.
 
 ### 🧪 Detection Acceptance Tests
@@ -226,11 +241,91 @@ it does not terminate an active primary completion. Scan and binder-name request
 remain cancellable when their caller disconnects. Leave `LLM_BASE_URL` empty for
 Ollama-only operation. Keep the key in `.env`, never in source or logs.
 
+For Ollama-only scans, optional text disambiguation takes at most five seconds
+and at most half the remaining scan budget. If it times out, completed local
+matches remain available for review instead of being discarded.
+
 Ollama defaults to 128 output tokens so canonical printing IDs fit in structured
 responses. Compose sets `OMP_THREAD_LIMIT=1` for Tesseract; the application already
 pools OCR clients for concurrent scans. This bounds native OCR threading and
 reduced recognition time in the local card-image tests. The setting is configurable;
 see the [Tesseract threading documentation](https://tesseract-ocr.github.io/tessdoc/FAQ.html#can-i-increase-speed-of-ocr).
+
+### Experimental CPU image OCR with GLM-OCR
+
+GLM-OCR is a separate **image transcription** stage, not a replacement for the
+text-only `OLLAMA_MODEL` fallback above. It is disabled by default: the local
+2026-09-08 Q8 pilot read names/numbers but produced **zero valid complete
+responses out of three real card images**. Explicit EOS and repetition-penalty
+experiments did not resolve incomplete/repeated output. Do not treat this model
+as production-ready or as perfect multilingual recognition.
+
+For an explicit trial with a build containing this integration, first pull the
+model into the Compose Ollama service:
+
+```sh
+docker compose up -d pokget_ollama
+docker compose exec pokget_ollama ollama pull glm-ocr:q8_0
+```
+
+Then set these variables in `.env` and rebuild/recreate the application:
+
+```env
+SCAN_VISION_OCR_ENABLED=true
+SCAN_VISION_OCR_URL=http://pokget_ollama:11434
+SCAN_VISION_OCR_MODEL=glm-ocr:q8_0
+SCAN_VISION_OCR_TIMEOUT_SECONDS=45
+SCAN_VISION_OCR_THREADS=4
+```
+
+```sh
+docker compose up -d --build pokget_app
+```
+
+Native, non-Compose applications default to `http://localhost:11434`. Configure
+only a trusted Ollama endpoint: it receives the cropped scan image. Startup does
+not download models or change the existing text model. Set
+`SCAN_VISION_OCR_ENABLED=false` and recreate the app to turn the stage off.
+
+The stage uses the [official native Ollama OCR protocol](https://github.com/zai-org/GLM-OCR/blob/main/examples/ollama-deploy/README.md)
+with `Text Recognition:`, normalized JPEG images, `num_gpu=0`, and one in-flight
+request per application instance. Busy instances fail fast; requests are limited
+to 45 seconds (configurable downwards and shortened for the scan deadline).
+It runs only for scoped scans without strong local printing evidence when local
+scores are low or nearby printings are ambiguous. Local OCR/fingerprints remain
+the first stage and the fallback on model failure.
+
+Only complete `done=true`, `done_reason=stop` responses are accepted. Truncation,
+repetition, invalid/oversized responses, redirects and provider failures produce
+a `vision_ocr` stage error, not a guessed card. Text must match an exact catalog
+name or localized alias plus strong collector evidence for **one** eligible
+printing. Model-selected suggestions are capped below automatic acceptance and
+always require review; they never become deterministic printing evidence or get
+counted a second time by the text LLM.
+
+Language scope remains the user's selection: English, German, French, Japanese,
+Korean, simplified Chinese or traditional Chinese. `any` searches those catalog
+languages but does not guess between otherwise identical printings. Matching
+requires active catalog records and localized aliases; adding a language also
+requires catalog coverage, an installed Tesseract language pack and real-image
+validation. Unicode unit tests alone do not establish OCR accuracy.
+
+Regression tests cover all seven language scopes, inactive/wrong-game records,
+ambiguous identifiers, fingerprint conflicts, mandatory review, malformed or
+repetitive model output, cancellation, concurrency and fallback timeouts:
+
+```sh
+go test -race ./internal/visionocr
+go test ./internal/service -run TestVisionOCR
+go test ./internal/config ./cmd/pokget
+```
+
+Service/application tests require the project's CGO/Tesseract build environment.
+Before enabling broadly, compare local-only and hybrid scans on a held-out corpus
+of real cards **per language and game**, including variants, glare, blur and
+rotation. Record exact printing accuracy, false automatic matches, abstentions,
+completion failures, review rate and p50/p95 latency. Do not relax completion or
+review guards merely to increase the reported match rate.
 
 ---
 

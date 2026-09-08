@@ -38,14 +38,19 @@ type tcgdexCard struct {
 }
 
 func (p *TCGdexProvider) Fetch(ctx context.Context, request catalog.FetchRequest, emit func(catalog.CardRecord) error) (catalog.FetchResult, error) {
+	languages := catalogLanguages(p.Language)
+	if len(languages) > 1 {
+		return fetchLanguages(ctx, languages, request, func(ctx context.Context, language string, request catalog.FetchRequest) (catalog.FetchResult, error) {
+			localized := *p
+			localized.Language = language
+			return localized.Fetch(ctx, request, emit)
+		})
+	}
 	baseURL := strings.TrimRight(p.BaseURL, "/")
 	if baseURL == "" {
 		baseURL = "https://api.tcgdex.net/v2"
 	}
-	language := p.Language
-	if language == "" {
-		language = "en"
-	}
+	language := languages[0]
 
 	var sets []tcgdexSetBrief
 	meta, err := getJSON(ctx, p.HTTP, fmt.Sprintf("%s/%s/sets", baseURL, url.PathEscape(language)), request, &sets)
