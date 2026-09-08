@@ -324,6 +324,7 @@
     return {
       scanning: false,
       scanStatus: '',
+      scanPreviewURL: '',
       scanStep: 0,
       scanError: '',
       scanStartedAt: 0,
@@ -440,6 +441,7 @@
 
       setScanning(active) {
         const next = Boolean(active);
+        if (!next) this.scanPreviewURL = '';
         if (this.scanning === next) return;
         this.scanning = next;
 
@@ -830,6 +832,13 @@
         const controller = new AbortController();
         this.abortController = controller;
         let resultReceived = false;
+        // The loading preview is the exact local crop sent in this request.
+        // Reading it never delays detection; stale reads cannot replace a newer scan.
+        imageDataURL(blob).then((dataURL) => {
+          if (this.scanning && requestID === this.requestID && !controller.signal.aborted) {
+            this.scanPreviewURL = dataURL;
+          }
+        }).catch(() => { /* Keep the scanner icon if the thumbnail cannot be read. */ });
 
         try {
           this.setStatus('Uploading the crop and running detection…', 2);
@@ -902,7 +911,10 @@
         this.scanStatus = '';
         this.scanStep = 0;
         this.setScanning(false);
-        this.notify(this.scanError, abortReason === 'cancelled' ? 'info' : 'error');
+        // The inline alert is persistent and leaves scanner navigation visible.
+        if (typeof this.$nextTick === 'function') {
+          this.$nextTick(() => this.$refs?.scanError?.focus());
+        }
       },
 
       cancelScan(reason = 'cancelled') {

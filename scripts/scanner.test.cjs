@@ -5,6 +5,34 @@ const test = require('node:test');
 
 const scanner = require('../static/js/scanner.js');
 
+test('loading preview uses the submitted crop and ignores reads after cancellation', async (t) => {
+  const originalReader = global.FileReader;
+  const originalFetch = global.fetch;
+  const reads = [];
+  const replies = [];
+  global.FileReader = class { readAsDataURL(blob) { this.blob = blob; reads.push(this); } };
+  global.fetch = () => new Promise((resolve) => replies.push(resolve));
+  t.after(() => { global.fetch = originalFetch; if (originalReader === undefined) delete global.FileReader; else global.FileReader = originalReader; });
+  const component = scanner.createCardScanner();
+  component.notify = () => {};
+  const crop = new Blob(['crop'], { type: 'image/jpeg' });
+  const pending = component.submitPreparedBlob(crop, 'crop.jpg');
+  assert.equal(reads[0].blob, crop);
+  reads[0].result = 'data:image/jpeg;base64,crop'; reads[0].onload();
+  await Promise.resolve();
+  assert.equal(component.scanPreviewURL, 'data:image/jpeg;base64,crop');
+  component.cancelScan();
+  assert.equal(component.scanPreviewURL, '');
+  assert.equal(component.lastScanBlob, crop);
+  replies[0](new Response('{}')); await pending;
+  const next = component.submitPreparedBlob(crop, 'retry.jpg');
+  component.cancelScan();
+  reads[1].result = 'data:image/jpeg;base64,stale'; reads[1].onload();
+  await Promise.resolve();
+  assert.equal(component.scanPreviewURL, '');
+  replies[1](new Response('{}')); await next;
+});
+
 test('local preview replacement preserves current image and ignores cancelled or stale reads', async (t) => {
   const originalReader = global.FileReader;
   const reads = [];
