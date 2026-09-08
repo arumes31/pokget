@@ -314,6 +314,17 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 			var llmResponse *LLMCardResponse
 			var llmErr error
 			var llmImage []byte
+			llmCtx := ctx
+			cancelLLM := func() {}
+			if p.LLM.PrimaryBaseURL == "" {
+				// Optional text disambiguation must leave time to return local
+				// evidence for review, even when the model is cold or stalled.
+				budget := 5 * time.Second
+				if deadline, ok := ctx.Deadline(); ok {
+					budget = min(budget, time.Until(deadline)/2)
+				}
+				llmCtx, cancelLLM = context.WithTimeout(ctx, budget)
+			}
 			if p.LLM.PrimaryBaseURL != "" {
 				var imageErr error
 				llmImage, imageErr = prepareLLMCardImage(ctx, request.Image)
@@ -322,10 +333,11 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 				}
 			}
 			if scoped {
-				llmResponse, llmErr = p.LLM.fuzzyMatchCardScopedWithArtworkContext(ctx, ocrOutput.text, llmImage, llmCards, request.Cards, request.Scope)
+				llmResponse, llmErr = p.LLM.fuzzyMatchCardScopedWithArtworkContext(llmCtx, ocrOutput.text, llmImage, llmCards, request.Cards, request.Scope)
 			} else {
-				llmResponse, llmErr = p.LLM.fuzzyMatchCardWithArtworkContext(ctx, ocrOutput.text, llmImage, llmCards, request.Cards)
+				llmResponse, llmErr = p.LLM.fuzzyMatchCardWithArtworkContext(llmCtx, ocrOutput.text, llmImage, llmCards, request.Cards)
 			}
+			cancelLLM()
 			result.Metrics.Stages = append(result.Metrics.Stages,
 				DetectionStageMetrics{Name: "llm", Duration: time.Since(llmStart), Error: llmErr},
 			)

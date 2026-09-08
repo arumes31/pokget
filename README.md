@@ -108,6 +108,21 @@ go run ./cmd/catalog verify
 go run ./cmd/catalog images
 ```
 
+`CATALOG_LANGUAGE` accepts a comma-separated list and defaults to
+`en,de,ja,fr,zh-cn,zh-tw,ko`: English, German, Japanese, French, both Chinese
+scripts, and Korean. Existing installations with `CATALOG_LANGUAGE=en` in their
+deployment environment must update that value and recreate the application
+container. The next catalog sync imports the selected languages. The catalog CLI
+accepts the same list through `--lang`. TCGdex imports all selected languages in
+one source snapshot, preserving separate card and printing identities. LorcanaJSON
+imports the supported subset (English, German, French, Italian); other sources
+retain their upstream language coverage. A missing language never silently changes
+the scanner selection; the prepared image remains available to retry after sync.
+
+Scryfall bulk data is downloaded to a bounded temporary file before database
+import, so database processing cannot exhaust the HTTP download timeout. The
+temporary file is removed after success or failure.
+
 The first full import can take substantial time and disk space because it downloads large catalogs and reference images. Public sources can change or be temporarily unavailable, and no free public source can guarantee every language, promotional printing, or future physical variant. Sync history and verification commands make such gaps visible.
 
 ### 🧪 Detection Acceptance Tests
@@ -225,6 +240,10 @@ A valid abstention is a completed answer and does not trigger retries or fallbac
 it does not terminate an active primary completion. Scan and binder-name requests
 remain cancellable when their caller disconnects. Leave `LLM_BASE_URL` empty for
 Ollama-only operation. Keep the key in `.env`, never in source or logs.
+
+For Ollama-only scans, optional text disambiguation takes at most five seconds
+and at most half the remaining scan budget. If it times out, completed local
+matches remain available for review instead of being discarded.
 
 Ollama defaults to 128 output tokens so canonical printing IDs fit in structured
 responses. Compose sets `OMP_THREAD_LIMIT=1` for Tesseract; the application already

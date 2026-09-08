@@ -99,3 +99,14 @@ func TestSyncedRecordCount(t *testing.T) {
 		})
 	}
 }
+
+func TestCatalogWorkerPublishesEachCompletedSource(t *testing.T) {
+	repository := &catalogWorkerRepository{}
+	worker := NewCatalogWorker(repository, []catalog.Provider{catalogWorkerProvider{id: "pokemon"}, catalogWorkerProvider{id: "magic"}}, 10, time.Hour)
+	var published []int
+	worker.OnChanged = func() { published = append(published, repository.completed) }
+	worker.syncAll(context.Background())
+	if len(published) != 2 || published[0] != 1 || published[1] != 2 {
+		t.Fatalf("newly imported languages must be available before the next source: %v", published)
+	}
+}

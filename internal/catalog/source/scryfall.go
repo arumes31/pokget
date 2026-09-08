@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"pokget/internal/catalog"
@@ -96,8 +97,28 @@ func (p *ScryfallProvider) Fetch(ctx context.Context, request catalog.FetchReque
 		return result, fmt.Errorf("scryfall: bulk download returned %s", resp.Status)
 	}
 
-	compressed := io.LimitReader(resp.Body, p.HTTP.maxBodyBytes()+1)
-	gzipReader, err := gzip.NewReader(compressed)
+	// Database writes may take longer than the HTTP client's download timeout.
+	// Finish and close the bounded download before emitting any records.
+	bulkFile, err := os.CreateTemp("", "pokget-scryfall-*.jsonl.gz")
+	if err != nil {
+		return result, fmt.Errorf("scryfall: create bulk download: %w", err)
+	}
+	defer os.Remove(bulkFile.Name())
+	defer bulkFile.Close()
+	size, err := io.Copy(bulkFile, io.LimitReader(resp.Body, p.HTTP.maxBodyBytes()+1))
+	if err != nil {
+		return result, fmt.Errorf("scryfall: download bulk data: %w", err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		return result, fmt.Errorf("scryfall: close bulk download: %w", err)
+	}
+	if size > p.HTTP.maxBodyBytes() {
+		return result, fmt.Errorf("scryfall: bulk download exceeds %d bytes", p.HTTP.maxBodyBytes())
+	}
+	if _, err := bulkFile.Seek(0, io.SeekStart); err != nil {
+		return result, fmt.Errorf("scryfall: rewind bulk download: %w", err)
+	}
+	gzipReader, err := gzip.NewReader(bulkFile)
 	if err != nil {
 		return result, fmt.Errorf("scryfall: open gzip bulk data: %w", err)
 	}
@@ -105,6 +126,9 @@ func (p *ScryfallProvider) Fetch(ctx context.Context, request catalog.FetchReque
 	scanner := bufio.NewScanner(gzipReader)
 	scanner.Buffer(make([]byte, 64<<10), 16<<20)
 	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
 		var card scryfallCard
 		if err := json.Unmarshal(scanner.Bytes(), &card); err != nil {
 			return result, fmt.Errorf("scryfall: decode JSONL record %d: %w", result.Count+1, err)
@@ -155,6 +179,9 @@ func (p *ScryfallProvider) Fetch(ctx context.Context, request catalog.FetchReque
 	}
 	if err := scanner.Err(); err != nil {
 		return result, fmt.Errorf("scryfall: read JSONL bulk data: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return result, err
 	}
 	return result, nil
 }

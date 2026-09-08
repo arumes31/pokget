@@ -143,7 +143,7 @@ func runSync(ctx context.Context, database *sql.DB, args []string) error {
 	flags := flag.NewFlagSet("catalog sync", flag.ContinueOnError)
 	gameName := flags.String("game", "all", "pokemon, magic, one_piece, lorcana, weiss_schwarz, yugioh, or all")
 	modeName := flags.String("mode", string(catalog.SyncModeIncremental), "full or incremental")
-	language := flags.String("lang", "en", "catalog language where supported")
+	language := flags.String("lang", source.DefaultLanguages, "comma-separated catalog languages where supported")
 	batchSize := flags.Int("batch-size", 500, "database upsert batch size")
 	timeout := flags.Duration("timeout", 6*time.Hour, "per-source sync timeout")
 	requestDelay := flags.Duration("request-delay", 100*time.Millisecond, "delay between paginated upstream requests")

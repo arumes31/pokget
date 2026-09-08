@@ -254,7 +254,7 @@ test('an uncertain printing must be inspected and explicitly confirmed before sa
   assert.equal(component.detectedLanguage, '');
 });
 
-test('missing selected-language cards retry once with automatic language detection', async () => {
+test('missing catalog preserves the selected language and crop without an automatic retry', async () => {
   const originalFetch = global.fetch;
   const requests = [];
   global.fetch = async (url, options) => {
@@ -278,12 +278,13 @@ test('missing selected-language cards retry once with automatic language detecti
 
     await component.submitPreparedBlob(crop, 'crop.jpg');
 
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 1);
     assert.equal(requests[0].options.body.get('lang'), 'deu');
-    assert.equal(requests[1].options.body.get('lang'), scanner.AUTO_LANGUAGE);
-    assert.equal(component.lang, scanner.AUTO_LANGUAGE);
-    assert.equal(component.detectedID, 'sv1-025');
-    assert.equal(component.scanError, '');
+    assert.equal(component.lang, 'deu');
+    assert.equal(component.detectedID, '');
+    assert.match(component.scanError, /catalog.*language.*sync/i);
+    assert.equal(component.lastScanBlob, crop);
+    assert.equal(component.scanning, false);
   } finally {
     global.fetch = originalFetch;
   }

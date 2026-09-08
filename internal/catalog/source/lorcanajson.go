@@ -48,14 +48,29 @@ type lorcanaJSONCard struct {
 }
 
 func (p *LorcanaJSONProvider) Fetch(ctx context.Context, request catalog.FetchRequest, emit func(catalog.CardRecord) error) (catalog.FetchResult, error) {
+	languages := catalogLanguages(p.Language)
+	if len(languages) > 1 {
+		// LorcanaJSON currently publishes these four localized catalogs.
+		var supported []string
+		for _, language := range languages {
+			if language == "en" || language == "de" || language == "fr" || language == "it" {
+				supported = append(supported, language)
+			}
+		}
+		if len(supported) == 0 {
+			return catalog.FetchResult{}, fmt.Errorf("lorcanajson: no supported catalog languages selected")
+		}
+		return fetchLanguages(ctx, supported, request, func(ctx context.Context, language string, request catalog.FetchRequest) (catalog.FetchResult, error) {
+			localized := *p
+			localized.Language = language
+			return localized.Fetch(ctx, request, emit)
+		})
+	}
 	baseURL := strings.TrimRight(p.BaseURL, "/")
 	if baseURL == "" {
 		baseURL = "https://lorcanajson.org/files/current"
 	}
-	language := p.Language
-	if language == "" {
-		language = "en"
-	}
+	language := languages[0]
 	var document lorcanaJSONDocument
 	meta, err := getJSON(ctx, p.HTTP, fmt.Sprintf("%s/%s/allCards.json", baseURL, language), request, &document)
 	if err != nil {
