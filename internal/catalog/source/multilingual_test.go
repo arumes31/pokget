@@ -46,7 +46,7 @@ func TestTCGdexMultilingualSnapshot(t *testing.T) {
 func TestTCGdexMultilingualFailureDoesNotCompleteSnapshot(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/de/") {
-			http.Error(w, "unavailable", 503)
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		if r.URL.Path == "/en/sets" {
