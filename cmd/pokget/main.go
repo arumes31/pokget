@@ -214,6 +214,10 @@ func main() {
 	var detectionPipeline *service.DetectionPipeline
 	if services.fingerprintSvc != nil {
 		detectionPipeline = service.NewDetectionPipeline(services.fingerprintSvc, llmSvc)
+		if err := configureVisionOCR(cfg, detectionPipeline); err != nil {
+			slog.Error("Failed to configure vision OCR", "error", err)
+			os.Exit(1)
+		}
 	}
 
 	// Initialize Handlers

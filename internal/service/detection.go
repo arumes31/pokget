@@ -41,6 +41,7 @@ type ocrStageRunner func(context.Context, []byte, []models.Card, string) (string
 type DetectionPipeline struct {
 	Fingerprint *FingerprintService
 	LLM         *LLMService
+	VisionOCR   VisionOCRProvider // Optional image transcription; nil keeps local-only behavior.
 
 	fingerprintRunner fingerprintStageRunner
 	ocrRunner         ocrStageRunner
@@ -307,7 +308,13 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 	for _, match := range candidateMap {
 		match.Confidence = combineScores(match.FingerprintScore, match.OCRScore, match.LLMScore)
 	}
-	if p.LLM != nil && (!hasHighConfidenceCandidate(candidateMap, 70) || (p.LLM.PrimaryBaseURL != "" && hasAmbiguousVisionCandidates(candidateMap))) {
+	visionOCRSelected := p.applyVisionOCR(ctx, request, result, candidateMap, ocrCandidates, scoped)
+	if err := ctx.Err(); err != nil {
+		result.Status = DetectionStatusCanceled
+		result.Metrics.TotalTime = time.Since(totalStart)
+		return result, err
+	}
+	if !visionOCRSelected && p.LLM != nil && (!hasHighConfidenceCandidate(candidateMap, 70) || (p.LLM.PrimaryBaseURL != "" && hasAmbiguousVisionCandidates(candidateMap))) {
 		llmCards := candidateCards(candidateMap)
 		if len(llmCards) > 0 {
 			llmStart := time.Now()
@@ -363,6 +370,11 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 	for _, match := range candidateMap {
 		match.Confidence = combineScores(match.FingerprintScore, match.OCRScore, match.LLMScore)
 		match.NeedsReview = match.Confidence < 70
+		if match.modelOCR {
+			// Model-derived OCR is not an independent deterministic signal.
+			match.Confidence = min(match.Confidence, 69)
+			match.NeedsReview = true
+		}
 		if !match.printingEvidence && ambiguousNames[normalizeMatchText(match.Card.Name)] {
 			match.NeedsReview = true
 		}

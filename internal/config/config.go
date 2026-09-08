@@ -65,6 +65,13 @@ type Config struct {
 		OCRPoolSize    int `env:"SCAN_OCR_POOL_SIZE" env-default:"3"`    // SCAN-03: Number of concurrent Tesseract clients
 		TimeoutSeconds int `env:"SCAN_TIMEOUT_SECONDS" env-default:"75"`
 	} `yaml:"scan"`
+	VisionOCR struct {
+		Enabled        bool   `env:"SCAN_VISION_OCR_ENABLED" env-default:"false"`
+		BaseURL        string `env:"SCAN_VISION_OCR_URL" env-default:"http://localhost:11434"`
+		Model          string `env:"SCAN_VISION_OCR_MODEL" env-default:"glm-ocr:q8_0"`
+		TimeoutSeconds int    `env:"SCAN_VISION_OCR_TIMEOUT_SECONDS" env-default:"45"`
+		Threads        int    `env:"SCAN_VISION_OCR_THREADS" env-default:"4"`
+	} `yaml:"vision_ocr"`
 	Catalog struct {
 		Enabled             bool   `env:"CATALOG_ENABLED" env-default:"true"`
 		LegacyMetadataSync  bool   `env:"LEGACY_METADATA_SYNC_ENABLED" env-default:"false"`
