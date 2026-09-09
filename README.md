@@ -228,7 +228,7 @@ the source file uses a named Ollama volume, while the GHCR file uses `./data/oll
 
 ### 🔨 Manual Setup
 
-Install Go 1.27+, Node.js 24, a C/C++ compiler, Tesseract runtime/development
+Install Go 1.27.1+, Node.js 26, a C/C++ compiler, Tesseract runtime/development
 libraries, Leptonica, `pkg-config`, and the seven OCR language packs. PostgreSQL
 must be reachable; Chromium is needed for browser tests and headless scraping.
 Build the bundled browser OCR assets with `npm ci --ignore-scripts` followed by
