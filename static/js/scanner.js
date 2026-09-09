@@ -439,7 +439,6 @@
 
       pauseDeviceOCR() {
         if (deviceReader) {
-          this.cancelScan();
           deviceReader.dispose();
           deviceReader = null;
         }

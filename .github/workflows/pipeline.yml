@@ -217,6 +217,9 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Test static asset builder
         run: npm run test:static
+      - name: Validate text benchmark corpus
+        shell: pwsh
+        run: ./scripts/benchmark-ollama-text.test.ps1
       - name: Build and validate minified JavaScript
         run: |
           npm run build:static

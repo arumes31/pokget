@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 )
 
@@ -73,6 +74,52 @@ func TestUncertainPrintingRequiresExplicitConfirmation(t *testing.T) {
 				chromedp.Poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).getClientRects().length`, nil),
 			); err != nil {
 				t.Fatalf("confirm and reopen printing review: %v", err)
+			}
+		})
+	}
+}
+
+func TestServerImageRetryVisibleForReviewAndErrors(t *testing.T) {
+	chromePath := mobileTestChromePath()
+	if chromePath == "" {
+		t.Skip("Chrome or Edge is not installed")
+	}
+	server := newScannerProgressServer(t)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(newHeadlessBrowserContext(t, chromePath), 30*time.Second)
+	defer cancel()
+	if err := chromedp.Run(ctx, chromedp.Navigate(server.URL),
+		chromedp.Poll(`window.Alpine && document.querySelector('#scanner-root .scanner-shell')`, nil)); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name                             string
+		blob, review, scanError, visible bool
+	}{
+		{"no crop", false, false, true, false},
+		{"clean result", true, false, false, false},
+		{"review", true, true, false, true},
+		{"no match or error", true, false, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var visible bool
+			script := fmt.Sprintf(`(async () => {
+				const scanner = Alpine.$data(document.querySelector('#scanner-root .scanner-shell'));
+				scanner.lastScanBlob = %t ? new Blob(['photo']) : null;
+				scanner.needsReview = %t;
+				scanner.scanError = %t ? 'No match' : '';
+				await Alpine.nextTick();
+				await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+				const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Use server image scan');
+				return !!button && button.getClientRects().length > 0;
+			})()`, tc.blob, tc.review, tc.scanError)
+			if err := chromedp.Run(ctx, chromedp.Evaluate(script, &visible, func(params *runtime.EvaluateParams) *runtime.EvaluateParams {
+				return params.WithAwaitPromise(true)
+			})); err != nil {
+				t.Fatal(err)
+			}
+			if visible != tc.visible {
+				t.Fatalf("server image action visible = %v, want %v", visible, tc.visible)
 			}
 		})
 	}

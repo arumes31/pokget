@@ -15,9 +15,11 @@ func registerStaticRoutes(router *mux.Router) {
 	if info, err := os.Stat(ocrAssets); err != nil || !info.IsDir() {
 		ocrAssets = "dist/static/vendor/ocr"
 	}
-	router.PathPrefix("/static/vendor/ocr/").Handler(
-		http.StripPrefix("/static/vendor/ocr/", http.FileServer(http.Dir(ocrAssets))),
-	)
+	ocrHandler := http.StripPrefix("/static/vendor/ocr/", http.FileServer(http.Dir(ocrAssets)))
+	router.PathPrefix("/static/vendor/ocr/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		ocrHandler.ServeHTTP(w, r)
+	})
 	router.PathPrefix("/static/").Handler(
 		http.StripPrefix("/static/", http.FileServer(http.Dir("static"))),
 	)

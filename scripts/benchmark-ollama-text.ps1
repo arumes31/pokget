@@ -15,7 +15,20 @@ $directory = Join-Path $root $Output
 New-Item -ItemType Directory -Path $directory -Force | Out-Null
 $corpus = Get-Content (Join-Path $root $Cases) -Raw | ConvertFrom-Json -AsHashtable
 $positive = @($corpus | Where-Object { $_.expected })
-if ($positive.Count -lt 2 -or @($positive | Where-Object { $_.candidates[0].card_id -ne $_.expected }).Count -eq 0) {
+if ($positive.Count -lt 2) {
+    throw 'Corpus must contain at least two positive cases.'
+}
+$positionCount = ($corpus | ForEach-Object { $_.candidates.Count } | Measure-Object -Maximum).Maximum
+$positionCounts = [int[]]::new($positionCount)
+foreach ($case in $positive) {
+    $positions = @(for ($i = 0; $i -lt $case.candidates.Count; $i++) {
+        if ($case.candidates[$i].card_id -ceq $case.expected) { $i }
+    })
+    if ($positions.Count -ne 1) { throw 'Corpus positive expected ID must occur exactly once in its candidates.' }
+    $positionCounts[$positions[0]]++
+}
+$counts = $positionCounts | Measure-Object -Minimum -Maximum
+if ($positionCounts -contains 0 -or ($counts.Maximum - $counts.Minimum) -gt 1) {
     throw 'Corpus must contain counterbalanced positive candidate positions.'
 }
 $results = [Collections.Generic.List[object]]::new()

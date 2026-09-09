@@ -78,8 +78,8 @@ func (h *Handler) executeTextScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	currency := "EUR"
-	if userID, ok := ctx.Value(auth.UserContextKey{}).(string); ok && h.DB != nil {
-		_ = h.DB.QueryRowContext(ctx, "SELECT currency FROM users WHERE id = $1", userID).Scan(&currency)
+	if userID, ok := r.Context().Value(auth.UserContextKey{}).(string); ok && h.DB != nil {
+		_ = h.DB.QueryRowContext(r.Context(), "SELECT currency FROM users WHERE id = $1", userID).Scan(&currency)
 	}
 	matches := make([]map[string]any, 0, len(result.TopMatches))
 	for _, match := range result.TopMatches {

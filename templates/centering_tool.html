@@ -243,7 +243,7 @@
             </button>
         </div>
 
-        <button data-i18n type="button" x-show="lastScanBlob && needsReview" :disabled="scanning"
+        <button data-i18n type="button" x-show="lastScanBlob && (needsReview || scanError)" :disabled="scanning"
             @click="submitPreparedBlob(lastScanBlob, lastScanName || 'retry.jpg', false, true)"
             class="min-h-11 rounded-xl border border-white/10 px-3 text-sm text-white/80">Use server image scan</button>
 

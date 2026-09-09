@@ -1,13 +1,20 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
+	"pokget/internal/auth"
 	"pokget/internal/models"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/shopspring/decimal"
 )
 
 func TestAPIScanDeviceText(t *testing.T) {
@@ -44,4 +51,37 @@ func TestAPIScanDeviceText(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTextScanCurrencyOutlivesDetectionBudget(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		database, mock, err := sqlmock.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer database.Close()
+		mock.ExpectQuery("SELECT currency FROM users WHERE id = \\$1").WithArgs("user-1").
+			WillDelayFor(2 * time.Second).
+			WillReturnRows(sqlmock.NewRows([]string{"currency"}).AddRow("USD"))
+		h := &Handler{DB: database, ScanTimeout: time.Second, MockCards: []models.Card{{
+			ID: "furret", Name: "Furret", Game: "pokemon", Language: "en", CollectorNumber: "136",
+			PriceEUR: decimal.NewFromInt(10), PriceUSD: decimal.NewFromInt(12),
+		}}}
+		r := httptest.NewRequest(http.MethodPost, "/api/scan", strings.NewReader(`{"ocr_text":"Furret 136/197","game":"pokemon","lang":"eng"}`))
+		r = r.WithContext(context.WithValue(r.Context(), auth.UserContextKey{}, "user-1"))
+		w := httptest.NewRecorder()
+		h.executeTextScan(w, r)
+		var response struct {
+			Price float64 `json:"price"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		if w.Code != http.StatusOK || response.Price != 12 {
+			t.Fatalf("currency lookup consumed detection budget: %d %s", w.Code, w.Body)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+	})
 }

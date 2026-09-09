@@ -1,6 +1,8 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const fs = require('node:fs');
+const vm = require('node:vm');
 const { createReader, usableText } = require('../static/js/device-ocr.js');
 
 function setup(options = {}) {
@@ -13,6 +15,31 @@ function setup(options = {}) {
   }
   return { workers, reader: createReader({ WorkerClass: Worker, ...options }) };
 }
+
+test('worker selects band and full-card segmentation on reused reads', async () => {
+  const modes = [];
+  let mode, creations = 0, closed = 0;
+  const self = { location: { origin: 'https://pokget.test' }, postMessage() {} };
+  const engine = {
+    async setParameters(parameters) { mode = parameters.tessedit_pageseg_mode; },
+    // Tesseract.js 7 applies recognition options temporarily, then restores its parameters.
+    async recognize(blob, options) { modes.push(options.tessedit_pageseg_mode ?? mode); return { data: { text: 'Furret 136', confidence: 90 } }; },
+  };
+  const context = {
+    self, URL, Blob, importScripts() {},
+    Tesseract: { async createWorker() { creations++; return engine; } },
+    async createImageBitmap() { return { width: 400, height: 600, close() { closed++; } }; },
+    OffscreenCanvas: class {
+      getContext() { return { drawImage() {} }; }
+      async convertToBlob() { return new Blob(['band']); }
+    },
+  };
+  vm.runInNewContext(fs.readFileSync('static/js/device-ocr-worker.js', 'utf8'), context);
+  for (const id of [1, 2]) await self.onmessage({ data: { id, blob: new Blob(['card']), language: 'eng' } });
+  assert.deepEqual(modes, ['11', '6', '6', '11', '6', '6']);
+  assert.equal(creations, 1);
+  assert.equal(closed, 2);
+});
 
 test('device OCR reuses its worker and sends only the selected language', async () => {
   const { workers, reader } = setup();

@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createCardScanner } = require('../static/js/scanner.js');
+const { createReader } = require('../static/js/device-ocr.js');
 
 test('progress descriptions distinguish local OCR from text matching', () => {
   const scanner = createCardScanner();
@@ -54,4 +55,31 @@ test('cancellation before device OCR finishes never uploads the photo', async (t
   const job = scanner.submitPreparedBlob(new Blob(['photo']), 'card.jpg');
   scanner.cancelScan(); finish('Furret 136'); await job;
   assert.equal(scanner.detectedID, '');
+});
+
+test('pausing device OCR releases the worker and falls back to one image upload', async (t) => {
+  const previous = { fetch: global.fetch, ocr: global.PokgetDeviceOCR };
+  const workers = [], calls = [];
+  class Worker {
+    constructor() { workers.push(this); }
+    postMessage() {}
+    terminate() { this.stopped = true; }
+  }
+  global.PokgetDeviceOCR = { createReader: () => createReader({ WorkerClass: Worker }) };
+  global.fetch = async (url, options) => { calls.push(options); return Response.json({ id: 'furret', detected: 'Furret' }); };
+  const scanner = createCardScanner({ csrfToken: 'csrf' }); scanner.notify = () => {};
+  t.after(() => { scanner.pauseDeviceOCR(); global.fetch = previous.fetch; global.PokgetDeviceOCR = previous.ocr; });
+  for (let pass = 0; pass < 2; pass++) {
+    const job = scanner.submitPreparedBlob(new Blob(['photo']), 'card.jpg');
+    const controller = scanner.abortController;
+    scanner.pauseDeviceOCR();
+    await job;
+    assert.equal(controller.signal.aborted, false);
+    assert.equal(workers[pass].stopped, true);
+    assert.equal(calls.length, pass + 1);
+    assert.ok(calls[pass].body instanceof FormData);
+    assert.equal(calls[pass].headers['X-CSRF-Token'], 'csrf');
+  }
+  assert.equal(workers.length, 2, 'a new reader is created after pausing');
+  assert.equal(scanner.detectedID, 'furret');
 });
