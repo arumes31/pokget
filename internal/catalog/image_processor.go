@@ -34,6 +34,8 @@ const (
 )
 
 type ImageHasher interface {
+	// CalculateHash may be invoked concurrently by ImageProcessor.Process.
+	// Custom implementations supplied via ImageProcessorConfig.Hasher must be safe for concurrent use.
 	CalculateHash(image.Image) (int64, error)
 }
 

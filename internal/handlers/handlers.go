@@ -1067,14 +1067,14 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	if r.MultipartForm != nil {
 		defer func() {
 			if err := r.MultipartForm.RemoveAll(); err != nil {
-				slog.Warn("APIScan: Failed to remove multipart temporary files", "error", err)
+				logger.Warn("APIScan: Failed to remove multipart temporary files", "error", err)
 			}
 		}()
 	}
 
 	file, header, err := r.FormFile("card_image")
 	if err != nil {
-		slog.Warn("APIScan: Failed to get image from form", "error", err)
+		logger.Warn("APIScan: Failed to get image from form", "error", err)
 		http.Error(w, "Failed to get image from form", http.StatusBadRequest)
 		return
 	}
@@ -1114,13 +1114,13 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 
 	imgBytes, err := io.ReadAll(file)
 	if err != nil {
-		slog.Error("APIScan: Failed to read image", "error", err)
+		logger.Error("APIScan: Failed to read image", "error", err)
 		http.Error(w, "Failed to read image", http.StatusInternalServerError)
 		return
 	}
 
 	if len(imgBytes) == 0 {
-		slog.Warn("APIScan: Received empty image bytes")
+		logger.Warn("APIScan: Received empty image bytes")
 		http.Error(w, "Empty image received", http.StatusBadRequest)
 		return
 	}
