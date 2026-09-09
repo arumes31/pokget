@@ -327,6 +327,8 @@
       useDeviceOCR: true,
       scanning: false,
       scanStatus: '',
+      deviceOCRDetail: '',
+      deviceOCROutcome: '',
       scanPreviewURL: '',
       scanStep: 0,
       scanError: '',
@@ -389,9 +391,10 @@
       },
 
       get scanProgressDetail() {
-        if (this.scanStatus === 'Reading card text on this device…') return 'The cropped image is being read on this device.';
+        if (this.scanStatus === 'Reading card text on this device…') return this.deviceOCRDetail || 'The cropped image is being read on this device.';
         if (this.scanStatus === 'Matching device text with the catalog…') return 'Sending OCR text only; the image stays on your device.';
         if (this.scanStep <= 1) return 'Preparing the image on this device.';
+        if (this.scanStep === 2 && this.deviceOCROutcome) return `Device OCR: ${this.deviceOCROutcome.replaceAll('_', ' ')}. Uploading the crop for server detection.`;
         if (this.scanStep === 2 && this.scanElapsedSeconds < 15) {
           return 'Uploading securely, then running OCR and scoped card matching.';
         }
@@ -842,7 +845,10 @@
 
         this.setScanning(true);
         this.scanError = '';
+        this.deviceOCRDetail = '';
+        this.deviceOCROutcome = '';
         const requestID = ++this.requestID;
+        const scanID = globalThis.crypto?.randomUUID?.() || `scan-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
         const controller = new AbortController();
         this.abortController = controller;
         let resultReceived = false;
@@ -857,14 +863,31 @@
         try {
           const language = normalizeLanguage(this.game, this.lang);
           const game = this.game;
+          let outcome = serverOnly ? 'server_only' : !this.useDeviceOCR ? 'disabled' : 'unsupported';
+          let deviceDuration = 0;
+          let fallback = '';
           let localText = null;
           if (!serverOnly && this.useDeviceOCR && globalThis.PokgetDeviceOCR) {
             deviceReader ||= globalThis.PokgetDeviceOCR.createReader();
             if (deviceReader.supports(language)) {
               this.setStatus('Reading card text on this device…', 2);
-              localText = await deviceReader.read(blob, language, controller.signal);
+              outcome = 'weak_text';
+              localText = await deviceReader.read(blob, language, controller.signal, (event) => {
+                if (requestID !== this.requestID || controller.signal.aborted) return;
+                deviceDuration = event.duration_ms;
+                if (event.outcome) outcome = event.outcome;
+                const labels = { initializing: 'Starting the OCR engine', loading_language: 'Loading the selected language', full_card: 'Reading the full card', top_band: 'Reading the top edge', bottom_band: 'Reading the bottom edge' };
+                if (labels[event.stage]) this.deviceOCRDetail = `${labels[event.stage]} on this device (${event.progress}%).`;
+              });
+              if (localText) outcome = 'usable';
             }
           }
+          this.deviceOCROutcome = outcome;
+          fallback = localText ? 'none' : outcome;
+          const headers = () => ({
+            'X-CSRF-Token': this.csrfToken, 'X-Scan-ID': scanID,
+            'X-Device-OCR': outcome, 'X-Device-OCR-MS': String(deviceDuration), 'X-Scan-Fallback': fallback,
+          });
           if (requestID !== this.requestID || controller.signal.aborted) return;
           const upload = () => {
             this.setStatus('Uploading the crop and running detection…', 2);
@@ -873,14 +896,14 @@
             formData.append('lang', language);
             formData.append('game', game);
             return fetch('/api/scan', {
-              method: 'POST', headers: { 'X-CSRF-Token': this.csrfToken },
+              method: 'POST', headers: headers(),
               body: formData, signal: controller.signal,
             });
           };
           if (localText) this.setStatus('Matching device text with the catalog…', 3);
           let response = localText ? await fetch('/api/scan', {
             method: 'POST',
-            headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json' },
+            headers: { ...headers(), 'Content-Type': 'application/json' },
             body: JSON.stringify({ ocr_text: localText, lang: language, game }),
             signal: controller.signal,
           }) : await upload();
@@ -894,6 +917,8 @@
           }
           if (requestID !== this.requestID || controller.signal.aborted) return;
           if (localText && (response.status === 415 || deviceData?.requires_image === true)) {
+            fallback = response.status === 415 ? 'unsupported_server' : 'no_match';
+            this.deviceOCROutcome = fallback;
             deviceData = undefined;
             response = await upload();
           }

@@ -1,6 +1,15 @@
 (() => {
   'use strict';
   const german = {
+    "Device OCR: timeout. Uploading the crop for server detection.": "Geräte-OCR: Zeitlimit erreicht. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
+    "Device OCR: weak text. Uploading the crop for server detection.": "Geräte-OCR: Text nicht sicher lesbar. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
+    "Device OCR: error. Uploading the crop for server detection.": "Geräte-OCR: Fehler. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
+    "Device OCR: paused. Uploading the crop for server detection.": "Geräte-OCR: pausiert. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
+    "Device OCR: disabled. Uploading the crop for server detection.": "Geräte-OCR: deaktiviert. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
+    "Device OCR: unsupported. Uploading the crop for server detection.": "Geräte-OCR: nicht unterstützt. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
+    "Device OCR: server only. Uploading the crop for server detection.": "Nur Server-Erkennung ausgewählt. Der Ausschnitt wird hochgeladen.",
+    "Device OCR: no match. Uploading the crop for server detection.": "Gerätetext ohne Katalogtreffer. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
+    "Device OCR: unsupported server. Uploading the crop for server detection.": "Server unterstützt keine Text-Anfragen. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
     "The cropped image is being read on this device.": "Der Bildausschnitt wird auf diesem Gerät gelesen.",
     "Sending OCR text only; the image stays on your device.": "Nur erkannter Text wird gesendet; das Bild bleibt auf deinem Gerät.",
     "Card image is too large": "Das Kartenbild ist zu groß",
@@ -686,6 +695,12 @@
   };
 
   const germanPatterns = {
+    "Device OCR: {0}. Uploading the crop for server detection.": "Geräte-OCR: {0}. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
+    "Starting the OCR engine on this device ({0}%).": "OCR-Engine wird auf diesem Gerät gestartet ({0} %).",
+    "Loading the selected language on this device ({0}%).": "Ausgewählte Sprache wird auf diesem Gerät geladen ({0} %).",
+    "Reading the full card on this device ({0}%).": "Die ganze Karte wird auf diesem Gerät gelesen ({0} %).",
+    "Reading the top edge on this device ({0}%).": "Oberer Kartenrand wird auf diesem Gerät gelesen ({0} %).",
+    "Reading the bottom edge on this device ({0}%).": "Unterer Kartenrand wird auf diesem Gerät gelesen ({0} %).",
     "Page {0}": "Seite {0}",
     "Edit {0}": "{0} bearbeiten",
     "No image available for {0}": "Kein Bild für {0} verfügbar",

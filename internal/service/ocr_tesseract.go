@@ -90,6 +90,7 @@ func ProcessCardScanContext(ctx context.Context, imgBytes []byte, cards []models
 
 	cacheKey := makeOCRCacheKeyWithConfig(imgBytes, lang, cards, config)
 	if cached, ok := ocrCache.Load(cacheKey); ok {
+		ScanLogger(ctx).Debug("OCR cache hit")
 		entry := cached.(ocrCacheEntry)
 		return entry.Text, entry.DetectedCard, entry.ProcessedImage, nil
 	}
@@ -108,16 +109,21 @@ func ProcessCardScanContext(ctx context.Context, imgBytes []byte, cards []models
 	}
 
 	results := make([]ocrPassResult, 0, len(passes))
+	ScanLogger(ctx).Info("OCR passes prepared", "language", lang, "passes", len(passes), "width", src.Bounds().Dx(), "height", src.Bounds().Dy())
 	failures := make([]error, 0, len(passes))
 	recognitionStarted := time.Now()
-	for _, pass := range passes {
+	for index, pass := range passes {
 		if err := ctx.Err(); err != nil {
 			return "", "", nil, err
 		}
+		passStarted := time.Now()
+		logger := ScanLogger(ctx).With("pass", pass.Name, "pass_index", index+1, "passes", len(passes))
+		logger.Debug("OCR pass started")
 		text, passErr := executeOCRPass(ctx, pass, lang)
+		logger.Debug("OCR pass finished", "duration_ms", time.Since(passStarted).Milliseconds(), "success", passErr == nil, "text_bytes", len(text))
 		if passErr != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", pass.Name, passErr))
-			slog.Warn("OCR pass failed", "pass", pass.Name, "error", passErr)
+			logger.Warn("OCR pass failed", "error", passErr)
 			continue
 		}
 		results = append(results, ocrPassResult{Pass: pass, Text: text, Quality: scoreOCRText(text)})
@@ -127,14 +133,14 @@ func ProcessCardScanContext(ctx context.Context, imgBytes []byte, cards []models
 	}
 
 	nativeFinished := time.Now()
-	slog.Info("OCR: recognition complete", "passes", len(results), "duration", nativeFinished.Sub(recognitionStarted))
+	ScanLogger(ctx).Info("OCR: recognition complete", "passes", len(results), "duration", nativeFinished.Sub(recognitionStarted))
 	text, evidence := combineOCRResults(results)
 	text = norm.NFKC.String(text)
 	detectedCard, err := matchOCRCardWithContexts(ctx, llmCtx, text, evidence, cards, lang, llm)
 	if err != nil {
 		return "", "", nil, err
 	}
-	slog.Info("OCR: local matching complete", "candidates", len(cards), "passes", len(results), "duration", time.Since(nativeFinished))
+	ScanLogger(ctx).Info("OCR: local matching complete", "candidates", len(cards), "passes", len(results), "duration", time.Since(nativeFinished))
 	entry := ocrCacheEntry{Text: text, DetectedCard: detectedCard, ProcessedImage: processedImage}
 	ocrCache.Store(cacheKey, entry)
 	return text, detectedCard, append([]byte(nil), processedImage...), nil

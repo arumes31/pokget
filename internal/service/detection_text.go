@@ -69,10 +69,12 @@ func (p *DetectionPipeline) DetectTextScoped(ctx context.Context, request TextDe
 		return invalidDetectionResult(started), ErrInvalidDetectionRequest
 	}
 	cards := cardsForScope(request.Cards, request.Scope)
+	ScanLogger(ctx).Info("Scan scope selected", "game", request.Scope.TCG, "language", request.Scope.Language, "cached_cards", len(request.Cards), "eligible_cards", len(cards))
 	if len(cards) == 0 {
 		return invalidDetectionResult(started), errors.Join(ErrInvalidDetectionRequest, ErrNoEligibleCards)
 	}
 	// This path is local-only even if an administrator also configured a remote
+	finish := LogScanStage(ctx, "device_text_matching")
 	// vision provider for image scans. Do not mutate the shared pipeline/client.
 	local := *p
 	local.VisionOCR = nil
@@ -84,6 +86,7 @@ func (p *DetectionPipeline) DetectTextScoped(ctx context.Context, request TextDe
 	}
 	result, err := local.combineDetection(ctx, DetectionRequest{Cards: cards, Scope: request.Scope},
 		&DetectionResult{OCRText: request.Text}, fingerprintStageOutput{}, ocrStageOutput{text: request.Text}, true, started)
+	finish(err)
 	if result != nil {
 		for i := range result.TopMatches {
 			result.TopMatches[i].Confidence = min(result.TopMatches[i].Confidence, 69)

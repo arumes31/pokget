@@ -59,10 +59,13 @@ func (h *Handler) executeTextScan(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), budget)
 	defer cancel()
+	finishQueue := service.LogScanStage(ctx, "detector_queue")
 	select {
 	case scanDetectionSlots <- struct{}{}:
+		finishQueue(nil)
 		defer func() { <-scanDetectionSlots }()
 	case <-ctx.Done():
+		finishQueue(ctx.Err())
 		writeDetectionError(w, ctx.Err())
 		return
 	}
@@ -74,6 +77,7 @@ func (h *Handler) executeTextScan(w http.ResponseWriter, r *http.Request) {
 		Text: input.Text, Cards: cards, Scope: service.ScanScope{TCG: tcg, Language: language},
 	})
 	if err != nil {
+		service.ScanLogger(ctx).Warn("Device text matching failed", "error", err)
 		writeDetectionError(w, err)
 		return
 	}
@@ -99,6 +103,7 @@ func (h *Handler) executeTextScan(w http.ResponseWriter, r *http.Request) {
 		"needs_review": true, "top_matches": matches, "processing": "device_ocr",
 		"requires_image": len(matches) == 0,
 	}
+	service.ScanLogger(ctx).Info("Device text result", "matches", len(matches), "requires_image", len(matches) == 0, "needs_review", true)
 	if len(matches) > 0 {
 		for key, value := range matches[0] {
 			response[key] = value

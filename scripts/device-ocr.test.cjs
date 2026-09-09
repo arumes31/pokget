@@ -85,3 +85,35 @@ test('device text is bounded and control characters are removed', () => {
   assert.ok(!text.includes('\0'));
   assert.equal(usableText({ text: 'Furret', confidence: NaN }), '');
 });
+
+test('progress does not finish recognition and diagnostics contain no text', async () => {
+  const { workers, reader } = setup();
+  const events = [];
+  try {
+    const job = reader.read(new Blob(['private image']), 'eng', undefined, event => events.push(event));
+    workers[0].onmessage({ data: { id: 1, type: 'progress', stage: 'full_card', progress: 0.5, text: 'private text' } });
+    assert.equal(workers[0].stopped, false);
+    workers[0].reply('Furret 136/197');
+    assert.equal(await job, 'Furret 136/197');
+    assert.ok(events.some(e => e.stage === 'full_card' && e.progress === 50));
+    assert.equal(events.at(-1).outcome, 'usable');
+    assert.equal(JSON.stringify(events).includes('Furret'), false);
+    assert.equal(JSON.stringify(events).includes('private'), false);
+  } finally { reader.dispose(); }
+});
+
+test('diagnostics distinguish timeout, weak text, errors and pause', async () => {
+  const { workers, reader } = setup({ timeoutMS: 10 });
+  const events = [], report = e => events.push(e);
+  await reader.read(new Blob(['image']), 'eng', undefined, report);
+  assert.equal(events.at(-1).outcome, 'timeout');
+  let job = reader.read(new Blob(['image']), 'eng', undefined, report);
+  workers[1].reply('???', 5); await job;
+  assert.equal(events.at(-1).outcome, 'weak_text');
+  job = reader.read(new Blob(['image']), 'eng', undefined, report);
+  workers[2].onerror(); await job;
+  assert.equal(events.at(-1).outcome, 'error');
+  job = reader.read(new Blob(['image']), 'eng', undefined, report);
+  reader.dispose(); await job;
+  assert.equal(events.at(-1).outcome, 'paused');
+});
