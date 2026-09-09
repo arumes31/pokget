@@ -5,14 +5,19 @@ services:
     ports:
       - "${APP_PORT:-18066}:${APP_PORT:-18066}"
     environment:
+      - APP_NAME=${APP_NAME:-Pokget}
       - APP_PORT=${APP_PORT:-18066}
+      - DEBUG=${DEBUG:-false}
+      - SECURE_COOKIES=${SECURE_COOKIES:-true}
+      - WRITE_TIMEOUT=${WRITE_TIMEOUT:-120}
       - DB_HOST=pokget_db
       - DB_PORT=5432
       - DB_USER=${DB_USER:-pokget_user}
       - DB_PASSWORD=${DB_PASSWORD:-pokget_pass}
       - DB_NAME=${DB_NAME:-pokget_db}
       - DB_SSLMODE=disable
-      - OLLAMA_HOST=pokget_ollama
+      # Text shortlist selector; separate from the optional image OCR model.
+      - OLLAMA_HOST=${OLLAMA_HOST:-pokget_ollama}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_MODEL=${LLM_MODEL:-moonshotai/kimi-k3}
       - LLM_API=${LLM_API:-}
@@ -27,6 +32,10 @@ services:
       - OLLAMA_MIN_EVIDENCE=${OLLAMA_MIN_EVIDENCE:-180}
       - OLLAMA_MIN_CONFIDENCE=${OLLAMA_MIN_CONFIDENCE:-0.55}
       - SCAN_TIMEOUT_SECONDS=${SCAN_TIMEOUT_SECONDS:-75}
+      - SCAN_OCR_POOL_SIZE=${SCAN_OCR_POOL_SIZE:-3}
+      - SCAN_PHASH_HIGH_CONF=${SCAN_PHASH_HIGH_CONF:-5}
+      - SCAN_PHASH_POTENTIAL=${SCAN_PHASH_POTENTIAL:-10}
+      # Slow CPU image fallback, off by default; pull its model before enabling.
       - SCAN_VISION_OCR_ENABLED=${SCAN_VISION_OCR_ENABLED:-false}
       - SCAN_VISION_OCR_URL=${SCAN_VISION_OCR_URL:-http://pokget_ollama:11434}
       - SCAN_VISION_OCR_MODEL=${SCAN_VISION_OCR_MODEL:-qwen3.5:2b}
@@ -48,6 +57,7 @@ services:
       - CATALOG_SYNC_INTERVAL_MINUTES=${CATALOG_SYNC_INTERVAL_MINUTES:-360}
       - CATALOG_BATCH_SIZE=${CATALOG_BATCH_SIZE:-500}
       - CATALOG_REQUEST_DELAY_MS=${CATALOG_REQUEST_DELAY_MS:-100}
+      - CATALOG_WEISS_MAX_PAGES=${CATALOG_WEISS_MAX_PAGES:-0}
       - CATALOG_IMAGES_ENABLED=${CATALOG_IMAGES_ENABLED:-true}
       - CATALOG_IMAGE_STORE=/app/data/catalog-images
       - CATALOG_IMAGE_BATCH_SIZE=${CATALOG_IMAGE_BATCH_SIZE:-8}
@@ -104,6 +114,7 @@ services:
       - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
     ports:
+      # Not authenticated: restrict this published port to trusted clients.
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama

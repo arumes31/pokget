@@ -181,37 +181,65 @@ docker build -t pokget:verification .
 bash scripts/container-smoke.sh pokget:verification
 ```
 
+The Ubuntu 24.04 CI jobs install Tesseract through
+`scripts/ci-apt-install.sh`. It uses only the runner's signed Ubuntu sources, so
+an unrelated Chrome repository outage cannot block Go checks. Ubuntu index or
+package failures still fail the job; signature/hash verification is not disabled.
+
 
 ---
 
 ## 🛠️ Quick Start
 
 ### 🐳 Using Docker (Recommended)
-```powershell
-docker-compose up --build
+
+Copy [example.env](example.env) to `.env`, then fill in a unique `DB_PASSWORD` and
+a random `SESSION_KEY` (generate one with `openssl rand -hex 32`). Do not overwrite
+an existing `.env`; compare it with the template when upgrading.
+
+```sh
+cp example.env .env
+# Edit .env before starting. Use SECURE_COOKIES=false only for local HTTP testing.
+docker compose up -d --build
+docker compose exec pokget_ollama ollama pull qwen2.5:1.5b
 ```
+
+PowerShell users can use `Copy-Item example.env .env`. Keep
+`SECURE_COOKIES=true` for HTTPS deployments. A phone camera/PWA needs HTTPS when
+accessing the server over the LAN; plain `http://<server-IP>` is not a secure
+camera origin. See [configuration and deployment](CONFIGURATION.md) for native
+setup, proxy settings, model choices, persistence, upgrades, and troubleshooting.
+
 *   **App**: `http://localhost:18066`
 *   **Database**: Postgres 15
 *   **Reference images**: `./data/catalog-images`
 
+For a published image instead of a source build:
+
+```sh
+docker compose -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.ghcr.yml up -d
+docker compose -f docker-compose.ghcr.yml exec pokget_ollama ollama pull qwen2.5:1.5b
+```
+
+Choose a published tag/digest with `POKGET_IMAGE`. A PR does not publish `latest`;
+use a source build to test unmerged changes. Use one Compose file consistently:
+the source file uses a named Ollama volume, while the GHCR file uses `./data/ollama`.
+
 ### 🔨 Manual Setup
-1.  **Dependencies**: Install `tesseract-ocr`.
-2.  **Environment**: Create a `.env` file:
-    ```env
-    DB_HOST=localhost
-    DB_PORT=5432
-    SESSION_KEY=your-32-character-secure-key-here
-    LOG_FORMAT=text
-    SMTP_HOST=smtp.gmail.com
-    ```
-    Logs use readable `key=value` text by default. Set `LOG_FORMAT=json` only when
-    sending them to a structured-log collector.
-    During catalog fingerprint generation, the logs also report queue totals,
-    completion, failures, throughput, and an ETA while work is changing.
-3.  **Run**:
-    ```bash
-    go run ./cmd/pokget
-    ```
+
+Install Go 1.27+, Node.js 24, a C/C++ compiler, Tesseract runtime/development
+libraries, Leptonica, `pkg-config`, and the seven OCR language packs. PostgreSQL
+must be reachable; Chromium is needed for browser tests and headless scraping.
+Build the bundled browser OCR assets with `npm ci --ignore-scripts` followed by
+`npm run build:static`.
+
+Export the required `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and
+`SESSION_KEY` variables before `go run ./cmd/pokget`. **Native Go does not read
+`.env` automatically.** Adapt the template's Compose URLs to localhost and your
+actual database port; see [the native configuration guide](CONFIGURATION.md#native-processes).
+Logs use readable `key=value` text by default; use `LOG_FORMAT=json` for a
+structured-log collector. Catalog image processing reports queue progress and ETA.
 
 ### Phone-first scanning with local Ollama
 
@@ -311,14 +339,6 @@ did all seven synthetic language samples. Some responses included extra text.
 Full-transcription prompts timed out; the smaller 0.8B model misread collector
 numbers, and Qwen3-VL 2B Q4_K_M failed accuracy/latency checks. These are small
 pilot results, not proof of perfect multilingual or end-to-end printing accuracy.
-
-The production Go client also accepted all ten JPEG-quality-95 pilot inputs with
-the correct name and number: real cards took 33.7–44.4 seconds (Furret included a
-cold model load), and synthetic samples took 17.2–25.6 seconds. Only two synthetic
-responses exactly followed the requested two-field format; extra text and field
-ordering remain variable. This is a slow fallback, not a replacement for the
-local OCR/fingerprint first stage. Real photographs per language/game still need
-held-out validation before broad enablement.
 
 The production Go client also accepted all ten JPEG-quality-95 pilot inputs with
 the correct name and number: real cards took 33.7–44.4 seconds (Furret included a
