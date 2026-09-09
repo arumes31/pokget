@@ -43,13 +43,13 @@ import (
 
 const (
 	defaultOllamaHost       = "pokget_ollama"
-	defaultOllamaModel      = "gemma3:270m"
+	defaultOllamaModel      = "qwen2.5:1.5b"
 	defaultLLMMaxCandidates = 20
 	defaultLLMMinEvidence   = 180
 	defaultLLMMinConfidence = 0.55
 	defaultLLMNumPredict    = 128
 	defaultLLMNumContext    = 2048
-	defaultLLMNumThread     = 8
+	defaultLLMNumThread     = 4
 	defaultLLMSeed          = 42
 )
 
@@ -85,22 +85,23 @@ type LLMConfig struct {
 // Existing exported fields remain for compatibility with callers that build a
 // service literal; zero values for the matching options use secure defaults.
 type LLMService struct {
-	PrimaryBaseURL   string
-	PrimaryModel     string
-	PrimaryAPIKey    string
-	PrimaryMaxTokens int
-	Timeout          time.Duration
-	BaseURL          string
-	Model            string
-	HTTPClient       *http.Client
-	Temperature      float64
-	Seed             int
-	NumPredict       int
-	NumContext       int
-	NumThread        int
-	MaxCandidates    int
-	MinEvidence      int
-	MinConfidence    float64
+	compactSelectionIDs bool // Request-local aliases for device OCR; never exposed as catalog IDs.
+	PrimaryBaseURL      string
+	PrimaryModel        string
+	PrimaryAPIKey       string
+	PrimaryMaxTokens    int
+	Timeout             time.Duration
+	BaseURL             string
+	Model               string
+	HTTPClient          *http.Client
+	Temperature         float64
+	Seed                int
+	NumPredict          int
+	NumContext          int
+	NumThread           int
+	MaxCandidates       int
+	MinEvidence         int
+	MinConfidence       float64
 }
 
 // NewLLMService enables the primary provider only when LLM_BASE_URL is configured.
@@ -587,10 +588,14 @@ func (s *LLMService) fuzzyMatchCardWithArtworkContext(ctx context.Context, ocrTe
 	shortlistScoreByID := make(map[string]int, len(shortlist))
 	for _, candidate := range shortlist {
 		card := candidate.Card
-		shortlistByID[card.ID] = card
-		shortlistScoreByID[card.ID] = candidate.Score
+		selectionID := card.ID
+		if s.compactSelectionIDs && s.PrimaryBaseURL == "" {
+			selectionID = fmt.Sprintf("c%d", len(input.Candidates)+1)
+		}
+		shortlistByID[selectionID] = card
+		shortlistScoreByID[selectionID] = candidate.Score
 		input.Candidates = append(input.Candidates, promptCandidate{
-			CardID: card.ID, Name: card.Name, Set: card.Set, SetCode: card.SetCode,
+			CardID: selectionID, Name: card.Name, Set: card.Set, SetCode: card.SetCode,
 			CollectorNumber: card.CollectorNumber, Language: card.Language, Game: card.Game,
 			Variant: card.Variant, EvidenceScore: candidate.Score, Evidence: candidate.Reasons,
 		})

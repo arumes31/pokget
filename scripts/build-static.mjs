@@ -1,4 +1,4 @@
-import { cp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -93,7 +93,33 @@ export async function buildStatic({ sourceDir = defaultSourceDir, outputDir = de
     });
   }
 
+  if (resolvedSource === defaultSourceDir) await copyDeviceOCRAssets(resolvedOutput);
   return results;
+}
+
+// Lockfile-pinned assets are copied after minification: upstream WASM loaders
+// must remain byte-for-byte intact. No OCR code or data is fetched from a CDN.
+export async function copyDeviceOCRAssets(outputDir) {
+  const vendor = path.join(outputDir, 'vendor', 'ocr', '7.0.0');
+  const modules = path.join(projectRoot, 'node_modules');
+  await mkdir(path.join(vendor, 'core'), { recursive: true });
+  await mkdir(path.join(vendor, 'lang'), { recursive: true });
+  for (const name of ['tesseract.min.js', 'worker.min.js', 'tesseract.min.js.LICENSE.txt', 'worker.min.js.LICENSE.txt']) {
+    await cp(path.join(modules, 'tesseract.js', 'dist', name), path.join(vendor, name));
+  }
+  await cp(path.join(modules, 'tesseract.js', 'LICENSE.md'), path.join(vendor, 'LICENSE-tesseract.js'));
+  const coreDir = path.join(modules, 'tesseract.js-core');
+  for (const name of await readdir(coreDir)) {
+    // v7 also supports relaxed SIMD. Ship every upstream core variant and let
+    // Tesseract feature-detect the fastest supported one on each device.
+    if (name.startsWith('tesseract-core') || name === 'LICENSE') {
+      await cp(path.join(coreDir, name), path.join(vendor, 'core', name));
+    }
+  }
+  for (const language of ['eng', 'deu', 'fra', 'jpn', 'chi_sim', 'chi_tra', 'kor']) {
+    await cp(path.join(modules, '@tesseract.js-data', language, '4.0.0_best_int', `${language}.traineddata.gz`),
+      path.join(vendor, 'lang', `${language}.traineddata.gz`));
+  }
 }
 
 async function main() {

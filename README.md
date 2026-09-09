@@ -181,37 +181,110 @@ docker build -t pokget:verification .
 bash scripts/container-smoke.sh pokget:verification
 ```
 
+The Ubuntu 24.04 CI jobs install Tesseract through
+`scripts/ci-apt-install.sh`. It uses only the runner's signed Ubuntu sources, so
+an unrelated Chrome repository outage cannot block Go checks. Ubuntu index or
+package failures still fail the job; signature/hash verification is not disabled.
+
 
 ---
 
 ## 🛠️ Quick Start
 
 ### 🐳 Using Docker (Recommended)
-```powershell
-docker-compose up --build
+
+Copy [example.env](example.env) to `.env`, then fill in a unique `DB_PASSWORD` and
+a random `SESSION_KEY` (generate one with `openssl rand -hex 32`). Do not overwrite
+an existing `.env`; compare it with the template when upgrading.
+
+```sh
+cp example.env .env
+# Edit .env before starting. Use SECURE_COOKIES=false only for local HTTP testing.
+docker compose up -d --build
+docker compose exec pokget_ollama ollama pull qwen2.5:1.5b
 ```
+
+PowerShell users can use `Copy-Item example.env .env`. Keep
+`SECURE_COOKIES=true` for HTTPS deployments. A phone camera/PWA needs HTTPS when
+accessing the server over the LAN; plain `http://<server-IP>` is not a secure
+camera origin. See [configuration and deployment](CONFIGURATION.md) for native
+setup, proxy settings, model choices, persistence, upgrades, and troubleshooting.
+
 *   **App**: `http://localhost:18066`
 *   **Database**: Postgres 15
 *   **Reference images**: `./data/catalog-images`
 
+For a published image instead of a source build:
+
+```sh
+docker compose -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.ghcr.yml up -d
+docker compose -f docker-compose.ghcr.yml exec pokget_ollama ollama pull qwen2.5:1.5b
+```
+
+Choose a published tag/digest with `POKGET_IMAGE`. A PR does not publish `latest`;
+use a source build to test unmerged changes. Use one Compose file consistently:
+the source file uses a named Ollama volume, while the GHCR file uses `./data/ollama`.
+
 ### 🔨 Manual Setup
-1.  **Dependencies**: Install `tesseract-ocr`.
-2.  **Environment**: Create a `.env` file:
-    ```env
-    DB_HOST=localhost
-    DB_PORT=5432
-    SESSION_KEY=your-32-character-secure-key-here
-    LOG_FORMAT=text
-    SMTP_HOST=smtp.gmail.com
-    ```
-    Logs use readable `key=value` text by default. Set `LOG_FORMAT=json` only when
-    sending them to a structured-log collector.
-    During catalog fingerprint generation, the logs also report queue totals,
-    completion, failures, throughput, and an ETA while work is changing.
-3.  **Run**:
-    ```bash
-    go run ./cmd/pokget
-    ```
+
+Install Go 1.27.1+, Node.js 26, a C/C++ compiler, Tesseract runtime/development
+libraries, Leptonica, `pkg-config`, and the seven OCR language packs. PostgreSQL
+must be reachable; Chromium is needed for browser tests and headless scraping.
+Build the bundled browser OCR assets with `npm ci --ignore-scripts` followed by
+`npm run build:static`.
+
+Export the required `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and
+`SESSION_KEY` variables before `go run ./cmd/pokget`. **Native Go does not read
+`.env` automatically.** Adapt the template's Compose URLs to localhost and your
+actual database port; see [the native configuration guide](CONFIGURATION.md#native-processes).
+Logs use readable `key=value` text by default; use `LOG_FORMAT=json` for a
+structured-log collector. Catalog image processing reports queue progress and ETA.
+
+### Phone-first scanning with local Ollama
+
+The web/PWA scanner defaults to **Read text on this device**. The phone handles
+orientation, guide cropping, resizing, and Tesseract WebAssembly OCR in workers,
+including enlarged name/collector-number regions. Only the selected language is
+loaded; language data is cached and the OCR session is reused. Workers are
+terminated on cancellation, navigation/backgrounding, or after one idle minute.
+Local OCR has a 20-second budget, including initialization.
+
+Pokget receives text, scopes the active catalog by TCG/language, and validates
+all matches. Clear identities and same-name printing ambiguity skip the model;
+other ambiguous identities can use local Ollama within a five-second budget.
+Request-local short IDs reduce generation work and are resolved to real catalog
+IDs on the server. Device-text results **always require printing confirmation**.
+No model credentials, card catalog, or LLM weights are sent to the phone.
+
+Weak/failed device OCR, unsupported browsers, Auto detect, or no catalog candidate
+use the existing image pipeline. An ambiguous result does not automatically
+upload the photo: use **Use server image scan** to request image analysis.
+This is browser CPU/WASM offloading, not native Android/iOS NPU integration.
+
+For the tested local text-model configuration:
+
+```env
+LLM_BASE_URL=
+OLLAMA_MODEL=qwen2.5:1.5b
+OLLAMA_NUM_THREAD=4
+SCAN_VISION_OCR_ENABLED=false
+```
+
+```bash
+docker compose exec pokget_ollama ollama pull qwen2.5:1.5b
+```
+
+Run `npm ci --ignore-scripts` and `npm run build:static` before native development
+or deployment. Docker builds do this automatically. Pinned OCR assets and all
+seven language packs are bundled from npm and served by Pokget; there are no
+runtime OCR CDN requests. Native development serves the generated OCR assets from
+`dist/static/vendor/ocr`, and images use the built `static/vendor/ocr` directory.
+Selecting Auto detect intentionally avoids loading seven OCR models on a phone.
+
+The model is an optional shortlist selector, not a reliable abstention or
+printing-confidence estimator. See the [CPU and browser test report](benchmarks/phone-ocr-20260909.md)
+for measured results, corpus limitations, and reproduction commands.
 
 ### Primary LLM with Ollama fallback
 
@@ -251,21 +324,36 @@ pools OCR clients for concurrent scans. This bounds native OCR threading and
 reduced recognition time in the local card-image tests. The setting is configurable;
 see the [Tesseract threading documentation](https://tesseract-ocr.github.io/tessdoc/FAQ.html#can-i-increase-speed-of-ocr).
 
-### Experimental CPU image OCR with GLM-OCR
+### Optional CPU card OCR with Qwen3.5 2B
 
-GLM-OCR is a separate **image transcription** stage, not a replacement for the
-text-only `OLLAMA_MODEL` fallback above. It is disabled by default: the local
-2026-09-08 Q8 pilot read names/numbers but produced **zero valid complete
-responses out of three real card images**. Explicit EOS and repetition-penalty
-experiments did not resolve incomplete/repeated output. Do not treat this model
-as production-ready or as perfect multilingual recognition.
+`qwen3.5:2b` replaces the unsuccessful GLM-OCR pilot as the default model for this
+separate **image OCR** stage. It does not replace the text-only `OLLAMA_MODEL`
+fallback above. The stage remains disabled by default and always requires review
+for model-selected cards. It asks for the visible card name and complete collector
+number in the original language, not a full transcript or a guessed catalog ID.
+
+The 2026-09-08/09 CPU pilot used Ollama 0.32.3, Q8_0 weights (about 2.7 GB),
+four CPU threads and no GPU. With the focused prompt, all three real-card PNGs
+contained the correct name and collector number (32–36 seconds per image), as
+did all seven synthetic language samples. Some responses included extra text.
+Full-transcription prompts timed out; the smaller 0.8B model misread collector
+numbers, and Qwen3-VL 2B Q4_K_M failed accuracy/latency checks. These are small
+pilot results, not proof of perfect multilingual or end-to-end printing accuracy.
+
+The production Go client also accepted all ten JPEG-quality-95 pilot inputs with
+the correct name and number: real cards took 33.7–44.4 seconds (Furret included a
+cold model load), and synthetic samples took 17.2–25.6 seconds. Only two synthetic
+responses exactly followed the requested two-field format; extra text and field
+ordering remain variable. This is a slow fallback, not a replacement for the
+local OCR/fingerprint first stage. Real photographs per language/game still need
+held-out validation before broad enablement.
 
 For an explicit trial with a build containing this integration, first pull the
 model into the Compose Ollama service:
 
 ```sh
 docker compose up -d pokget_ollama
-docker compose exec pokget_ollama ollama pull glm-ocr:q8_0
+docker compose exec pokget_ollama ollama pull qwen3.5:2b
 ```
 
 Then set these variables in `.env` and rebuild/recreate the application:
@@ -273,7 +361,7 @@ Then set these variables in `.env` and rebuild/recreate the application:
 ```env
 SCAN_VISION_OCR_ENABLED=true
 SCAN_VISION_OCR_URL=http://pokget_ollama:11434
-SCAN_VISION_OCR_MODEL=glm-ocr:q8_0
+SCAN_VISION_OCR_MODEL=qwen3.5:2b
 SCAN_VISION_OCR_TIMEOUT_SECONDS=45
 SCAN_VISION_OCR_THREADS=4
 ```
@@ -287,10 +375,19 @@ only a trusted Ollama endpoint: it receives the cropped scan image. Startup does
 not download models or change the existing text model. Set
 `SCAN_VISION_OCR_ENABLED=false` and recreate the app to turn the stage off.
 
-The stage uses the [official native Ollama OCR protocol](https://github.com/zai-org/GLM-OCR/blob/main/examples/ollama-deploy/README.md)
-with `Text Recognition:`, normalized JPEG images, `num_gpu=0`, and one in-flight
-request per application instance. Busy instances fail fast; requests are limited
+If upgrading from the GLM experiment, replace any explicit
+`SCAN_VISION_OCR_MODEL=glm-ocr:q8_0` override; environment overrides take precedence
+over the new default. The old GLM-specific `Text Recognition:` protocol is no
+longer used. Updating source defaults does not change an already running app.
+
+The stage uses [Ollama native chat](https://docs.ollama.com/api/chat) with one image
+message, `think=false`, normalized JPEG images, `num_gpu=0`, and one in-flight
+request per application instance. Sampling follows the
+[Qwen3.5 non-thinking vision settings](https://huggingface.co/Qwen/Qwen3.5-2B)
+with a fixed seed and a 512-token output limit. Busy instances fail fast; requests are limited
 to 45 seconds (configurable downwards and shortened for the scan deadline).
+Model loading and host contention consume this same budget: cold requests can
+approach the limit, and a shorter remaining scan deadline can cause abstention.
 It runs only for scoped scans without strong local printing evidence when local
 scores are low or nearby printings are ambiguous. Local OCR/fingerprints remain
 the first stage and the fallback on model failure.

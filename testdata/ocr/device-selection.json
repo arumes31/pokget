@@ -1,0 +1,1336 @@
+[
+  {
+    "name": "Furret",
+    "kind": "real_device_tesseract",
+    "language": "en",
+    "game": "pokemon",
+    "ocr": "5 Furret HP 110 x i I Flip a coin. If tails, this attack does nothing. | pe oil y  « weakness @x2 [ resistance TC retreat x « | Hllus. tetsuya koizumi It makes a nest to suit its long and skinny body. | 7 The nestisimpossible for other Pokémon 1soter | Lo $ 0 136/189 & OY _ignge  ©2020 Pokémon / Nintendo / Creatures / GAME FREAK 5  zest) Furret  ETE)  Evolves from Sentret  oN  LS  2  6S  Z|  NO, 162, Long Body, Pokémon, HI. 5:11\" WI. 71,6 Ibs.  ®  Feelin’ Fine  Draw 3 cards.  Tail Smash  90  |  ",
+    "expected": "c2",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "025"
+      },
+      {
+        "card_id": "c3",
+        "name": "Sentret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "135"
+      },
+      {
+        "card_id": "c2",
+        "name": "Furret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "136"
+      },
+      {
+        "card_id": "c4",
+        "name": "Mew ex",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "151"
+      },
+      {
+        "card_id": "c5",
+        "name": "Aggron ex",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "95"
+      }
+    ]
+  },
+  {
+    "name": "Aggron ex",
+    "kind": "real_device_tesseract",
+    "language": "en",
+    "game": "pokemon",
+    "ocr": "p— i Pp SH re 4 ¥ Aggron ex 150 HPAL 2% ° ra ie - WR — . 2 3  un xe iar : : 1 J os Opie ¥ a CEL 4 » > 1 “SURE Er 4 Does 20 damage to each of at's 7 Ja Benched Pokémon. (Don' your opponent's 773 ¥ Resistance for Benched Pokémon) br a : ; YY wr resistance -30 ZZ retreat cost 7 H RANT IY Sed I CT 556. 1H | RELL G  3  ggron ex  150 HPA  7  A  1  Fa  Jn Hiker Kole  nocked Out,  STAGE mr  2p  2  * Rend  30.  If the Defending Pokémon has any damage  Z  counters on it, this attack does 30 damage plus 30",
+    "expected": "c2",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Groudon ex",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "94"
+      },
+      {
+        "card_id": "c3",
+        "name": "Aggron",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "1"
+      },
+      {
+        "card_id": "c2",
+        "name": "Aggron ex",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "95"
+      },
+      {
+        "card_id": "c4",
+        "name": "Lairon",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "36"
+      },
+      {
+        "card_id": "c5",
+        "name": "Aron",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "50"
+      }
+    ]
+  },
+  {
+    "name": "Monkey.D.Luffy",
+    "kind": "real_device_tesseract",
+    "language": "en",
+    "game": "one_piece",
+    "ocr": "& B Sus © -, 50008 Lo ey i— @ N ir PA “4 > STN jl — J,  ORZON) NWA ds A) an E Bh ® oa ~. < Monkey.D.Luffy P : Er soronm@ § D  QT WHIT 4a  oN 5000 8  PAC)  SE)  T=  ~  3  0  VN  “4  7)  [£3  A  W  A  7  5  Um  <a  x  TIRE  \\.  7,  NA  vi  L'eader’or” Tofsyour,  NK  Sv  oy  Le  a  EN  \\{ ff  Lu  LEADE  5  Monkey.D.Luffy  LIFE  Supernovas/Straw Hat Crew  sToro01m@  g  H",
+    "expected": "c4",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Sanji",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "ST01-004"
+      },
+      {
+        "card_id": "c2",
+        "name": "Monkey.D.Garp",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "OP02-115"
+      },
+      {
+        "card_id": "c4",
+        "name": "Monkey.D.Luffy",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "ST01-001"
+      },
+      {
+        "card_id": "c3",
+        "name": "Roronoa Zoro",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "ST01-013"
+      },
+      {
+        "card_id": "c5",
+        "name": "Nami",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "ST01-007"
+      }
+    ]
+  },
+  {
+    "name": "Lao.G",
+    "kind": "real_device_tesseract",
+    "language": "en",
+    "game": "one_piece",
+    "ocr": "— - 0 Wenner WZ 5 Lao.G : Donquixote Pirates 0P04-0343 g 50004  ?  A  \\  J)  \\  ZEN  2)  Nal  =  A  Y  x  4  f  J  o>  XA,  | End of Your Turn If you have|3 or more. lie DON!! cards,  K.O. up to 1 of your:opponent'srested Characters with a  cost of 3 or less.  wl   ¥7  Fa  CHARACTER  |  4 |  Lao.G  Donquixote Pirates  0P04-0343 ©",
+    "expected": "c2",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Dellinger",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "OP04-029"
+      },
+      {
+        "card_id": "c3",
+        "name": "Donquixote Doflamingo",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "OP04-031"
+      },
+      {
+        "card_id": "c2",
+        "name": "Lao.G",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "OP04-034"
+      },
+      {
+        "card_id": "c4",
+        "name": "Diamante",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "OP04-028"
+      },
+      {
+        "card_id": "c5",
+        "name": "Foxy",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "OP07-071"
+      }
+    ]
+  },
+  {
+    "name": "Foxy",
+    "kind": "real_device_tesseract",
+    "language": "en",
+    "game": "one_piece",
+    "ocr": "3 . \\ | - D/A” CHARACTER < w Foxy : 6 Foxy Pirates opo7-071 Em © $ 7000£2  4  4  J)  V/  Lo  ALS  LT  £  BD  a |  y |  >»,  {  1203  yo  Wey  ader has the 5 Pirates}  type, give allo  ar  opponent's Characters — 1 000 p  ince Per Turn J-Ye[s {TeX ¢oI Hb]  your  kand re  £3  CHARACTER -  Foxy  Foxy Pirates  oPo7-071 ©)",
+    "expected": "c2",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Lao.G",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "OP04-034"
+      },
+      {
+        "card_id": "c2",
+        "name": "Foxy",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "OP07-071"
+      },
+      {
+        "card_id": "c3",
+        "name": "Porche",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "OP07-072"
+      },
+      {
+        "card_id": "c4",
+        "name": "Hamburg",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "OP07-070"
+      },
+      {
+        "card_id": "c5",
+        "name": "Monkey.D.Luffy",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "ST01-001"
+      }
+    ]
+  },
+  {
+    "name": "Furret browser JPEG",
+    "kind": "real_device_tesseract",
+    "language": "en",
+    "game": "pokemon",
+    "ocr": "5 Furret w110 Evolves from Sentret  [ NN | 3 \\ 3 Fa | Pp | - pr 4a] Flip a coin. If tails, this attack does nothing. ] -— ~~ !  « weakness () X 2 { resistance 4 retreat x q lus. tetsuya koizumi It makes a nest to suit its long and skinny body. | 7 The nest isimpossible for other Pokémon to enter.  L i 0) 136/189 « RY : ipl kte cs) & ©2020 Pokémon / Nintendo / Creatures / GAME FREAK J £7  zest) Furret  w110 30  Evolves from Sentret  LAN  \\ -  Lo  <l  ge  0,162. Long Bod Pokémon HI, 5:112 WT 716 b",
+    "expected": "c1",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Furret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "136"
+      },
+      {
+        "card_id": "c2",
+        "name": "Sentret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "135"
+      },
+      {
+        "card_id": "c3",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "025"
+      },
+      {
+        "card_id": "c4",
+        "name": "Mew ex",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "151"
+      },
+      {
+        "card_id": "c5",
+        "name": "Aggron ex",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "95"
+      }
+    ]
+  },
+  {
+    "name": "typography en",
+    "kind": "synthetic_device_tesseract",
+    "language": "en",
+    "game": "pokemon",
+    "ocr": "Charizard ex  Charizard ex  Energy discarded  199/165",
+    "expected": "c5",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Mew ex",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "151"
+      },
+      {
+        "card_id": "c2",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "025"
+      },
+      {
+        "card_id": "c3",
+        "name": "Blastoise ex",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "200"
+      },
+      {
+        "card_id": "c4",
+        "name": "Venusaur ex",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "198"
+      },
+      {
+        "card_id": "c5",
+        "name": "Charizard ex",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "199"
+      }
+    ]
+  },
+  {
+    "name": "typography de",
+    "kind": "synthetic_device_tesseract",
+    "language": "de",
+    "game": "pokemon",
+    "ocr": "Glurak ex  Glurak ex  Energie ablegen  199/165",
+    "expected": "c2",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Bisaflor ex",
+        "game": "pokemon",
+        "language": "de",
+        "collector_number": "198"
+      },
+      {
+        "card_id": "c2",
+        "name": "Glurak ex",
+        "game": "pokemon",
+        "language": "de",
+        "collector_number": "199"
+      },
+      {
+        "card_id": "c3",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "de",
+        "collector_number": "025"
+      },
+      {
+        "card_id": "c4",
+        "name": "Turtok ex",
+        "game": "pokemon",
+        "language": "de",
+        "collector_number": "200"
+      },
+      {
+        "card_id": "c5",
+        "name": "Mew ex",
+        "game": "pokemon",
+        "language": "de",
+        "collector_number": "151"
+      }
+    ]
+  },
+  {
+    "name": "typography fr",
+    "kind": "synthetic_device_tesseract",
+    "language": "fr",
+    "game": "pokemon",
+    "ocr": "Dracaufeu ex  Dracaufeu ex  Énergie défaussée  199/165",
+    "expected": "c1",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Dracaufeu ex",
+        "game": "pokemon",
+        "language": "fr",
+        "collector_number": "199"
+      },
+      {
+        "card_id": "c2",
+        "name": "Mew ex",
+        "game": "pokemon",
+        "language": "fr",
+        "collector_number": "151"
+      },
+      {
+        "card_id": "c3",
+        "name": "Florizarre ex",
+        "game": "pokemon",
+        "language": "fr",
+        "collector_number": "198"
+      },
+      {
+        "card_id": "c4",
+        "name": "Tortank ex",
+        "game": "pokemon",
+        "language": "fr",
+        "collector_number": "200"
+      },
+      {
+        "card_id": "c5",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "fr",
+        "collector_number": "025"
+      }
+    ]
+  },
+  {
+    "name": "typography ja",
+    "kind": "synthetic_device_tesseract",
+    "language": "ja",
+    "game": "pokemon",
+    "ocr": "リザ ー ド ン ex  リザ ー ド ン ex  ポケ モン  199/165",
+    "expected": "c1",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "リザードンex",
+        "game": "pokemon",
+        "language": "ja",
+        "collector_number": "199"
+      },
+      {
+        "card_id": "c2",
+        "name": "ピカチュウ",
+        "game": "pokemon",
+        "language": "ja",
+        "collector_number": "025"
+      },
+      {
+        "card_id": "c3",
+        "name": "フシギバナex",
+        "game": "pokemon",
+        "language": "ja",
+        "collector_number": "198"
+      },
+      {
+        "card_id": "c4",
+        "name": "カメックスex",
+        "game": "pokemon",
+        "language": "ja",
+        "collector_number": "200"
+      },
+      {
+        "card_id": "c5",
+        "name": "ミュウex",
+        "game": "pokemon",
+        "language": "ja",
+        "collector_number": "151"
+      }
+    ]
+  },
+  {
+    "name": "typography zh-hans",
+    "kind": "synthetic_device_tesseract",
+    "language": "zh-hans",
+    "game": "pokemon",
+    "ocr": "喷 火 龙 ex  喷 火 龙 ex  宝 可 梦  199/165",
+    "expected": "c4",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "皮卡丘",
+        "game": "pokemon",
+        "language": "zh-hans",
+        "collector_number": "025"
+      },
+      {
+        "card_id": "c2",
+        "name": "梦幻ex",
+        "game": "pokemon",
+        "language": "zh-hans",
+        "collector_number": "151"
+      },
+      {
+        "card_id": "c4",
+        "name": "喷火龙ex",
+        "game": "pokemon",
+        "language": "zh-hans",
+        "collector_number": "199"
+      },
+      {
+        "card_id": "c3",
+        "name": "水箭龟ex",
+        "game": "pokemon",
+        "language": "zh-hans",
+        "collector_number": "200"
+      },
+      {
+        "card_id": "c5",
+        "name": "妙蛙花ex",
+        "game": "pokemon",
+        "language": "zh-hans",
+        "collector_number": "198"
+      }
+    ]
+  },
+  {
+    "name": "typography zh-hant",
+    "kind": "synthetic_device_tesseract",
+    "language": "zh-hant",
+    "game": "pokemon",
+    "ocr": "噴火 龍 ex  噴火 龍 ex  寶 可 夢  199/165",
+    "expected": "c4",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "夢幻ex",
+        "game": "pokemon",
+        "language": "zh-hant",
+        "collector_number": "151"
+      },
+      {
+        "card_id": "c2",
+        "name": "水箭龜ex",
+        "game": "pokemon",
+        "language": "zh-hant",
+        "collector_number": "200"
+      },
+      {
+        "card_id": "c3",
+        "name": "皮卡丘",
+        "game": "pokemon",
+        "language": "zh-hant",
+        "collector_number": "025"
+      },
+      {
+        "card_id": "c4",
+        "name": "噴火龍ex",
+        "game": "pokemon",
+        "language": "zh-hant",
+        "collector_number": "199"
+      },
+      {
+        "card_id": "c5",
+        "name": "妙蛙花ex",
+        "game": "pokemon",
+        "language": "zh-hant",
+        "collector_number": "198"
+      }
+    ]
+  },
+  {
+    "name": "typography ko",
+    "kind": "synthetic_device_tesseract",
+    "language": "ko",
+    "game": "pokemon",
+    "ocr": "리자몽 6×  리자몽 6×  포켓몬  199/165",
+    "expected": "c4",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "뮤 ex",
+        "game": "pokemon",
+        "language": "ko",
+        "collector_number": "151"
+      },
+      {
+        "card_id": "c2",
+        "name": "피카츄",
+        "game": "pokemon",
+        "language": "ko",
+        "collector_number": "025"
+      },
+      {
+        "card_id": "c3",
+        "name": "이상해꽃 ex",
+        "game": "pokemon",
+        "language": "ko",
+        "collector_number": "198"
+      },
+      {
+        "card_id": "c4",
+        "name": "리자몽 ex",
+        "game": "pokemon",
+        "language": "ko",
+        "collector_number": "199"
+      },
+      {
+        "card_id": "c5",
+        "name": "거북왕 ex",
+        "game": "pokemon",
+        "language": "ko",
+        "collector_number": "200"
+      }
+    ]
+  },
+  {
+    "name": "pokemon typo",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "pokemon",
+    "ocr": "Chorizard Base Set 4/102",
+    "expected": "c5",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "58"
+      },
+      {
+        "card_id": "c2",
+        "name": "Blastoise",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "2"
+      },
+      {
+        "card_id": "c3",
+        "name": "Mewtwo",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "10"
+      },
+      {
+        "card_id": "c4",
+        "name": "Venusaur",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "15"
+      },
+      {
+        "card_id": "c5",
+        "name": "Charizard",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "4"
+      }
+    ]
+  },
+  {
+    "name": "pokemon spacing",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "pokemon",
+    "ocr": "PIKAC HU 025 thunder mouse",
+    "expected": "c2",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Pichu",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "Plusle",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Minun",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Raichu",
+        "game": "pokemon",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "magic typo",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "magic",
+    "ocr": "Blacl Lotvs artifact VMA 4",
+    "expected": "c1",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Black Lotus",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Ancestral Recall",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "Black Vise",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Mox Pearl",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Lotus Petal",
+        "game": "magic",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "magic OCR noise",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "magic",
+    "ocr": "LIGHTNING B0LT instant three damage",
+    "expected": "c5",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Lightning Strike",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Chain Lightning",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "Firebolt",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Shock",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Lightning Bolt",
+        "game": "magic",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "one piece punctuation",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "one_piece",
+    "ocr": "MONKEY D LUFFY ST01 001",
+    "expected": "c4",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Sanji",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "ST01-004"
+      },
+      {
+        "card_id": "c2",
+        "name": "Nami",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "ST01-007"
+      },
+      {
+        "card_id": "c3",
+        "name": "Portgas.D.Ace",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "OP02-013"
+      },
+      {
+        "card_id": "c4",
+        "name": "Monkey.D.Luffy",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "ST01-001"
+      },
+      {
+        "card_id": "c5",
+        "name": "Roronoa Zoro",
+        "game": "one_piece",
+        "language": "en",
+        "collector_number": "ST01-013"
+      }
+    ]
+  },
+  {
+    "name": "one piece typo",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "one_piece",
+    "ocr": "Roronoa Z0r0 swordsman",
+    "expected": "c2",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Monkey.D.Luffy",
+        "game": "one_piece",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Roronoa Zoro",
+        "game": "one_piece",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "Zoro-Juurou",
+        "game": "one_piece",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Sanji",
+        "game": "one_piece",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Dracule Mihawk",
+        "game": "one_piece",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "lorcana subtitle",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "lorcana",
+    "ocr": "Elsa Spirit of Wlnter floodborn",
+    "expected": "c4",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Maleficent - Monstrous Dragon",
+        "game": "lorcana",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Anna - Heir to Arendelle",
+        "game": "lorcana",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "Elsa - Snow Queen",
+        "game": "lorcana",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Elsa - Spirit of Winter",
+        "game": "lorcana",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Olaf - Friendly Snowman",
+        "game": "lorcana",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "lorcana noise",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "lorcana",
+    "ocr": "MICKEY M0USE brave little tailor",
+    "expected": "c1",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Mickey Mouse - Brave Little Tailor",
+        "game": "lorcana",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Mickey Mouse - Detective",
+        "game": "lorcana",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "Donald Duck - Boisterous Fowl",
+        "game": "lorcana",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Goofy - Musketeer",
+        "game": "lorcana",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Minnie Mouse - Beloved Princess",
+        "game": "lorcana",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "weiss phrase",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "weiss_schwarz",
+    "ocr": "Faster Than Any0ne climax",
+    "expected": "c5",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Our Finest Hour",
+        "game": "weiss_schwarz",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "A New Beginning",
+        "game": "weiss_schwarz",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "More Powerful Than Anyone",
+        "game": "weiss_schwarz",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Faster Than the Wind",
+        "game": "weiss_schwarz",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Faster Than Anyone",
+        "game": "weiss_schwarz",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "weiss name",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "weiss_schwarz",
+    "ocr": "Kururni Tokisaki DAL",
+    "expected": "c2",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Yoshino Himekawa",
+        "game": "weiss_schwarz",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Kurumi Tokisaki",
+        "game": "weiss_schwarz",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "Origami Tobiichi",
+        "game": "weiss_schwarz",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Tohka Yatogami",
+        "game": "weiss_schwarz",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Kotori Itsuka",
+        "game": "weiss_schwarz",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "yugioh hyphen",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "yugioh",
+    "ocr": "BLUE EYES WH1TE DRAGON LOB 001",
+    "expected": "c1",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Blue-Eyes White Dragon",
+        "game": "yugioh",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Blue-Eyes Alternative White Dragon",
+        "game": "yugioh",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "White Dragon Wyverburster",
+        "game": "yugioh",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Azure-Eyes Silver Dragon",
+        "game": "yugioh",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Red-Eyes Black Dragon",
+        "game": "yugioh",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "yugioh typo",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "yugioh",
+    "ocr": "DARK MAGlClAN spellcaster",
+    "expected": "c5",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Skilled Dark Magician",
+        "game": "yugioh",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Magician of Black Chaos",
+        "game": "yugioh",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "Dark Magic Attack",
+        "game": "yugioh",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Dark Magician Girl",
+        "game": "yugioh",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Dark Magician",
+        "game": "yugioh",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "receipt",
+    "kind": "abstention",
+    "language": "en",
+    "game": "pokemon",
+    "ocr": "TOTAL EUR 18.90 VAT THANK YOU",
+    "expected": "",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Sentret",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Mewtwo",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "Furret",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Charizard",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "rules only",
+    "kind": "abstention",
+    "language": "en",
+    "game": "magic",
+    "ocr": "draw a card then discard a card at end step",
+    "expected": "",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Counterspell",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Sol Ring",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "Lightning Bolt",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Black Lotus",
+        "game": "magic",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Ancestral Recall",
+        "game": "magic",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "blank OCR",
+    "kind": "abstention",
+    "language": "en",
+    "game": "pokemon",
+    "ocr": "",
+    "expected": "",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c2",
+        "name": "Charizard",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c3",
+        "name": "Sentret",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c4",
+        "name": "Mewtwo",
+        "game": "pokemon",
+        "language": "en"
+      },
+      {
+        "card_id": "c5",
+        "name": "Furret",
+        "game": "pokemon",
+        "language": "en"
+      }
+    ]
+  },
+  {
+    "name": "unknown card",
+    "kind": "abstention",
+    "language": "en",
+    "game": "pokemon",
+    "ocr": "Bulbasaur 001/102",
+    "expected": "",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Sentret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "026"
+      },
+      {
+        "card_id": "c2",
+        "name": "Furret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "136"
+      },
+      {
+        "card_id": "c3",
+        "name": "Charizard",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "004"
+      },
+      {
+        "card_id": "c4",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "025"
+      },
+      {
+        "card_id": "c5",
+        "name": "Mewtwo",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "010"
+      }
+    ]
+  },
+  {
+    "name": "ambiguous printing",
+    "kind": "abstention",
+    "language": "en",
+    "game": "pokemon",
+    "ocr": "Furret Tail Smash Draw 3 cards",
+    "expected": "",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Furret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "136",
+        "set": "Darkness Ablaze"
+      },
+      {
+        "card_id": "c2",
+        "name": "Sentret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "135"
+      },
+      {
+        "card_id": "c3",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "025"
+      },
+      {
+        "card_id": "c4",
+        "name": "Mewtwo",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "010"
+      },
+      {
+        "card_id": "c5",
+        "name": "Furret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "82",
+        "set": "Secret Wonders"
+      }
+    ]
+  },
+  {
+    "name": "collector disambiguation",
+    "kind": "synthetic_noise",
+    "language": "en",
+    "game": "pokemon",
+    "ocr": "Furret 136/189",
+    "expected": "c4",
+    "candidates": [
+      {
+        "card_id": "c1",
+        "name": "Sentret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "135"
+      },
+      {
+        "card_id": "c2",
+        "name": "Furret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "82",
+        "set": "Secret Wonders"
+      },
+      {
+        "card_id": "c3",
+        "name": "Mewtwo",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "010"
+      },
+      {
+        "card_id": "c4",
+        "name": "Furret",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "136",
+        "set": "Darkness Ablaze"
+      },
+      {
+        "card_id": "c5",
+        "name": "Pikachu",
+        "game": "pokemon",
+        "language": "en",
+        "collector_number": "025"
+      }
+    ]
+  }
+]

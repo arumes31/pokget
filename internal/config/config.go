@@ -68,7 +68,7 @@ type Config struct {
 	VisionOCR struct {
 		Enabled        bool   `env:"SCAN_VISION_OCR_ENABLED" env-default:"false"`
 		BaseURL        string `env:"SCAN_VISION_OCR_URL" env-default:"http://localhost:11434"`
-		Model          string `env:"SCAN_VISION_OCR_MODEL" env-default:"glm-ocr:q8_0"`
+		Model          string `env:"SCAN_VISION_OCR_MODEL" env-default:"qwen3.5:2b"`
 		TimeoutSeconds int    `env:"SCAN_VISION_OCR_TIMEOUT_SECONDS" env-default:"45"`
 		Threads        int    `env:"SCAN_VISION_OCR_THREADS" env-default:"4"`
 	} `yaml:"vision_ocr"`

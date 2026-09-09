@@ -41,3 +41,26 @@ test('repository default CodeQL setup is not duplicated by an advanced workflow'
     'default and advanced CodeQL setups cannot upload analyses for the same repository',
   );
 });
+
+test('example.env documents every Compose interpolation without real credentials', () => {
+  const example = read('example.env');
+  const keys = new Set([...example.matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map(match => match[1]));
+  for (const file of ['docker-compose.yml', 'docker-compose.ghcr.yml']) {
+    for (const match of read(file).matchAll(/(?<!\$)\$\{([A-Z][A-Z0-9_]*)/g)) {
+      assert.ok(keys.has(match[1]), `${file}: ${match[1]} missing from example.env`);
+    }
+  }
+  assert.match(example, /^SESSION_KEY=$/m);
+  assert.match(example, /^DB_PASSWORD=$/m);
+  assert.match(example, /^LLM_API=$/m);
+  assert.match(example, /^SCAN_VISION_OCR_ENABLED=false$/m);
+});
+
+test('both Compose variants expose the same application configuration', () => {
+  const appEnvironment = file => read(file).split('    environment:')[1].split('    depends_on:')[0];
+  const source = appEnvironment('docker-compose.yml');
+  assert.equal(appEnvironment('docker-compose.ghcr.yml'), source);
+  for (const key of ['SECURE_COOKIES', 'WRITE_TIMEOUT', 'SCAN_OCR_POOL_SIZE', 'SCAN_PHASH_HIGH_CONF', 'SCAN_PHASH_POTENTIAL', 'CATALOG_WEISS_MAX_PAGES']) {
+    assert.ok(source.includes(`${key}=\${${key}:-`), `${key} is not configurable through Compose`);
+  }
+});

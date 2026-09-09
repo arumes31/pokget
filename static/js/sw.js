@@ -1,7 +1,7 @@
 'use strict';
 
 const CACHE_PREFIX = 'pokget-';
-const CACHE_NAME = `${CACHE_PREFIX}shell-v13`;
+const CACHE_NAME = `${CACHE_PREFIX}shell-v14`;
 const OFFLINE_URL = '/static/offline.html';
 const PRECACHE_URLS = [
   OFFLINE_URL,
@@ -15,6 +15,7 @@ const PRECACHE_URLS = [
   '/static/js/vault.js',
   '/static/js/dialogs.js',
   '/static/js/scanner.js',
+  '/static/js/device-ocr.js',
   '/static/js/measure.js',
   '/static/css/measure.css',
   '/static/img/logo-128.webp',

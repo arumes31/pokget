@@ -13,7 +13,7 @@ import (
 
 func TestAPIScanRejectsNonMultipartBody(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/scan", strings.NewReader("not an image form"))
-	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Type", "text/plain")
 	response := httptest.NewRecorder()
 	new(Handler).APIScan(response, request)
 	if response.Code != http.StatusUnsupportedMediaType {

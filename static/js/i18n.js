@@ -1,6 +1,15 @@
 (() => {
   'use strict';
   const german = {
+    "The cropped image is being read on this device.": "Der Bildausschnitt wird auf diesem Gerät gelesen.",
+    "Sending OCR text only; the image stays on your device.": "Nur erkannter Text wird gesendet; das Bild bleibt auf deinem Gerät.",
+    "Card image is too large": "Das Kartenbild ist zu groß",
+    "Invalid scan request": "Ungültige Scan-Anfrage",
+    "Read text on this device": "Text auf diesem Gerät lesen",
+    "Local OCR sends text first. Weak reads and Auto detect upload the crop to the server.": "Lokale Texterkennung sendet zuerst Text. Bei unlesbaren Bildern und automatischer Spracherkennung wird der Ausschnitt an den Server gesendet.",
+    "Use server image scan": "Bild auf dem Server erkennen",
+    "Reading card text on this device…": "Kartentext wird auf diesem Gerät gelesen…",
+    "Matching device text with the catalog…": "Kartentext wird mit dem Katalog abgeglichen…",
     "Registration successful! Please check your email to verify your account.": "Registrierung erfolgreich! Prüfe deine E-Mails, um dein Konto zu bestätigen.",
     "Misprint published": "Fehldruck veröffentlicht",
     "Asset Secured: Card added to Vault (+100 XP)": "Karte zur Sammlung hinzugefügt (+100 EP)",

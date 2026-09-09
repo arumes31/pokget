@@ -19,7 +19,7 @@ jobs:
       contents: read
     steps:
       - name: Prune old GHCR versions
-        uses: vlaurin/action-ghcr-prune@0ca88117ed406e99ff396691511c6a267643166f # v0.6.0
+        uses: vlaurin/action-ghcr-prune@0cf7d39f88546edd31965acba78cdcb0be14d641 # v0.6.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           user: ${{ github.repository_owner }}

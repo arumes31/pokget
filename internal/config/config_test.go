@@ -58,7 +58,7 @@ func TestConfigLoad(t *testing.T) {
 	if cfg.DB.Host != "db" {
 		t.Errorf("Expected db host db, got %s", cfg.DB.Host)
 	}
-	if cfg.VisionOCR.Enabled || cfg.VisionOCR.Model != "glm-ocr:q8_0" || cfg.VisionOCR.Threads != 4 || cfg.VisionOCR.TimeoutSeconds != 45 || cfg.VisionOCR.BaseURL != "http://localhost:11434" {
+	if cfg.VisionOCR.Enabled || cfg.VisionOCR.Model != "qwen3.5:2b" || cfg.VisionOCR.Threads != 4 || cfg.VisionOCR.TimeoutSeconds != 45 || cfg.VisionOCR.BaseURL != "http://localhost:11434" {
 		t.Errorf("unexpected vision OCR defaults: %+v", cfg.VisionOCR)
 	}
 	if !cfg.Catalog.Enabled || cfg.Catalog.SyncIntervalMins != 360 ||
