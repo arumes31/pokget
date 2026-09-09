@@ -27,7 +27,7 @@ const (
 	maxImageBytes       = 8 << 20
 	maxResponseBytes    = 1 << 20
 	maxTextBytes        = 32 << 10
-	transcriptionPrompt = "Read all visible text in this image. Preserve the original language and numbers. Output only the text, with no commentary or markdown fences. Do not guess unreadable text."
+	transcriptionPrompt = "Read the card name and collector number from this image. Output only those two values, each on its own line. Copy the original spelling and language. Copy the complete collector number, including any set prefix, leading zeros, and denominator. If either value is unreadable, output UNKNOWN instead of guessing."
 )
 
 type Config struct {
@@ -57,7 +57,7 @@ func New(config Config) (*Client, error) {
 		return nil, errors.New("vision OCR: timeout and threads must be positive")
 	}
 	if config.Model == "" {
-		config.Model = "qwen3.5:0.8b"
+		config.Model = "qwen3.5:2b"
 	}
 	if config.Timeout == 0 {
 		config.Timeout = 45 * time.Second

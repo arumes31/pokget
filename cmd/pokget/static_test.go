@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gorilla/mux"
 )
 
 func TestServiceWorkerHandlerUsesRootScopeHeaders(t *testing.T) {
@@ -25,5 +27,26 @@ func TestServiceWorkerHandlerUsesRootScopeHeaders(t *testing.T) {
 	}
 	if cacheControl := response.Header().Get("Cache-Control"); cacheControl != "no-cache" {
 		t.Fatalf("Cache-Control = %q, want no-cache", cacheControl)
+	}
+}
+
+func TestRegisterStaticServesNativeAndContainerOCRAssets(t *testing.T) {
+	for _, directory := range []string{"static/vendor/ocr", "dist/static/vendor/ocr"} {
+		t.Run(directory, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			if err := os.MkdirAll(directory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(directory, "fixture.js"), []byte("ocr asset"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			router := mux.NewRouter()
+			registerStaticRoutes(router)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/static/vendor/ocr/fixture.js", nil))
+			if response.Code != http.StatusOK || response.Body.String() != "ocr asset" {
+				t.Fatalf("response = %d %s", response.Code, response.Body)
+			}
+		})
 	}
 }

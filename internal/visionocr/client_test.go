@@ -56,7 +56,7 @@ func TestExtractUsesNativeImageOCRRequest(t *testing.T) {
 		wantModel   string
 		wantThreads int
 	}{
-		{name: "defaults", wantModel: "qwen3.5:0.8b", wantThreads: 4},
+		{name: "defaults", wantModel: "qwen3.5:2b", wantThreads: 4},
 		{name: "configured", model: "qwen3.5:custom", threads: 8, wantModel: "qwen3.5:custom", wantThreads: 8},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestExtractUsesNativeImageOCRRequest(t *testing.T) {
 					return
 				}
 				message := request.Messages[0]
-				if message.Content != "Read all visible text in this image. Preserve the original language and numbers. Output only the text, with no commentary or markdown fences. Do not guess unreadable text." {
+				if message.Content != "Read the card name and collector number from this image. Output only those two values, each on its own line. Copy the original spelling and language. Copy the complete collector number, including any set prefix, leading zeros, and denominator. If either value is unreadable, output UNKNOWN instead of guessing." {
 					t.Errorf("unexpected transcription prompt: %q", message.Content)
 				}
 				if request.Stream == nil || *request.Stream {

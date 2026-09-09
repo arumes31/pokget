@@ -7,7 +7,7 @@
     "prebuild:static": "npm run build:css",
     "build:static": "node scripts/build-static.mjs",
     "check:static": "node --check dist/static/js/theme.js && node --check dist/static/js/i18n.js && node --check dist/static/js/vault.js && node --check dist/static/js/dialogs.js && node --check dist/static/js/scanner.js && node --check dist/static/js/measure.js && node --check dist/static/js/sw.js && node -e \"const fs=require('node:fs');fs.accessSync('dist/static/offline.html');if(fs.existsSync('dist/static/sw.js'))process.exit(1)\"",
-    "test:static": "node --test scripts/i18n.test.cjs scripts/translation-coverage.test.mjs scripts/theme.test.cjs scripts/build-static.test.mjs scripts/scanner.test.cjs scripts/scanner-deadlines.test.cjs scripts/measure.test.cjs scripts/pwa-template.test.cjs scripts/security-config.test.cjs scripts/mobile-ui.test.cjs scripts/auth-ui.test.cjs scripts/auth-art.test.cjs",
+    "test:static": "node --test scripts/i18n.test.cjs scripts/translation-coverage.test.mjs scripts/theme.test.cjs scripts/build-static.test.mjs scripts/scanner.test.cjs scripts/scanner-deadlines.test.cjs scripts/device-ocr.test.cjs scripts/scanner-device.test.cjs scripts/measure.test.cjs scripts/pwa-template.test.cjs scripts/security-config.test.cjs scripts/mobile-ui.test.cjs scripts/auth-ui.test.cjs scripts/auth-art.test.cjs",
     "test:translations": "node --test scripts/i18n.test.cjs scripts/translation-coverage.test.mjs"
   },
   "dependencies": {
@@ -17,8 +17,16 @@
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
+    "@tesseract.js-data/chi_sim": "1.0.0",
+    "@tesseract.js-data/chi_tra": "1.0.0",
+    "@tesseract.js-data/deu": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/fra": "1.0.0",
+    "@tesseract.js-data/jpn": "1.0.0",
+    "@tesseract.js-data/kor": "1.0.0",
     "acorn": "^8.18.0",
     "parse5": "^8.0.1",
-    "terser": "5.49.0"
+    "terser": "5.49.0",
+    "tesseract.js": "7.0.0"
   }
 }

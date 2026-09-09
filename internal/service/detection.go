@@ -283,6 +283,12 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 		return result, err
 	}
 
+	return p.combineDetection(ctx, request, result, fingerprintOutput, ocrOutput, scoped, totalStart)
+}
+
+// combineDetection shares catalog validation and ranking between server images
+// and device transcriptions. An absent image never invokes image analysis.
+func (p *DetectionPipeline) combineDetection(ctx context.Context, request DetectionRequest, result *DetectionResult, fingerprintOutput fingerprintStageOutput, ocrOutput ocrStageOutput, scoped bool, totalStart time.Time) (*DetectionResult, error) {
 	fingerprintResult := fingerprintOutput.result
 
 	combineStart := time.Now()
@@ -308,13 +314,17 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 	for _, match := range candidateMap {
 		match.Confidence = combineScores(match.FingerprintScore, match.OCRScore, match.LLMScore)
 	}
-	visionOCRSelected := p.applyVisionOCR(ctx, request, result, candidateMap, ocrCandidates, scoped)
+	visionOCRSelected := false
+	if len(request.Image) > 0 {
+		visionOCRSelected = p.applyVisionOCR(ctx, request, result, candidateMap, ocrCandidates, scoped)
+	}
 	if err := ctx.Err(); err != nil {
 		result.Status = DetectionStatusCanceled
 		result.Metrics.TotalTime = time.Since(totalStart)
 		return result, err
 	}
-	if !visionOCRSelected && p.LLM != nil && (!hasHighConfidenceCandidate(candidateMap, 70) || (p.LLM.PrimaryBaseURL != "" && hasAmbiguousVisionCandidates(candidateMap))) {
+	needsTextSelection := len(request.Image) > 0 || deviceTextNeedsLLM(ocrCandidates)
+	if !visionOCRSelected && needsTextSelection && p.LLM != nil && (!hasHighConfidenceCandidate(candidateMap, 70) || (p.LLM.PrimaryBaseURL != "" && hasAmbiguousVisionCandidates(candidateMap))) {
 		llmCards := candidateCards(candidateMap)
 		if len(llmCards) > 0 {
 			llmStart := time.Now()
