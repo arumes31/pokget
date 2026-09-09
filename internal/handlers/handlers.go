@@ -1046,7 +1046,7 @@ func (h *Handler) ReloadCardsCache() (int, error) {
 }
 
 func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("Action: APIScan", "method", r.Method, "url", r.URL.String())
+	logger := service.ScanLogger(r.Context())
 
 	// Snapshot MockCards under read lock to avoid races with reloadCards
 	h.CardsMu.RLock()
@@ -1080,7 +1080,7 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	slog.Info("APIScan: Received image", "filename", header.Filename, "size", header.Size)
+	logger.Info("APIScan: Received image", "size", header.Size)
 
 	lang := r.FormValue("lang")
 	game := models.NormalizeGame(r.FormValue("game"))
@@ -1099,6 +1099,7 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(cards) == 0 {
+			logger.Warn("Scan scope empty", "game", tcg, "eligible_cards", 0)
 			http.Error(w, "No cards are available for the selected TCG", http.StatusUnprocessableEntity)
 			return
 		}
@@ -1108,6 +1109,7 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		scanScope = &service.ScanScope{TCG: tcg, Language: language}
+		logger.Info("Image scan scope", "game", tcg, "language", language)
 	}
 
 	imgBytes, err := io.ReadAll(file)
@@ -1174,10 +1176,13 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	// SCAN-07, SCAN-09, SCAN-16: Use detection pipeline if available
 	if h.Detection != nil {
 		capacityCtx, capacityCancel := context.WithTimeout(ctx, scanTimeout)
+		finishQueue := service.LogScanStage(capacityCtx, "detector_queue")
 		select {
 		case scanDetectionSlots <- struct{}{}:
+			finishQueue(nil)
 			capacityCancel()
 		case <-capacityCtx.Done():
+			finishQueue(capacityCtx.Err())
 			capacityCancel()
 			http.Error(w, "Scan timed out while waiting for detector capacity", http.StatusRequestTimeout)
 			return
@@ -1208,7 +1213,7 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if outcome.err != nil {
-			slog.Warn("APIScan: Scoped detection failed", "error", outcome.err)
+			logger.Warn("APIScan: Scoped detection failed", "error", outcome.err)
 			writeDetectionError(w, outcome.err)
 			return
 		}

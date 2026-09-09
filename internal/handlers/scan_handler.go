@@ -14,11 +14,21 @@ const maxScanRequestBytes int64 = 10 << 20
 // APIScan accepts a bounded device transcription or validates the upload
 // envelope before the image detector allocates multipart/image buffers.
 func (h *Handler) APIScan(writer http.ResponseWriter, request *http.Request) {
+	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	input := "invalid"
+	if err == nil && mediaType == "application/json" {
+		input = "device_text"
+	}
+	if err == nil && mediaType == "multipart/form-data" {
+		input = "server_image"
+	}
+	loggedWriter, loggedRequest, finish := beginScanLog(writer, request, input)
+	defer finish()
+	writer, request = loggedWriter, loggedRequest
 	if request.ContentLength > maxScanRequestBytes {
 		http.Error(writer, "Card image is too large", http.StatusRequestEntityTooLarge)
 		return
 	}
-	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
 	if err == nil && mediaType == "application/json" {
 		h.executeTextScan(writer, request)
 		return

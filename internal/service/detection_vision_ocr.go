@@ -43,11 +43,13 @@ func (p *DetectionPipeline) applyVisionOCR(ctx context.Context, request Detectio
 	modelCtx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	started := time.Now()
+	finish := LogScanStage(modelCtx, "vision_ocr")
 	image, err := prepareLLMCardImage(modelCtx, request.Image)
 	text := ""
 	if err == nil {
 		text, err = p.VisionOCR.Extract(modelCtx, image)
 	}
+	finish(err)
 	result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{Name: "vision_ocr", Duration: time.Since(started), Error: err})
 	if err != nil || modelCtx.Err() != nil {
 		return false

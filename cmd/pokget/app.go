@@ -117,6 +117,7 @@ func initServices(cfg *config.Config, database *sql.DB, fingerprintIndexDirty *a
 				worker.CatalogImageWorkerConfig{
 					Owner:         fmt.Sprintf("pokget:%d", os.Getpid()),
 					BatchSize:     cfg.Catalog.ImageBatchSize,
+					Concurrency:   cfg.Catalog.ImageConcurrency,
 					PollInterval:  time.Duration(cfg.Catalog.ImagePollIntervalMS) * time.Millisecond,
 					LeaseDuration: 2 * time.Minute,
 					OnChanged: func(count int) {
@@ -286,8 +287,9 @@ func startBackgroundWorkers(
 					return
 				case <-ticker.C:
 					if fingerprintIndexDirty.Swap(false) {
+						reloadStarted := time.Now()
 						services.fingerprintSvc.RebuildTree()
-						slog.Info("Catalog image fingerprints reloaded")
+						slog.Info("Catalog image fingerprints reloaded", "duration_ms", time.Since(reloadStarted).Milliseconds())
 						if err := progressReporter.Report(workerCtx); err != nil {
 							slog.Warn("Catalog fingerprint progress unavailable", "error", err)
 						}

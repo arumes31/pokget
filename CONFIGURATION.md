@@ -119,6 +119,9 @@ keep-alive settings can override the Ollama server's `OLLAMA_KEEP_ALIVE` default
 | `TRUST_PROXY`, `TRUST_CLOUDFLARE` | false, false | Enable only for an intentionally trusted proxy topology |
 | `CATALOG_LANGUAGE` | en,de,ja,fr,zh-cn,zh-tw,ko | Requested import languages; upstream coverage still varies by game |
 | `CATALOG_WEISS_MAX_PAGES` | 0 | Weiss source pagination cap; zero means no cap |
+| `CATALOG_IMAGE_CONCURRENCY` | 4 | Parallel image downloads/hashing, 1–8; database writes remain serialized |
+| `CATALOG_IMAGE_BATCH_SIZE` | 8 | Maximum leased batch, capped at twice concurrency to limit waiting leases |
+| `CATALOG_IMAGE_POLL_INTERVAL_MS` | 5000 | Delay after idle/error cycles; no delay while successfully draining queued work |
 
 Catalog scheduling, image batches, worker retry/rate/circuit settings and price
 retention defaults are annotated in the template. Compose fixes image storage

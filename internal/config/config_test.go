@@ -63,7 +63,7 @@ func TestConfigLoad(t *testing.T) {
 	}
 	if !cfg.Catalog.Enabled || cfg.Catalog.SyncIntervalMins != 360 ||
 		cfg.Catalog.LegacyMetadataSync || !cfg.Catalog.ImagesEnabled ||
-		cfg.Catalog.ImageStore != "data/catalog-images" {
+		cfg.Catalog.ImageStore != "data/catalog-images" || cfg.Catalog.ImageConcurrency != 4 {
 		t.Errorf("unexpected catalog defaults: %+v", cfg.Catalog)
 	}
 }

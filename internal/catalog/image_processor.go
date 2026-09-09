@@ -13,6 +13,7 @@ import (
 	_ "image/jpeg" // Register JPEG decoding with image.Decode.
 	_ "image/png"  // Register PNG decoding with image.Decode.
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -110,7 +111,7 @@ func NewImageProcessor(config ImageProcessorConfig) (*ImageProcessor, error) {
 	}, nil
 }
 
-func (p *ImageProcessor) Process(ctx context.Context, job ImageJob) (ReadyImage, error) {
+func (p *ImageProcessor) Process(ctx context.Context, job ImageJob) (_ ReadyImage, processErr error) {
 	if err := ctx.Err(); err != nil {
 		return ReadyImage{}, err
 	}
@@ -124,6 +125,29 @@ func (p *ImageProcessor) Process(ctx context.Context, job ImageJob) (ReadyImage,
 	if err := p.validateURL(job.SourceID, remoteURL); err != nil {
 		return ReadyImage{}, NewImageProcessError(ImageFailurePermanent, err)
 	}
+	logger := slog.With("image_id", job.ID, "source", job.SourceID)
+	started := time.Now()
+	stageStarted, stage := started, "download"
+	timings := make(map[string]int64, 4)
+	logger.Debug("Catalog image stage started", "stage", stage)
+	nextStage := func(next string) {
+		timings[stage] = time.Since(stageStarted).Milliseconds()
+		stage, stageStarted = next, time.Now()
+		logger.Debug("Catalog image stage started", "stage", stage)
+	}
+	defer func() {
+		timings[stage] = time.Since(stageStarted).Milliseconds()
+		outcome := "ready"
+		if processErr != nil {
+			outcome = string(ClassifyImageProcessError(processErr))
+			if ctx.Err() != nil {
+				outcome = "cancelled"
+			}
+		}
+		logger.Debug("Catalog image processing finished", "outcome", outcome, "last_stage", stage,
+			"duration_ms", time.Since(started).Milliseconds(), "download_ms", timings["download"],
+			"decode_ms", timings["decode"], "hash_ms", timings["hash"], "store_ms", timings["store"])
+	}()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, remoteURL.String(), nil)
 	if err != nil {
@@ -188,6 +212,7 @@ func (p *ImageProcessor) Process(ctx context.Context, job ImageJob) (ReadyImage,
 		return ReadyImage{}, err
 	}
 
+	nextStage("decode")
 	mimeType, extension, err := sniffImageType(data)
 	if err != nil {
 		return ReadyImage{}, NewImageProcessError(ImageFailurePermanent, err)
@@ -210,11 +235,17 @@ func (p *ImageProcessor) Process(ctx context.Context, job ImageJob) (ReadyImage,
 	if err := ctx.Err(); err != nil {
 		return ReadyImage{}, err
 	}
+	nextStage("hash")
 	phash, err := p.hasher.CalculateHash(decoded)
 	if err != nil {
 		return ReadyImage{}, NewImageProcessError(ImageFailurePermanent, err)
 	}
 
+	fingerprints := p.transformedFingerprints(decoded, phash)
+	if err := ctx.Err(); err != nil {
+		return ReadyImage{}, err
+	}
+	nextStage("store")
 	contentHash := sha256.Sum256(data)
 	contentSHA256 := hex.EncodeToString(contentHash[:])
 	localPath, err := p.store(contentSHA256, extension, data)
@@ -233,7 +264,7 @@ func (p *ImageProcessor) Process(ctx context.Context, job ImageJob) (ReadyImage,
 		Height:             imageConfig.Height,
 		ByteSize:           int64(len(data)),
 		PHash:              phash,
-		Fingerprints:       p.transformedFingerprints(decoded, phash),
+		Fingerprints:       fingerprints,
 	}, nil
 }
 

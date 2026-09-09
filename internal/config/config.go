@@ -83,6 +83,7 @@ type Config struct {
 		ImagesEnabled       bool   `env:"CATALOG_IMAGES_ENABLED" env-default:"true"`
 		ImageStore          string `env:"CATALOG_IMAGE_STORE" env-default:"data/catalog-images"`
 		ImageBatchSize      int    `env:"CATALOG_IMAGE_BATCH_SIZE" env-default:"8"`
+		ImageConcurrency    int    `env:"CATALOG_IMAGE_CONCURRENCY" env-default:"4"`
 		ImagePollIntervalMS int    `env:"CATALOG_IMAGE_POLL_INTERVAL_MS" env-default:"5000"`
 	} `yaml:"catalog"`
 	Worker struct {

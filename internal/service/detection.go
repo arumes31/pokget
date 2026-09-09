@@ -24,7 +24,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"slices"
 	"sort"
 	"strings"
@@ -113,7 +112,9 @@ func (p *DetectionPipeline) DetectScoped(ctx context.Context, request DetectionR
 	if !request.Scope.Language.Valid() {
 		return invalidDetectionResult(started), fmt.Errorf("%w: unsupported language %q", ErrInvalidDetectionRequest, request.Scope.Language)
 	}
+	cachedCards := len(request.Cards)
 	request.Cards = cardsForScope(request.Cards, request.Scope)
+	ScanLogger(ctx).Info("Scan scope selected", "game", request.Scope.TCG, "language", request.Scope.Language, "cached_cards", cachedCards, "eligible_cards", len(request.Cards))
 	if len(request.Cards) == 0 {
 		return invalidDetectionResult(started), errors.Join(ErrInvalidDetectionRequest, ErrNoEligibleCards)
 	}
@@ -234,12 +235,16 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 	}
 	go func() {
 		started := time.Now()
+		finish := LogScanStage(stageCtx, "fingerprint")
 		match, err := fingerprintRunner(stageCtx, request.Image, fingerprintCards, scope)
+		finish(err)
 		fingerprintChannel <- fingerprintStageOutput{result: match, duration: time.Since(started), err: err}
 	}()
 	go func() {
 		started := time.Now()
+		finish := LogScanStage(stageCtx, "server_ocr")
 		text, detected, processed, err := ocrRunner(stageCtx, request.Image, ocrCards, ocrLanguage)
+		finish(err)
 		ocrChannel <- ocrStageOutput{
 			text: text, detectedCardID: detected, processedImage: processed,
 			duration: time.Since(started), err: err,
@@ -253,6 +258,7 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 		case fingerprintOutput = <-fingerprintChannel:
 			fingerprintChannel = nil
 			if p.applyFingerprintFastPath(result, fingerprintOutput.result) {
+				ScanLogger(ctx).Info("Scan fast path selected", "reason", "exact_fingerprint")
 				cancel()
 				result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{
 					Name: "fingerprint", Duration: fingerprintOutput.duration, Error: fingerprintOutput.err,
@@ -349,12 +355,14 @@ func (p *DetectionPipeline) combineDetection(ctx context.Context, request Detect
 					llmImage = ocrOutput.processedImage
 				}
 			}
+			finishLLM := LogScanStage(llmCtx, "llm_selection")
 			if scoped {
 				llmResponse, llmErr = p.LLM.fuzzyMatchCardScopedWithArtworkContext(llmCtx, ocrOutput.text, llmImage, llmCards, request.Cards, request.Scope)
 			} else {
 				llmResponse, llmErr = p.LLM.fuzzyMatchCardWithArtworkContext(llmCtx, ocrOutput.text, llmImage, llmCards, request.Cards)
 			}
 			cancelLLM()
+			finishLLM(llmErr)
 			result.Metrics.Stages = append(result.Metrics.Stages,
 				DetectionStageMetrics{Name: "llm", Duration: time.Since(llmStart), Error: llmErr},
 			)
@@ -403,7 +411,7 @@ func (p *DetectionPipeline) combineDetection(ctx context.Context, request Detect
 		result.Status = DetectionStatusFailed
 		return result, errors.Join(fingerprintOutput.err, ocrOutput.err)
 	}
-	slog.Info("Detection: Pipeline complete", "status", result.Status, "metrics", result.Metrics.Format(),
+	ScanLogger(ctx).Info("Detection: Pipeline complete", "status", result.Status, "metrics", result.Metrics.Format(),
 		"top_match_id", result.BestMatchID(), "confidence", result.BestMatchConfidence())
 	return result, nil
 }

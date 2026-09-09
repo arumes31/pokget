@@ -241,6 +241,60 @@ actual database port; see [the native configuration guide](CONFIGURATION.md#nati
 Logs use readable `key=value` text by default; use `LOG_FORMAT=json` for a
 structured-log collector. Catalog image processing reports queue progress and ETA.
 
+#### Catalog fingerprint throughput
+
+Reference images are downloaded and hashed by four parallel processors by default
+(`CATALOG_IMAGE_CONCURRENCY=4`, range 1–8). Database writes stay serialized.
+`CATALOG_IMAGE_BATCH_SIZE=8` is a lease limit, **not** the number of active processors;
+it is capped at twice concurrency to avoid a long queue of waiting leases.
+The five-second poll interval applies only to idle/error cycles, not queued batches.
+Lower concurrency to 1–2 if background work competes with scans for CPU or RAM;
+larger images increase memory use per processor. Recreate the app container after
+changing these environment settings. No fingerprint algorithm or matching threshold
+changes are required, and existing fingerprints remain valid.
+
+`Catalog image batch finished` reports ready/failed/uncommitted counts and elapsed,
+lease-query, processing, and database-write timings. `process_total_ms` sums overlapping
+jobs and can exceed wall time; `persist_total_ms` measures serialized writes.
+The periodic `Catalog image fingerprints reloaded` event also includes its duration.
+With `DEBUG=true`, image ID/source and current stage (`download`, `decode`, `hash`,
+`store`) are logged, followed by per-stage timings. Processing `outcome=ready` means
+the file and hashes are prepared; only the batch's `ready` count confirms database
+publication. URLs and image contents are omitted. During imports the queue grows,
+so short-window ETA is an estimate, not a stable completion promise.
+
+#### Scan diagnostics
+
+The scanner shows live **on-device** OCR progress: engine/language loading,
+full-card reading, then top/bottom edge reading. Percentages describe the current
+phase, not the whole scan. A cold language download counts toward the 20-second
+device budget. If it falls back, the progress details identify the reason.
+
+On submission, server logs identify `input=device_text` (phone text received,
+no image uploaded) or `input=server_image`. The same `scan_id` follows a text
+request and its image fallback. `Scan request received` includes client-reported
+`client_device_ocr`, `client_device_ocr_ms`, and `client_fallback`: for example
+`usable`, `weak_text`, `timeout`, `error`, `paused`, `disabled`, `unsupported`,
+`server_only`, or `no_match`. These are diagnostic observations, not trusted
+recognition evidence; older clients report `unknown`.
+
+`Scan scope selected` gives the normalized game/language and eligible-card count.
+`Scan stage started` / `Scan stage finished` identify queueing, fingerprinting,
+server OCR, device-text matching, and optional model selection, with durations
+and completion/timeout/failure outcomes. `Scan request finished` records HTTP
+status and total server time. Stages may overlap; their durations do not add up
+to total elapsed time. Set `DEBUG=true` for per-pass server OCR start/finish
+events, timing, and text byte counts; `LOG_FORMAT=json` makes filtering easier.
+Apply environment changes by recreating the app container.
+
+No extra phone telemetry requests are sent. Before submission (or after a local
+cancel), progress exists only on the phone, so Docker logs cannot confirm it.
+Downloading OCR assets alone does **not** prove recognition succeeded. Diagnostic
+events omit image contents, OCR text, and filenames. Optional `X-Scan-ID`,
+`X-Device-OCR`, `X-Device-OCR-MS`, and `X-Scan-Fallback` headers are bounded and
+allowlisted; invalid diagnostics are ignored/replaced without rejecting a scan.
+`X-Scan-ID` is echoed in the response for troubleshooting, not authentication.
+
 ### Phone-first scanning with local Ollama
 
 The web/PWA scanner defaults to **Read text on this device**. The phone handles

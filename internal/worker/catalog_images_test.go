@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -76,6 +77,7 @@ func TestCatalogImageWorkerRunOnceRecordsOutcomes(t *testing.T) {
 	if queue.ready[0].ImageID != 1 || queue.ready[0].LeaseOwner != "worker-a" {
 		t.Fatalf("ready result = %+v", queue.ready[0])
 	}
+	slices.SortFunc(queue.failures, func(a, b catalog.ImageFailure) int { return int(a.ImageID - b.ImageID) })
 	if queue.failures[0].Kind != catalog.ImageFailureUnavailable || queue.failures[0].RetryAt != nil {
 		t.Fatalf("unavailable failure = %+v", queue.failures[0])
 	}

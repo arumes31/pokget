@@ -10,6 +10,10 @@ test('progress descriptions distinguish local OCR from text matching', () => {
   assert.equal(scanner.scanProgressDetail, 'The cropped image is being read on this device.');
   scanner.setStatus('Matching device text with the catalog…', 3);
   assert.match(scanner.scanProgressDetail, /text only/);
+  scanner.setStatus('Uploading the crop and running detection…', 2);
+  scanner.deviceOCROutcome = 'timeout';
+  scanner.scanElapsedSeconds = 20;
+  assert.match(scanner.scanProgressDetail, /timeout.*server detection/);
 });
 
 test('scanner sends OCR text without an image, preserving scope and CSRF', async (t) => {
@@ -23,6 +27,8 @@ test('scanner sends OCR text without an image, preserving scope and CSRF', async
   assert.equal(calls.length, 1);
   assert.deepEqual(JSON.parse(calls[0].options.body), { ocr_text: 'Furret 136', lang: 'eng', game: 'pokemon' });
   assert.equal(calls[0].options.headers['X-CSRF-Token'], 'csrf');
+  assert.equal(calls[0].options.headers['X-Device-OCR'], 'usable');
+  assert.match(calls[0].options.headers['X-Scan-ID'], /^[a-zA-Z0-9-]{16,64}$/);
   assert.equal(scanner.detectedID, 'furret');
   assert.equal(scanner.matchConfirmed, false);
 });
@@ -41,8 +47,31 @@ test('only explicit no-match or old-server 415 falls back to one image upload', 
     await scanner.submitPreparedBlob(new Blob(['photo']), 'card.jpg');
     const fallback = [200, 415].includes(status);
     assert.equal(calls.length, fallback ? 2 : 1, `HTTP ${status}`);
-    if (fallback) assert.ok(calls[1].body instanceof FormData);
+    if (fallback) {
+      assert.ok(calls[1].body instanceof FormData);
+      assert.equal(calls[1].headers['X-Scan-ID'], calls[0].headers['X-Scan-ID']);
+      assert.equal(calls[1].headers['X-Scan-Fallback'], status === 415 ? 'unsupported_server' : 'no_match');
+    }
   }
+});
+
+test('phone progress and timeout reason survive image fallback without extra requests', async (t) => {
+  const previous = { fetch: global.fetch, ocr: global.PokgetDeviceOCR };
+  const calls = [];
+  const scanner = createCardScanner(); scanner.notify = () => {};
+  global.PokgetDeviceOCR = { createReader: () => ({ supports: () => true, async read(blob, lang, signal, report) {
+    report({ stage: 'bottom_band', progress: 40, duration_ms: 100 });
+    assert.match(scanner.scanProgressDetail, /bottom.*40%/i);
+    report({ outcome: 'timeout', duration_ms: 20000 });
+    return null;
+  }, dispose() {} }) };
+  global.fetch = async (url, options) => { calls.push(options); return Response.json({}); };
+  t.after(() => { global.fetch = previous.fetch; global.PokgetDeviceOCR = previous.ocr; });
+  await scanner.submitPreparedBlob(new Blob(['private photo']), 'secret.jpg');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].headers['X-Device-OCR'], 'timeout');
+  assert.equal(calls[0].headers['X-Device-OCR-MS'], '20000');
+  assert.equal(calls[0].headers['X-Scan-Fallback'], 'timeout');
 });
 
 test('cancellation before device OCR finishes never uploads the photo', async (t) => {
