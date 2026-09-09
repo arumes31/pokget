@@ -5,18 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"pokget/internal/catalog"
 )
 
 type CatalogImageProcessor interface {
+	// Process must support concurrent calls when worker concurrency exceeds one.
 	Process(context.Context, catalog.ImageJob) (catalog.ReadyImage, error)
 }
 
 type CatalogImageWorkerConfig struct {
 	Owner         string
 	BatchSize     int
+	Concurrency   int
 	LeaseDuration time.Duration
 	PollInterval  time.Duration
 	MaxAttempts   int
@@ -31,6 +34,7 @@ type CatalogImageWorker struct {
 	processor     CatalogImageProcessor
 	owner         string
 	batchSize     int
+	concurrency   int
 	leaseDuration time.Duration
 	pollInterval  time.Duration
 	maxAttempts   int
@@ -57,6 +61,14 @@ func NewCatalogImageWorker(
 	if config.BatchSize <= 0 {
 		config.BatchSize = 8
 	}
+	if config.Concurrency == 0 {
+		config.Concurrency = 4
+	}
+	if config.Concurrency < 1 || config.Concurrency > 8 {
+		return nil, fmt.Errorf("catalog image worker: concurrency must be between 1 and 8")
+	}
+	// Avoid leasing a long backlog whose leases expire before processing starts.
+	config.BatchSize = min(config.BatchSize, 2*config.Concurrency)
 	if config.LeaseDuration <= 0 {
 		config.LeaseDuration = 2 * time.Minute
 	}
@@ -83,6 +95,7 @@ func NewCatalogImageWorker(
 		processor:     processor,
 		owner:         config.Owner,
 		batchSize:     config.BatchSize,
+		concurrency:   config.Concurrency,
 		leaseDuration: config.LeaseDuration,
 		pollInterval:  config.PollInterval,
 		maxAttempts:   config.MaxAttempts,
@@ -98,12 +111,15 @@ func (w *CatalogImageWorker) Run(ctx context.Context) error {
 		return fmt.Errorf("catalog image worker: worker is nil")
 	}
 	for {
-		_, err := w.RunOnce(ctx)
+		processed, err := w.RunOnce(ctx)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
 			}
 			slog.Error("Catalog image worker cycle failed", "error", err)
+		}
+		if err == nil && processed > 0 {
+			continue
 		}
 
 		timer := time.NewTimer(w.pollInterval)
@@ -120,54 +136,97 @@ func (w *CatalogImageWorker) RunOnce(ctx context.Context) (int, error) {
 	if w == nil || w.queue == nil || w.processor == nil {
 		return 0, fmt.Errorf("catalog image worker: worker is not initialized")
 	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	started := time.Now()
 	jobs, err := w.queue.LeaseImageJobs(ctx, w.owner, w.batchSize, w.leaseDuration)
 	if err != nil {
 		return 0, fmt.Errorf("catalog image worker: leasing jobs: %w", err)
 	}
+	leaseDuration := time.Since(started)
+	if len(jobs) == 0 {
+		return 0, ctx.Err()
+	}
+	slog.Debug("Catalog image batch started", "leased", len(jobs), "concurrency", w.concurrency)
 
 	processed := 0
-	var cycleErrors []error
-	for _, job := range jobs {
-		if err := ctx.Err(); err != nil {
-			return processed, errors.Join(append(cycleErrors, err)...)
+	readyCount := 0
+	var processDuration, persistDuration time.Duration
+	var persistMu sync.Mutex
+	cycleErrors := make([]error, len(jobs))
+	var group sync.WaitGroup
+	// Acquire before spawning so both goroutines and retained images stay bounded.
+	slots := make(chan struct{}, w.concurrency)
+dispatch:
+	for index, job := range jobs {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			break dispatch
 		}
-		ready, processErr := w.processor.Process(ctx, job)
-		if processErr == nil {
-			ready.ImageID = job.ID
-			ready.LeaseOwner = w.owner
-			if err := w.queue.MarkImageReady(ctx, ready); err != nil {
-				cycleErrors = append(cycleErrors, fmt.Errorf("image %d ready: %w", job.ID, err))
-				continue
+		group.Go(func() {
+			defer func() { <-slots }()
+			if err := ctx.Err(); err != nil {
+				cycleErrors[index] = err
+				return
 			}
-			processed++
-			continue
-		}
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return processed, errors.Join(append(cycleErrors, ctxErr)...)
-		}
-
-		failure := catalog.ImageFailure{
-			ImageID:    job.ID,
-			LeaseOwner: w.owner,
-			Kind:       catalog.ClassifyImageProcessError(processErr),
-			Cause:      processErr,
-		}
-		if failure.Kind == catalog.ImageFailureRetryable {
-			if job.Attempts >= w.maxAttempts {
-				failure.Kind = catalog.ImageFailurePermanent
-			} else {
-				retryAt := w.now().Add(catalog.RetryDelay(job.Attempts, w.retryBase, w.retryMaximum))
-				failure.RetryAt = &retryAt
+			processStarted := time.Now()
+			ready, processErr := w.processor.Process(ctx, job)
+			elapsed := time.Since(processStarted)
+			// Publish each result promptly, but serialize database writes and counters.
+			persistMu.Lock()
+			defer persistMu.Unlock()
+			processDuration += elapsed
+			if err := ctx.Err(); err != nil {
+				cycleErrors[index] = err
+				return
 			}
-		}
-		if err := w.queue.MarkImageFailed(ctx, failure); err != nil {
-			cycleErrors = append(cycleErrors, fmt.Errorf("image %d failed: %w", job.ID, err))
-			continue
-		}
-		processed++
+			persistStarted := time.Now()
+			cycleErrors[index] = w.recordOutcome(ctx, job, ready, processErr)
+			persistDuration += time.Since(persistStarted)
+			if cycleErrors[index] == nil {
+				processed++
+				if processErr == nil {
+					readyCount++
+				}
+			}
+		})
 	}
+	group.Wait()
 	if processed > 0 && w.onChanged != nil {
 		w.onChanged(processed)
 	}
-	return processed, errors.Join(cycleErrors...)
+	slog.Info("Catalog image batch finished", "leased", len(jobs), "concurrency", w.concurrency,
+		"ready", readyCount, "failed", processed-readyCount, "uncommitted", len(jobs)-processed,
+		"duration_ms", time.Since(started).Milliseconds(), "lease_ms", leaseDuration.Milliseconds(),
+		"process_total_ms", processDuration.Milliseconds(), "persist_total_ms", persistDuration.Milliseconds())
+	return processed, errors.Join(append(cycleErrors, ctx.Err())...)
+}
+
+func (w *CatalogImageWorker) recordOutcome(ctx context.Context, job catalog.ImageJob, ready catalog.ReadyImage, processErr error) error {
+	if processErr == nil {
+		ready.ImageID = job.ID
+		ready.LeaseOwner = w.owner
+		if err := w.queue.MarkImageReady(ctx, ready); err != nil {
+			return fmt.Errorf("image %d ready: %w", job.ID, err)
+		}
+		return nil
+	}
+	failure := catalog.ImageFailure{
+		ImageID: job.ID, LeaseOwner: w.owner,
+		Kind: catalog.ClassifyImageProcessError(processErr), Cause: processErr,
+	}
+	if failure.Kind == catalog.ImageFailureRetryable {
+		if job.Attempts >= w.maxAttempts {
+			failure.Kind = catalog.ImageFailurePermanent
+		} else {
+			retryAt := w.now().Add(catalog.RetryDelay(job.Attempts, w.retryBase, w.retryMaximum))
+			failure.RetryAt = &retryAt
+		}
+	}
+	if err := w.queue.MarkImageFailed(ctx, failure); err != nil {
+		return fmt.Errorf("image %d failed: %w", job.ID, err)
+	}
+	return nil
 }

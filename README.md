@@ -241,6 +241,28 @@ actual database port; see [the native configuration guide](CONFIGURATION.md#nati
 Logs use readable `key=value` text by default; use `LOG_FORMAT=json` for a
 structured-log collector. Catalog image processing reports queue progress and ETA.
 
+#### Catalog fingerprint throughput
+
+Reference images are downloaded and hashed by four parallel processors by default
+(`CATALOG_IMAGE_CONCURRENCY=4`, range 1–8). Database writes stay serialized.
+`CATALOG_IMAGE_BATCH_SIZE=8` is a lease limit, **not** the number of active processors;
+it is capped at twice concurrency to avoid a long queue of waiting leases.
+The five-second poll interval applies only to idle/error cycles, not queued batches.
+Lower concurrency to 1–2 if background work competes with scans for CPU or RAM;
+larger images increase memory use per processor. Recreate the app container after
+changing these environment settings. No fingerprint algorithm or matching threshold
+changes are required, and existing fingerprints remain valid.
+
+`Catalog image batch finished` reports ready/failed/uncommitted counts and elapsed,
+lease-query, processing, and database-write timings. `process_total_ms` sums overlapping
+jobs and can exceed wall time; `persist_total_ms` measures serialized writes.
+The periodic `Catalog image fingerprints reloaded` event also includes its duration.
+With `DEBUG=true`, image ID/source and current stage (`download`, `decode`, `hash`,
+`store`) are logged, followed by per-stage timings. Processing `outcome=ready` means
+the file and hashes are prepared; only the batch's `ready` count confirms database
+publication. URLs and image contents are omitted. During imports the queue grows,
+so short-window ETA is an estimate, not a stable completion promise.
+
 #### Scan diagnostics
 
 The scanner shows live **on-device** OCR progress: engine/language loading,
