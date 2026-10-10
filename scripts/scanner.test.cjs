@@ -5,6 +5,41 @@ const test = require('node:test');
 
 const scanner = require('../static/js/scanner.js');
 
+test('scan error focuses after becoming visible and ignores stale focus requests', (t) => {
+  const originalFrame = global.requestAnimationFrame;
+  const frames = [];
+  global.requestAnimationFrame = callback => frames.push(callback);
+  t.after(() => {
+    if (originalFrame === undefined) delete global.requestAnimationFrame;
+    else global.requestAnimationFrame = originalFrame;
+  });
+
+  for (const state of ['visible', 'reset', 'scanning', 'detached', 'hidden']) {
+    const component = scanner.createCardScanner();
+    const ticks = [];
+    let visible = false;
+    let focusCalls = 0;
+    const alert = {
+      isConnected: true,
+      getClientRects: () => visible ? [{}] : [],
+      focus: () => { focusCalls += 1; },
+    };
+    component.$nextTick = callback => ticks.push(callback);
+    component.$refs = { scanError: alert };
+    component.handleScanError(new Error('Catalog unavailable'));
+    ticks.shift()();
+    assert.equal(focusCalls, 0, 'the alert is still hidden at the Alpine next tick');
+
+    visible = state !== 'hidden';
+    if (state === 'reset') component.scanError = '';
+    if (state === 'scanning') component.scanning = true;
+    if (state === 'detached') alert.isConnected = false;
+    assert.equal(frames.length, 1);
+    frames.shift()();
+    assert.equal(focusCalls, state === 'visible' ? 1 : 0, state);
+  }
+});
+
 test('loading preview uses the submitted crop and ignores reads after cancellation', async (t) => {
   const originalReader = global.FileReader;
   const originalFetch = global.fetch;
