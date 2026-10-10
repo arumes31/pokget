@@ -37,17 +37,23 @@ func TestVideoScannerFeedbackLayout(t *testing.T) {
 		{"phone", 360, 748, 16}, {"large-text", 320, 568, 32}, {"landscape", 844, 390, 16}, {"desktop", 1440, 900, 16},
 	} {
 		t.Run(viewport.name, func(t *testing.T) {
-			ctx := mobileScannerRegressionPage(t)
+			// Set the viewport before navigation so dvh layout does not race a resize.
+			ctx := mobileScannerRegressionPageAtViewport(t, viewport.width, viewport.height)
 			var issues []string
 			if err := chromedp.Run(ctx,
-				chromedp.EmulateViewport(viewport.width, viewport.height),
 				chromedp.Evaluate(fmt.Sprintf(`(() => {
 					document.documentElement.style.fontSize = '%dpx';
 					const state = Alpine.$data(document.querySelector('.scanner-shell'));
 					state.lastScanBlob = new Blob(['image']);
 					state.handleScanError(new Error('The catalog has no cards for this game and language. Ask the administrator to sync this language, then retry your saved image.'));
 				})()`, viewport.font), nil),
-				chromedp.Poll(`document.querySelector('[x-text="scanError"]').textContent.includes('catalog') && document.querySelector('.scanner-shell').classList.contains('scanner-has-error')`, nil),
+				// Alpine updates the text/class before the alert's focus callback.
+				// Let that callback finish scrolling the alert before scrolling the retry.
+				chromedp.Poll(`document.querySelector('[x-text="scanError"]').textContent.includes('catalog') && document.querySelector('.scanner-shell').classList.contains('scanner-has-error') && document.activeElement === document.querySelector('[x-ref="scanError"]')`, nil),
+			); err != nil {
+				t.Fatalf("scanner error did not receive focus: %v", err)
+			}
+			if err := chromedp.Run(ctx,
 				chromedp.Evaluate(`(() => {
 					const issues = [];
 					const controls = document.querySelector('.scanner-controls');
@@ -61,7 +67,7 @@ func TestVideoScannerFeedbackLayout(t *testing.T) {
 				chromedp.ScrollIntoView(`button[aria-label="RETRY LAST CROP"]`, chromedp.ByQuery),
 				chromedp.Poll(`(() => {const pane=document.querySelector('.scanner-controls').getBoundingClientRect();const retry=document.querySelector('button[aria-label="RETRY LAST CROP"]').getBoundingClientRect();return retry.top>=pane.top && retry.bottom<=innerHeight+1 && retry.height>=44})()`, nil),
 			); err != nil {
-				t.Fatal(err)
+				t.Fatalf("retry control did not become reachable: %v", err)
 			}
 			captureVideoCSS(t, ctx, viewport.name+"-feedback")
 			for _, issue := range issues {
