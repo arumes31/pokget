@@ -37,10 +37,10 @@ func TestVideoScannerFeedbackLayout(t *testing.T) {
 		{"phone", 360, 748, 16}, {"large-text", 320, 568, 32}, {"landscape", 844, 390, 16}, {"desktop", 1440, 900, 16},
 	} {
 		t.Run(viewport.name, func(t *testing.T) {
-			ctx := mobileScannerRegressionPage(t)
+			// Set the viewport before navigation so dvh layout does not race a resize.
+			ctx := mobileScannerRegressionPageAtViewport(t, viewport.width, viewport.height)
 			var issues []string
 			if err := chromedp.Run(ctx,
-				chromedp.EmulateViewport(viewport.width, viewport.height),
 				chromedp.Evaluate(fmt.Sprintf(`(() => {
 					document.documentElement.style.fontSize = '%dpx';
 					const state = Alpine.$data(document.querySelector('.scanner-shell'));

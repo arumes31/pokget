@@ -14,6 +14,11 @@ import (
 
 func mobileScannerRegressionPage(t *testing.T) context.Context {
 	t.Helper()
+	return mobileScannerRegressionPageAtViewport(t, 390, 844)
+}
+
+func mobileScannerRegressionPageAtViewport(t *testing.T, width, height int64) context.Context {
+	t.Helper()
 	chromePath := mobileTestChromePath()
 	if chromePath == "" {
 		t.Skip("Chrome or Edge is not installed")
@@ -23,7 +28,7 @@ func mobileScannerRegressionPage(t *testing.T) context.Context {
 	browser := newHeadlessBrowserContext(t, chromePath)
 	ctx, cancel := context.WithTimeout(browser, 25*time.Second)
 	t.Cleanup(cancel)
-	if err := chromedp.Run(ctx, chromedp.EmulateViewport(390, 844),
+	if err := chromedp.Run(ctx, chromedp.EmulateViewport(width, height),
 		chromedp.Navigate(server.URL+"/?view=scan"),
 		chromedp.WaitVisible(".scanner-controls", chromedp.ByQuery),
 		chromedp.Poll(`window.Alpine && Alpine.$data(document.querySelector('.scanner-shell')).$refs.video`, nil),
