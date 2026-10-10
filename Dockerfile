@@ -12,7 +12,7 @@ COPY templates ./templates
 RUN npm run build:static && npm run check:static
 
 # Go build stage
-FROM golang:1.27.1-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS builder
+FROM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
 
 # Install Tesseract OCR dependencies
 RUN apk add --no-cache \
@@ -41,8 +41,8 @@ FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6ee
 
 # Install runtime dependencies: Tesseract for OCR and Chromium for headless scraping
 RUN apk add --no-cache \
-    libcrypto3=3.5.8-r0 \
-    libssl3=3.5.8-r0 \
+    libcrypto3=3.5.9-r0 \
+    libssl3=3.5.9-r0 \
     tesseract-ocr \
     tesseract-ocr-data-eng \
     tesseract-ocr-data-jpn \
