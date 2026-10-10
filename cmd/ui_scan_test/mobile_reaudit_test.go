@@ -223,17 +223,28 @@ func TestMobileEditorMetadataFailureCanRetry(t *testing.T) {
 
 func TestMobileEditorSaveRefreshCannotReplaceNewerNavigation(t *testing.T) {
 	ctx := mobileHardeningPage(t, "/?filled=1")
+	phase := "open editor"
+	markPhase := func(name string) chromedp.Action {
+		return chromedp.ActionFunc(func(context.Context) error {
+			phase = name
+			return nil
+		})
+	}
 	if err := chromedp.Run(ctx,
 		chromedp.Evaluate(`document.querySelector('#main-content button[aria-label^="Edit "]').click()`, nil),
 		chromedp.Poll(`document.querySelector('#edit-binder option[value="test"]') && !document.querySelector('#edit-form button[type=submit]').disabled`, nil, chromedp.WithPollingTimeout(2*time.Second)),
 		chromedp.Evaluate(`document.cookie='ui-fixture-delay-dashboard=1; path=/'; window.editorRefreshStarted=false; document.body.addEventListener('htmx:beforeRequest',e=>{if(e.detail.requestConfig.path==='/dashboard') window.editorRefreshStarted=true})`, nil),
+		markPhase("click save"),
 		chromedp.Click(`#edit-form button[type=submit]`, chromedp.ByQuery),
+		markPhase("wait refresh request"),
 		chromedp.Poll(`window.editorRefreshStarted`, nil, chromedp.WithPollingTimeout(2*time.Second)),
+		markPhase("click navigation"),
 		chromedp.Click(`.app-bottom-nav [hx-get="/wantlist"]`, chromedp.ByQuery),
+		markPhase("wait Grails"),
 		chromedp.Poll(`document.querySelector('#main-content .page-title')?.textContent.trim()==='Grails'`, nil, chromedp.WithPollingTimeout(2*time.Second)),
 		chromedp.Sleep(700*time.Millisecond),
 	); err != nil {
-		t.Fatal(err)
+		t.Fatalf("%s: %v", phase, err)
 	}
 	var title string
 	if err := chromedp.Run(ctx, chromedp.Text(`#main-content .page-title`, &title, chromedp.ByQuery)); err != nil {
