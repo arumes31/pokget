@@ -155,7 +155,6 @@ func TestDashboardUsesOverallAggregateAndBoundedCards(t *testing.T) {
 		rows.AddRow(fmt.Sprintf("p%d", i), "LP", nil, "", "", false, "b1", fmt.Sprintf("c%d", i), "Full readable card name", "Set", "", nil, nil, "Pokemon")
 	}
 	mock.ExpectQuery(`SELECT p.id.*c.price_usd, c.price_eur.*WHERE p.user_id = \$1.*ORDER BY p.added_at DESC, p.id DESC LIMIT \$2 OFFSET \$3`).WithArgs("test-user", 25, 24).WillReturnRows(rows)
-	mock.ExpectQuery("SELECT xp, rank_title").WithArgs("test-user").WillReturnRows(sqlmock.NewRows([]string{"xp", "rank"}).AddRow(0, "Novice"))
 	mock.ExpectQuery("SELECT COUNT").WithArgs("test-user").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 	mock.ExpectQuery("SELECT valuation").WithArgs("test-user").WillReturnRows(sqlmock.NewRows([]string{"value"}))
 	renderUserDataExpectation(mock, "test-user")
