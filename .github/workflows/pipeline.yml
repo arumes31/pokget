@@ -48,7 +48,7 @@ jobs:
             libleptonica-dev \
             pkg-config
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@v5
         with:
           go-version: "1.27.2"
           cache: true
@@ -98,7 +98,7 @@ jobs:
             libleptonica-dev \
             pkg-config
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@v5
         with:
           go-version: "1.27.2"
           cache: true
@@ -118,7 +118,7 @@ jobs:
         run: |
           bash scripts/ci-apt-install.sh tesseract-ocr tesseract-ocr-eng libtesseract-dev libleptonica-dev pkg-config
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@v5
         with:
           go-version: "1.27.2"
           cache: true
@@ -137,7 +137,7 @@ jobs:
           ref: ${{ github.event.inputs.target_branch || github.ref }}
           persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@v5
         with:
           go-version: "1.27.2"
           cache: true
@@ -166,7 +166,7 @@ jobs:
         run: |
           bash scripts/ci-apt-install.sh libtesseract-dev libleptonica-dev pkg-config
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@v5
         with:
           go-version: "1.27.2"
           cache: true
@@ -190,7 +190,7 @@ jobs:
         run: |
           bash scripts/ci-apt-install.sh libtesseract-dev libleptonica-dev pkg-config
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@v5
         with:
           go-version: "1.27.2"
           cache: true
