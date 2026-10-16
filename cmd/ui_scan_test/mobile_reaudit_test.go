@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
@@ -82,10 +83,30 @@ func TestMobileFailedScanNavigationRemainsRecoverable(t *testing.T) {
 	for _, failure := range []string{"offline", "http-500"} {
 		t.Run(failure, func(t *testing.T) {
 			ctx := mobileHardeningPage(t, "/?filled=1")
+			var cancelOffline func()
 			setOffline := func(offline bool) chromedp.Action {
 				return chromedp.ActionFunc(func(ctx context.Context) error {
-					_, err := network.EmulateNetworkConditionsByRule([]*network.Conditions{{URLPattern: "", Offline: offline, DownloadThroughput: -1, UploadThroughput: -1}}).Do(ctx)
-					return err
+					if offline {
+						err := fetch.Enable().WithPatterns([]*fetch.RequestPattern{{URLPattern: "*"}}).Do(ctx)
+						if err != nil {
+							return err
+						}
+						chromedp.ListenTarget(ctx, func(ev interface{}) {
+							switch ev := ev.(type) {
+							case *fetch.EventRequestPaused:
+								go func() {
+									_ = fetch.FailRequest(ev.RequestID, network.ErrorReasonInternetDisconnected).Do(ctx)
+								}()
+							}
+						})
+						cancelOffline = func() {}
+					} else {
+						if cancelOffline != nil {
+							cancelOffline()
+						}
+						_ = fetch.Disable().Do(ctx)
+					}
+					return nil
 				})
 			}
 			if failure == "offline" {
