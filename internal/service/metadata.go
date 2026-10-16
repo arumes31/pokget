@@ -27,6 +27,7 @@ import (
 	"image"
 	_ "image/jpeg" // Register JPEG decoding with image.Decode.
 	_ "image/png"  // Register PNG decoding with image.Decode.
+	"io"
 	"log/slog"
 	"net/http"
 	"pokget/internal/models"
@@ -83,6 +84,9 @@ func (t *TCGDexClient) FetchCards(ctx context.Context, game string, lang string)
 	if err := json.NewDecoder(resp.Body).Decode(&rawCards); err != nil {
 		return nil, err
 	}
+	// Drain remainder to ensure HTTP transport can reuse TCP connection (Keep-Alive).
+	// Reduces latency for subsequent high-frequency API calls.
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	var cards []models.Card
 	for _, rc := range rawCards {

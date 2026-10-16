@@ -305,6 +305,10 @@ func (s *LLMService) AutoSetupContext(ctx context.Context) {
 		slog.Error("LLM: Failed to decode tags response", "error", err)
 		return
 	}
+	// Drain remainder to ensure HTTP transport can reuse TCP connection (Keep-Alive).
+	// Reduces latency for subsequent high-frequency API calls.
+	_, _ = io.Copy(io.Discard, resp.Body)
+
 	for _, candidate := range tagsResp.Models {
 		if strings.HasPrefix(candidate.Name, model) {
 			slog.Info("LLM: Model already exists", "model", model)
