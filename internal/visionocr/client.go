@@ -115,13 +115,6 @@ func (c *Client) Extract(ctx context.Context, image []byte) (string, error) {
 	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("vision OCR: provider HTTP status %d", response.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
-	if ctx.Err() != nil {
-		return "", ctx.Err()
-	}
-	if err != nil || len(data) > maxResponseBytes || !utf8.Valid(data) {
-		return "", ErrInvalidResponse
-	}
 	var result struct {
 		Done    bool   `json:"done"`
 		Reason  string `json:"done_reason"`
@@ -132,8 +125,36 @@ func (c *Client) Extract(ctx context.Context, image []byte) (string, error) {
 			ToolCalls []json.RawMessage `json:"tool_calls"`
 		} `json:"message"`
 	}
-	// Unmarshal rejects trailing JSON/garbage as well as truncated envelopes.
-	if err := json.Unmarshal(data, &result); err != nil || !result.Done || result.Reason != "stop" || result.Error != "" || result.Message.Role != "assistant" || len(result.Message.ToolCalls) != 0 || !validText(result.Message.Content) {
+	// Decode rejects trailing JSON/garbage as well as truncated envelopes.
+	limited := &io.LimitedReader{R: response.Body, N: maxResponseBytes + 1}
+	decoder := json.NewDecoder(limited)
+	err = decoder.Decode(&result)
+
+	var extra any
+	if err == nil {
+		err = decoder.Decode(&extra)
+		if errors.Is(err, io.EOF) {
+			err = nil
+		} else if err == nil {
+			err = errors.New("vision OCR: trailing garbage")
+		}
+	}
+
+	if err == nil {
+		// Because json.NewDecoder reads in chunks, it may consume up to maxResponseBytes+1
+		// from the io.LimitReader into its internal buffer even if the JSON is short.
+		// To accurately check if the response exceeded maxBytes, we can check how many
+		// bytes remain in the LimitReader. If N <= 0, we hit the limit.
+		if limited.N <= 0 {
+			err = errors.New("vision OCR: oversized envelope")
+		}
+	}
+
+	_, _ = io.Copy(io.Discard, response.Body)
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	if err != nil || !result.Done || result.Reason != "stop" || result.Error != "" || result.Message.Role != "assistant" || len(result.Message.ToolCalls) != 0 || !validText(result.Message.Content) {
 		return "", ErrInvalidResponse
 	}
 	return result.Message.Content, nil
