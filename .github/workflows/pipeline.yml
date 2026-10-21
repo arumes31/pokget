@@ -128,7 +128,7 @@ jobs:
         run: go test -tags=ocrintegration -run '^TestTesseractRecognizesSyntheticCardName$' -timeout=2m -count=1 -v ./internal/service
 
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout repository
@@ -206,7 +206,7 @@ jobs:
           "$(go env GOPATH)/bin/gosec" ./...
 
   js-assets:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout repository
@@ -232,7 +232,7 @@ jobs:
           npm run check:static
 
   container-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout repository
@@ -255,7 +255,7 @@ jobs:
 
   docker:
     needs: [test, race, ocr-integration, browser, lint, security, js-assets, container-smoke]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
     permissions:
