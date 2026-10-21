@@ -1,0 +1,6 @@
+
+
+# Reviewed historical test fixtures, public reference vectors and content hashes.
+# Exact commit/path/rule/line fingerprints only; new occurrences still fail.
+ca60641337aac7c7c86fb396ae74f27370682f50:cmd/pokget/workers_test.go:generic-api-key:121
+e2080c7e30848a8a171b40e8f0332c75bce1d8c1:scripts/container-smoke.sh:generic-api-key:69
