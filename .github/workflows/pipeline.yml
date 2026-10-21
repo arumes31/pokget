@@ -50,7 +50,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: Run Go tests
         shell: bash
@@ -100,7 +100,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: Run bounded race shard
         run: go test -race -timeout=8m -count=1 ${{ matrix.packages }}
@@ -120,7 +120,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: Exercise real Tesseract OCR
         env:
@@ -128,7 +128,7 @@ jobs:
         run: go test -tags=ocrintegration -run '^TestTesseractRecognizesSyntheticCardName$' -timeout=2m -count=1 -v ./internal/service
 
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout repository
@@ -139,7 +139,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: Resolve Chrome
         shell: bash
@@ -168,7 +168,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.1
@@ -192,7 +192,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: govulncheck
         run: |
@@ -206,7 +206,7 @@ jobs:
           "$(go env GOPATH)/bin/gosec" ./...
 
   js-assets:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout repository
@@ -232,7 +232,7 @@ jobs:
           npm run check:static
 
   container-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout repository
@@ -255,7 +255,7 @@ jobs:
 
   docker:
     needs: [test, race, ocr-integration, browser, lint, security, js-assets, container-smoke]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
     permissions:
