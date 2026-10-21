@@ -190,6 +190,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified, &sessionVersion)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			_, _ = auth.HashPassword(password)
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		}
