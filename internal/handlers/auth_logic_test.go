@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"pokget/internal/auth"
 	"pokget/internal/service"
 	"strings"
 	"testing"
@@ -50,7 +51,7 @@ func TestRegister_Success_NewUser(t *testing.T) {
 	h, mock, cleanup := setupTestHandler(t)
 	defer cleanup()
 
-	req := httptest.NewRequest("POST", "/register", strings.NewReader("email=new@example.com&password=pass123&confirm_password=pass123"))
+	req := httptest.NewRequest("POST", "/register", strings.NewReader("email=new@example.com&password=long-enough-pass&confirm_password=long-enough-pass"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
 
@@ -169,10 +170,12 @@ func TestResendVerification_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	lastSent := time.Now().Add(-10 * time.Minute)
-	rows := sqlmock.NewRows([]string{"last_email_sent_at", "verification_token", "is_verified"}).
-		AddRow(lastSent, "token123", false)
+	rows := sqlmock.NewRows([]string{"last_email_sent_at", "is_verified"}).
+		AddRow(lastSent, false)
 	mock.ExpectQuery("SELECT last_email_sent_at").WillReturnRows(rows)
-	mock.ExpectExec("UPDATE users SET last_email_sent_at").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE users SET verification_token").
+		WithArgs(sqlmock.AnyArg(), "test@example.com").
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	h.Mailer = &service.MockMailer{}
 	h.ResendVerification(rr, req)
@@ -192,7 +195,7 @@ func TestConfirmEmail_Full(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		mock.ExpectExec("UPDATE users SET is_verified = TRUE").
-			WithArgs("valid-token").
+			WithArgs(hashVerificationToken("valid-token")).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.ProcessConfirmEmail(rr, req)
@@ -241,14 +244,18 @@ func TestResendVerification_RateLimited(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	lastSent := time.Now().Add(-1 * time.Minute)
-	rows := sqlmock.NewRows([]string{"last_email_sent_at", "verification_token", "is_verified"}).
-		AddRow(lastSent, "token123", false)
+	rows := sqlmock.NewRows([]string{"last_email_sent_at", "is_verified"}).
+		AddRow(lastSent, false)
 	mock.ExpectQuery("SELECT last_email_sent_at").WillReturnRows(rows)
 
 	h.ResendVerification(rr, req)
 
-	if rr.Code != http.StatusTooManyRequests {
-		t.Errorf("Expected 429, got %d", rr.Code)
+	// Rate-limited resends look like any other accepted request.
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d", rr.Code)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
 	}
 }
 
@@ -258,5 +265,86 @@ func TestLogoutRejectsGET(t *testing.T) {
 	handler.Logout(response, httptest.NewRequest(http.MethodGet, "/auth/logout", nil))
 	if response.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestRegisterRejectsShortPassword(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	form := url.Values{"email": {"new@example.com"}, "password": {"short-pass1"}, "confirm_password": {"short-pass1"}}
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "at least 12 characters") {
+		t.Fatalf("status = %d, body = %q; want 400 explaining the minimum length", rr.Code, rr.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoginLocksAccountAfterRepeatedFailures(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+	const email = "lockout@example.com"
+	t.Cleanup(func() { auth.ResetLoginFailures(email) })
+
+	hash := fastPasswordHash(t, "correct-password")
+	login := func() int {
+		form := url.Values{"email": {email}, "password": {"wrong-password"}}
+		req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+		h.Login(rr, req)
+		return rr.Code
+	}
+	for range 10 {
+		mock.ExpectQuery("SELECT id, email").WillReturnRows(
+			sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+				AddRow("u1", email, hash, true, 0))
+		if code := login(); code != http.StatusUnauthorized {
+			t.Fatalf("failed login status = %d, want 401", code)
+		}
+	}
+	// Locked: rejected before any database lookup or bcrypt work.
+	if code := login(); code != http.StatusTooManyRequests {
+		t.Fatalf("locked login status = %d, want 429", code)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLogoutRevokesSessionServerSide(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	cookieRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	session, _ := auth.Store.Get(cookieRequest, "session")
+	session.Values["user_id"] = "user-1"
+	session.Values["session_version"] = int64(3)
+	cookieResponse := httptest.NewRecorder()
+	if err := session.Save(cookieRequest, cookieResponse); err != nil {
+		t.Fatal(err)
+	}
+
+	mock.ExpectExec("UPDATE users SET session_version").
+		WithArgs("user-1", int64(3)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	req.Header.Set("Cookie", cookieResponse.Header().Get("Set-Cookie"))
+	rr := httptest.NewRecorder()
+	h.Logout(rr, req)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", rr.Code)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

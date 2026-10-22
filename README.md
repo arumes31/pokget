@@ -63,10 +63,11 @@ Save named/tagged measurements on this device, reopen them from **Saved**, or ex
 
 ## 🛡️ Security Architecture
 The Pokget vault is hardened using industry standards:
-*   **Encryption**: Secure card metadata and private notes using AES-GCM 256-bit encryption.
-*   **Brute-Force Protection**: Token-bucket rate limiting applied per IP.
+*   **Private Notes**: Card notes are never shown on public vault pages. They are stored unencrypted in PostgreSQL, so protect database access and backups.
+*   **Brute-Force Protection**: Token-bucket rate limiting per IP (IPv6 per /64), a per-account failed-login limit, and a cap on concurrent password hashing.
+*   **Accounts**: New passwords need at least 12 characters; email verification links expire after 24 hours and are stored hashed.
 *   **Audit Logging**: Every sensitive action (Login, Register, Add Card) is immutable logged to the `audit_logs` table.
-*   **Session Integrity**: 32-byte secure session keys with HttpOnly/Secure cookie standards.
+*   **Session Integrity**: Signed and encrypted HttpOnly/Secure session cookies. Logging out or changing the password revokes the account's sessions on every device.
 *   **Validation**: Mandatory password confirmation during registration and CSRF protection on all POST methods.
 
 ---
