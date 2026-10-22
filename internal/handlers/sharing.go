@@ -28,7 +28,6 @@ import (
 	"net/url"
 	"pokget/internal/auth"
 	"pokget/internal/models"
-	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/shopspring/decimal"
@@ -40,16 +39,15 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	slug := vars["slug"]
 
 	var userID string
-	var email string
 	var rank string
 	var xp int
 	var currency string
 
 	err := h.DB.QueryRowContext(r.Context(), `
-		SELECT id, email, COALESCE(rank_title, ''), COALESCE(xp, 0), COALESCE(currency, 'EUR')
+		SELECT id, COALESCE(rank_title, ''), COALESCE(xp, 0), COALESCE(currency, 'EUR')
 		FROM users 
 		WHERE public_slug = $1 AND is_public_profile = TRUE`,
-		slug).Scan(&userID, &email, &rank, &xp, &currency)
+		slug).Scan(&userID, &rank, &xp, &currency)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -75,8 +73,9 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	page := boundedCollectionPage(r, totalCards)
 
 	// Fetch one page and one extra card to determine whether a next page exists.
+	// Notes stay private: they are never selected for the public view.
 	rows, err := h.DB.QueryContext(r.Context(), `
-		SELECT p.id, p.condition, p.format, p.grade, p.grading_company, p.notes, 
+		SELECT p.id, p.condition, p.format, p.grade, p.grading_company,
 		       c.name, c.set_name, c.price_usd, c.price_eur,
 		       COALESCE(c.image_url, ''), COALESCE(c.game, '')
 		FROM portfolio p
@@ -94,9 +93,9 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	portfolio := make([]models.PortfolioItem, 0, collectionPageSize+1)
 	for rows.Next() {
 		var p models.PortfolioItem
-		var grade, gradingCompany, notes sql.NullString
+		var grade, gradingCompany sql.NullString
 		var priceUSD, priceEUR decimal.NullDecimal
-		if err := rows.Scan(&p.ID, &p.Condition, &p.Format, &grade, &gradingCompany, &notes,
+		if err := rows.Scan(&p.ID, &p.Condition, &p.Format, &grade, &gradingCompany,
 			&p.Card.Name, &p.Card.Set, &priceUSD, &priceEUR, &p.Card.ImageURL, &p.Card.Game); err != nil {
 			slog.Error("Failed to scan public vault item", "error", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -104,7 +103,6 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 		}
 		p.Grade = grade.String
 		p.GradingCompany = gradingCompany.String
-		p.Notes = notes.String
 		setCardMarketPrices(&p.Card, priceUSD, priceEUR)
 		portfolio = append(portfolio, p)
 	}
@@ -117,11 +115,9 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	if len(portfolio) > collectionPageSize {
 		portfolio = portfolio[:collectionPageSize]
 	}
-	// BOLT OPTIMIZATION: Use strings.IndexByte for more efficient string extraction (one less allocation than Split)
-	username := email
-	if idx := strings.IndexByte(email, '@'); idx != -1 {
-		username = email[:idx]
-	}
+	// The owner-chosen slug is already public in the URL; the email address,
+	// including its local part, is never shown on the public page.
+	username := slug
 	currencySymbol := "€"
 	if currency == "USD" {
 		currencySymbol = "$"

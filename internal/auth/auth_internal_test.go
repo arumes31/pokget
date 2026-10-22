@@ -484,6 +484,7 @@ func TestProxyMiddlewareSingleForwardedFor(t *testing.T) {
 	middleware := ProxyMiddleware(nextHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("X-Forwarded-For", " 8.8.8.8 ")
 	rr := httptest.NewRecorder()
 	middleware.ServeHTTP(rr, req)
