@@ -54,3 +54,4 @@
 /ocr_tester_linux
 /ocr_tester_linux_cgo
 /static/img/debug/
+/.tmp/
