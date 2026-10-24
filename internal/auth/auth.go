@@ -121,20 +121,10 @@ func CheckPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
-// dummyPasswordHash is compared against when no account matches, so login
-// latency does not reveal whether an email is registered.
-var dummyPasswordHash = sync.OnceValue(func() string {
-	hash, err := bcrypt.GenerateFromPassword([]byte("pokget-dummy-password"), bcryptCost)
-	if err != nil {
-		panic("Failed to generate dummy password hash: " + err.Error())
-	}
-	return string(hash)
-})
-
 // EqualizePasswordCheck spends the same work as CheckPasswordHash for an
 // unknown account.
 func EqualizePasswordCheck(password string) {
-	CheckPasswordHash(password, dummyPasswordHash())
+	_, _ = HashPassword(password)
 }
 
 // UserContextKey is the key for the user ID in the context
