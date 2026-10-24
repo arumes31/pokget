@@ -85,13 +85,24 @@ func parseHeaderIP(value string) string {
 // forwardedClientIP walks X-Forwarded-For from the right and returns the first
 // hop that is not a trusted proxy. Entries left of it are client-controlled.
 func forwardedClientIP(xff string, trusted []*net.IPNet) string {
-	hops := strings.Split(xff, ",")
-	for i := len(hops) - 1; i >= 0; i-- {
-		ip := net.ParseIP(strings.TrimSpace(hops[i]))
+	for xff != "" {
+		var hop string
+		lastComma := strings.LastIndexByte(xff, ',')
+		if lastComma != -1 {
+			hop = xff[lastComma+1:]
+			xff = xff[:lastComma]
+		} else {
+			hop = xff
+			xff = ""
+		}
+
+		ip := net.ParseIP(strings.TrimSpace(hop))
 		if ip == nil {
 			return ""
 		}
-		if !isTrustedProxy(ip, trusted) || i == 0 {
+
+		isLeftmost := (xff == "")
+		if !isTrustedProxy(ip, trusted) || isLeftmost {
 			return ip.String()
 		}
 	}
