@@ -85,17 +85,24 @@ func parseHeaderIP(value string) string {
 // forwardedClientIP walks X-Forwarded-For from the right and returns the first
 // hop that is not a trusted proxy. Entries left of it are client-controlled.
 func forwardedClientIP(xff string, trusted []*net.IPNet) string {
-	hops := strings.Split(xff, ",")
-	for i := len(hops) - 1; i >= 0; i-- {
-		ip := net.ParseIP(strings.TrimSpace(hops[i]))
+	for {
+		i := strings.LastIndexByte(xff, ',')
+		var hop string
+		if i == -1 {
+			hop = xff
+		} else {
+			hop = xff[i+1:]
+		}
+
+		ip := net.ParseIP(strings.TrimSpace(hop))
 		if ip == nil {
 			return ""
 		}
-		if !isTrustedProxy(ip, trusted) || i == 0 {
+		if !isTrustedProxy(ip, trusted) || i == -1 {
 			return ip.String()
 		}
+		xff = xff[:i]
 	}
-	return ""
 }
 
 // ProxyMiddleware handles reverse proxy and Cloudflare headers to extract the real client IP.
