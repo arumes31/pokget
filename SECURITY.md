@@ -15,9 +15,10 @@ empty. Preserve the session key with backups: it derives encryption keys as well
 as session/CSRF keys. Configure HTTPS and keep `SECURE_COOKIES=true` for deployed
 instances; disabling it is only for trusted local HTTP development.
 
-The Compose examples publish database and Ollama ports. Restrict those ports to
-trusted clients or loopback; do not expose an unauthenticated Ollama endpoint to
-the public internet. Enable proxy trust flags only when that topology is trusted.
+The Compose examples publish the database and Ollama ports on loopback only; do
+not expose an unauthenticated Ollama endpoint to the public internet. Enable proxy
+trust flags only when that topology is trusted, and list your proxy addresses in
+`TRUSTED_PROXIES` if they are not on loopback or a private network.
 
 Successful device OCR sends text rather than the photo, but fallback can upload
 the prepared image. Server-side OCR/LLM requests may send text, images, or approved
