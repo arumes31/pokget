@@ -22,6 +22,7 @@ package handlers
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -37,8 +38,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const passwordTooShortMessage = "Password must be at least 12 characters"
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("Action: Register", "method", r.Method, "url", r.URL.String())
+	slog.Debug("Action: Register", "method", r.Method, "path", r.URL.Path)
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 	confirmPassword := r.FormValue("confirm_password")
@@ -53,17 +56,21 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user exists and is verified before expensive hashing
-	var existingVerified bool
-	err := h.DB.QueryRowContext(r.Context(), "SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
-	if err == nil && existingVerified {
-		// Return success to avoid email enumeration — user already exists and is verified
-		// Do not reveal whether the email is registered
-		http.Redirect(w, r, "/auth?tab=login", http.StatusSeeOther)
+	if err := auth.ValidateNewPassword(password); err != nil {
+		http.Error(w, passwordTooShortMessage, http.StatusBadRequest)
 		return
 	}
 
-	// Performance: Only hash password if registration can proceed
+	var existingVerified bool
+	err := h.DB.QueryRowContext(r.Context(), "SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		slog.Error("Failed to look up user for registration", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Hash even for existing accounts so response time does not reveal
+	// whether the email is registered.
 	hash, errHash := h.hashPassword(password)
 	if errHash != nil {
 		if errors.Is(errHash, bcrypt.ErrPasswordTooLong) {
@@ -81,31 +88,27 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err == nil {
-		// User exists but is NOT verified — do NOT overwrite their credentials
-		// Redirect to login page where they can use "Resend Verification" instead
-		http.Redirect(w, r, "/auth?tab=login&msg=unverified", http.StatusSeeOther)
-		return
-	} else if err == sql.ErrNoRows {
-		// New user
-		_, err = h.DB.ExecContext(r.Context(), "INSERT INTO users (email, password_hash, verification_token, last_email_sent_at) VALUES ($1, $2, $3, NOW())", email, hash, token)
-	}
+	// Existing accounts (verified or not) keep their credentials and get the
+	// same response as a new registration, so the form cannot be used to
+	// enumerate emails. Unverified users can use "Resend email".
+	if errors.Is(err, sql.ErrNoRows) {
+		_, err = h.DB.ExecContext(r.Context(), "INSERT INTO users (email, password_hash, verification_token, verification_expires_at, last_email_sent_at) VALUES ($1, $2, $3, NOW() + INTERVAL '24 hours', NOW())", email, hash, hashVerificationToken(token))
+		if err != nil {
+			slog.Error("Failed to register user", "error", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
 
-	if err != nil {
-		slog.Error("Failed to register/update user", "error", err)
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
+		mailSvc := h.Mailer
+		if mailSvc == nil {
+			mailSvc = service.NewMailService()
+		}
+		if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
+			slog.Error("Failed to send confirmation email", "error", err)
+		}
 
-	mailSvc := h.Mailer
-	if mailSvc == nil {
-		mailSvc = service.NewMailService()
+		h.Audit.Log("", "USER_REGISTER", map[string]interface{}{"email": email})
 	}
-	if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
-		slog.Error("Failed to send confirmation email", "error", err)
-	}
-
-	h.Audit.Log("", "USER_REGISTER", map[string]interface{}{"email": email})
 
 	w.WriteHeader(http.StatusCreated)
 	data := map[string]interface{}{
@@ -119,20 +122,20 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("Action: ResendVerification", "method", r.Method, "url", r.URL.String())
+	slog.Debug("Action: ResendVerification", "method", r.Method, "path", r.URL.Path)
 	email := r.FormValue("email")
 	if email == "" {
 		http.Error(w, "Email is required", http.StatusBadRequest)
 		return
 	}
 
+	// Unknown, already verified, and recently mailed accounts all get the same
+	// empty 200 so the endpoint does not reveal which emails are registered.
 	var lastSent sql.NullTime
-	var token string
 	var isVerified bool
-	err := h.DB.QueryRowContext(r.Context(), "SELECT last_email_sent_at, verification_token, is_verified FROM users WHERE email = $1", email).Scan(&lastSent, &token, &isVerified)
+	err := h.DB.QueryRowContext(r.Context(), "SELECT last_email_sent_at, is_verified FROM users WHERE email = $1", email).Scan(&lastSent, &isVerified)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// Don't leak email existence, just return OK but don't send
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -140,19 +143,20 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if isVerified {
-		http.Error(w, "Account already verified", http.StatusBadRequest)
-		return
-	}
-
 	// 5 minute rate limit
-	if lastSent.Valid && time.Since(lastSent.Time) < 5*time.Minute {
-		http.Error(w, "Please wait 5 minutes before resending", http.StatusTooManyRequests)
+	if isVerified || (lastSent.Valid && time.Since(lastSent.Time) < 5*time.Minute) {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	// Update last sent time
-	_, err = h.DB.ExecContext(r.Context(), "UPDATE users SET last_email_sent_at = NOW() WHERE email = $1", email)
+	// Only the token hash is stored, so a resend issues a fresh token.
+	token, err := generateToken()
+	if err != nil {
+		slog.Error("Failed to generate verification token", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	_, err = h.DB.ExecContext(r.Context(), "UPDATE users SET verification_token = $1, verification_expires_at = NOW() + INTERVAL '24 hours', last_email_sent_at = NOW() WHERE email = $2 AND is_verified = FALSE", hashVerificationToken(token), email)
 	if err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
@@ -164,21 +168,23 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
 		slog.Error("Failed to resend confirmation email", "error", err)
-		http.Error(w, "Failed to send email", http.StatusInternalServerError)
-		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("Action: Login", "method", r.Method, "url", r.URL.String())
+	slog.Debug("Action: Login", "method", r.Method, "path", r.URL.Path)
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 
 	// ⚡ Bolt Optimization: Early return for empty credentials to avoid unnecessary DB query.
 	if email == "" || password == "" {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		return
+	}
+	if !auth.LoginAllowed(email) {
+		http.Error(w, "Too many failed login attempts. Try again later.", http.StatusTooManyRequests)
 		return
 	}
 	var u models.User
@@ -190,6 +196,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.IsVerified, &sessionVersion)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			// Spend the same bcrypt work as a real check so timing does not
+			// reveal whether the email is registered.
+			auth.EqualizePasswordCheck(password)
+			auth.RecordLoginFailure(email)
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		}
@@ -199,9 +209,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !auth.CheckPasswordHash(password, u.PasswordHash) {
+		auth.RecordLoginFailure(email)
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
+	auth.ResetLoginFailures(email)
 
 	if !u.IsVerified {
 		http.Error(w, "Please verify your email before logging in", http.StatusForbidden)
@@ -209,8 +221,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	remember := r.FormValue("remember") == "on"
+	// An undecodable old cookie still yields a fresh session to log into.
 	session, err := auth.Store.Get(r, "session")
-	if err != nil {
+	if session == nil {
 		slog.Error("Failed to get session", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -250,7 +263,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("Action: ConfirmEmail (GET)", "method", r.Method, "url", r.URL.String())
+	slog.Debug("Action: ConfirmEmail (GET)", "method", r.Method, "path", r.URL.Path)
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		http.Error(w, "Missing token", http.StatusBadRequest)
@@ -265,14 +278,14 @@ func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ProcessConfirmEmail(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("Action: ProcessConfirmEmail (POST)", "method", r.Method, "url", r.URL.String())
+	slog.Debug("Action: ProcessConfirmEmail (POST)", "method", r.Method, "path", r.URL.Path)
 	token := r.FormValue("token")
 	if token == "" {
 		http.Error(w, "Missing token", http.StatusBadRequest)
 		return
 	}
 
-	res, err := h.DB.ExecContext(r.Context(), "UPDATE users SET is_verified = TRUE, verification_token = NULL WHERE verification_token = $1", token)
+	res, err := h.DB.ExecContext(r.Context(), "UPDATE users SET is_verified = TRUE, verification_token = NULL, verification_expires_at = NULL WHERE verification_token = $1 AND verification_expires_at > NOW()", hashVerificationToken(token))
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -302,10 +315,22 @@ func generateToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// hashVerificationToken returns the form stored in users.verification_token;
+// the plaintext token only ever appears in the emailed link.
+func hashVerificationToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+	// Bump session_version so copies of this cookie stop working too. This
+	// signs the user out on every device, as a password change does.
+	if err := auth.RevokeSession(h.DB, r); err != nil {
+		slog.Error("Failed to revoke session on logout", "error", err)
 	}
 	session, _ := auth.Store.Get(r, "session")
 	session.Values["user_id"] = ""

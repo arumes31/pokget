@@ -71,18 +71,18 @@ func TestPublicVault_USDCollectorWithoutAtSign(t *testing.T) {
 	))
 	handler := &Handler{Templates: templates, DB: database}
 
-	// USD currency flips the symbol; an email without '@' is used as-is.
-	mock.ExpectQuery("SELECT id, email").WithArgs("public-user").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "rank_title", "xp", "currency"}).
-			AddRow("user-1", "collector", "Collector", 100, "USD"))
+	// USD currency flips the symbol; the public name is the slug, never the email.
+	mock.ExpectQuery("SELECT id, COALESCE.rank_title").WithArgs("public-user").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "rank_title", "xp", "currency"}).
+			AddRow("user-1", "Collector", 100, "USD"))
 	mock.ExpectQuery(`SELECT COUNT\(\*\)`).WithArgs("user-1").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 	mock.ExpectQuery("SELECT p.id").WithArgs("user-1", 25, 0).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "condition", "format", "grade", "grading_company", "notes",
+			"id", "condition", "format", "grade", "grading_company",
 			"name", "set_name", "price_usd", "price_eur", "image_url", "game",
 		}).AddRow(
-			"item-1", "Near Mint", "Raw", nil, nil, nil,
+			"item-1", "Near Mint", "Raw", nil, nil,
 			"Test Card", "Test Set", "10.00", "9.00", "/card.png", "pokemon",
 		))
 
@@ -95,8 +95,8 @@ func TestPublicVault_USDCollectorWithoutAtSign(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 	}
-	if response.Body.String() != "$|collector|1" {
-		t.Fatalf("body = %q, want %q", response.Body.String(), "$|collector|1")
+	if response.Body.String() != "$|public-user|1" {
+		t.Fatalf("body = %q, want %q", response.Body.String(), "$|public-user|1")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -116,9 +116,9 @@ func TestPublicVault_PortfolioErrors(t *testing.T) {
 	}
 
 	expectUser := func(mock sqlmock.Sqlmock) {
-		mock.ExpectQuery("SELECT id, email").WithArgs("public-user").
-			WillReturnRows(sqlmock.NewRows([]string{"id", "email", "rank_title", "xp", "currency"}).
-				AddRow("user-1", "collector@example.com", "Collector", 100, "EUR"))
+		mock.ExpectQuery("SELECT id, COALESCE.rank_title").WithArgs("public-user").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "rank_title", "xp", "currency"}).
+				AddRow("user-1", "Collector", 100, "EUR"))
 		mock.ExpectQuery(`SELECT COUNT\(\*\)`).WithArgs("user-1").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 	}
@@ -151,10 +151,10 @@ func TestPublicVault_PortfolioErrors(t *testing.T) {
 		expectUser(mock)
 		mock.ExpectQuery("SELECT p.id").WithArgs("user-1", 25, 0).
 			WillReturnRows(sqlmock.NewRows([]string{
-				"id", "condition", "format", "grade", "grading_company", "notes",
+				"id", "condition", "format", "grade", "grading_company",
 				"name", "set_name", "price_usd", "price_eur", "image_url", "game",
 			}).AddRow(
-				"item-1", "Near Mint", "Raw", nil, nil, nil,
+				"item-1", "Near Mint", "Raw", nil, nil,
 				"Test Card", "Test Set", "not-a-price", "9.00", "/card.png", "pokemon",
 			))
 
@@ -178,10 +178,10 @@ func TestPublicVault_PortfolioErrors(t *testing.T) {
 
 		expectUser(mock)
 		rows := sqlmock.NewRows([]string{
-			"id", "condition", "format", "grade", "grading_company", "notes",
+			"id", "condition", "format", "grade", "grading_company",
 			"name", "set_name", "price_usd", "price_eur", "image_url", "game",
 		}).AddRow(
-			"item-1", "Near Mint", "Raw", nil, nil, nil,
+			"item-1", "Near Mint", "Raw", nil, nil,
 			"Test Card", "Test Set", "10.00", "9.00", "/card.png", "pokemon",
 		).RowError(0, errors.New("row stream failed"))
 		mock.ExpectQuery("SELECT p.id").WithArgs("user-1", 25, 0).WillReturnRows(rows)

@@ -22,7 +22,9 @@ package auth
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -30,10 +32,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gorilla/sessions"
 	"golang.org/x/crypto/bcrypt"
@@ -59,17 +63,78 @@ func InitStore(key string) *sessions.CookieStore {
 	if len(key) < 32 {
 		panic("SESSION_KEY must be at least 32 characters long")
 	}
-	return sessions.NewCookieStore([]byte(key))
+	// The second key encrypts the cookie so the user ID and session version
+	// are not readable by the client; the first keeps authenticating it.
+	return sessions.NewCookieStore([]byte(key), sessionEncryptionKey(key))
+}
+
+// sessionEncryptionKey derives a dedicated AES-256 key for session cookies.
+func sessionEncryptionKey(masterKey string) []byte {
+	mac := hmac.New(sha256.New, []byte(masterKey))
+	mac.Write([]byte("pokget:session:aes256"))
+	return mac.Sum(nil)
+}
+
+// MinPasswordLength is the minimum number of characters for new passwords.
+const MinPasswordLength = 12
+
+// ErrPasswordTooShort reports a new password below MinPasswordLength.
+var ErrPasswordTooShort = errors.New("password too short")
+
+// ValidateNewPassword enforces the password policy for new credentials.
+func ValidateNewPassword(password string) error {
+	if utf8.RuneCountInString(password) < MinPasswordLength {
+		return ErrPasswordTooShort
+	}
+	return nil
+}
+
+// bcryptCost balances offline cracking resistance against the CPU an
+// unauthenticated login or registration can consume. Hashes created with a
+// different cost keep verifying because bcrypt stores the cost in the hash.
+const bcryptCost = 12
+
+// hashSlots caps concurrent bcrypt work so a burst of auth requests cannot
+// occupy every core needed by scanning and page rendering.
+var hashSlots = make(chan struct{}, max(1, runtime.NumCPU()/2))
+
+func withHashSlot(work func()) {
+	hashSlots <- struct{}{}
+	defer func() { <-hashSlots }()
+	work()
 }
 
 func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
-	return string(bytes), err
+	var hash []byte
+	var err error
+	withHashSlot(func() {
+		hash, err = bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+	})
+	return string(hash), err
 }
 
 func CheckPasswordHash(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	var err error
+	withHashSlot(func() {
+		err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	})
 	return err == nil
+}
+
+// dummyPasswordHash is compared against when no account matches, so login
+// latency does not reveal whether an email is registered.
+var dummyPasswordHash = sync.OnceValue(func() string {
+	hash, err := bcrypt.GenerateFromPassword([]byte("pokget-dummy-password"), bcryptCost)
+	if err != nil {
+		panic("Failed to generate dummy password hash: " + err.Error())
+	}
+	return string(hash)
+})
+
+// EqualizePasswordCheck spends the same work as CheckPasswordHash for an
+// unknown account.
+func EqualizePasswordCheck(password string) {
+	CheckPasswordHash(password, dummyPasswordHash())
 }
 
 // UserContextKey is the key for the user ID in the context
@@ -141,6 +206,34 @@ func expireSession(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// RevokeSession invalidates every cookie issued for the request's user by
+// bumping session_version. Revoked or forged cookies are ignored.
+func RevokeSession(database *sql.DB, r *http.Request) error {
+	if database == nil {
+		return nil
+	}
+	session, err := Store.Get(r, "session")
+	if err != nil {
+		return nil
+	}
+	userID, ok := session.Values["user_id"].(string)
+	if !ok || userID == "" {
+		return nil
+	}
+	cookieVersion, ok := sessionVersion(session.Values["session_version"])
+	if !ok {
+		return nil
+	}
+	_, err = database.ExecContext(
+		r.Context(),
+		`UPDATE users SET session_version = COALESCE(session_version, 0) + 1
+		 WHERE id = $1 AND COALESCE(session_version, 0) = $2`,
+		userID,
+		cookieVersion,
+	)
+	return err
+}
+
 func Middleware(database *sql.DB) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +291,24 @@ var (
 
 	scanLimiters = make(map[string]*rateLimiterEntry)
 	scanMu       sync.Mutex
+
+	loginFailures   = make(map[string]*loginFailureEntry)
+	loginFailuresMu sync.Mutex
+)
+
+// loginFailureEntry counts failed logins for one account within a window.
+type loginFailureEntry struct {
+	failures    int
+	windowStart time.Time
+}
+
+const (
+	// maxLoginFailures failed attempts per account lock it for the rest of
+	// loginFailureWindow, independent of the client IP.
+	maxLoginFailures   = 10
+	loginFailureWindow = 15 * time.Minute
+	// maxTrackedLogins bounds memory when attackers spray random emails.
+	maxTrackedLogins = 100000
 )
 
 // cleanupInterval controls how often the background cleanup runs.
@@ -239,6 +350,55 @@ func evictStaleLimiters(now time.Time) {
 		}
 	}
 	scanMu.Unlock()
+
+	loginFailuresMu.Lock()
+	for email, entry := range loginFailures {
+		if now.Sub(entry.windowStart) > loginFailureWindow {
+			delete(loginFailures, email)
+		}
+	}
+	loginFailuresMu.Unlock()
+}
+
+func loginFailureKey(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// LoginAllowed reports whether the account is below the failed login limit.
+func LoginAllowed(email string) bool {
+	loginFailuresMu.Lock()
+	defer loginFailuresMu.Unlock()
+
+	entry, exists := loginFailures[loginFailureKey(email)]
+	if !exists || time.Since(entry.windowStart) > loginFailureWindow {
+		return true
+	}
+	return entry.failures < maxLoginFailures
+}
+
+// RecordLoginFailure counts a failed login for the account, whether or not
+// it exists, so the limiter does not reveal registered emails.
+func RecordLoginFailure(email string) {
+	loginFailuresMu.Lock()
+	defer loginFailuresMu.Unlock()
+
+	key := loginFailureKey(email)
+	entry, exists := loginFailures[key]
+	if !exists || time.Since(entry.windowStart) > loginFailureWindow {
+		if !exists && len(loginFailures) >= maxTrackedLogins {
+			return
+		}
+		loginFailures[key] = &loginFailureEntry{failures: 1, windowStart: time.Now()}
+		return
+	}
+	entry.failures++
+}
+
+// ResetLoginFailures clears the failure count after a successful login.
+func ResetLoginFailures(email string) {
+	loginFailuresMu.Lock()
+	delete(loginFailures, loginFailureKey(email))
+	loginFailuresMu.Unlock()
 }
 
 func getLimiter(ip string) *rate.Limiter {
@@ -309,6 +469,16 @@ func clientIP(r *http.Request) string {
 	return ip
 }
 
+// limiterKey groups IPv6 clients by /64, since a single subscriber usually
+// controls the whole prefix and could otherwise rotate addresses freely.
+func limiterKey(ip string) string {
+	parsed := net.ParseIP(ip)
+	if parsed == nil || parsed.To4() != nil {
+		return ip
+	}
+	return parsed.Mask(net.CIDRMask(64, 128)).String() + "/64"
+}
+
 func RateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The root service-worker script is a static asset too. Browser
@@ -320,7 +490,7 @@ func RateLimitMiddleware(next http.Handler) http.Handler {
 		}
 
 		ip := clientIP(r)
-		limiter := getLimiter(ip)
+		limiter := getLimiter(limiterKey(ip))
 		if !limiter.Allow() {
 			slog.Warn("auth: rate limit exceeded", "ip", ip)
 			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
@@ -335,7 +505,7 @@ func RateLimitMiddleware(next http.Handler) http.Handler {
 func ScanRateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := clientIP(r)
-		if !getScanLimiter(ip).Allow() {
+		if !getScanLimiter(limiterKey(ip)).Allow() {
 			slog.Warn("auth: scan rate limit exceeded", "ip", ip)
 			w.Header().Set("Retry-After", "5")
 			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)

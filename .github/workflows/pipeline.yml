@@ -50,7 +50,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: Run Go tests
         shell: bash
@@ -100,7 +100,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: Run bounded race shard
         run: go test -race -timeout=8m -count=1 ${{ matrix.packages }}
@@ -120,7 +120,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: Exercise real Tesseract OCR
         env:
@@ -139,7 +139,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: Resolve Chrome
         shell: bash
@@ -168,7 +168,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.1
@@ -192,7 +192,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
       - name: govulncheck
         run: |

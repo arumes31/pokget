@@ -112,7 +112,7 @@
 
             </div>
             <div class="auth-field" x-data="{ show: false }">
- <input id="register-password" class="input" placeholder=" " type="password" :type="show ? 'text' : 'password'" autocomplete="new-password" enterkeyhint="next" name="password" required />
+ <input id="register-password" class="input" placeholder=" " type="password" :type="show ? 'text' : 'password'" autocomplete="new-password" enterkeyhint="next" name="password" minlength="12" required />
  <label data-i18n for="register-password">Password</label>
  <button data-i18n-attrs="aria-label" type="button" class="auth-password-toggle" @click="show = !show" :aria-label="show ? 'Hide password' : 'Show password'" :aria-pressed="show.toString()" aria-controls="register-password" aria-label="Show password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path x-show="show" d="m3 3 18 18"/></svg></button>
             </div>
