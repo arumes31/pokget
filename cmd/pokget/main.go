@@ -56,7 +56,14 @@ func deriveKey(masterKey, purpose string) []byte {
 }
 
 func newCSRFMiddleware(key []byte, secure bool) func(http.Handler) http.Handler {
-	protect := csrf.Protect(key, csrf.Secure(secure))
+	// gorilla/csrf is archived and has an unfixed origin-validation advisory
+	// (GO-2025-3884), so the standard library's Sec-Fetch-Site/Origin check
+	// runs first as an independent layer in front of the token check.
+	crossOrigin := http.NewCrossOriginProtection()
+	tokenProtect := csrf.Protect(key, csrf.Secure(secure))
+	protect := func(next http.Handler) http.Handler {
+		return crossOrigin.Handler(tokenProtect(next))
+	}
 	if secure {
 		return protect
 	}

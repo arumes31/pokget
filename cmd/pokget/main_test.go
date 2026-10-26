@@ -241,3 +241,24 @@ func TestCSRFMiddlewareSecureMode(t *testing.T) {
 		t.Fatal("secure CSRF cookie missing the Secure flag")
 	}
 }
+
+func TestCSRFMiddlewareRejectsCrossSiteRequests(t *testing.T) {
+	t.Parallel()
+
+	middleware := newCSRFMiddleware([]byte("0123456789abcdef0123456789abcdef"), true)
+	reached := false
+	handler := middleware(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		reached = true
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+
+	// Rejected by the cross-origin layer before the token check runs.
+	request := httptest.NewRequest(http.MethodPost, "https://pokget.test/auth/logout", nil)
+	request.Header.Set("Sec-Fetch-Site", "cross-site")
+	request.Header.Set("Origin", "https://attacker.test")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || reached {
+		t.Fatalf("cross-site POST status = %d, reached = %v; want 403", response.Code, reached)
+	}
+}
