@@ -13,6 +13,7 @@
     @visibilitychange.document="document.hidden && pauseDeviceOCR()"
     class="scanner-shell" :class="{ 'scanner-has-error': scanError }">
 
+    <!-- Fullscreen Progress Overlay - Matrix HUD -->
     <div x-show="scanning" x-cloak class="scan-progress-overlay"
         x-effect="scanning && $nextTick(() => $refs.progressCancel?.focus({ preventScroll: true }))"
         role="dialog" aria-modal="true" aria-labelledby="scan-progress-title"
@@ -24,8 +25,7 @@
                 <img x-show="scanPreviewURL" :src="scanPreviewURL || undefined" alt="" class="scan-progress-preview" data-testid="scan-progress-preview">
                 <svg x-show="!scanPreviewURL" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <rect x="8" y="5" width="16" height="22" rx="3" stroke="currentColor" stroke-width="2" />
-                    <path d="M12 11h8M12 16h8M12 21h5" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" />
+                    <path d="M12 11h8M12 16h8M12 21h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                     <path d="M4 10V6a2 2 0 0 1 2-2h4M22 4h4a2 2 0 0 1 2 2v4M28 22v4a2 2 0 0 1-2 2h-4M10 28H6a2 2 0 0 1-2-2v-4"
                         stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
                 </svg>
@@ -43,7 +43,7 @@
             </div>
 
             <div class="scan-progress-meta">
-                <span data-i18n>Working</span>
+                <span data-i18n>[ CLAUDE 5.5 · CACHED ]</span>
                 <span data-i18n id="scan-progress-elapsed" data-testid="scan-progress-elapsed"
                     x-text="scanElapsedLabel + ' elapsed'"></span>
             </div>
@@ -57,36 +57,42 @@
         </section>
     </div>
 
+    <!-- Scanner Top HUD Toolbar -->
     <div data-testid="scanner-toolbar"
         :inert="scanning"
         class="scanner-toolbar">
-        <div class="flex min-w-0 items-center gap-1">
-            <button data-i18n-attrs="aria-label" type="button" class="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-white/80 hover:bg-white/10 hover:text-white"
+        <div class="flex min-w-0 items-center gap-2">
+            <button data-i18n-attrs="aria-label" type="button" class="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors"
                 aria-label="Leave scanner" hx-get="/dashboard" hx-target="#main-content" hx-push-url="/?view=home" hx-sync="#main-content:replace">
                 <span class="material-symbols-outlined">arrow_back</span>
             </button>
             <div class="min-w-0">
-            <h2 data-i18n class="truncate text-xs font-bold uppercase tracking-widest text-violet-200 md:text-lg md:normal-case md:tracking-normal md:text-white">Card scanner</h2>
-            <p data-i18n class="hidden md:block text-sm text-zinc-400">Include every edge, the name, and the small collector number.</p>
+                <div class="flex items-center gap-1.5">
+                    <span class="size-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <h2 data-i18n class="truncate text-xs font-mono font-bold uppercase tracking-wider text-red-400 md:text-sm">Claude AI Vision 5.5</h2>
+                    <span class="hidden sm:inline-block rounded bg-red-950/60 border border-red-500/30 px-1.5 py-0.2 text-[10px] font-mono text-red-300">CACHED</span>
+                </div>
+                <p data-i18n class="hidden md:block text-xs text-zinc-400">Position the entire card within the targeting reticle.</p>
             </div>
         </div>
         <div class="flex items-center gap-1">
-        <button data-i18n-attrs="aria-label" type="button" x-show="torchAvailable && !previewURL" @click="toggleTorch()"
-            class="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-white/70 hover:bg-white/10 hover:text-white"
-            :aria-pressed="torchOn.toString()" :aria-label="torchOn ? 'Turn flashlight off' : 'Turn flashlight on'">
-            <span class="material-symbols-outlined" x-text="torchOn ? 'flashlight_off' : 'flashlight_on'"></span>
-        </button>
-        <button data-i18n-attrs="aria-label" type="button" class="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-            aria-label="Reset scanner, preview, and guide lines" @click="resetAll()">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                <path d="M3 3v5h5" />
-            </svg>
-        </button>
+            <button data-i18n-attrs="aria-label" type="button" x-show="torchAvailable && !previewURL" @click="toggleTorch()"
+                class="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                :aria-pressed="torchOn.toString()" :aria-label="torchOn ? 'Turn flashlight off' : 'Turn flashlight on'">
+                <span class="material-symbols-outlined" x-text="torchOn ? 'flashlight_off' : 'flashlight_on'"></span>
+            </button>
+            <button data-i18n-attrs="aria-label" type="button" class="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                aria-label="Reset scanner, preview, and guide lines" @click="resetAll()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <path d="M3 3v5h5" />
+                </svg>
+            </button>
         </div>
     </div>
 
+    <!-- Viewfinder Camera Frame HUD -->
     <div x-ref="container" :inert="scanning" data-testid="scanner-frame"
         class="scanner-frame" :class="{ 'scanner-frame-empty': !activeStream && !previewURL }">
         <video data-i18n-attrs="aria-label" x-ref="video" x-show="!previewURL" autoplay playsinline muted
@@ -97,11 +103,11 @@
             class="absolute inset-0 w-full h-full object-contain">
 
         <div x-show="cameras.length > 1 && !previewURL"
-            class="absolute top-3 right-3 z-[60] bg-black/60 backdrop-blur-md rounded-lg border border-white/10 pointer-events-auto">
+            class="absolute top-3 right-3 z-[60] bg-black/75 backdrop-blur-md rounded-lg border border-white/15 pointer-events-auto">
             <label data-i18n for="scanner-camera" class="sr-only">Camera source</label>
             <select id="scanner-camera" x-model="currentCamera" @change="switchCamera()"
                 :disabled="scanning"
-                class="bg-transparent text-white/80 text-xs font-semibold px-3 min-h-11 outline-none appearance-none">
+                class="bg-transparent text-white/90 text-xs font-semibold px-3 min-h-11 outline-none appearance-none">
                 <template x-for="(camera, index) in cameras" :key="camera.deviceId">
                     <option :data-i18n="camera.label ? null : ''" :value="camera.deviceId" x-text="camera.label || 'Camera ' + (index + 1)"></option>
                 </template>
@@ -110,33 +116,50 @@
 
         <div x-show="previewURL" class="scanner-preview-actions">
             <button data-i18n type="button" @click="rotatePreview()" :disabled="scanning"
-                class="min-h-11 bg-black/60 border border-white/10 rounded-lg px-3 text-xs font-semibold text-white disabled:opacity-40">
+                class="min-h-11 bg-black/75 border border-white/15 backdrop-blur-md rounded-lg px-3 text-xs font-mono font-semibold text-white disabled:opacity-40">
                 ROTATE 90°
             </button>
             <button data-i18n type="button" @click="clearPreview()" :disabled="scanning"
-                class="min-h-11 bg-black/60 border border-white/10 rounded-lg px-3 text-xs font-semibold text-white disabled:opacity-40">
+                class="min-h-11 bg-black/75 border border-white/15 backdrop-blur-md rounded-lg px-3 text-xs font-mono font-semibold text-white disabled:opacity-40">
                 USE CAMERA
             </button>
         </div>
 
         <div x-show="!activeStream && !previewURL" class="scanner-empty absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-            <span class="material-symbols-outlined !text-4xl text-zinc-500 dark:text-zinc-400" aria-hidden="true">photo_camera</span>
-            <p data-i18n class="text-base font-semibold text-zinc-200">Add a photo to begin</p>
+            <span class="material-symbols-outlined !text-4xl text-red-500" aria-hidden="true">photo_camera</span>
+            <p data-i18n class="text-base font-semibold text-zinc-100">Add a photo to begin</p>
             <p data-i18n class="max-w-xs text-sm leading-6 text-zinc-400">Use the photo button below, or allow camera access to capture your card.</p>
         </div>
 
+        <!-- Target Reticle & Guides -->
         <div data-i18n-attrs="aria-label" x-show="activeStream || previewURL" class="absolute inset-0 pointer-events-none" aria-label="Card crop guides">
-            <div class="absolute inset-x-0 top-0 bg-black/40" :style="`height: ${lines.top}%`"></div>
-            <div class="absolute inset-x-0 bottom-0 bg-black/40" :style="`height: ${100 - lines.bottom}%`"></div>
-            <div class="absolute left-0 bg-black/40" :style="`top: ${lines.top}%; bottom: ${100 - lines.bottom}%; width: ${lines.left}%`"></div>
-            <div class="absolute right-0 bg-black/40" :style="`top: ${lines.top}%; bottom: ${100 - lines.bottom}%; width: ${100 - lines.right}%`"></div>
+            <!-- Surrounding Masks -->
+            <div class="absolute inset-x-0 top-0 bg-black/55 backdrop-blur-[1px]" :style="`height: ${lines.top}%`"></div>
+            <div class="absolute inset-x-0 bottom-0 bg-black/55 backdrop-blur-[1px]" :style="`height: ${100 - lines.bottom}%`"></div>
+            <div class="absolute left-0 bg-black/55 backdrop-blur-[1px]" :style="`top: ${lines.top}%; bottom: ${100 - lines.bottom}%; width: ${lines.left}%`"></div>
+            <div class="absolute right-0 bg-black/55 backdrop-blur-[1px]" :style="`top: ${lines.top}%; bottom: ${100 - lines.bottom}%; width: ${100 - lines.right}%`"></div>
+
+            <!-- Active Card Window with HUD Brackets & Laser -->
+            <div class="absolute pointer-events-none" :style="`top: ${lines.top}%; left: ${lines.left}%; width: ${lines.right - lines.left}%; height: ${lines.bottom - lines.top}%;`">
+                <!-- Tactical Corner Reticles -->
+                <div class="scanner-reticle-corner scanner-reticle-tl"></div>
+                <div class="scanner-reticle-corner scanner-reticle-tr"></div>
+                <div class="scanner-reticle-corner scanner-reticle-bl"></div>
+                <div class="scanner-reticle-corner scanner-reticle-br"></div>
+                <!-- Subtle Center Crosshair -->
+                <div class="scanner-crosshair"></div>
+                <!-- Animated Laser Sweep Line -->
+                <div class="scanner-laser"></div>
+            </div>
+
+            <!-- Draggable Handles -->
             <button data-i18n-attrs="aria-label" type="button"
                 class="absolute top-0 h-full min-h-11 w-[44px] pointer-events-auto cursor-ew-resize touch-none"
                 :style="`left: calc(${lines.left}% - 22px)`" role="slider" aria-orientation="horizontal" aria-label="Left crop guide"
                 :aria-valuenow="Math.round(lines.left)" aria-valuemin="0" :aria-valuemax="Math.round(lines.right - 5)"
                 @pointerdown.prevent="startGuideDrag('left', $event)"
                 @keydown.left.prevent="nudgeGuide('left', -1)" @keydown.right.prevent="nudgeGuide('left', 1)">
-                <span class="absolute left-1/2 top-0 w-0.5 h-full bg-violet-500/60"></span>
+                <span class="absolute left-1/2 top-0 w-0.5 h-full bg-red-500/70 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>
             </button>
             <button data-i18n-attrs="aria-label" type="button"
                 class="absolute top-0 h-full min-h-11 w-[44px] pointer-events-auto cursor-ew-resize touch-none"
@@ -144,7 +167,7 @@
                 :aria-valuenow="Math.round(lines.right)" :aria-valuemin="Math.round(lines.left + 5)" aria-valuemax="100"
                 @pointerdown.prevent="startGuideDrag('right', $event)"
                 @keydown.left.prevent="nudgeGuide('right', -1)" @keydown.right.prevent="nudgeGuide('right', 1)">
-                <span class="absolute left-1/2 top-0 w-0.5 h-full bg-violet-500/60"></span>
+                <span class="absolute left-1/2 top-0 w-0.5 h-full bg-red-500/70 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>
             </button>
             <button data-i18n-attrs="aria-label" type="button"
                 class="absolute left-0 w-full h-[44px] pointer-events-auto cursor-ns-resize touch-none"
@@ -152,7 +175,7 @@
                 :aria-valuenow="Math.round(lines.top)" aria-valuemin="0" :aria-valuemax="Math.round(lines.bottom - 5)"
                 @pointerdown.prevent="startGuideDrag('top', $event)"
                 @keydown.up.prevent="nudgeGuide('top', -1)" @keydown.down.prevent="nudgeGuide('top', 1)">
-                <span class="absolute left-0 top-1/2 h-0.5 w-full bg-violet-500/60"></span>
+                <span class="absolute left-0 top-1/2 h-0.5 w-full bg-red-500/70 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>
             </button>
             <button data-i18n-attrs="aria-label" type="button"
                 class="absolute left-0 w-full h-[44px] pointer-events-auto cursor-ns-resize touch-none"
@@ -160,30 +183,38 @@
                 :aria-valuenow="Math.round(lines.bottom)" :aria-valuemin="Math.round(lines.top + 5)" aria-valuemax="100"
                 @pointerdown.prevent="startGuideDrag('bottom', $event)"
                 @keydown.up.prevent="nudgeGuide('bottom', -1)" @keydown.down.prevent="nudgeGuide('bottom', 1)">
-                <span class="absolute left-0 top-1/2 h-0.5 w-full bg-violet-500/60"></span>
+                <span class="absolute left-0 top-1/2 h-0.5 w-full bg-red-500/70 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>
             </button>
 
-            <div class="scanner-metric-overlay absolute rounded border border-violet-500/30 bg-black/80 px-1.5 py-0.5 text-xs font-bold text-violet-200 backdrop-blur-sm"
+            <!-- Centering Metric Telemetry Pills -->
+            <div class="scanner-metric-overlay absolute rounded border border-red-500/40 bg-black/85 px-2 py-0.5 text-xs font-mono font-bold text-red-300 backdrop-blur-md shadow-md"
                 :style="`left: 3%; top: ${(lines.top + lines.bottom) / 2}%`"><span data-i18n>L/R </span><span x-text="metrics.lr"></span></div>
-            <div class="scanner-metric-overlay absolute rounded border border-sky-500/30 bg-black/80 px-1.5 py-0.5 text-xs font-bold text-sky-200 backdrop-blur-sm"
+            <div class="scanner-metric-overlay absolute rounded border border-red-500/40 bg-black/85 px-2 py-0.5 text-xs font-mono font-bold text-red-300 backdrop-blur-md shadow-md"
                 :style="`left: ${(lines.left + lines.right) / 2}%; top: 3%`"><span data-i18n>T/B </span><span x-text="metrics.tb"></span></div>
         </div>
 
         <div data-testid="scanner-privacy-note" class="pointer-events-none absolute bottom-3 left-3 right-3 z-20 flex justify-center md:bottom-4">
-            <span class="rounded-full border border-white/15 bg-black/70 px-3 py-1.5 text-center text-xs font-semibold text-white/80 backdrop-blur-md"><span class="material-symbols-outlined mr-1 align-middle text-sm">lock</span><span data-i18n aria-hidden="true">Only the framed area is uploaded</span><span data-i18n class="sr-only">Only the area inside the guides is uploaded.</span></span>
+            <span class="rounded-full border border-white/15 bg-black/80 px-3.5 py-1.5 text-center text-xs font-mono text-white/85 backdrop-blur-md shadow-lg">
+                <span class="material-symbols-outlined mr-1.5 align-middle text-sm text-red-400">shield_lock</span>
+                <span data-i18n aria-hidden="true">Only framed crop is uploaded to Claude</span>
+                <span data-i18n class="sr-only">Only the area inside the guides is uploaded.</span>
+            </span>
         </div>
     </div>
 
+    <!-- Scanner Bottom Controls (Thumb-Zone Ergonomics) -->
     <div :inert="scanning" data-testid="scanner-controls"
         class="scanner-controls">
-        <p data-i18n class="scanner-privacy-compact text-xs leading-relaxed text-zinc-300">Only the area inside the guides is uploaded.</p>
-        <fieldset class="grid grid-cols-2 gap-3">
+        <p data-i18n class="scanner-privacy-compact text-xs leading-relaxed text-zinc-400">Only the area inside the guides is uploaded.</p>
+
+        <!-- TCG & Language Options -->
+        <fieldset class="grid grid-cols-2 gap-2.5">
             <legend data-i18n class="sr-only">Scan options</legend>
-            <label data-i18n for="scanner-game" class="text-xs font-semibold uppercase tracking-wider text-white/70">
+            <label data-i18n for="scanner-game" class="text-xs font-mono font-semibold uppercase tracking-wider text-white/70">
                 TCG
                 <select id="scanner-game" x-model="game"
                     :disabled="scanning"
-                    class="mt-1.5 w-full min-h-11 bg-black/60 border border-white/10 rounded-xl px-3 text-sm text-white">
+                    class="mt-1.5 w-full min-h-11 bg-black/75 border border-white/15 rounded-xl px-3 text-sm text-white focus:border-red-500 transition-colors">
                     <option data-i18n value="pokemon">Pokémon</option>
                     <option data-i18n value="magic">Magic: The Gathering</option>
                     <option data-i18n value="one_piece">One Piece</option>
@@ -192,11 +223,11 @@
                     <option data-i18n value="yugioh">Yu-Gi-Oh!</option>
                 </select>
             </label>
-            <label data-i18n for="scanner-language" class="text-xs font-semibold uppercase tracking-wider text-white/70">
+            <label data-i18n for="scanner-language" class="text-xs font-mono font-semibold uppercase tracking-wider text-white/70">
                 Card language
                 <select id="scanner-language" x-model="lang"
                     :disabled="scanning"
-                    class="mt-1.5 w-full min-h-11 bg-black/60 border border-white/10 rounded-xl px-3 text-sm text-white">
+                    class="mt-1.5 w-full min-h-11 bg-black/75 border border-white/15 rounded-xl px-3 text-sm text-white focus:border-red-500 transition-colors">
                     <template x-for="language in availableLanguages" :key="language.value">
                         <option data-i18n :value="language.value" x-text="language.label"></option>
                     </template>
@@ -204,106 +235,155 @@
             </label>
         </fieldset>
 
-        <label class="flex min-h-11 items-center gap-3 text-sm text-white/80">
-            <input type="checkbox" x-model="useDeviceOCR" :disabled="scanning" aria-describedby="device-ocr-note">
-            <span data-i18n>Read text on this device</span>
-        </label>
-        <p data-i18n id="device-ocr-note" class="text-xs text-zinc-400">Local OCR sends text first. Weak reads and Auto detect upload the crop to the server.</p>
+        <!-- TCG Fast Selector Pills (Thumb-friendly touch bar) -->
+        <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+            <template x-for="g in [
+                { id: 'pokemon', label: 'Pokémon' },
+                { id: 'magic', label: 'MTG' },
+                { id: 'one_piece', label: 'One Piece' },
+                { id: 'lorcana', label: 'Lorcana' },
+                { id: 'weiss_schwarz', label: 'Weiß' },
+                { id: 'yugioh', label: 'Yu-Gi-Oh!' }
+            ]" :key="g.id">
+                <button type="button" @click="game = g.id" :disabled="scanning"
+                    class="min-h-11 shrink-0 rounded-xl px-3.5 py-1 text-xs font-mono font-medium transition-all flex items-center justify-center"
+                    :class="game === g.id ? 'bg-red-600 text-white shadow-md shadow-red-950/40 border border-red-400' : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 border border-white/10'"
+                    x-text="g.label"></button>
+            </template>
+        </div>
 
+        <!-- Local OCR Option -->
+        <label class="flex min-h-11 items-center gap-3 text-xs text-white/80">
+            <input type="checkbox" x-model="useDeviceOCR" :disabled="scanning" aria-describedby="device-ocr-note"
+                class="accent-red-600 rounded">
+            <span data-i18n>Read text on this device before upload</span>
+        </label>
+        <p data-i18n id="device-ocr-note" class="text-[11px] text-zinc-400 leading-relaxed">Local OCR sends text first. Weak reads and Auto detect upload the crop to Claude AI Vision.</p>
+
+        <!-- Error Feedback -->
         <p data-i18n x-show="cameraError" x-text="cameraError" role="status" aria-live="polite"
             class="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-sm text-amber-200"></p>
         <p data-i18n x-show="scanError" x-text="scanError" x-ref="scanError" tabindex="-1" role="alert" aria-live="assertive"
-            class="rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-3 text-sm text-red-200"></p>
+            class="rounded-xl border border-red-500/40 bg-red-500/10 px-3.5 py-3 text-sm text-red-200"></p>
 
-        <button type="button" x-show="!previewURL" @click="capture()"
-            :disabled="scanning || !activeStream" :aria-busy="scanning.toString()"
-            class="w-full min-h-12 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-lg"
-            :class="scanning || !activeStream ? 'bg-white/10 text-white/40 cursor-not-allowed' : 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-500/20'">
-            <span class="material-symbols-outlined text-lg" aria-hidden="true">photo_camera</span>
-            <span data-i18n>Capture framed card</span>
-        </button>
-
-        <button data-i18n type="button" x-show="previewURL" @click="scanUpload()" :disabled="scanning"
-            data-testid="scan-selected-crop"
-            class="w-full min-h-12 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-semibold text-sm shadow-lg shadow-violet-500/20 disabled:opacity-50">
-            Scan selected crop
-        </button>
-
-        <div class="grid grid-cols-2 gap-3">
+        <!-- Primary Shutter Button Deck (Ergonomic Thumb-Zone) -->
+        <div class="scanner-shutter-wrap">
+            <!-- Choose Photo (Gallery) -->
             <label for="scanner-file"
-                class="min-h-12 bg-white/5 border border-white/10 rounded-xl font-semibold text-xs text-white flex items-center justify-center gap-2 cursor-pointer hover:bg-white/10 transition-colors">
-                <span class="material-symbols-outlined text-lg" aria-hidden="true">upload_file</span>
-                <span data-i18n>Choose photo</span>
+                class="min-h-12 flex-1 bg-white/5 hover:bg-white/10 border border-white/15 rounded-xl font-mono text-xs text-white flex items-center justify-center gap-2 cursor-pointer transition-all">
+                <span class="material-symbols-outlined text-base" aria-hidden="true">upload_file</span>
+                <span data-i18n>Photo</span>
                 <input id="scanner-file" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only"
                     :disabled="scanning" @change="handleFileUpload($event)">
             </label>
+
+            <!-- Tactile Shutter Button -->
+            <button type="button" x-show="!previewURL" @click="capture()"
+                :disabled="scanning || !activeStream" :aria-busy="scanning.toString()"
+                class="scanner-shutter-btn group"
+                aria-label="Capture framed card">
+                <span class="material-symbols-outlined text-2xl group-active:scale-90 transition-transform" aria-hidden="true">photo_camera</span>
+            </button>
+
+            <!-- Scan Selected Crop Button (When preview is ready) -->
+            <button data-i18n type="button" x-show="previewURL" @click="scanUpload()" :disabled="scanning"
+                data-testid="scan-selected-crop"
+                class="scanner-shutter-btn"
+                aria-label="Scan selected crop">
+                <span class="material-symbols-outlined text-2xl" aria-hidden="true">search</span>
+            </button>
+
+            <!-- Retry Last Crop -->
             <button data-i18n data-i18n-attrs="aria-label" type="button" @click="retryLastScan()" :disabled="!lastScanBlob || scanning" aria-label="RETRY LAST CROP"
-                class="min-h-12 bg-white/5 border border-white/10 rounded-xl font-semibold text-xs text-white disabled:opacity-40">
-                Retry last crop
+                class="min-h-12 flex-1 bg-white/5 hover:bg-white/10 border border-white/15 rounded-xl font-mono text-xs text-white disabled:opacity-40 transition-all flex items-center justify-center gap-1.5">
+                <span class="material-symbols-outlined text-base" aria-hidden="true">refresh</span>
+                <span data-i18n>Retry</span>
             </button>
         </div>
 
+        <!-- Full-width fallback button for direct image upload -->
         <button data-i18n type="button" x-show="lastScanBlob && (needsReview || scanError)" :disabled="scanning"
             @click="submitPreparedBlob(lastScanBlob, lastScanName || 'retry.jpg', false, true)"
-            class="min-h-11 rounded-xl border border-white/10 px-3 text-sm text-white/80">Use server image scan</button>
+            class="w-full min-h-11 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 px-3 text-xs font-mono text-red-200 transition-colors">Use server image scan</button>
 
+        <!-- Identified Card Sheet -->
         <section x-show="detectedCard" x-cloak x-ref="scanResult" tabindex="-1" class="scan-result" aria-labelledby="scan-result-title">
             <div class="flex items-start justify-between gap-3">
-                <h3 data-i18n id="scan-result-title" class="text-base font-semibold" x-text="needsReview && !matchConfirmed ? 'Check this printing' : (added ? 'Saved to your collection' : (result === 'Manual catalog ID' ? 'Manual selection' : 'Card identified'))"></h3>
-                <span class="material-symbols-outlined" aria-hidden="true" :class="needsReview && !matchConfirmed ? 'text-amber-300' : 'text-emerald-300'" x-text="needsReview && !matchConfirmed ? 'fact_check' : 'check_circle'"></span>
+                <h3 data-i18n id="scan-result-title" class="text-base font-semibold font-mono" x-text="needsReview && !matchConfirmed ? 'Check this printing' : (added ? 'Saved to your collection' : (result === 'Manual catalog ID' ? 'Manual selection' : 'Card identified'))"></h3>
+                <span class="material-symbols-outlined" aria-hidden="true" :class="needsReview && !matchConfirmed ? 'text-amber-400' : 'text-emerald-400'" x-text="needsReview && !matchConfirmed ? 'fact_check' : 'check_circle'"></span>
             </div>
-            <p data-i18n class="mt-2 text-sm leading-5 text-zinc-300" x-show="needsReview && !matchConfirmed">Similar cards can share a name or artwork. Compare your physical card before saving.</p>
-            <div class="mt-4 flex gap-4">
+            <p data-i18n class="mt-1.5 text-xs text-zinc-300" x-show="needsReview && !matchConfirmed">Similar cards can share a name or artwork. Compare your physical card before saving.</p>
+
+            <div class="mt-3.5 flex gap-4">
                 <img x-show="detectedImage" :src="detectedImage" :alt="detectedCard" class="scan-result-image" referrerpolicy="no-referrer">
                 <div class="min-w-0 flex-1">
-                    <p class="text-base font-semibold leading-6 break-words" data-testid="detected-card-id" :data-card-id="detectedID" x-text="detectedCard"></p>
-                    <p class="mt-1 text-sm text-zinc-300" x-text="detectedSet"></p>
-                    <p class="mt-1 text-sm text-zinc-300" x-text="[detectedNumber ? '#' + detectedNumber : '', detectedLanguage.toUpperCase()].filter(Boolean).join(' · ')"></p>
-                    <p data-i18n class="mt-3 text-sm font-semibold" x-text="!isNaN(parseFloat(detectedPrice)) ? '{{ .CurrencySymbol }}' + parseFloat(detectedPrice).toFixed(2) : 'Price unavailable'"></p>
+                    <p class="text-base font-bold leading-6 break-words font-mono text-white" data-testid="detected-card-id" :data-card-id="detectedID" x-text="detectedCard"></p>
+                    <p class="mt-1 text-xs text-zinc-300 font-mono" x-text="detectedSet"></p>
+                    <p class="mt-1 text-xs text-zinc-400 font-mono" x-text="[detectedNumber ? '#' + detectedNumber : '', detectedLanguage.toUpperCase()].filter(Boolean).join(' · ')"></p>
+                    <div class="mt-2.5 inline-block rounded bg-red-950/60 border border-red-500/30 px-2 py-1 text-xs font-mono font-bold text-red-300">
+                        <span data-i18n x-text="!isNaN(parseFloat(detectedPrice)) ? '{{ .CurrencySymbol }}' + parseFloat(detectedPrice).toFixed(2) : 'Price unavailable'"></span>
+                    </div>
                 </div>
             </div>
-            <fieldset x-show="needsReview && !matchConfirmed && topMatches.length" class="mt-5">
-                <legend data-i18n class="mb-2 text-sm font-medium text-zinc-200">Compare possible printings</legend>
+
+            <!-- Alternative Printings Comparison -->
+            <fieldset x-show="needsReview && !matchConfirmed && topMatches.length" class="mt-4">
+                <legend data-i18n class="mb-2 text-xs font-mono font-semibold uppercase text-zinc-300">Compare possible printings</legend>
                 <div class="scan-candidates">
                     <template x-for="match in topMatches" :key="match.id">
                         <button type="button" @click="selectMatch(match)" class="scan-candidate min-h-11" :data-card-id="match.id" :aria-pressed="(detectedID === match.id).toString()">
                             <img x-show="match.image_url" :src="match.image_url" alt="" loading="lazy" referrerpolicy="no-referrer">
-                            <span class="min-w-0"><span class="block font-semibold" x-text="match.name"></span><span class="block mt-1 text-zinc-300" x-text="[match.set, match.collector_number ? '#' + match.collector_number : '', match.language.toUpperCase()].filter(Boolean).join(' · ')"></span></span>
-                            <span class="material-symbols-outlined ml-auto text-violet-200" x-show="detectedID === match.id" aria-hidden="true">check_circle</span>
+                            <span class="min-w-0 flex-1 font-mono">
+                                <span class="block font-bold text-white text-xs" x-text="match.name"></span>
+                                <span class="block mt-0.5 text-[11px] text-zinc-400" x-text="[match.set, match.collector_number ? '#' + match.collector_number : '', match.language.toUpperCase()].filter(Boolean).join(' · ')"></span>
+                            </span>
+                            <span class="material-symbols-outlined ml-auto text-red-400 text-lg" x-show="detectedID === match.id" aria-hidden="true">check_circle</span>
                         </button>
                     </template>
                 </div>
             </fieldset>
-            <button data-i18n type="button" x-show="needsReview && !matchConfirmed" @click="confirmMatch()" data-testid="confirm-printing" class="mt-4 w-full min-h-12 rounded-xl border border-violet-300 text-violet-100 font-semibold text-sm">This is my printing</button>
-            <button type="button" @click="addToCollection()" x-show="detectedID && (!needsReview || matchConfirmed)" :disabled="adding || added" class="mt-4 w-full min-h-12 rounded-xl bg-violet-600 text-white font-semibold text-sm disabled:opacity-60"><span data-i18n x-text="adding ? 'Saving…' : (added ? 'Added to collection' : 'Add to collection')"></span></button>
-            <button data-i18n type="button" x-show="!added && (!needsReview || matchConfirmed)" @click="reviewMatches()" class="mt-2 min-h-11 w-full text-sm text-zinc-300 underline underline-offset-4">Review printing</button>
-            <p data-i18n x-show="needsReview && !matchConfirmed" class="mt-3 text-xs leading-5 text-zinc-400">None of these match? Adjust the crop and retry, or enter the exact catalog ID below.</p>
+
+            <button data-i18n type="button" x-show="needsReview && !matchConfirmed" @click="confirmMatch()" data-testid="confirm-printing"
+                class="mt-3.5 w-full min-h-12 rounded-xl border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-200 font-mono font-semibold text-xs transition-colors">This is my printing</button>
+            <button type="button" @click="addToCollection()" x-show="detectedID && (!needsReview || matchConfirmed)" :disabled="adding || added"
+                class="mt-3.5 w-full min-h-12 rounded-xl bg-red-600 hover:bg-red-500 text-white font-mono font-semibold text-sm shadow-lg shadow-red-950/40 disabled:opacity-50 transition-all">
+                <span data-i18n x-text="adding ? 'Saving…' : (added ? 'Added to collection' : 'Add to collection')"></span>
+            </button>
+            <button data-i18n type="button" x-show="!added && (!needsReview || matchConfirmed)" @click="reviewMatches()"
+                class="mt-2 min-h-11 w-full text-xs font-mono text-zinc-400 hover:text-white underline underline-offset-4">Review printing</button>
+            <p data-i18n x-show="needsReview && !matchConfirmed" class="mt-2 text-[11px] leading-5 text-zinc-400">None of these match? Adjust the crop and retry, or enter the exact catalog ID below.</p>
         </section>
 
-        <details class="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <summary data-i18n class="cursor-pointer min-h-11 flex items-center text-sm font-semibold text-violet-300">Enter a catalog ID instead</summary>
-            <div class="mt-4 space-y-3">
-                <label data-i18n for="manual-card-id" class="block text-xs font-semibold uppercase tracking-wider text-white/70">Card ID</label>
+        <!-- Manual Catalog Entry Drawer -->
+        <details class="rounded-xl border border-white/10 bg-white/5 p-3.5">
+            <summary data-i18n class="cursor-pointer min-h-11 flex items-center text-xs font-mono font-semibold text-red-400">Enter a catalog ID instead</summary>
+            <div class="mt-3 space-y-3">
+                <label data-i18n for="manual-card-id" class="block text-xs font-mono font-semibold uppercase tracking-wider text-white/70">Card ID</label>
                 <input data-i18n-attrs="placeholder" id="manual-card-id" x-model.trim="manualCardID" maxlength="128" placeholder="e.g. swsh4-19"
-                    :disabled="scanning" class="w-full min-h-11 bg-white/5 border border-white/10 rounded-xl px-4 text-base text-white">
-                <label data-i18n for="manual-card-name" class="block text-xs font-semibold uppercase tracking-wider text-white/70">Card name (optional)</label>
+                    :disabled="scanning" class="w-full min-h-11 bg-black/60 border border-white/15 rounded-xl px-3 text-sm font-mono text-white focus:border-red-500">
+                <label data-i18n for="manual-card-name" class="block text-xs font-mono font-semibold uppercase tracking-wider text-white/70">Card name (optional)</label>
                 <input data-i18n-attrs="placeholder" id="manual-card-name" x-model.trim="manualCardName" maxlength="200" placeholder="Card name"
-                    :disabled="scanning" class="w-full min-h-11 bg-white/5 border border-white/10 rounded-xl px-4 text-base text-white">
+                    :disabled="scanning" class="w-full min-h-11 bg-black/60 border border-white/15 rounded-xl px-3 text-sm font-mono text-white focus:border-red-500">
                 <button data-i18n type="button" @click="useManualMatch()" :disabled="scanning"
-                    class="w-full min-h-11 rounded-xl bg-violet-500/15 text-sm font-semibold text-violet-300 hover:bg-violet-500/25 transition-colors">Use this card ID</button>
+                    class="w-full min-h-11 rounded-xl bg-red-600/20 border border-red-500/40 text-xs font-mono font-semibold text-red-200 hover:bg-red-600/30 transition-colors">Use this card ID</button>
             </div>
         </details>
 
-        <details class="scanner-centering"><summary data-i18n>Crop proportions <span data-i18n class="text-zinc-400 font-normal">· guide only</span></summary><p data-i18n class="my-2 text-xs text-zinc-400">These ratios describe the crop guides, not a professional centering grade.</p><div data-i18n-attrs="aria-label" class="grid grid-cols-2 gap-3" aria-label="Centering ratios">
-            <div class="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
-                <p data-i18n class="text-xs text-white/50 font-semibold uppercase tracking-widest mb-0.5">L/R ratio</p>
-                <p class="text-sm font-bold font-mono text-violet-300" x-text="metrics.lr"></p>
+        <!-- Centering Guide Proportions -->
+        <details class="scanner-centering rounded-xl border border-white/10 bg-white/5 p-3.5">
+            <summary data-i18n class="cursor-pointer min-h-11 flex items-center text-xs font-mono font-semibold text-zinc-300">Crop proportions <span data-i18n class="text-zinc-500 font-normal ml-1">· guide only</span></summary>
+            <p data-i18n class="my-2 text-[11px] text-zinc-400">These ratios describe the crop guides, not a professional centering grade.</p>
+            <div data-i18n-attrs="aria-label" class="grid grid-cols-2 gap-3" aria-label="Centering ratios">
+                <div class="rounded-xl border border-white/10 bg-black/40 p-2.5 text-center">
+                    <p data-i18n class="text-[10px] text-white/50 font-mono font-semibold uppercase tracking-widest mb-0.5">L/R ratio</p>
+                    <p class="text-sm font-bold font-mono text-red-400" x-text="metrics.lr"></p>
+                </div>
+                <div class="rounded-xl border border-white/10 bg-black/40 p-2.5 text-center">
+                    <p data-i18n class="text-[10px] text-white/50 font-mono font-semibold uppercase tracking-widest mb-0.5">T/B ratio</p>
+                    <p class="text-sm font-bold font-mono text-red-400" x-text="metrics.tb"></p>
+                </div>
             </div>
-            <div class="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
-                <p data-i18n class="text-xs text-white/50 font-semibold uppercase tracking-widest mb-0.5">T/B ratio</p>
-                <p class="text-sm font-bold font-mono text-sky-300" x-text="metrics.tb"></p>
-            </div>
-        </div></details>
+        </details>
     </div>
 
     <input type="hidden" name="gorilla.csrf.Token" :value="csrfToken">

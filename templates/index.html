@@ -23,7 +23,7 @@
     <link rel="manifest" href="/static/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#593997">
+    <meta name="theme-color" content="#0a0a0a">
     <meta name="csrf-token" content="{{ .CSRFToken }}">
     <script>
         if ('serviceWorker' in navigator) {
@@ -218,7 +218,7 @@
             <button data-nav-item @click="activeTab = 'scan'; moreOpen = false" hx-get="/centering" hx-target="#main-content" hx-push-url="/?view=scan"
                 class="nav-item min-h-11 min-w-11" :class="activeTab === 'scan' && 'nav-item-active'"
                 :aria-current="activeTab === 'scan' ? 'page' : null">
-                <span class="material-symbols-outlined nav-icon rounded-xl bg-violet-700 px-2 py-1 text-white shadow-md shadow-violet-900/20" aria-hidden="true">center_focus_strong</span>
+                <span class="material-symbols-outlined nav-icon rounded-xl bg-red-600 px-2 py-1 text-white shadow-md shadow-red-950/40" aria-hidden="true">center_focus_strong</span>
                 <span data-i18n class="nav-label">Scan</span>
             </button>
             <button data-nav-item @click="activeTab = 'binders'; moreOpen = false" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
