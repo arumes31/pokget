@@ -155,7 +155,6 @@ func TestDashboardUsesOverallAggregateAndBoundedCards(t *testing.T) {
 		rows.AddRow(fmt.Sprintf("p%d", i), "LP", nil, "", "", false, "b1", fmt.Sprintf("c%d", i), "Full readable card name", "Set", "", nil, nil, "Pokemon")
 	}
 	mock.ExpectQuery(`SELECT p.id.*c.price_usd, c.price_eur.*WHERE p.user_id = \$1.*ORDER BY p.added_at DESC, p.id DESC LIMIT \$2 OFFSET \$3`).WithArgs("test-user", 25, 24).WillReturnRows(rows)
-	mock.ExpectQuery("SELECT xp, rank_title").WithArgs("test-user").WillReturnRows(sqlmock.NewRows([]string{"xp", "rank"}).AddRow(0, "Novice"))
 	mock.ExpectQuery("SELECT COUNT").WithArgs("test-user").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 	mock.ExpectQuery("SELECT valuation").WithArgs("test-user").WillReturnRows(sqlmock.NewRows([]string{"value"}))
 	renderUserDataExpectation(mock, "test-user")
@@ -173,6 +172,12 @@ func TestDashboardUsesOverallAggregateAndBoundedCards(t *testing.T) {
 	}
 	if !strings.Contains(doc.Find(".collection-summary").Text(), "1000") || !strings.Contains(doc.Text(), "14567.89") {
 		t.Error("summary must use whole collection aggregate")
+	}
+	rankLabel := doc.Find("dt").FilterFunction(func(_ int, label *goquery.Selection) bool {
+		return strings.TrimSpace(label.Text()) == "Collector level"
+	})
+	if rankLabel.Length() != 1 || strings.TrimSpace(rankLabel.Next().Text()) != "Novice" {
+		t.Error("dashboard must render the collector rank fetched by Render")
 	}
 	if strings.Count(doc.Text(), "Price unavailable") != 24 {
 		t.Error("catalog NULL prices rendered as zero")

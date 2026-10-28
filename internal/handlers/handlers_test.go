@@ -235,10 +235,6 @@ func TestHandlers(t *testing.T) {
 		)
 		mock.ExpectQuery("SELECT").WithArgs("test-user", 25, 0).WillReturnRows(rowsPortfolio)
 
-		// 4. Fetch User XP and Rank
-		mock.ExpectQuery("SELECT xp, rank_title").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"xp", "rank"}).AddRow(100, "Novice"))
-
 		// 5. Fetch Binder Count
 		mock.ExpectQuery("SELECT COUNT").WithArgs("test-user").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))

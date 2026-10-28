@@ -352,14 +352,6 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	pagination := collectionPageLinks(page, hasNext, "/", "/dashboard", url.Values{"view": {"home"}})
 
-	// Fetch User XP and Rank
-	var xp int
-	var rankTitle string
-	_ = h.DB.QueryRowContext(r.Context(), "SELECT xp, rank_title FROM users WHERE id = $1", userID).Scan(&xp, &rankTitle)
-
-	rank := h.Game.GetUserRank(xp)
-	_, _, xpPercent := h.Game.GetProgressToNextRank(xp)
-
 	// Fetch Binder Count
 	var binderCount int
 	_ = h.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM binders WHERE user_id = $1", userID).Scan(&binderCount)
@@ -386,10 +378,6 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		"BinderCount":     binderCount,
 		"SetCompletion":   setCompletion,
 		"Portfolio":       portfolio,
-		"XP":              xp,
-		"Rank":            rankTitle,
-		"RankIcon":        rank.IconURL,
-		"XPPercent":       xpPercent,
 	})
 }
 
