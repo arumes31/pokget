@@ -16,7 +16,7 @@ func TestRegister_HashError(t *testing.T) {
 	defer cleanup()
 	h.passwordHasher = func(string) (string, error) { return "", errors.New("hash failed") }
 
-	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader("email=new@example.com&password=pass&confirm_password=pass"))
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader("email=new@example.com&password=long-enough-pass&confirm_password=long-enough-pass"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
 
@@ -37,7 +37,7 @@ func TestRegister_TokenError(t *testing.T) {
 	h, mock, cleanup := setupTestHandler(t)
 	defer cleanup()
 
-	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader("email=new@example.com&password=pass&confirm_password=pass"))
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader("email=new@example.com&password=long-enough-pass&confirm_password=long-enough-pass"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
 
@@ -73,17 +73,18 @@ func TestResendVerification_Branches(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		rows := sqlmock.NewRows([]string{"last_email_sent_at", "verification_token", "is_verified"}).
-			AddRow(nil, "token-123", true)
+		rows := sqlmock.NewRows([]string{"last_email_sent_at", "is_verified"}).
+			AddRow(nil, true)
 		mock.ExpectQuery("SELECT last_email_sent_at").WithArgs("test@example.com").WillReturnRows(rows)
 
 		h.ResendVerification(rr, req)
 
-		if rr.Code != http.StatusBadRequest {
-			t.Errorf("Expected status 400, got %d", rr.Code)
+		// Same empty 200 as an unknown email, and no new token is issued.
+		if rr.Code != http.StatusOK || rr.Body.Len() != 0 {
+			t.Errorf("Expected empty 200, got %d %q", rr.Code, rr.Body.String())
 		}
-		if !strings.Contains(rr.Body.String(), "already verified") {
-			t.Errorf("Expected already-verified message, got %q", rr.Body.String())
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Error(err)
 		}
 	})
 }

@@ -173,6 +173,12 @@ func TestDashboardUsesOverallAggregateAndBoundedCards(t *testing.T) {
 	if !strings.Contains(doc.Find(".collection-summary").Text(), "1000") || !strings.Contains(doc.Text(), "14567.89") {
 		t.Error("summary must use whole collection aggregate")
 	}
+	rankLabel := doc.Find("dt").FilterFunction(func(_ int, label *goquery.Selection) bool {
+		return strings.TrimSpace(label.Text()) == "Collector level"
+	})
+	if rankLabel.Length() != 1 || strings.TrimSpace(rankLabel.Next().Text()) != "Novice" {
+		t.Error("dashboard must render the collector rank fetched by Render")
+	}
 	if strings.Count(doc.Text(), "Price unavailable") != 24 {
 		t.Error("catalog NULL prices rendered as zero")
 	}
@@ -188,9 +194,9 @@ func TestPublicVaultPagesOnlySharedCards(t *testing.T) {
 	h, mock, cleanup := setupTestHandler(t)
 	defer cleanup()
 	h.Templates = parseApplicationTemplates(t)
-	mock.ExpectQuery("SELECT id, email").WithArgs("shared").WillReturnRows(sqlmock.NewRows([]string{"id", "email", "rank", "xp", "currency"}).AddRow("owner", "name@example.com", "Novice", 0, "EUR"))
+	mock.ExpectQuery("SELECT id, COALESCE.rank_title").WithArgs("shared").WillReturnRows(sqlmock.NewRows([]string{"id", "rank", "xp", "currency"}).AddRow("owner", "Novice", 0, "EUR"))
 	mock.ExpectQuery(`SELECT COUNT\(\*\).*WHERE p.user_id = \$1 AND p.is_public = TRUE`).WithArgs("owner").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(25))
-	rows := sqlmock.NewRows([]string{"id", "condition", "format", "grade", "grading", "notes", "name", "set", "usd", "eur", "image", "game"}).AddRow("p25", "NM", "raw", nil, nil, nil, "A completely readable long card name", "Set", nil, nil, "", "Pokemon")
+	rows := sqlmock.NewRows([]string{"id", "condition", "format", "grade", "grading", "name", "set", "usd", "eur", "image", "game"}).AddRow("p25", "NM", "raw", nil, nil, "A completely readable long card name", "Set", nil, nil, "", "Pokemon")
 	mock.ExpectQuery(`SELECT p.id.*c.price_usd, c.price_eur.*WHERE p.user_id = \$1 AND p.is_public = TRUE.*ORDER BY p.added_at DESC, p.id DESC LIMIT \$2 OFFSET \$3`).WithArgs("owner", 25, 24).WillReturnRows(rows)
 	rr := httptest.NewRecorder()
 	h.PublicVault(rr, mux.SetURLVars(httptest.NewRequest(http.MethodGet, "/vault/shared?page=2", nil), map[string]string{"slug": "shared"}))

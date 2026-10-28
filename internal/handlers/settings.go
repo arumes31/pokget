@@ -157,6 +157,11 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := auth.ValidateNewPassword(newPassword); err != nil {
+		http.Error(w, passwordTooShortMessage, http.StatusBadRequest)
+		return
+	}
+
 	tx, err := h.DB.BeginTx(r.Context(), nil)
 	if err != nil {
 		slog.Error("Failed to begin password change", "error", err)

@@ -389,7 +389,7 @@ func TestChangePasswordBranches(t *testing.T) {
 		defer cleanup()
 
 		req := authedRequest(t, http.MethodPost, "/settings/change-password",
-			"current_password=x&new_password=a&confirm_password=a")
+			"current_password=x&new_password=long-enough-pass&confirm_password=long-enough-pass")
 		rr := httptest.NewRecorder()
 
 		mock.ExpectBegin().WillReturnError(errors.New("begin failed"))
@@ -409,7 +409,7 @@ func TestChangePasswordBranches(t *testing.T) {
 		defer cleanup()
 
 		req := authedRequest(t, http.MethodPost, "/settings/change-password",
-			"current_password=x&new_password=a&confirm_password=a")
+			"current_password=x&new_password=long-enough-pass&confirm_password=long-enough-pass")
 		rr := httptest.NewRecorder()
 
 		mock.ExpectBegin()
@@ -432,7 +432,7 @@ func TestChangePasswordBranches(t *testing.T) {
 		defer cleanup()
 
 		req := authedRequest(t, http.MethodPost, "/settings/change-password",
-			"current_password=x&new_password=a&confirm_password=a")
+			"current_password=x&new_password=long-enough-pass&confirm_password=long-enough-pass")
 		rr := httptest.NewRecorder()
 
 		mock.ExpectBegin()
@@ -455,7 +455,7 @@ func TestChangePasswordBranches(t *testing.T) {
 		defer cleanup()
 
 		req := authedRequest(t, http.MethodPost, "/settings/change-password",
-			"current_password=wrong&new_password=a&confirm_password=a")
+			"current_password=wrong&new_password=long-enough-pass&confirm_password=long-enough-pass")
 		rr := httptest.NewRecorder()
 
 		mock.ExpectBegin()
@@ -479,7 +479,7 @@ func TestChangePasswordBranches(t *testing.T) {
 		h.passwordHasher = func(string) (string, error) { return "", errors.New("hash failed") }
 
 		req := authedRequest(t, http.MethodPost, "/settings/change-password",
-			"current_password=current&new_password=a&confirm_password=a")
+			"current_password=current&new_password=long-enough-pass&confirm_password=long-enough-pass")
 		rr := httptest.NewRecorder()
 
 		mock.ExpectBegin()
@@ -502,7 +502,7 @@ func TestChangePasswordBranches(t *testing.T) {
 		defer cleanup()
 
 		req := authedRequest(t, http.MethodPost, "/settings/change-password",
-			"current_password=current&new_password=a&confirm_password=a")
+			"current_password=current&new_password=long-enough-pass&confirm_password=long-enough-pass")
 		rr := httptest.NewRecorder()
 
 		mock.ExpectBegin()
@@ -527,7 +527,7 @@ func TestChangePasswordBranches(t *testing.T) {
 		defer cleanup()
 
 		req := authedRequest(t, http.MethodPost, "/settings/change-password",
-			"current_password=current&new_password=a&confirm_password=a")
+			"current_password=current&new_password=long-enough-pass&confirm_password=long-enough-pass")
 		rr := httptest.NewRecorder()
 
 		mock.ExpectBegin()
