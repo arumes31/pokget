@@ -58,6 +58,9 @@ func TestConfigLoad(t *testing.T) {
 	if cfg.DB.Host != "db" {
 		t.Errorf("Expected db host db, got %s", cfg.DB.Host)
 	}
+	if cfg.Claude.Enabled || cfg.Claude.Model != "claude-sonnet-5-5" || !cfg.Claude.PromptCaching || cfg.Claude.TimeoutSeconds != 30 {
+		t.Errorf("unexpected Claude defaults: %+v", cfg.Claude)
+	}
 	if cfg.VisionOCR.Enabled || cfg.VisionOCR.Model != "qwen3.5:2b" || cfg.VisionOCR.Threads != 4 || cfg.VisionOCR.TimeoutSeconds != 45 || cfg.VisionOCR.BaseURL != "http://localhost:11434" {
 		t.Errorf("unexpected vision OCR defaults: %+v", cfg.VisionOCR)
 	}

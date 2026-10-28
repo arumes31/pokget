@@ -217,14 +217,15 @@ func main() {
 	// Initialize LLM service
 	llmSvc := service.NewLLMService()
 
-	// Initialize Detection Pipeline (SCAN-07, SCAN-09, SCAN-16)
-	var detectionPipeline *service.DetectionPipeline
-	if services.fingerprintSvc != nil {
-		detectionPipeline = service.NewDetectionPipeline(services.fingerprintSvc, llmSvc)
-		if err := configureVisionOCR(cfg, detectionPipeline); err != nil {
-			slog.Error("Failed to configure vision OCR", "error", err)
-			os.Exit(1)
-		}
+	// Initialize Detection Pipeline (Claude AI Vision, SCAN-07, SCAN-09, SCAN-16)
+	detectionPipeline := service.NewDetectionPipeline(services.fingerprintSvc, llmSvc)
+	if err := configureVisionOCR(cfg, detectionPipeline); err != nil {
+		slog.Error("Failed to configure vision OCR", "error", err)
+		os.Exit(1)
+	}
+	if err := configureClaudeDetector(cfg, detectionPipeline); err != nil {
+		slog.Error("Failed to configure Claude detector", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize Handlers

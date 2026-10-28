@@ -41,6 +41,7 @@ type DetectionPipeline struct {
 	Fingerprint *FingerprintService
 	LLM         *LLMService
 	VisionOCR   VisionOCRProvider // Optional image transcription; nil keeps local-only behavior.
+	Claude      ClaudeDetector    // High-accuracy Claude API detector; replaces other detections when active.
 
 	fingerprintRunner fingerprintStageRunner
 	ocrRunner         ocrStageRunner
@@ -208,6 +209,23 @@ type ocrStageOutput struct {
 
 func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest, ocrLanguage string, scoped bool) (*DetectionResult, error) {
 	totalStart := time.Now()
+
+	var claudeSyntheticResult *DetectionResult
+	// When Claude detector is configured and an image is provided, Claude API detects
+	// the card directly, replacing the other detections when a catalog card matches.
+	if p.Claude != nil && len(request.Image) > 0 {
+		claudeResult, err := p.detectClaude(ctx, request, scoped, totalStart)
+		if err == nil && claudeResult != nil {
+			if claudeResult.BestMatchID() != "" && claudeResult.Status != DetectionStatusNoMatch {
+				return claudeResult, nil
+			}
+			if len(claudeResult.TopMatches) > 0 {
+				claudeSyntheticResult = claudeResult
+			}
+		}
+		ScanLogger(ctx).Warn("Claude detection returned no catalog match or failed, falling back to secondary stages", "error", err)
+	}
+
 	result := &DetectionResult{Status: DetectionStatusUnknown}
 	stageCtx, cancel := context.WithCancel(ctx)
 	if timeout := detectionStageTimeoutFromContext(ctx); timeout > 0 {
@@ -289,7 +307,14 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 		return result, err
 	}
 
-	return p.combineDetection(ctx, request, result, fingerprintOutput, ocrOutput, scoped, totalStart)
+	detResult, err := p.combineDetection(ctx, request, result, fingerprintOutput, ocrOutput, scoped, totalStart)
+	if err == nil && detResult != nil && len(detResult.TopMatches) == 0 && claudeSyntheticResult != nil && len(claudeSyntheticResult.TopMatches) > 0 {
+		claudeSyntheticResult.Metrics.Stages = append(claudeSyntheticResult.Metrics.Stages, detResult.Metrics.Stages...)
+		claudeSyntheticResult.Metrics.TotalTime = time.Since(totalStart)
+		ScanLogger(ctx).Info("Detection: Using Claude synthetic match fallback", "name", claudeSyntheticResult.BestMatchName())
+		return claudeSyntheticResult, nil
+	}
+	return detResult, err
 }
 
 // combineDetection shares catalog validation and ranking between server images

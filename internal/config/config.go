@@ -65,6 +65,14 @@ type Config struct {
 		OCRPoolSize    int `env:"SCAN_OCR_POOL_SIZE" env-default:"3"`    // SCAN-03: Number of concurrent Tesseract clients
 		TimeoutSeconds int `env:"SCAN_TIMEOUT_SECONDS" env-default:"75"`
 	} `yaml:"scan"`
+	Claude struct {
+		Enabled        bool   `env:"CLAUDE_ENABLED" env-default:"false"`
+		APIKey         string `env:"CLAUDE_API_KEY"`
+		Model          string `env:"CLAUDE_MODEL" env-default:"claude-sonnet-5-5"`
+		BaseURL        string `env:"CLAUDE_BASE_URL" env-default:"https://api.anthropic.com/v1/messages"`
+		TimeoutSeconds int    `env:"CLAUDE_TIMEOUT_SECONDS" env-default:"30"`
+		PromptCaching  bool   `env:"CLAUDE_PROMPT_CACHING" env-default:"true"`
+	} `yaml:"claude"`
 	VisionOCR struct {
 		Enabled        bool   `env:"SCAN_VISION_OCR_ENABLED" env-default:"false"`
 		BaseURL        string `env:"SCAN_VISION_OCR_URL" env-default:"http://localhost:11434"`

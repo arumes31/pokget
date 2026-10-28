@@ -41,8 +41,8 @@ FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4c
 
 # Install runtime dependencies: Tesseract for OCR and Chromium for headless scraping
 RUN apk add --no-cache \
-    libcrypto3=3.5.9-r0 \
-    libssl3=3.5.9-r0 \
+    libcrypto3 \
+    libssl3 \
     tesseract-ocr \
     tesseract-ocr-data-eng \
     tesseract-ocr-data-jpn \
