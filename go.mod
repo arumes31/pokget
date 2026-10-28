@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/PuerkitoBio/goquery v1.13.0
-	github.com/anthonynsimon/bild v0.17.0
+	github.com/anthonynsimon/bild v0.17.1
 	github.com/chromedp/cdproto v0.0.0-20260714215040-dc233986426f
 	github.com/chromedp/chromedp v0.16.0
 	github.com/corona10/goimagehash v1.1.0
@@ -21,7 +21,7 @@ require (
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/shopspring/decimal v1.6.0
 	golang.org/x/crypto v0.58.0
-	golang.org/x/image v0.46.0
+	golang.org/x/image v0.47.0
 	golang.org/x/net v0.62.0
 	golang.org/x/text v0.43.0
 	golang.org/x/time v0.16.0
