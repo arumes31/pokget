@@ -6,7 +6,7 @@
 .scanner-shell {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(200px, 46dvh) minmax(0, 1fr);
+    grid-template-rows: auto minmax(180px, 42dvh) minmax(0, 1fr);
     min-width: 0;
     width: 100%;
     height: 100dvh;

@@ -146,11 +146,91 @@ func TestClaudeDetection_SyntheticFallback(t *testing.T) {
 	if result.Status != DetectionStatusNeedsReview {
 		t.Errorf("expected NeedsReview, got %s", result.Status)
 	}
+	if result.BestMatchID() != "" {
+		t.Errorf("expected empty BestMatchID for synthetic match, got %s", result.BestMatchID())
+	}
 	if result.BestMatchName() != "Monkey.D.Luffy" {
 		t.Errorf("expected Monkey.D.Luffy, got %s", result.BestMatchName())
 	}
 	if result.BestMatchCard().CollectorNumber != "OP01-001" {
 		t.Errorf("expected OP01-001, got %s", result.BestMatchCard().CollectorNumber)
+	}
+}
+
+func TestClaudeDetection_SyntheticFallback_LocalMatchesCatalog(t *testing.T) {
+	mock := &mockClaudeDetector{
+		info: &claudedetect.DetectedCardInfo{
+			Game:            "one_piece",
+			Name:            "Unknown Secret Card",
+			CollectorNumber: "OP99-999",
+			Confidence:      0.85,
+		},
+	}
+
+	pipeline := NewDetectionPipeline(nil, nil)
+	pipeline.Claude = mock
+	// Local OCR successfully matches catalog card
+	pipeline.ocrRunner = func(ctx context.Context, img []byte, cards []models.Card, lang string) (string, string, []byte, error) {
+		return "Pikachu 25", "card-pika", nil, nil
+	}
+
+	cards := []models.Card{
+		{ID: "card-pika", Name: "Pikachu", CollectorNumber: "25"},
+	}
+
+	result, err := pipeline.detect(context.Background(), DetectionRequest{
+		Image: []byte{1, 2, 3},
+		Cards: cards,
+	}, "eng", false)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Local catalog match must take precedence over Claude synthetic card
+	if result.BestMatchID() != "card-pika" {
+		t.Errorf("expected local catalog match card-pika, got %s", result.BestMatchID())
+	}
+}
+
+func TestClaudeDetection_SyntheticFallback_LocalFindsNoMatch(t *testing.T) {
+	mock := &mockClaudeDetector{
+		info: &claudedetect.DetectedCardInfo{
+			Game:            "one_piece",
+			Name:            "Monkey.D.Luffy",
+			CollectorNumber: "OP01-001",
+			Set:             "Romance Dawn",
+			Confidence:      0.95,
+		},
+	}
+
+	pipeline := NewDetectionPipeline(nil, nil)
+	pipeline.Claude = mock
+	// Local OCR finds no match
+	pipeline.ocrRunner = func(ctx context.Context, img []byte, cards []models.Card, lang string) (string, string, []byte, error) {
+		return "unrecognized uncataloged text", "", nil, nil
+	}
+
+	cards := []models.Card{
+		{ID: "card-pika", Name: "Pikachu", CollectorNumber: "25"},
+	}
+
+	result, err := pipeline.detect(context.Background(), DetectionRequest{
+		Image: []byte{1, 2, 3},
+		Cards: cards,
+	}, "eng", false)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// When local stages find no catalog match, Claude synthetic match is used
+	if result.BestMatchID() != "" {
+		t.Errorf("expected empty ID for synthetic fallback, got %s", result.BestMatchID())
+	}
+	if result.BestMatchName() != "Monkey.D.Luffy" {
+		t.Errorf("expected Monkey.D.Luffy, got %s", result.BestMatchName())
+	}
+	if result.Status != DetectionStatusNeedsReview {
+		t.Errorf("expected NeedsReview, got %s", result.Status)
 	}
 }
 

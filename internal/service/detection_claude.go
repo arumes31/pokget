@@ -22,7 +22,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -75,7 +74,8 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 
 	if len(matches) > 0 {
 		top := matches[0]
-		if top.Confidence >= 70 && !top.NeedsReview {
+		// A synthetic card (ID == "") does not represent a resolved catalog match and requires review.
+		if top.Card != nil && top.Card.ID != "" && top.Confidence >= 70 && !top.NeedsReview {
 			result.Status = DetectionStatusMatched
 		} else {
 			result.Status = DetectionStatusNeedsReview
@@ -301,7 +301,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	// so the user still benefits from Claude's extraction details
 	if len(topMatches) == 0 && info.Name != "" {
 		synthCard := models.Card{
-			ID:              synthesizeCardID(info),
+			ID:              "",
 			Name:            info.Name,
 			Set:             info.Set,
 			SetCode:         info.SetCode,
@@ -322,7 +322,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				Method:   "claude_vision",
 				Score:    conf,
 				CardName: synthCard.Name,
-				CardID:   synthCard.ID,
+				CardID:   "",
 				RawText:  formatClaudeText(info),
 			},
 		})
@@ -344,19 +344,4 @@ func extractNumerator(s string) string {
 		return strings.TrimSpace(s[:idx])
 	}
 	return s
-}
-
-func synthesizeCardID(info *claudedetect.DetectedCardInfo) string {
-	game := strings.ToLower(strings.TrimSpace(info.Game))
-	if game == "" {
-		game = "card"
-	}
-	name := strings.ToLower(strings.TrimSpace(info.Name))
-	name = strings.ReplaceAll(name, " ", "-")
-	col := strings.ToLower(strings.TrimSpace(info.CollectorNumber))
-	col = strings.ReplaceAll(col, "/", "-")
-	if col != "" {
-		return fmt.Sprintf("%s-%s-%s", game, name, col)
-	}
-	return fmt.Sprintf("%s-%s", game, name)
 }

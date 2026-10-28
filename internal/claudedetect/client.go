@@ -293,7 +293,7 @@ func (c *Client) Detect(ctx context.Context, imageBytes []byte, gameHint, langHi
 	}
 
 	if info.Confidence <= 0 {
-		info.Confidence = 0.90
+		info.Confidence = 0.50
 	}
 	if info.Confidence > 1.0 {
 		info.Confidence = 1.0

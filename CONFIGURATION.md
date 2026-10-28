@@ -10,9 +10,9 @@ accidentally. The session key also derives the application's encryption key.
 
 | Stage | Runs on | Default / activation | Data sent to server/provider |
 | --- | --- | --- | --- |
-| **Claude AI Vision Detector** | Anthropic Claude API (`claude-sonnet-5-5` / `claude-opus-5-5`) | `CLAUDE_ENABLED=true` (Default); uses Anthropic Prompt Caching | Card image to Anthropic API |
+| **Claude AI Vision Detector** | Anthropic Claude API (`claude-sonnet-5-5` / `claude-opus-5-5` / `claude-haiku-5-5`) | `CLAUDE_ENABLED=true` (Requires `CLAUDE_API_KEY`; default `false`); uses Anthropic Prompt Caching | Card image to Anthropic API |
 | Device text OCR | Browser CPU, Tesseract WASM | Scanner's “Read text on this device” option | OCR text to Pokget when successful |
-| Image OCR and fingerprints | Pokget CPU, native Tesseract | Legacy fallback when Claude is disabled | Prepared image to Pokget |
+| Image OCR and fingerprints | Pokget CPU, native Tesseract | Fallback when Claude is disabled, errors, or returns no match | Prepared image to Pokget |
 | Local text selector | Ollama CPU, `qwen2.5:1.5b` | `OLLAMA_MODEL`; optional ambiguity resolution | OCR text and bounded shortlist to Ollama |
 | Optional image OCR | Ollama CPU, `qwen3.5:2b` Q8_0 | `SCAN_VISION_OCR_ENABLED=true`; default false | Prepared image to the configured OCR endpoint |
 
@@ -44,7 +44,7 @@ Pokget integrates the Anthropic Claude API for high-precision, zero-hallucinatio
   - The comprehensive card recognition system instructions (>1,024 tokens) are cached with ephemeral cache control.
   - Subsequent card scans read the entire system prompt from Anthropic's cache with a **90% discount** and lower latency.
 - **Configuration Variables:**
-  - `CLAUDE_ENABLED=true`
+  - `CLAUDE_ENABLED=true` (Default: `false` unless explicitly enabled)
   - `CLAUDE_API_KEY=<your-anthropic-api-key>`
   - `CLAUDE_MODEL=claude-sonnet-5-5`
   - `CLAUDE_TIMEOUT_SECONDS=30`
