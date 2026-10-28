@@ -983,7 +983,13 @@
         this.setScanning(false);
         // The inline alert is persistent and leaves scanner navigation visible.
         if (typeof this.$nextTick === 'function') {
-          this.$nextTick(() => this.$refs?.scanError?.focus());
+          const message = this.scanError;
+          this.$nextTick(() => requestAnimationFrame(() => {
+            const alert = this.$refs?.scanError;
+            if (!this.scanning && this.scanError === message && alert?.isConnected && alert.getClientRects().length) {
+              alert.focus();
+            }
+          }));
         }
       },
 

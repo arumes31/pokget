@@ -12,7 +12,7 @@ COPY templates ./templates
 RUN npm run build:static && npm run check:static
 
 # Go build stage
-FROM golang:1.27.1-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS builder
+FROM golang:1.27.3-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS builder
 
 # Install Tesseract OCR dependencies
 RUN apk add --no-cache \
@@ -37,7 +37,7 @@ RUN go build -o main ./cmd/pokget && \
 	go build -o catalog ./cmd/catalog
 
 # Final stage
-FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 
 # Install runtime dependencies: Tesseract for OCR and Chromium for headless scraping
 RUN apk add --no-cache \

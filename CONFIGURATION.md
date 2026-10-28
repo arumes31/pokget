@@ -62,8 +62,8 @@ entry into the application. Only entries in `environment:` are forwarded.
 Both files expose the same app settings. Internal database routing stays fixed
 at `pokget_db:5432` with `DB_SSLMODE=disable`; this applies only to the bundled
 database. The native-only database settings in the template do not override it.
-An empty `DB_PASSWORD` currently selects Compose's known `pokget_pass` fallback;
-the template does not enforce secure credentials. Set a unique password explicitly.
+There is no default database password: Compose refuses to start while
+`DB_PASSWORD` is blank. Set a unique password explicitly.
 `APP_PORT` sets both sides of the published application port. `POKGET_IMAGE` is
 used only by the GHCR file; use a published tag or digest for reproducible updates.
 PR builds verify images but do not publish them to `latest`.
@@ -140,6 +140,7 @@ keep-alive settings can override the Ollama server's `OLLAMA_KEEP_ALIVE` default
 | `SECURE_COOKIES` | true | Keep enabled behind HTTPS; false only for local HTTP development |
 | `WRITE_TIMEOUT` | 120 | General HTTP write timeout; long primary scan completions have separate cancellation behavior |
 | `TRUST_PROXY`, `TRUST_CLOUDFLARE` | false, false | Enable only for an intentionally trusted proxy topology |
+| `TRUSTED_PROXIES` | loopback + private ranges | Comma-separated CIDRs/IPs whose `X-Forwarded-For`/`X-Real-IP` headers are honoured when `TRUST_PROXY=true`; the right-most untrusted `X-Forwarded-For` hop is used |
 | `CATALOG_LANGUAGE` | en,de,ja,fr,zh-cn,zh-tw,ko | Requested import languages; upstream coverage still varies by game |
 | `CATALOG_WEISS_MAX_PAGES` | 0 | Weiss source pagination cap; zero means no cap |
 | `CATALOG_IMAGE_CONCURRENCY` | 4 | Parallel image downloads/hashing, 1–8; database writes remain serialized |
@@ -183,14 +184,14 @@ names such as `pokget_ollama` do not resolve outside the Compose network.
   localized records. UI English/German settings do not change the card language.
 - **Permission denied on cache/images:** fix ownership of the two writable bind
   mounts. Do not disable read-only filesystem or privilege restrictions.
-- **Database/Ollama exposure:** current Compose files publish PostgreSQL on 5433
-  and Ollama on 11434 on host interfaces. Restrict them using your firewall or
-  loopback-only port bindings; Ollama is not an authenticated public API.
+- **Database/Ollama exposure:** the Compose files publish PostgreSQL (5433) and
+  Ollama (11434) on `127.0.0.1` only, for native tools on the same host. Do not
+  widen these bindings; Ollama is not an authenticated API.
 - **Private scans:** successful device-text submissions omit the photo, but image
   fallback uploads it. A configured remote primary or vision endpoint receives
   its request data. Choose only trusted endpoints and keep API keys server-side.
 
-Run `docker compose --env-file example.env config --quiet` (and the GHCR variant)
-to validate syntax without printing resolved secrets. This does not validate
+Run `DB_PASSWORD=placeholder docker compose --env-file example.env config --quiet`
+(and the GHCR variant) to validate syntax without printing resolved secrets. This does not validate
 credentials or start services. See [SECURITY.md](SECURITY.md) for reporting issues
 and [the phone OCR report](benchmarks/phone-ocr-20260909.md) for measured limitations.

@@ -302,6 +302,7 @@ func TestProxyMiddleware(t *testing.T) {
 
 		middleware := ProxyMiddleware(nextHandler)
 		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.5:1234"
 		req.Header.Set("X-Real-IP", "2.2.2.2")
 		rr := httptest.NewRecorder()
 
@@ -320,13 +321,15 @@ func TestProxyMiddleware(t *testing.T) {
 
 		middleware := ProxyMiddleware(nextHandler)
 		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.5:1234"
+		// The left-most entry is client-supplied; the proxy appended 4.4.4.4.
 		req.Header.Set("X-Forwarded-For", "3.3.3.3, 4.4.4.4")
 		rr := httptest.NewRecorder()
 
 		middleware.ServeHTTP(rr, req)
 
-		if req.RemoteAddr != "3.3.3.3" {
-			t.Errorf("Expected RemoteAddr to be 3.3.3.3, got %s", req.RemoteAddr)
+		if req.RemoteAddr != "4.4.4.4" {
+			t.Errorf("Expected RemoteAddr to be 4.4.4.4, got %s", req.RemoteAddr)
 		}
 	})
 

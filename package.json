@@ -10,6 +10,11 @@
     "test:static": "node --test scripts/i18n.test.cjs scripts/translation-coverage.test.mjs scripts/theme.test.cjs scripts/build-static.test.mjs scripts/scanner.test.cjs scripts/scanner-deadlines.test.cjs scripts/device-ocr.test.cjs scripts/scanner-device.test.cjs scripts/measure.test.cjs scripts/pwa-template.test.cjs scripts/security-config.test.cjs scripts/mobile-ui.test.cjs scripts/auth-ui.test.cjs scripts/auth-art.test.cjs",
     "test:translations": "node --test scripts/i18n.test.cjs scripts/translation-coverage.test.mjs"
   },
+  "overrides": {
+    "@tailwindcss/cli": {
+      "@parcel/watcher": "2.6.0"
+    }
+  },
   "dependencies": {
     "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/forms": "0.5.11",
@@ -24,7 +29,7 @@
     "@tesseract.js-data/fra": "1.0.0",
     "@tesseract.js-data/jpn": "1.0.0",
     "@tesseract.js-data/kor": "1.0.0",
-    "acorn": "^8.18.0",
+    "acorn": "^8.19.0",
     "parse5": "^8.0.1",
     "terser": "5.51.2",
     "tesseract.js": "7.0.0"

@@ -235,10 +235,6 @@ func TestHandlers(t *testing.T) {
 		)
 		mock.ExpectQuery("SELECT").WithArgs("test-user", 25, 0).WillReturnRows(rowsPortfolio)
 
-		// 4. Fetch User XP and Rank
-		mock.ExpectQuery("SELECT xp, rank_title").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"xp", "rank"}).AddRow(100, "Novice"))
-
 		// 5. Fetch Binder Count
 		mock.ExpectQuery("SELECT COUNT").WithArgs("test-user").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
@@ -307,7 +303,7 @@ func TestHandlers(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"slug": "notfound"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email").WithArgs("notfound").WillReturnError(sql.ErrNoRows)
+		mock.ExpectQuery("SELECT id, COALESCE.rank_title").WithArgs("notfound").WillReturnError(sql.ErrNoRows)
 
 		h.PublicVault(rr, req)
 
@@ -332,18 +328,22 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=pass&confirm_password=pass"))
+		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=long-enough-pass&confirm_password=long-enough-pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		// User exists but is NOT verified — handler redirects to login
+		// User exists but is NOT verified — same response as a new account,
+		// credentials untouched and no email sent.
 		mock.ExpectQuery("SELECT is_verified").WillReturnRows(sqlmock.NewRows([]string{"is_verified"}).AddRow(false))
 
 		h.Mailer = &service.MockMailer{}
 		h.Register(rr, req)
 
-		if rr.Code != http.StatusSeeOther {
-			t.Errorf("Expected status 303, got %d", rr.Code)
+		if rr.Code != http.StatusCreated {
+			t.Errorf("Expected status 201, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Error(err)
 		}
 	})
 
@@ -369,7 +369,7 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=pass&confirm_password=pass"))
+		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=long-enough-pass&confirm_password=long-enough-pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
@@ -403,17 +403,21 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=pass&confirm_password=pass"))
+		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=long-enough-pass&confirm_password=long-enough-pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		// User exists and IS verified — handler redirects to login to avoid email enumeration
+		// User exists and IS verified — same response as a new account to
+		// avoid email enumeration.
 		mock.ExpectQuery("SELECT is_verified").WillReturnRows(sqlmock.NewRows([]string{"is_verified"}).AddRow(true))
 
 		h.Register(rr, req)
 
-		if rr.Code != http.StatusSeeOther {
-			t.Errorf("Expected status 303, got %d", rr.Code)
+		if rr.Code != http.StatusCreated {
+			t.Errorf("Expected status 201, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Error(err)
 		}
 	})
 
@@ -479,7 +483,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE users").WithArgs("invalid").
+		mock.ExpectExec("UPDATE users").WithArgs(hashVerificationToken("invalid")).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
 		h.ProcessConfirmEmail(rr, req)
@@ -497,7 +501,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE users").WithArgs("token").
+		mock.ExpectExec("UPDATE users").WithArgs(hashVerificationToken("token")).
 			WillReturnError(sql.ErrConnDone)
 
 		h.ProcessConfirmEmail(rr, req)
@@ -657,16 +661,18 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		rows := sqlmock.NewRows([]string{"last_email_sent_at", "verification_token", "is_verified"}).
-			AddRow(time.Now().Add(-10*time.Minute), "token-123", false)
+		rows := sqlmock.NewRows([]string{"last_email_sent_at", "is_verified"}).
+			AddRow(time.Now().Add(-10*time.Minute), false)
 		mock.ExpectQuery("SELECT last_email_sent_at").WithArgs("test@example.com").WillReturnRows(rows)
 		mock.ExpectExec("UPDATE users").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.Mailer = &service.MockMailer{Err: errors.New("mail fail")}
 		h.ResendVerification(rr, req)
 
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("Expected status 500, got %d", rr.Code)
+		// Delivery failures are logged, not reported, so the response is the
+		// same as for unknown emails.
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
 		}
 	})
 
@@ -712,7 +718,7 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=pass&confirm_password=pass"))
+		req := httptest.NewRequest("POST", "/register", strings.NewReader("email=test@example.com&password=long-enough-pass&confirm_password=long-enough-pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
@@ -766,7 +772,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE users").WithArgs("valid-token").
+		mock.ExpectExec("UPDATE users").WithArgs(hashVerificationToken("valid-token")).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.ProcessConfirmEmail(rr, req)
@@ -828,17 +834,17 @@ func TestHandlers(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		// 1. Fetch user info
-		mock.ExpectQuery("SELECT id, email").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"id", "email", "rank_title", "xp", "currency"}).
-				AddRow("test-user-id", "test@example.com", "Hobbyist", 1600, "EUR"))
+		mock.ExpectQuery("SELECT id, COALESCE.rank_title").WithArgs("test-user").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "rank_title", "xp", "currency"}).
+				AddRow("test-user-id", "Hobbyist", 1600, "EUR"))
 
 		mock.ExpectQuery("SELECT COUNT").WithArgs("test-user-id").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
 		// 2. Fetch public portfolio items
 		mock.ExpectQuery("SELECT p.id").WithArgs("test-user-id", 25, 0).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "fmt", "gr", "comp", "notes", "name", "set", "price_usd", "price_eur", "url", "game"}).
-				AddRow("1", "NM", "Raw", "", "", "note", "Charizard", "Base", 100.0, 90.0, "url", "Pokemon"))
+			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "fmt", "gr", "comp", "name", "set", "price_usd", "price_eur", "url", "game"}).
+				AddRow("1", "NM", "Raw", "", "", "Charizard", "Base", 100.0, 90.0, "url", "Pokemon"))
 
 		h.PublicVault(rr, req)
 
@@ -951,7 +957,7 @@ func TestHandlers(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email").WithArgs("test-user").
+		mock.ExpectQuery("SELECT id, COALESCE.rank_title").WithArgs("test-user").
 			WillReturnError(sql.ErrNoRows)
 
 		h.PublicVault(rr, req)
@@ -969,7 +975,7 @@ func TestHandlers(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email").WithArgs("test-user").
+		mock.ExpectQuery("SELECT id, COALESCE.rank_title").WithArgs("test-user").
 			WillReturnError(errors.New("db error"))
 
 		h.PublicVault(rr, req)
@@ -1184,7 +1190,7 @@ func TestHandlers(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"slug": "test-user"})
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT id, email").WithArgs("test-user").
+		mock.ExpectQuery("SELECT id, COALESCE.rank_title").WithArgs("test-user").
 			WillReturnError(sql.ErrNoRows)
 
 		h.PublicVault(rr, req)

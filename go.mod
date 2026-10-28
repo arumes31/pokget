@@ -1,6 +1,6 @@
 module pokget
 
-go 1.27.0
+go 1.27.3
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -11,7 +11,7 @@ require (
 	github.com/corona10/goimagehash v1.1.0
 	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/gocolly/colly/v2 v2.3.0
-	github.com/golang-migrate/migrate/v4 v4.19.1
+	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/gorilla/csrf v1.7.3
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/sessions v1.4.0
@@ -20,10 +20,10 @@ require (
 	github.com/otiai10/gosseract/v2 v2.4.1
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/shopspring/decimal v1.4.0
-	golang.org/x/crypto v0.56.0
-	golang.org/x/image v0.45.0
-	golang.org/x/net v0.58.0
-	golang.org/x/text v0.41.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/image v0.46.0
+	golang.org/x/net v0.62.0
+	golang.org/x/text v0.43.0
 	golang.org/x/time v0.16.0
 )
 
@@ -51,7 +51,7 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/temoto/robotstxt v1.1.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

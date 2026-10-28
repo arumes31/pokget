@@ -20,14 +20,14 @@ services:
   pokget_db:
     container_name: pokget_test_db
     ports: !override
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
       - pokget_test_postgres:/var/lib/postgresql/data
 
   pokget_ollama:
     container_name: pokget_test_ollama
     ports: !override
-      - "11435:11434"
+      - "127.0.0.1:11435:11434"
 
 volumes:
   pokget_test_cache:
