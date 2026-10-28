@@ -43,7 +43,7 @@
             </div>
 
             <div class="scan-progress-meta">
-                <span data-i18n>[ CLAUDE 5.5 · CACHED ]</span>
+                <span data-i18n>Working</span>
                 <span data-i18n id="scan-progress-elapsed" data-testid="scan-progress-elapsed"
                     x-text="scanElapsedLabel + ' elapsed'"></span>
             </div>
@@ -69,10 +69,10 @@
             <div class="min-w-0">
                 <div class="flex items-center gap-1.5">
                     <span class="size-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <h2 data-i18n class="truncate text-xs font-mono font-bold uppercase tracking-wider text-red-400 md:text-sm">Claude AI Vision 5.5</h2>
-                    <span class="hidden sm:inline-block rounded bg-red-950/60 border border-red-500/30 px-1.5 py-0.2 text-[10px] font-mono text-red-300">CACHED</span>
+                    <h2 data-i18n class="truncate text-xs font-mono font-bold uppercase tracking-wider text-red-400 md:text-sm">Card scanner</h2>
+                    <span class="hidden sm:inline-block rounded bg-red-950/60 border border-red-500/30 px-1.5 py-0.2 text-[10px] font-mono text-red-300">TCG</span>
                 </div>
-                <p data-i18n class="hidden md:block text-xs text-zinc-400">Position the entire card within the targeting reticle.</p>
+                <p data-i18n class="hidden md:block text-xs text-zinc-400">Include every edge, the name, and the small collector number.</p>
             </div>
         </div>
         <div class="flex items-center gap-1">
@@ -196,7 +196,7 @@
         <div data-testid="scanner-privacy-note" class="pointer-events-none absolute bottom-3 left-3 right-3 z-20 flex justify-center md:bottom-4">
             <span class="rounded-full border border-white/15 bg-black/80 px-3.5 py-1.5 text-center text-xs font-mono text-white/85 backdrop-blur-md shadow-lg">
                 <span class="material-symbols-outlined mr-1.5 align-middle text-sm text-red-400">shield_lock</span>
-                <span data-i18n aria-hidden="true">Only framed crop is uploaded to Claude</span>
+                <span data-i18n aria-hidden="true">Only the framed area is uploaded</span>
                 <span data-i18n class="sr-only">Only the area inside the guides is uploaded.</span>
             </span>
         </div>
@@ -256,9 +256,9 @@
         <label class="flex min-h-11 items-center gap-3 text-xs text-white/80">
             <input type="checkbox" x-model="useDeviceOCR" :disabled="scanning" aria-describedby="device-ocr-note"
                 class="accent-red-600 rounded">
-            <span data-i18n>Read text on this device before upload</span>
+            <span data-i18n>Read text on this device</span>
         </label>
-        <p data-i18n id="device-ocr-note" class="text-[11px] text-zinc-400 leading-relaxed">Local OCR sends text first. Weak reads and Auto detect upload the crop to Claude AI Vision.</p>
+        <p data-i18n id="device-ocr-note" class="text-[11px] text-zinc-400 leading-relaxed">Local OCR sends text first. Weak reads and Auto detect upload the crop to the server.</p>
 
         <!-- Error Feedback -->
         <p data-i18n x-show="cameraError" x-text="cameraError" role="status" aria-live="polite"
@@ -272,23 +272,23 @@
             <label for="scanner-file"
                 class="min-h-12 flex-1 bg-white/5 hover:bg-white/10 border border-white/15 rounded-xl font-mono text-xs text-white flex items-center justify-center gap-2 cursor-pointer transition-all">
                 <span class="material-symbols-outlined text-base" aria-hidden="true">upload_file</span>
-                <span data-i18n>Photo</span>
+                <span data-i18n>Choose photo</span>
                 <input id="scanner-file" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only"
                     :disabled="scanning" @change="handleFileUpload($event)">
             </label>
 
             <!-- Tactile Shutter Button -->
-            <button type="button" x-show="!previewURL" @click="capture()"
+            <button data-i18n-attrs="aria-label" type="button" x-show="!previewURL" @click="capture()"
                 :disabled="scanning || !activeStream" :aria-busy="scanning.toString()"
-                class="scanner-shutter-btn group"
+                class="min-h-[72px] scanner-shutter-btn group"
                 aria-label="Capture framed card">
                 <span class="material-symbols-outlined text-2xl group-active:scale-90 transition-transform" aria-hidden="true">photo_camera</span>
             </button>
 
             <!-- Scan Selected Crop Button (When preview is ready) -->
-            <button data-i18n type="button" x-show="previewURL" @click="scanUpload()" :disabled="scanning"
+            <button data-i18n data-i18n-attrs="aria-label" type="button" x-show="previewURL" @click="scanUpload()" :disabled="scanning"
                 data-testid="scan-selected-crop"
-                class="scanner-shutter-btn"
+                class="min-h-[72px] scanner-shutter-btn"
                 aria-label="Scan selected crop">
                 <span class="material-symbols-outlined text-2xl" aria-hidden="true">search</span>
             </button>
@@ -297,7 +297,7 @@
             <button data-i18n data-i18n-attrs="aria-label" type="button" @click="retryLastScan()" :disabled="!lastScanBlob || scanning" aria-label="RETRY LAST CROP"
                 class="min-h-12 flex-1 bg-white/5 hover:bg-white/10 border border-white/15 rounded-xl font-mono text-xs text-white disabled:opacity-40 transition-all flex items-center justify-center gap-1.5">
                 <span class="material-symbols-outlined text-base" aria-hidden="true">refresh</span>
-                <span data-i18n>Retry</span>
+                <span data-i18n>Retry last crop</span>
             </button>
         </div>
 
