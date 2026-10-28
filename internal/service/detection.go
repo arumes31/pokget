@@ -214,10 +214,10 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 	// the card directly, replacing the other detections.
 	if p.Claude != nil && len(request.Image) > 0 {
 		result, err := p.detectClaude(ctx, request, scoped, totalStart)
-		if err == nil && result != nil {
+		if err == nil && result != nil && result.Status != DetectionStatusNoMatch {
 			return result, nil
 		}
-		ScanLogger(ctx).Warn("Claude detection failed, falling back to secondary stages", "error", err)
+		ScanLogger(ctx).Warn("Claude detection returned no match or failed, falling back to secondary stages", "error", err)
 	}
 
 	result := &DetectionResult{Status: DetectionStatusUnknown}

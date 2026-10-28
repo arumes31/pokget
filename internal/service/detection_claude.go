@@ -161,14 +161,38 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 
 		// Collector number matching
 		collectorMatched := false
+		partialCollector := false
 		if claudeCollector != "" && cardCollector != "" {
-			if claudeCollector == cardCollector {
-				collectorMatched = true
-			} else {
-				// Handle fractions: e.g. "16/110" vs "16"
+			k1 := collectorNumberKey(claudeCollector)
+			k2 := collectorNumberKey(cardCollector)
+			hasSlash1 := strings.Contains(claudeCollector, "/")
+			hasSlash2 := strings.Contains(cardCollector, "/")
+
+			if hasSlash1 && hasSlash2 {
+				parts1 := strings.SplitN(claudeCollector, "/", 2)
+				parts2 := strings.SplitN(cardCollector, "/", 2)
+				num1 := collectorNumberKey(parts1[0])
+				num2 := collectorNumberKey(parts2[0])
+				den1 := collectorNumberKey(parts1[1])
+				den2 := collectorNumberKey(parts2[1])
+				if num1 != "" && num1 == num2 && den1 != "" && den1 == den2 {
+					collectorMatched = true
+				} else if num1 != "" && num1 == num2 {
+					// Numerator matches but different denominator -> different printing/set!
+					partialCollector = true
+				}
+			} else if hasSlash1 || hasSlash2 {
+				// One has a fraction and the other is just a number
 				cNum1 := extractNumerator(claudeCollector)
 				cNum2 := extractNumerator(cardCollector)
-				if cNum1 != "" && cNum1 == cNum2 {
+				kNum1 := collectorNumberKey(cNum1)
+				kNum2 := collectorNumberKey(cNum2)
+				if kNum1 != "" && kNum1 == kNum2 {
+					partialCollector = true
+				}
+			} else {
+				// Neither has fraction: compare keys (strips leading zeroes)
+				if (k1 != "" && k1 == k2) || claudeCollector == cardCollector {
 					collectorMatched = true
 				}
 			}
@@ -195,6 +219,14 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				score = 99.0
 			}
 			needsReview = false
+		} else if nameMatched && partialCollector {
+			if setMatched {
+				score = 94.0
+				needsReview = false
+			} else {
+				score = 86.0
+				needsReview = true
+			}
 		} else if nameMatched && setMatched {
 			score = 92.0
 			needsReview = false
@@ -206,7 +238,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			needsReview = true
 		} else if partialName && collectorMatched {
 			score = 85.0
-			needsReview = false
+			needsReview = true
 		} else if partialName && setMatched {
 			score = 70.0
 			needsReview = true
@@ -215,6 +247,13 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			needsReview = true
 		} else {
 			continue // No meaningful match
+		}
+
+		if info.Confidence < 0.70 {
+			needsReview = true
+			if score > 80.0 {
+				score = 80.0
+			}
 		}
 
 		candidates = append(candidates, scoredMatch{
@@ -228,6 +267,12 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return candidates[i].confidence > candidates[j].confidence
 	})
+
+	// Mark ties within 5 points for review
+	if len(candidates) >= 2 && (candidates[0].confidence-candidates[1].confidence) <= 5.0 {
+		candidates[0].needsReview = true
+		candidates[1].needsReview = true
+	}
 
 	maxTop := 5
 	if len(candidates) > maxTop {

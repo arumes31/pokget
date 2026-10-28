@@ -66,7 +66,7 @@ type Config struct {
 		TimeoutSeconds int `env:"SCAN_TIMEOUT_SECONDS" env-default:"75"`
 	} `yaml:"scan"`
 	Claude struct {
-		Enabled        bool   `env:"CLAUDE_ENABLED" env-default:"true"`
+		Enabled        bool   `env:"CLAUDE_ENABLED" env-default:"false"`
 		APIKey         string `env:"CLAUDE_API_KEY"`
 		Model          string `env:"CLAUDE_MODEL" env-default:"claude-sonnet-5-5"`
 		BaseURL        string `env:"CLAUDE_BASE_URL" env-default:"https://api.anthropic.com/v1/messages"`

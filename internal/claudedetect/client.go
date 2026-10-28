@@ -36,6 +36,7 @@ import (
 const (
 	DefaultModel       = "claude-sonnet-5-5"
 	DefaultOpusModel   = "claude-opus-5-5"
+	DefaultHaikuModel  = "claude-haiku-5-5"
 	DefaultBaseURL     = "https://api.anthropic.com/v1/messages"
 	DefaultTimeout     = 30 * time.Second
 	AnthropicVersion   = "2023-06-01"
@@ -167,7 +168,7 @@ func (c *Client) Detect(ctx context.Context, imageBytes []byte, gameHint, langHi
 	// Prepare request payload
 	reqMap := map[string]any{
 		"model":      c.model,
-		"max_tokens": 512,
+		"max_tokens": 2048,
 		"messages": []map[string]any{
 			{
 				"role": "user",
@@ -249,8 +250,9 @@ func (c *Client) Detect(ctx context.Context, imageBytes []byte, gameHint, langHi
 	}
 
 	var apiResp struct {
-		Model   string `json:"model"`
-		Content []struct {
+		Model      string `json:"model"`
+		StopReason string `json:"stop_reason"`
+		Content    []struct {
 			Type     string `json:"type"`
 			Text     string `json:"text"`
 			Thinking string `json:"thinking"`
@@ -277,6 +279,9 @@ func (c *Client) Detect(ctx context.Context, imageBytes []byte, gameHint, langHi
 	}
 
 	if strings.TrimSpace(rawText) == "" {
+		if apiResp.StopReason == "max_tokens" {
+			return nil, fmt.Errorf("claude detect: response truncated by max_tokens limit (stop_reason=max_tokens)")
+		}
 		return nil, ErrInvalidResponse
 	}
 
