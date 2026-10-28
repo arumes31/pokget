@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/PuerkitoBio/goquery v1.13.0
-	github.com/anthonynsimon/bild v0.17.0
+	github.com/anthonynsimon/bild v0.17.1
 	github.com/chromedp/cdproto v0.0.0-20260714215040-dc233986426f
 	github.com/chromedp/chromedp v0.16.0
 	github.com/corona10/goimagehash v1.1.0
