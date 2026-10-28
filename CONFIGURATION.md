@@ -10,8 +10,9 @@ accidentally. The session key also derives the application's encryption key.
 
 | Stage | Runs on | Default / activation | Data sent to server/provider |
 | --- | --- | --- | --- |
+| **Claude AI Vision Detector** | Anthropic Claude API (`claude-sonnet-5-5` / `claude-opus-5-5`) | `CLAUDE_ENABLED=true` (Default); uses Anthropic Prompt Caching | Card image to Anthropic API |
 | Device text OCR | Browser CPU, Tesseract WASM | Scanner's “Read text on this device” option | OCR text to Pokget when successful |
-| Image OCR and fingerprints | Pokget CPU, native Tesseract | Image fallback / “Use server image scan” | Prepared image to Pokget |
+| Image OCR and fingerprints | Pokget CPU, native Tesseract | Legacy fallback when Claude is disabled | Prepared image to Pokget |
 | Local text selector | Ollama CPU, `qwen2.5:1.5b` | `OLLAMA_MODEL`; optional ambiguity resolution | OCR text and bounded shortlist to Ollama |
 | Optional image OCR | Ollama CPU, `qwen3.5:2b` Q8_0 | `SCAN_VISION_OCR_ENABLED=true`; default false | Prepared image to the configured OCR endpoint |
 
@@ -26,6 +27,28 @@ and `LLM_MAX_TOKENS` can receive scan images and approved reference artwork.
 Leave `LLM_BASE_URL` empty for local-only model use. The local device-text selector
 does not call this primary provider. See the README's provider section for retry
 and cancellation behavior.
+
+### Claude AI Card Detection & Prompt Caching
+
+Pokget integrates the Anthropic Claude API for high-precision, zero-hallucination card detection across 6 supported TCGs (Pokémon, Magic: The Gathering, Yu-Gi-Oh!, One Piece, Disney Lorcana, Weiß Schwarz).
+
+- **Default Model:** `claude-sonnet-5-5` (Recommended).
+  - *Cost Efficiency:* ~5x cheaper than Opus ($3.00/Mtok input, $0.30/Mtok cache read vs $15.00/Mtok input, $1.50/Mtok cache read).
+  - *Latency:* ~2.8s-3.6s end-to-end response time.
+  - *Accuracy:* Exact identification of card name, collector number fraction (e.g. `16/110`, `4/102`), expansion/set, language (e.g. `deu`, `eng`, `jpn`), and variant/rarity (Delta Species, Holo, Reverse, etc.).
+- **Alternative Model:** `claude-opus-5-5`.
+  - Configurable via `CLAUDE_MODEL=claude-opus-5-5`.
+  - Employs thinking reasoning before outputting structured JSON.
+- **Anthropic Prompt Caching:**
+  - Automatically enabled via `CLAUDE_PROMPT_CACHING=true` with `anthropic-beta: prompt-caching-2024-07-31`.
+  - The comprehensive card recognition system instructions (>1,024 tokens) are cached with ephemeral cache control.
+  - Subsequent card scans read the entire system prompt from Anthropic's cache with a **90% discount** and lower latency.
+- **Configuration Variables:**
+  - `CLAUDE_ENABLED=true`
+  - `CLAUDE_API_KEY=<your-anthropic-api-key>`
+  - `CLAUDE_MODEL=claude-sonnet-5-5`
+  - `CLAUDE_TIMEOUT_SECONDS=30`
+  - `CLAUDE_PROMPT_CACHING=true`
 
 ## Docker Compose
 

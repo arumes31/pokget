@@ -41,6 +41,7 @@ type DetectionPipeline struct {
 	Fingerprint *FingerprintService
 	LLM         *LLMService
 	VisionOCR   VisionOCRProvider // Optional image transcription; nil keeps local-only behavior.
+	Claude      ClaudeDetector    // High-accuracy Claude API detector; replaces other detections when active.
 
 	fingerprintRunner fingerprintStageRunner
 	ocrRunner         ocrStageRunner
@@ -208,6 +209,17 @@ type ocrStageOutput struct {
 
 func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest, ocrLanguage string, scoped bool) (*DetectionResult, error) {
 	totalStart := time.Now()
+
+	// When Claude detector is configured and an image is provided, Claude API detects
+	// the card directly, replacing the other detections.
+	if p.Claude != nil && len(request.Image) > 0 {
+		result, err := p.detectClaude(ctx, request, scoped, totalStart)
+		if err == nil && result != nil {
+			return result, nil
+		}
+		ScanLogger(ctx).Warn("Claude detection failed, falling back to secondary stages", "error", err)
+	}
+
 	result := &DetectionResult{Status: DetectionStatusUnknown}
 	stageCtx, cancel := context.WithCancel(ctx)
 	if timeout := detectionStageTimeoutFromContext(ctx); timeout > 0 {

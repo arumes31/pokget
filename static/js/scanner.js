@@ -396,7 +396,7 @@
         if (this.scanStep <= 1) return 'Preparing the image on this device.';
         if (this.scanStep === 2 && this.deviceOCROutcome) return `Device OCR: ${this.deviceOCROutcome.replaceAll('_', ' ')}. Uploading the crop for server detection.`;
         if (this.scanStep === 2 && this.scanElapsedSeconds < 15) {
-          return 'Uploading securely, then running OCR and scoped card matching.';
+          return 'Uploading securely, then running Claude AI Vision detection (Prompt Cached).';
         }
         if (this.scanStep === 2) {
           return 'Still processing. Keep this page open while the card is checked. You can cancel at any time.';
@@ -890,7 +890,7 @@
           });
           if (requestID !== this.requestID || controller.signal.aborted) return;
           const upload = () => {
-            this.setStatus('Uploading the crop and running detection…', 2);
+            this.setStatus('Uploading crop for Claude AI Vision detection…', 2);
             const formData = new FormData();
             formData.append('card_image', blob, filename);
             formData.append('lang', language);
