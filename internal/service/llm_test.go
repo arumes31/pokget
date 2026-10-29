@@ -457,4 +457,12 @@ func TestNewLLMServiceWithConfigNormalizesHostAndOptions(t *testing.T) {
 	if service.Seed != 99 || service.NumPredict != 64 || service.MaxCandidates != 12 || service.MinEvidence != 250 || service.MinConfidence != 0.7 {
 		t.Fatalf("service options = %+v", service)
 	}
+
+	zeroService, err := NewLLMServiceWithConfig(LLMConfig{BaseURL: "0.0.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if zeroService.BaseURL != "http://pokget_ollama:11434" {
+		t.Fatalf("expected 0.0.0.0 to normalize to pokget_ollama:11434, got %q", zeroService.BaseURL)
+	}
 }

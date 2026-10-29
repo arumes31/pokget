@@ -98,7 +98,7 @@ services:
 
   pokget_db:
     container_name: pokget_db
-    image: postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b
+    image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
     environment:
       - POSTGRES_USER=${DB_USER:-pokget_user}
       - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD must be set in .env}
@@ -114,7 +114,7 @@ services:
       # the internal Compose network.
       - "127.0.0.1:5433:5432"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql
 
   pokget_ollama:
     container_name: pokget_ollama

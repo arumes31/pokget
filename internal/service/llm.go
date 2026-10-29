@@ -239,7 +239,13 @@ func normalizeOllamaBaseURL(raw string) (string, error) {
 	if parsed.User != nil {
 		return "", errors.New("llm: Ollama URL must not contain user information")
 	}
-	if parsed.Port() == "" {
+	if parsed.Hostname() == "0.0.0.0" {
+		port := parsed.Port()
+		if port == "" {
+			port = "11434"
+		}
+		parsed.Host = net.JoinHostPort(defaultOllamaHost, port)
+	} else if parsed.Port() == "" {
 		parsed.Host = net.JoinHostPort(parsed.Hostname(), "11434")
 	}
 	return strings.TrimRight(parsed.String(), "/"), nil
