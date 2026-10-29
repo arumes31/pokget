@@ -36,9 +36,9 @@
         class="fixed top-4 inset-x-4 z-[100] flex flex-col items-center gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
             <div x-transition.duration.300ms class="card px-4 py-3 shadow-lg flex items-center gap-3 w-full max-w-sm"
-                :class="toast.type === 'error' ? 'border-red-500' : 'border-violet-600'">
+                :class="toast.type === 'error' ? 'border-red-500' : 'border-red-500/40'">
                 <span class="material-symbols-outlined text-lg"
-                    :class="toast.type === 'error' ? 'text-red-600 dark:text-red-300' : 'text-violet-700 dark:text-violet-300'"
+                    :class="toast.type === 'error' ? 'text-red-500' : 'text-red-400'"
                     x-text="toast.type === 'error' ? 'error' : 'check_circle'"></span>
                 <p data-i18n class="text-sm font-semibold" x-text="toast.msg"></p>
             </div>

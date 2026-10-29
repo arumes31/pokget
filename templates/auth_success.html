@@ -43,7 +43,7 @@
                     });
                 }"
                 :disabled="resendDisabled"
-                class="btn-ghost text-violet-700 dark:text-violet-300 text-sm">
+                class="btn-ghost text-red-400 font-mono text-sm">
                 <span data-i18n
                     x-text="resendDisabled ? 'Retry in ' + Math.floor(countdown/60) + ':' + (countdown%60).toString().padStart(2, '0') : 'Resend verification email'">Resend verification email</span>
             </button>

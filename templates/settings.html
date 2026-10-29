@@ -31,9 +31,9 @@
             <div class="currency-options">
                 <label class="relative cursor-pointer group">
                     <input type="radio" name="currency" value="EUR" class="peer sr-only" {{ if eq .Currency "EUR" }}checked{{ end }}>
-                    <div class="p-4 rounded-xl border border-zinc-200 dark:border-stone-200 bg-surface transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-stone-50 peer-checked:border-violet-600 peer-checked:bg-violet-50 dark:peer-checked:bg-violet-900 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-violet-700">
+                    <div class="p-4 rounded-xl border border-zinc-200 dark:border-stone-200 bg-surface transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-stone-50 peer-checked:border-red-500 peer-checked:bg-red-950/50 peer-checked:shadow-[0_0_12px_rgba(239,68,68,0.25)] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-red-500">
                         <div class="currency-option-content">
-                            <span class="text-2xl font-bold {{ if eq .Currency "EUR" }}text-violet-700 dark:text-violet-300{{ else }}text-zinc-400{{ end }}">€</span>
+                            <span class="text-2xl font-bold {{ if eq .Currency "EUR" }}text-red-400 font-mono{{ else }}text-zinc-400{{ end }}">€</span>
                             <div>
                                 <p data-i18n class="text-sm font-bold text-zinc-900 dark:text-zinc-100">Euro</p>
                                 <p data-i18n class="text-xs text-zinc-600 dark:text-zinc-300">Default</p>
@@ -44,9 +44,9 @@
 
                 <label class="relative cursor-pointer group">
                     <input type="radio" name="currency" value="USD" class="peer sr-only" {{ if eq .Currency "USD" }}checked{{ end }}>
-                    <div class="p-4 rounded-xl border border-zinc-200 dark:border-stone-200 bg-surface transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-stone-50 peer-checked:border-violet-600 peer-checked:bg-violet-50 dark:peer-checked:bg-violet-900 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-violet-700">
+                    <div class="p-4 rounded-xl border border-zinc-200 dark:border-stone-200 bg-surface transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-stone-50 peer-checked:border-red-500 peer-checked:bg-red-950/50 peer-checked:shadow-[0_0_12px_rgba(239,68,68,0.25)] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-red-500">
                         <div class="currency-option-content">
-                            <span class="text-2xl font-bold {{ if eq .Currency "USD" }}text-violet-700 dark:text-violet-300{{ else }}text-zinc-400{{ end }}">$</span>
+                            <span class="text-2xl font-bold {{ if eq .Currency "USD" }}text-red-400 font-mono{{ else }}text-zinc-400{{ end }}">$</span>
                             <div>
                                 <p data-i18n class="text-sm font-bold text-zinc-900 dark:text-zinc-100">US Dollar</p>
                                 <p data-i18n class="text-xs text-zinc-600 dark:text-zinc-300">International</p>
@@ -69,7 +69,7 @@
             <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
             <label data-i18n class="flex items-center gap-2.5 min-h-11 text-sm font-semibold text-zinc-700 dark:text-zinc-200 cursor-pointer">
                 <input type="checkbox" name="is_public_profile" value="true" {{ if .IsPublicProfile }}checked{{ end }}
-                    class="w-5 h-5 accent-violet-600">
+                    class="w-5 h-5 accent-red-600">
                 Enable public profile
             </label>
             {{ if .PublicSlug }}
@@ -149,9 +149,9 @@
          class="fixed top-4 inset-x-4 z-[100] flex flex-col items-center gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
             <div x-transition.duration.300ms class="card px-4 py-3 shadow-lg flex items-center gap-3 border-l-4 w-full max-w-sm"
-                :class="toast.type === 'error' ? 'border-red-500' : 'border-violet-600'">
+                :class="toast.type === 'error' ? 'border-red-500' : 'border-red-500/40'">
                 <span class="material-symbols-outlined text-lg"
-                    :class="toast.type === 'error' ? 'text-red-600 dark:text-red-300' : 'text-violet-700 dark:text-violet-300'"
+                    :class="toast.type === 'error' ? 'text-red-600 dark:text-red-300' : 'text-red-400 font-mono'"
                     x-text="toast.type === 'error' ? 'error' : 'check_circle'"></span>
                 <p data-i18n class="text-sm font-semibold" x-text="toast.msg"></p>
             </div>

@@ -628,3 +628,24 @@ html.scan-progress-open body {
         animation: none;
     }
 }
+
+
+/* Global Matrix Cyberpunk Theme */
+body {
+    background-color: #050505;
+    color: #f6f5f8;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+/* Modals, Overlays & Menus Glassmorphism */
+dialog, [role="dialog"].card, [role="menu"].card, .modal-card {
+    background: rgba(10, 10, 14, 0.96) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(239, 68, 68, 0.35) !important;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(239, 68, 68, 0.15) !important;
+}
+
+* {
+    scrollbar-color: #ef4444 #0a0a0a;
+}
