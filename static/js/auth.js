@@ -3,6 +3,10 @@
     if (document.pokgetAuthUI) return;
     document.pokgetAuthUI = true;
 
+    try {
+        window.localStorage.removeItem('htmx-history-cache');
+    } catch (_) {}
+
     const authForm = (event) => {
         const form = event.detail.elt?.closest('form');
         return form?.matches('form[data-auth-form]') ? form : null;

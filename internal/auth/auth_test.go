@@ -284,6 +284,7 @@ func TestProxyMiddleware(t *testing.T) {
 
 		middleware := ProxyMiddleware(nextHandler)
 		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "173.245.48.1:1234"
 		req.Header.Set("CF-Connecting-IP", "1.1.1.1")
 		rr := httptest.NewRecorder()
 

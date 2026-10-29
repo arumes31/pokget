@@ -41,6 +41,10 @@ func (w *scanResponseWriter) Write(data []byte) (int, error) {
 	return w.ResponseWriter.Write(data)
 }
 
+func (w *scanResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 func beginScanLog(w http.ResponseWriter, r *http.Request, input string) (*scanResponseWriter, *http.Request, func()) {
 	id := r.Header.Get("X-Scan-ID")
 	if !scanIDPattern.MatchString(id) {

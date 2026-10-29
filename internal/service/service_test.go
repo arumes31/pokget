@@ -486,6 +486,43 @@ func TestGamificationService(t *testing.T) {
 		}
 	})
 
+	t.Run("RecordHeartbeat_Success", func(t *testing.T) {
+		mock.ExpectBegin()
+		mock.ExpectQuery("UPDATE users\\s+SET xp = xp \\+ \\$1, last_heartbeat_at").
+			WithArgs(1, "hb-user-1").WillReturnRows(sqlmock.NewRows([]string{"xp"}).AddRow(12))
+		mock.ExpectExec("UPDATE users SET rank_title").
+			WithArgs("Novice Collector", "hb-user-1", 12).WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		xp, rank, err := s.RecordHeartbeat("hb-user-1")
+		if err != nil {
+			t.Fatalf("RecordHeartbeat failed: %v", err)
+		}
+		if xp != 12 || rank != "Novice Collector" {
+			t.Errorf("got xp=%d rank=%s, want 12 and Novice Collector", xp, rank)
+		}
+	})
+
+	t.Run("RecordHeartbeat_RateLimited", func(t *testing.T) {
+		mock.ExpectBegin()
+		mock.ExpectQuery("UPDATE users\\s+SET xp = xp \\+ \\$1, last_heartbeat_at").
+			WithArgs(1, "hb-user-2").WillReturnError(sql.ErrNoRows)
+		mock.ExpectQuery("SELECT COALESCE\\(xp, 0\\) FROM users WHERE id = \\$1").
+			WithArgs("hb-user-2").WillReturnRows(sqlmock.NewRows([]string{"xp"}).AddRow(25))
+		mock.ExpectRollback()
+
+		xp, rank, err := s.RecordHeartbeat("hb-user-2")
+		if err != nil {
+			t.Fatalf("RecordHeartbeat failed: %v", err)
+		}
+		if xp != 25 {
+			t.Errorf("got xp=%d, want unchanged 25", xp)
+		}
+		if rank != "Novice Collector" {
+			t.Errorf("got rank=%s, want Novice Collector", rank)
+		}
+	})
+
 	t.Run("GetUserRank", func(t *testing.T) {
 		rank := s.GetUserRank(1600)
 		if rank.Title != "Hobbyist" {

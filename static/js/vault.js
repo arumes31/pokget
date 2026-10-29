@@ -15,6 +15,9 @@ function initVault() {
 		return;
 	}
 	vaultInitialized = true;
+	try {
+		window.localStorage.removeItem('htmx-history-cache');
+	} catch (_) {}
 	initRollingNumbers();
 	initHaptics();
 	initHeartbeat();

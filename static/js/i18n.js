@@ -51,6 +51,7 @@
     "Failed to read image": "Bild konnte nicht gelesen werden",
     "Failed to refresh cache": "Zwischenspeicher konnte nicht aktualisiert werden",
     "Failed to save session": "Sitzung konnte nicht gespeichert werden",
+    "Failed to revoke session": "Sitzung konnte nicht widerrufen werden",
     "Failed to send email": "E-Mail konnte nicht gesendet werden",
     "Failed to update binder": "Ordner konnte nicht aktualisiert werden",
     "Failed to update visibility": "Sichtbarkeit konnte nicht aktualisiert werden",

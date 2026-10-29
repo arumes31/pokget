@@ -32,6 +32,7 @@ import (
 	"pokget/internal/auth"
 	"pokget/internal/models"
 	"pokget/internal/service"
+	"strings"
 	"time"
 
 	"github.com/gorilla/csrf"
@@ -92,22 +93,32 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	// same response as a new registration, so the form cannot be used to
 	// enumerate emails. Unverified users can use "Resend email".
 	if errors.Is(err, sql.ErrNoRows) {
-		_, err = h.DB.ExecContext(r.Context(), "INSERT INTO users (email, password_hash, verification_token, verification_expires_at, last_email_sent_at) VALUES ($1, $2, $3, NOW() + INTERVAL '24 hours', NOW())", email, hash, hashVerificationToken(token))
-		if err != nil {
-			slog.Error("Failed to register user", "error", err)
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-			return
-		}
+		res, execErr := h.DB.ExecContext(r.Context(), "INSERT INTO users (email, password_hash, verification_token, verification_expires_at, last_email_sent_at) VALUES ($1, $2, $3, NOW() + INTERVAL '24 hours', NOW()) ON CONFLICT (email) DO NOTHING", email, hash, hashVerificationToken(token))
+		if execErr != nil {
+			errStr := strings.ToLower(execErr.Error())
+			if strings.Contains(errStr, "unique") || strings.Contains(errStr, "duplicate") || strings.Contains(errStr, "23505") {
+				slog.Info("Concurrent registration for existing email", "email", email)
+			} else {
+				slog.Error("Failed to register user", "error", execErr)
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+		} else {
+			rowsAffected, _ := res.RowsAffected()
+			if rowsAffected > 0 {
+				mailSvc := h.Mailer
+				if mailSvc == nil {
+					mailSvc = service.NewMailService()
+				}
+				go func(svc service.Mailer, to, tok string) {
+					if err := svc.SendConfirmationEmail(to, tok); err != nil {
+						slog.Error("Failed to send confirmation email", "error", err)
+					}
+				}(mailSvc, email, token)
 
-		mailSvc := h.Mailer
-		if mailSvc == nil {
-			mailSvc = service.NewMailService()
+				h.Audit.Log("", "USER_REGISTER", map[string]interface{}{"email": email})
+			}
 		}
-		if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
-			slog.Error("Failed to send confirmation email", "error", err)
-		}
-
-		h.Audit.Log("", "USER_REGISTER", map[string]interface{}{"email": email})
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -166,9 +177,11 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 	if mailSvc == nil {
 		mailSvc = service.NewMailService()
 	}
-	if err := mailSvc.SendConfirmationEmail(email, token); err != nil {
-		slog.Error("Failed to resend confirmation email", "error", err)
-	}
+	go func(svc service.Mailer, to, tok string) {
+		if err := svc.SendConfirmationEmail(to, tok); err != nil {
+			slog.Error("Failed to resend confirmation email", "error", err)
+		}
+	}(mailSvc, email, token)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -331,6 +344,8 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	// signs the user out on every device, as a password change does.
 	if err := auth.RevokeSession(h.DB, r); err != nil {
 		slog.Error("Failed to revoke session on logout", "error", err)
+		http.Error(w, "Failed to revoke session", http.StatusInternalServerError)
+		return
 	}
 	session, _ := auth.Store.Get(r, "session")
 	session.Values["user_id"] = ""

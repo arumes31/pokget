@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -112,5 +113,8 @@ func (h *Handler) executeTextScan(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		slog.Warn("Failed to set write deadline for text scan response", "error", err)
+	}
 	_ = json.NewEncoder(w).Encode(response)
 }

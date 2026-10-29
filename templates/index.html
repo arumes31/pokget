@@ -88,6 +88,7 @@
           isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream,
           isPwaInstalled: window.matchMedia('(display-mode: standalone)').matches
       }" @beforeinstallprompt.window="$event.preventDefault(); deferredPrompt = $event"
+    hx-history="false"
     hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'
     @open-edit-modal.window="showEditModal = true; editItemId = $event.detail.id; editNotes = $event.detail.notes; editCustomPrice = $event.detail.price; editGrade = $event.detail.grade; editIsPublic = $event.detail.isPublic; editBinderId = $event.detail.binderId; editCurrencySymbol = ''; editBinders = []; editTrigger = $event.detail.trigger; $nextTick(() => requestAnimationFrame(() => { if (showEditModal &amp;&amp; !editReady) $refs.editCancel.focus(); })); refreshEditorMetadata()"
     @pokget-view-change.window="activeTab = $event.detail.view; moreOpen = false"
@@ -146,6 +147,7 @@
                                 <span data-i18n>Settings</span>
                             </a>
                             <button type="button" role="menuitem" hx-post="/auth/logout"
+                                @click="try { localStorage.removeItem('htmx-history-cache'); } catch (_) {}"
                                 class="w-full flex items-center gap-2.5 px-3 min-h-11 text-sm font-medium text-zinc-700 dark:text-zinc-200 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950 rounded-lg transition-colors">
                                 <span class="material-symbols-outlined text-[20px]">logout</span>
                                 <span data-i18n>Log out</span>
