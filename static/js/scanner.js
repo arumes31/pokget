@@ -324,7 +324,7 @@
     // Keep native workers outside Alpine's reactive object graph.
     let deviceReader = null;
     return {
-      useDeviceOCR: true,
+      useDeviceOCR: false,
       scanning: false,
       scanStatus: '',
       deviceOCRDetail: '',

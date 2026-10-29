@@ -195,9 +195,16 @@
     @apply relative z-10 text-[11px] font-semibold leading-none;
   }
 
-  .scanner-active .app-header,
-  .scanner-active .app-bottom-nav {
+  .scanner-active .app-header {
     display: none;
+  }
+
+  .scanner-active .app-bottom-nav {
+    display: flex;
+    background: rgba(5, 5, 5, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(239, 68, 68, 0.25);
   }
 
   .scanner-active .app-main {

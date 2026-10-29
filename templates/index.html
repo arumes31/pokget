@@ -10,7 +10,6 @@
     <link rel="stylesheet" href="/static/css/pack-navigation.css?v={{ .BuildVersion }}">
     <script src="/static/js/pack-navigation.js?v={{ .BuildVersion }}"></script>
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
-    <script src="/static/js/device-ocr.js?v={{ .BuildVersion }}" defer></script>
     <script src="/static/js/scanner.js?v={{ .BuildVersion }}" defer></script>
     <script src="/static/js/measure.js?v={{ .BuildVersion }}" defer></script>
     <script src="/static/js/alpine.min.js?v=3" defer></script>
@@ -21,8 +20,10 @@
     <link rel="stylesheet" href="/static/css/styles.css?v={{ .BuildVersion }}">
     <link rel="stylesheet" href="/static/css/measure.css?v={{ .BuildVersion }}">
     <link rel="manifest" href="/static/manifest.json">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Pokget">
     <meta name="theme-color" content="#0a0a0a">
     <meta name="csrf-token" content="{{ .CSRFToken }}">
     <script>

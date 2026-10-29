@@ -235,7 +235,7 @@
             </label>
         </fieldset>
 
-        <!-- TCG Fast Selector Pills (Thumb-friendly touch bar) -->
+        <!-- TCG Fast Selector Pills & Language (Thumb-friendly touch bar) -->
         <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
             <template x-for="g in [
                 { id: 'pokemon', label: 'Pokémon' },
@@ -252,14 +252,6 @@
                     x-text="g.label"></button>
             </template>
         </div>
-
-        <!-- Local OCR Option -->
-        <label class="flex min-h-11 items-center gap-3 text-xs text-white/80">
-            <input type="checkbox" x-model="useDeviceOCR" :disabled="scanning" aria-describedby="device-ocr-note"
-                class="accent-red-600 rounded">
-            <span data-i18n>Read text on this device</span>
-        </label>
-        <p data-i18n id="device-ocr-note" class="text-[11px] text-zinc-400 leading-relaxed">Local OCR sends text first. Weak reads and Auto detect upload the crop to the server.</p>
 
         <!-- Error Feedback -->
         <p data-i18n x-show="cameraError" x-text="cameraError" role="status" aria-live="polite"
@@ -301,11 +293,6 @@
                 <span data-i18n>Retry last crop</span>
             </button>
         </div>
-
-        <!-- Full-width fallback button for direct image upload -->
-        <button data-i18n type="button" x-show="lastScanBlob && (needsReview || scanError)" :disabled="scanning"
-            @click="submitPreparedBlob(lastScanBlob, lastScanName || 'retry.jpg', false, true)"
-            class="w-full min-h-11 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 px-3 text-xs font-mono text-red-200 transition-colors">Use server image scan</button>
 
         <!-- Identified Card Sheet -->
         <section x-show="detectedCard" x-cloak x-ref="scanResult" tabindex="-1" class="scan-result" aria-labelledby="scan-result-title">

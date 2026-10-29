@@ -210,20 +210,19 @@ type ocrStageOutput struct {
 func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest, ocrLanguage string, scoped bool) (*DetectionResult, error) {
 	totalStart := time.Now()
 
-	var claudeSyntheticResult *DetectionResult
-	// When Claude detector is configured and an image is provided, Claude API detects
-	// the card directly, replacing the other detections when a catalog card matches.
+	// When Claude detector is configured, Claude API detects the card directly.
+	// Secondary detection (fingerprint and native OCR fallback) is removed.
 	if p.Claude != nil && len(request.Image) > 0 {
 		claudeResult, err := p.detectClaude(ctx, request, scoped, totalStart)
-		if err == nil && claudeResult != nil {
-			if claudeResult.BestMatchID() != "" && claudeResult.Status != DetectionStatusNoMatch {
-				return claudeResult, nil
-			}
-			if len(claudeResult.TopMatches) > 0 {
-				claudeSyntheticResult = claudeResult
-			}
+		if err != nil {
+			ScanLogger(ctx).Warn("Claude detection failed", "error", err)
+			return failedDetectionResult(err), err
 		}
-		ScanLogger(ctx).Warn("Claude detection returned no catalog match or failed, falling back to secondary stages", "error", err)
+		return claudeResult, nil
+	}
+
+	if p.Claude != nil {
+		return invalidDetectionResult(totalStart), fmt.Errorf("%w: image is empty", ErrInvalidDetectionRequest)
 	}
 
 	result := &DetectionResult{Status: DetectionStatusUnknown}
@@ -307,14 +306,7 @@ func (p *DetectionPipeline) detect(ctx context.Context, request DetectionRequest
 		return result, err
 	}
 
-	detResult, err := p.combineDetection(ctx, request, result, fingerprintOutput, ocrOutput, scoped, totalStart)
-	if err == nil && detResult != nil && len(detResult.TopMatches) == 0 && claudeSyntheticResult != nil && len(claudeSyntheticResult.TopMatches) > 0 {
-		claudeSyntheticResult.Metrics.Stages = append(claudeSyntheticResult.Metrics.Stages, detResult.Metrics.Stages...)
-		claudeSyntheticResult.Metrics.TotalTime = time.Since(totalStart)
-		ScanLogger(ctx).Info("Detection: Using Claude synthetic match fallback", "name", claudeSyntheticResult.BestMatchName())
-		return claudeSyntheticResult, nil
-	}
-	return detResult, err
+	return p.combineDetection(ctx, request, result, fingerprintOutput, ocrOutput, scoped, totalStart)
 }
 
 // combineDetection shares catalog validation and ranking between server images

@@ -39,9 +39,9 @@ Run `npm run test:translations` to check translation behavior and coverage. Thes
 ## 🛠️ Core Technology Pillars
 
 ### 👁️ Computer Vision & Recognition
-*   **Precision OCR**: Integrated Tesseract engine with intelligent pre-processing (Grayscale, High Contrast, Sharpening) to extract card names even from blurry photos.
-*   **Perceptual Hashing (pHash)**: Uses `goimagehash` to match card images against a reference database, providing "fuzzy" visual matching that ignores minor lighting differences.
-*   **LLM Correction**: Integrated LLM fallback to resolve OCR ambiguities and correct misspelled card names using context-aware matching.
+*   **Claude AI Vision Engine**: High-accuracy multimodal recognition powered by Anthropic's Claude API (`claude-sonnet-5-5` or `claude-opus-5-5`) with ephemeral prompt caching. Directly identifies card title, set, collector number, and variant from the camera crop, matching against the catalog with zero client OCR overhead and synthetic fallback for uncatalogued cards.
+*   **Full-Screen Mobile Matrix HUD**: An edge-to-edge camera viewfinder engineered for single-screen mobile use. The video stream spans the entire viewport behind high-contrast glassmorphic controls and a persistent, accessible bottom navigation bar.
+*   **Offline / Legacy Recognition Pipeline**: When Claude is not configured, Pokget falls back to local Tesseract OCR with intelligent preprocessing (grayscale, high contrast, sharpening), perceptual visual hashing (`goimagehash` pHash), and optional local LLM disambiguation (Ollama).
 
 ### Card centering measurement
 
@@ -232,7 +232,7 @@ the source file uses a named Ollama volume, while the GHCR file uses `./data/oll
 Install Go 1.27.1+, Node.js 26, a C/C++ compiler, Tesseract runtime/development
 libraries, Leptonica, `pkg-config`, and the seven OCR language packs. PostgreSQL
 must be reachable; Chromium is needed for browser tests and headless scraping.
-Build the bundled browser OCR assets with `npm ci --ignore-scripts` followed by
+Build the bundled static assets with `npm ci --ignore-scripts` followed by
 `npm run build:static`.
 
 Export the required `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and
@@ -266,80 +266,47 @@ so short-window ETA is an estimate, not a stable completion promise.
 
 #### Scan diagnostics
 
-The scanner shows live **on-device** OCR progress: engine/language loading,
-full-card reading, then top/bottom edge reading. Percentages describe the current
-phase, not the whole scan. A cold language download counts toward the 20-second
-device budget. If it falls back, the progress details identify the reason.
+The scanner captures the card within the Matrix HUD viewfinder and uploads the cropped image directly to the server. When Claude Vision is enabled, the request is dispatched immediately to the Claude API with prompt caching, bypassing secondary pHash and OCR passes for maximum speed and accuracy.
 
-On submission, server logs identify `input=device_text` (phone text received,
-no image uploaded) or `input=server_image`. The same `scan_id` follows a text
-request and its image fallback. `Scan request received` includes client-reported
-`client_device_ocr`, `client_device_ocr_ms`, and `client_fallback`: for example
-`usable`, `weak_text`, `timeout`, `error`, `paused`, `disabled`, `unsupported`,
-`server_only`, or `no_match`. These are diagnostic observations, not trusted
-recognition evidence; older clients report `unknown`.
+On submission, server logs record `input=server_image` along with the unique `scan_id`. `Scan scope selected` logs the normalized game/language and eligible-card count. `Scan stage started` / `Scan stage finished` track the active stage (`claude_vision` or legacy stages), durations, and completion/timeout outcomes. `Scan request finished` records the HTTP status and total processing duration. Set `DEBUG=true` for detailed stage diagnostics; `LOG_FORMAT=json` enables structured log ingestion.
 
-`Scan scope selected` gives the normalized game/language and eligible-card count.
-`Scan stage started` / `Scan stage finished` identify queueing, fingerprinting,
-server OCR, device-text matching, and optional model selection, with durations
-and completion/timeout/failure outcomes. `Scan request finished` records HTTP
-status and total server time. Stages may overlap; their durations do not add up
-to total elapsed time. Set `DEBUG=true` for per-pass server OCR start/finish
-events, timing, and text byte counts; `LOG_FORMAT=json` makes filtering easier.
-Apply environment changes by recreating the app container.
+### 🤖 Claude AI Vision Engine (Recommended)
 
-No extra phone telemetry requests are sent. Before submission (or after a local
-cancel), progress exists only on the phone, so Docker logs cannot confirm it.
-Downloading OCR assets alone does **not** prove recognition succeeded. Diagnostic
-events omit image contents, OCR text, and filenames. Optional `X-Scan-ID`,
-`X-Device-OCR`, `X-Device-OCR-MS`, and `X-Scan-Fallback` headers are bounded and
-allowlisted; invalid diagnostics are ignored/replaced without rejecting a scan.
-`X-Scan-ID` is echoed in the response for troubleshooting, not authentication.
+Pokget features an Anthropic Claude Vision detection engine that replaces brittle client-side OCR and secondary fallback chains with direct multimodal card identification:
 
-### Phone-first scanning with local Ollama
+*   **Zero Client-Side Overhead**: Cards are captured in the camera HUD and uploaded directly to the server. No heavy WebAssembly downloads, no battery-draining client CPU processing, and no client timeouts.
+*   **Prompt Caching & Fast Inference**: Uses Anthropic's ephemeral prompt caching (`CLAUDE_PROMPT_CACHING=true`) with `claude-sonnet-5-5` or `claude-opus-5-5` for fast, cost-effective scans.
+*   **Catalog Matching & Synthetic Fallback**: Matches the recognized card name, set code, and collector number against the local PostgreSQL catalog to resolve market pricing. If a newly released or promotional card is not yet cataloged, Claude generates a synthetic card record with direct market search links so collectors can track it immediately.
+*   **TCG & Language Guidance**: Selecting the game (Pokémon, MTG, One Piece, Lorcana, Weiss Schwarz, Yu-Gi-Oh!) and card language grounds Claude's extraction prompt and ensures accurate pricing resolution.
 
-The web/PWA scanner defaults to **Read text on this device**. The phone handles
-orientation, guide cropping, resizing, and Tesseract WebAssembly OCR in workers,
-including enlarged name/collector-number regions. Only the selected language is
-loaded; language data is cached and the OCR session is reused. Workers are
-terminated on cancellation, navigation/backgrounding, or after one idle minute.
-Local OCR has a 20-second budget, including initialization.
-
-Pokget receives text, scopes the active catalog by TCG/language, and validates
-all matches. Clear identities and same-name printing ambiguity skip the model;
-other ambiguous identities can use local Ollama within a five-second budget.
-Request-local short IDs reduce generation work and are resolved to real catalog
-IDs on the server. Device-text results **always require printing confirmation**.
-No model credentials, card catalog, or LLM weights are sent to the phone.
-
-Weak/failed device OCR, unsupported browsers, Auto detect, or no catalog candidate
-use the existing image pipeline. An ambiguous result does not automatically
-upload the photo: use **Use server image scan** to request image analysis.
-This is browser CPU/WASM offloading, not native Android/iOS NPU integration.
-
-For the tested local text-model configuration:
+To enable Claude AI Vision, configure the following in `.env`:
 
 ```env
-LLM_BASE_URL=
-OLLAMA_MODEL=qwen2.5:1.5b
-OLLAMA_NUM_THREAD=4
-SCAN_VISION_OCR_ENABLED=false
+CLAUDE_ENABLED=true
+CLAUDE_API_KEY=your_anthropic_api_key
+CLAUDE_MODEL=claude-sonnet-5-5
+CLAUDE_PROMPT_CACHING=true
+CLAUDE_TIMEOUT_SECONDS=30
 ```
 
-```bash
-docker compose exec pokget_ollama ollama pull qwen2.5:1.5b
-```
+When `CLAUDE_ENABLED=true` is active, secondary fallback stages (pHash and native OCR) are bypassed, providing clean, direct AI recognition without noisy fallbacks.
 
-Run `npm ci --ignore-scripts` and `npm run build:static` before native development
-or deployment. Docker builds do this automatically. Pinned OCR assets and all
-seven language packs are bundled from npm and served by Pokget; there are no
-runtime OCR CDN requests. Native development serves the generated OCR assets from
-`dist/static/vendor/ocr`, and images use the built `static/vendor/ocr` directory.
-Selecting Auto detect intentionally avoids loading seven OCR models on a phone.
+### 📱 Full-Screen Mobile HUD & PWA Standalone Mode
 
-The model is an optional shortlist selector, not a reliable abstention or
-printing-confidence estimator. See the [CPU and browser test report](benchmarks/phone-ocr-20260909.md)
-for measured results, corpus limitations, and reproduction commands.
+The scanner is engineered for single-screen mobile ergonomics:
+
+*   **Edge-to-Edge Viewfinder**: The camera feed fills 100% of the mobile viewport (`.scanner-frame`) behind high-contrast glassmorphic controls and alignment guides.
+*   **Persistent Bottom Navigation**: The bottom menu bar (`.app-bottom-nav`) remains visible, docked, and interactive above the camera layer, enabling one-tap switching between Vault, Scanner, Centering Measure, and Settings.
+*   **Single-Screen Layout**: Viewfinder controls, quick action buttons, and TCG/language selectors float in the thumb zone without vertical scrolling.
+
+#### Installing the PWA (Removing the Browser Bar)
+
+When opening Pokget in a standard mobile browser tab (Safari on iOS or Chrome on Android), mobile browsers display their top URL address bar and bottom navigation bar by default for standard web pages:
+
+*   **iOS (Safari)**: Open Pokget in Safari → Tap the **Share** button (box with upward arrow) → Tap **Add to Home Screen** → Tap **Add**. Launch Pokget from the home screen icon to run in borderless standalone mode without the Safari address bar.
+*   **Android (Chrome)**: Open Pokget in Chrome → Tap the three-dot menu (**⋮**) → Tap **Install app** (or **Add to Home Screen**). Launch Pokget from the home screen or app drawer to experience full-screen standalone immersion.
+
+Pokget includes `<meta name="mobile-web-app-capable" content="yes">`, `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`, and modern `display_override: ["standalone", "minimal-ui", "window-controls-overlay"]` web manifest declarations to guarantee a native, edge-to-edge application experience.
 
 ### Primary LLM with Ollama fallback
 
