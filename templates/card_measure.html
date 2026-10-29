@@ -26,7 +26,7 @@
                 @pointerdown.prevent="begin($event)" @pointermove.prevent="move($event)" @pointerup="end($event)" @pointercancel="end($event)" @lostpointercapture="end($event)"
                 @wheel.prevent="current.image && setZoom(zoom * ($event.deltaY > 0 ? 0.9 : 1.1))">
                 <div x-show="!current.image" class="measure-empty">
-                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#bba6dd" stroke-width="2" aria-hidden="true"><path d="M4 15V5h10M34 5h10v10M44 33v10H34M14 43H4V33"/><rect x="14" y="10" width="20" height="28" rx="2"/><path d="M18 16h12M18 21h12M18 31h7"/></svg>
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#ef4444" stroke-width="2" aria-hidden="true"><path d="M4 15V5h10M34 5h10v10M44 33v10H34M14 43H4V33"/><rect x="14" y="10" width="20" height="28" rx="2"/><path d="M18 16h12M18 21h12M18 31h7"/></svg>
                     <h3 data-i18n x-text="side === 'front' ? 'A closer look at your card.' : 'Now check the back.'"></h3>
                     <p data-i18n>Choose a clear photo with all four edges visible.<br>JPG, PNG or WebP · up to 15 MB</p>
                     <div class="measure-actions" @pointerdown.stop>

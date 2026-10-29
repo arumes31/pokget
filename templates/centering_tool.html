@@ -125,7 +125,7 @@
             </button>
         </div>
 
-        <div x-show="!activeStream && !previewURL" class="scanner-empty absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <div x-show="!activeStream && !previewURL" class="scanner-empty absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center overflow-y-auto">
             <span class="material-symbols-outlined !text-4xl text-red-500" aria-hidden="true">photo_camera</span>
             <p data-i18n class="text-base font-semibold text-zinc-100">Add a photo to begin</p>
             <p data-i18n class="max-w-xs text-sm leading-6 text-zinc-400">Use the photo button below, or allow camera access to capture your card.</p>
@@ -235,7 +235,7 @@
             </label>
         </fieldset>
 
-        <!-- TCG Fast Selector Pills (Thumb-friendly touch bar) -->
+        <!-- TCG Fast Selector Pills & Language (Thumb-friendly touch bar) -->
         <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
             <template x-for="g in [
                 { id: 'pokemon', label: 'Pokémon' },
@@ -252,14 +252,6 @@
                     x-text="g.label"></button>
             </template>
         </div>
-
-        <!-- Local OCR Option -->
-        <label class="flex min-h-11 items-center gap-3 text-xs text-white/80">
-            <input type="checkbox" x-model="useDeviceOCR" :disabled="scanning" aria-describedby="device-ocr-note"
-                class="accent-red-600 rounded">
-            <span data-i18n>Read text on this device</span>
-        </label>
-        <p data-i18n id="device-ocr-note" class="text-[11px] text-zinc-400 leading-relaxed">Local OCR sends text first. Weak reads and Auto detect upload the crop to the server.</p>
 
         <!-- Error Feedback -->
         <p data-i18n x-show="cameraError" x-text="cameraError" role="status" aria-live="polite"

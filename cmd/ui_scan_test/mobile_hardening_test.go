@@ -52,7 +52,9 @@ func TestMobileHardeningHelperTextContrast(t *testing.T) {
 				}
 			}
 			var ratio float64
-			if err := chromedp.Run(ctx, chromedp.Evaluate(fmt.Sprintf(`(() => {
+			if err := chromedp.Run(ctx,
+				chromedp.WaitVisible(target.selector, chromedp.ByQuery),
+				chromedp.Evaluate(fmt.Sprintf(`(() => {
 				const element = document.querySelector(%q);
 				const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
 				const context = canvas.getContext('2d', {willReadFrequently: true});

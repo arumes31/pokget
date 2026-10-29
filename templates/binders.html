@@ -40,24 +40,24 @@
         <button type="button" hx-get="/binders/{{ .ID }}" hx-target="#main-content"
              hx-push-url="/?view=binders&amp;binder={{ .ID }}"
              data-binder-card data-name="{{ .Name }}" data-count="{{ .CardCount }}"
-             class="card group flex min-h-28 w-full items-center gap-4 overflow-hidden p-4 text-left transition hover:border-violet-300">
+             class="card group flex min-h-28 w-full items-center gap-4 overflow-hidden p-4 text-left transition hover:border-red-500/50 hover:shadow-[0_0_16px_rgba(239,68,68,0.2)]">
 
             <!-- Binder Icon/Art -->
-            <div class="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 transition-transform group-hover:scale-105">
+            <div class="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-red-950/50 border border-red-500/30 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.2)] transition-transform group-hover:scale-105">
                 <span class="material-symbols-outlined text-2xl">auto_stories</span>
             </div>
             <div class="min-w-0 flex-1">
-                <h3 class="truncate text-base font-bold text-zinc-950 dark:text-zinc-50 transition-colors group-hover:text-violet-800 dark:group-hover:text-violet-200">{{ .Name }}</h3>
+                <h3 class="truncate text-base font-bold text-zinc-950 dark:text-zinc-50 transition-colors group-hover:text-red-400 font-mono">{{ .Name }}</h3>
                 <p class="mt-1 line-clamp-2 text-xs leading-5 text-zinc-600 dark:text-zinc-300">{{ if .Description }}{{ .Description }}{{ else }}<span data-i18n>No description yet</span>{{ end }}</p>
                 <span class="status-badge mt-2 border-stone-200 bg-stone-50 text-zinc-700 dark:text-zinc-200">{{ .CardCount }} <span data-i18n>{{ if ne .CardCount 1 }}cards{{ else }}card{{ end }}</span></span>
             </div>
-            <span class="material-symbols-outlined flex size-11 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-zinc-600 dark:text-zinc-300 transition group-hover:bg-violet-700 group-hover:text-white">arrow_forward</span>
+            <span class="material-symbols-outlined flex size-11 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-zinc-600 dark:text-zinc-300 transition group-hover:bg-red-600 group-hover:shadow-[0_0_12px_rgba(239,68,68,0.5)] group-hover:text-white">arrow_forward</span>
         </button>
         {{ else }}
         <div class="col-span-full py-3 sm:py-6">
             <div class="empty-state">
                 <div class="empty-state-icon">
-                    <span class="material-symbols-outlined text-3xl text-violet-700 dark:text-violet-300">inventory_2</span>
+                    <span class="material-symbols-outlined text-3xl text-red-400">inventory_2</span>
                 </div>
                 <h3 data-i18n class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">Create your first binder</h3>
                 <p data-i18n class="mt-2 max-w-sm text-sm leading-6 text-zinc-600 dark:text-zinc-300">Keep a set, deck, or personal collection together and see its card count at a glance.</p>
@@ -76,7 +76,7 @@
          x-transition:enter="transition ease-out duration-300"
          x-transition:enter-start="opacity-0 translate-y-10"
          x-transition:enter-end="opacity-100 translate-y-0"
-         class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-zinc-900/50"
+         class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-black/75 backdrop-blur-sm"
          x-cloak>
          <div class="card w-full sm:max-w-md rounded-b-none sm:rounded-b-2xl p-5 sm:p-6 space-y-4 max-h-[90dvh] overflow-y-auto"
               style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))" @click.away="showNewBinderModal = false; $nextTick(() => $refs.newBinderTrigger?.focus())">
@@ -102,7 +102,7 @@
                 </div>
 
                 <div>
-                    <label data-i18n for="new-binder-description" class="label">Description <span data-i18n class="normal-case tracking-normal text-zinc-600 dark:text-zinc-300">(optional)</span></label>
+                    <label data-i18n for="new-binder-description" class="label">Description <span data-i18n class="normal-case tracking-normal text-zinc-400 dark:text-zinc-300">(optional)</span></label>
                     <textarea data-i18n-attrs="placeholder" id="new-binder-description" name="description" maxlength="240" placeholder="What belongs in this binder?" rows="3"
                               class="input min-h-24 py-2.5"></textarea>
                 </div>

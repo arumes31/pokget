@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/corona10/goimagehash"
@@ -68,6 +69,7 @@ type ImageProcessor struct {
 	hasher       ImageHasher
 	maxBytes     int64
 	maxPixels    uint64
+	storeMu      sync.Mutex
 }
 
 func NewImageProcessor(config ImageProcessorConfig) (*ImageProcessor, error) {
@@ -338,9 +340,6 @@ func (p *ImageProcessor) validateURL(sourceID string, target *url.URL) error {
 func (p *ImageProcessor) store(contentHash, extension string, data []byte) (string, error) {
 	shard := contentHash[:2]
 	directory := filepath.Join(p.storeDir, shard)
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return "", fmt.Errorf("catalog: creating content-addressed image directory: %w", err)
-	}
 	localPath := filepath.Join(directory, contentHash+extension)
 	if info, err := os.Stat(localPath); err == nil {
 		if !info.Mode().IsRegular() {
@@ -349,6 +348,23 @@ func (p *ImageProcessor) store(contentHash, extension string, data []byte) (stri
 		return localPath, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("catalog: checking content-addressed image: %w", err)
+	}
+
+	p.storeMu.Lock()
+	defer p.storeMu.Unlock()
+
+	// Recheck under lock in case another goroutine wrote the image while waiting.
+	if info, err := os.Stat(localPath); err == nil {
+		if !info.Mode().IsRegular() {
+			return "", fmt.Errorf("catalog: content-addressed image path is not a regular file")
+		}
+		return localPath, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("catalog: checking content-addressed image: %w", err)
+	}
+
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return "", fmt.Errorf("catalog: creating content-addressed image directory: %w", err)
 	}
 
 	temporary, err := os.CreateTemp(directory, ".image-*")

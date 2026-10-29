@@ -116,7 +116,7 @@ func TestClaudeDetection_ExactMatch(t *testing.T) {
 	}
 }
 
-func TestClaudeDetection_SyntheticFallback(t *testing.T) {
+func TestClaudeDetection_UncatalogedSyntheticCard(t *testing.T) {
 	mock := &mockClaudeDetector{
 		info: &claudedetect.DetectedCardInfo{
 			Game:            "one_piece",
@@ -157,7 +157,7 @@ func TestClaudeDetection_SyntheticFallback(t *testing.T) {
 	}
 }
 
-func TestClaudeDetection_SyntheticFallback_LocalMatchesCatalog(t *testing.T) {
+func TestClaudeDetection_Synthetic_NoSecondaryFallback(t *testing.T) {
 	mock := &mockClaudeDetector{
 		info: &claudedetect.DetectedCardInfo{
 			Game:            "one_piece",
@@ -169,8 +169,10 @@ func TestClaudeDetection_SyntheticFallback_LocalMatchesCatalog(t *testing.T) {
 
 	pipeline := NewDetectionPipeline(nil, nil)
 	pipeline.Claude = mock
-	// Local OCR successfully matches catalog card
+	// Local OCR should not be called
+	ocrCalled := false
 	pipeline.ocrRunner = func(ctx context.Context, img []byte, cards []models.Card, lang string) (string, string, []byte, error) {
+		ocrCalled = true
 		return "Pikachu 25", "card-pika", nil, nil
 	}
 
@@ -186,63 +188,32 @@ func TestClaudeDetection_SyntheticFallback_LocalMatchesCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Local catalog match must take precedence over Claude synthetic card
-	if result.BestMatchID() != "card-pika" {
-		t.Errorf("expected local catalog match card-pika, got %s", result.BestMatchID())
+	if ocrCalled {
+		t.Error("secondary OCR runner was invoked but secondary detection should be disabled")
 	}
-}
-
-func TestClaudeDetection_SyntheticFallback_LocalFindsNoMatch(t *testing.T) {
-	mock := &mockClaudeDetector{
-		info: &claudedetect.DetectedCardInfo{
-			Game:            "one_piece",
-			Name:            "Monkey.D.Luffy",
-			CollectorNumber: "OP01-001",
-			Set:             "Romance Dawn",
-			Confidence:      0.95,
-		},
-	}
-
-	pipeline := NewDetectionPipeline(nil, nil)
-	pipeline.Claude = mock
-	// Local OCR finds no match
-	pipeline.ocrRunner = func(ctx context.Context, img []byte, cards []models.Card, lang string) (string, string, []byte, error) {
-		return "unrecognized uncataloged text", "", nil, nil
-	}
-
-	cards := []models.Card{
-		{ID: "card-pika", Name: "Pikachu", CollectorNumber: "25"},
-	}
-
-	result, err := pipeline.detect(context.Background(), DetectionRequest{
-		Image: []byte{1, 2, 3},
-		Cards: cards,
-	}, "eng", false)
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// When local stages find no catalog match, Claude synthetic match is used
+	// Synthetic match from Claude is used directly without secondary fallback
 	if result.BestMatchID() != "" {
-		t.Errorf("expected empty ID for synthetic fallback, got %s", result.BestMatchID())
+		t.Errorf("expected empty BestMatchID for synthetic match, got %s", result.BestMatchID())
 	}
-	if result.BestMatchName() != "Monkey.D.Luffy" {
-		t.Errorf("expected Monkey.D.Luffy, got %s", result.BestMatchName())
+	if result.BestMatchName() != "Unknown Secret Card" {
+		t.Errorf("expected Unknown Secret Card, got %s", result.BestMatchName())
 	}
 	if result.Status != DetectionStatusNeedsReview {
 		t.Errorf("expected NeedsReview, got %s", result.Status)
 	}
 }
 
-func TestClaudeDetection_ErrorFallback(t *testing.T) {
+func TestClaudeDetection_Error_NoSecondaryFallback(t *testing.T) {
 	mock := &mockClaudeDetector{
 		err: errors.New("claude rate limit or timeout"),
 	}
 
 	pipeline := NewDetectionPipeline(nil, nil)
 	pipeline.Claude = mock
-	// Install dummy ocrRunner to verify fallback
+	// Local OCR should not be called
+	ocrCalled := false
 	pipeline.ocrRunner = func(ctx context.Context, img []byte, cards []models.Card, lang string) (string, string, []byte, error) {
+		ocrCalled = true
 		return "Pikachu 25", "card-pika", nil, nil
 	}
 
@@ -255,10 +226,13 @@ func TestClaudeDetection_ErrorFallback(t *testing.T) {
 		Cards: cards,
 	}, "eng", false)
 
-	if err != nil {
-		t.Fatalf("fallback should succeed: %v", err)
+	if err == nil {
+		t.Fatal("expected error from Claude detection failure without secondary fallback")
 	}
-	if result.BestMatchID() != "card-pika" {
-		t.Errorf("expected fallback to match card-pika, got %s", result.BestMatchID())
+	if ocrCalled {
+		t.Error("secondary OCR runner was invoked on Claude failure, but secondary detection should be removed")
+	}
+	if result.Status != DetectionStatusFailed {
+		t.Errorf("expected DetectionStatusFailed, got %s", result.Status)
 	}
 }
