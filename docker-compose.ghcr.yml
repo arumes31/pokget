@@ -114,6 +114,8 @@ services:
       # the internal Compose network.
       - "127.0.0.1:5433:5432"
     volumes:
+      # PostgreSQL 18 stores cluster data under /var/lib/postgresql/18/docker.
+      # Note: Upgrading an existing database volume from PG15 requires pg_upgrade or pg_dump/restore.
       - ./data/postgres:/var/lib/postgresql
 
   pokget_ollama:

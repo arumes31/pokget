@@ -466,3 +466,14 @@ func TestNewLLMServiceWithConfigNormalizesHostAndOptions(t *testing.T) {
 		t.Fatalf("expected 0.0.0.0 to normalize to pokget_ollama:11434, got %q", zeroService.BaseURL)
 	}
 }
+
+func TestNormalizeOllamaBaseURLCustomHost(t *testing.T) {
+	t.Setenv("OLLAMA_HOST", "custom_ollama")
+	customZeroService, err := NewLLMServiceWithConfig(LLMConfig{BaseURL: "0.0.0.0:8000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if customZeroService.BaseURL != "http://custom_ollama:8000" {
+		t.Fatalf("expected custom OLLAMA_HOST normalization, got %q", customZeroService.BaseURL)
+	}
+}
