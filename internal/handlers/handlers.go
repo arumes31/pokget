@@ -484,8 +484,8 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Award 1 XP for being active
-	newXP, newRank, err := h.Game.AddXP(userID, 1)
+	// Award 1 XP for being active (rate-limited to 1 award per 15 minutes)
+	newXP, newRank, err := h.Game.RecordHeartbeat(userID)
 	if err != nil {
 		slog.Error("Failed to award heartbeat XP", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -763,6 +763,7 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"name": newName})
 }
@@ -1267,6 +1268,7 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		if diagnostics && processedImg != nil {
 			resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
 		}
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second))
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			slog.Error("Failed to encode JSON response", "error", err)
 		}
@@ -1345,6 +1347,7 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	if diagnostics && processedImg != nil {
 		resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
 	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		slog.Error("Failed to encode JSON response", "error", err)
 	}

@@ -22,9 +22,12 @@ package service
 
 import (
 	"bytes"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net"
 	"net/smtp"
 	"os"
 	"strings"
@@ -41,7 +44,7 @@ type MailService struct {
 	Password string
 	From     string
 	BaseURL  string
-	// Internal field for testing smtp.SendMail
+	// Internal field for testing sendMail
 	sendMailFunc func(addr string, a smtp.Auth, from string, to []string, msg []byte) error
 }
 
@@ -73,8 +76,74 @@ func NewMailService(cfgSMTPPort ...string) *MailService {
 		Password:     os.Getenv("SMTP_PASS"),
 		From:         os.Getenv("SMTP_FROM"),
 		BaseURL:      baseURL,
-		sendMailFunc: smtp.SendMail,
+		sendMailFunc: sendMailSecure,
 	}
+}
+
+// sendMailSecure dials the SMTP server and enforces STARTTLS encryption with
+// TLS 1.2+ and certificate/hostname verification before authenticating or
+// transmitting message content. If the server does not support STARTTLS or
+// negotiation fails, it aborts immediately to prevent cleartext credential
+// or token exposure.
+func sendMailSecure(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("mail: invalid smtp address %q: %w", addr, err)
+	}
+
+	c, err := smtp.Dial(addr)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	hasStartTLS, _ := c.Extension("STARTTLS")
+	if !hasStartTLS {
+		return errors.New("mail: SMTP server does not support STARTTLS; refusing unencrypted transmission")
+	}
+
+	tlsConfig := &tls.Config{
+		ServerName: host,
+		MinVersion: tls.VersionTLS12,
+	}
+	if err := c.StartTLS(tlsConfig); err != nil {
+		return fmt.Errorf("mail: STARTTLS negotiation failed: %w", err)
+	}
+
+	if a != nil {
+		if ok, _ := c.Extension("AUTH"); !ok {
+			return errors.New("mail: SMTP server does not support AUTH after STARTTLS")
+		}
+		if err := c.Auth(a); err != nil {
+			return fmt.Errorf("mail: SMTP auth failed: %w", err)
+		}
+	}
+
+	if err := c.Mail(from); err != nil {
+		return fmt.Errorf("mail: MAIL FROM failed: %w", err)
+	}
+
+	for _, recipient := range to {
+		if err := c.Rcpt(recipient); err != nil {
+			return fmt.Errorf("mail: RCPT TO failed: %w", err)
+		}
+	}
+
+	w, err := c.Data()
+	if err != nil {
+		return fmt.Errorf("mail: DATA command failed: %w", err)
+	}
+
+	if _, err := w.Write(msg); err != nil {
+		_ = w.Close()
+		return fmt.Errorf("mail: writing message data failed: %w", err)
+	}
+
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("mail: closing data writer failed: %w", err)
+	}
+
+	return c.Quit()
 }
 
 func (s *MailService) SendConfirmationEmail(to, token string) error {

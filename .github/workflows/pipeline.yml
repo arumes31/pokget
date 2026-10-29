@@ -279,6 +279,10 @@ jobs:
             echo "::error::target_branch must resolve to a branch"
             exit 1
           fi
+          if [[ "$ref_name" == "latest" ]]; then
+            echo "::error::Branch name 'latest' is reserved and cannot be published directly"
+            exit 1
+          fi
           printf 'sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           printf 'ref_name=%s\n' "$ref_name" >> "$GITHUB_OUTPUT"
 
@@ -310,7 +314,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ steps.source.outputs.ref_name }}
+            type=raw,value=${{ steps.source.outputs.ref_name }},enable=${{ steps.source.outputs.ref_name != 'latest' }}
             type=raw,value=sha-${{ steps.source.outputs.sha }}
             type=raw,value=latest,enable=${{ steps.source.outputs.ref_name == 'main' }}
 

@@ -92,6 +92,58 @@ func (s *GamificationService) AddXP(userID string, amount int) (int, string, err
 	return newXP, newRank, nil
 }
 
+// RecordHeartbeat awards 1 XP if at least 15 minutes have elapsed since the user's
+// last rewarded heartbeat. If called before the interval has elapsed, the current
+// XP and rank are returned without modification.
+func (s *GamificationService) RecordHeartbeat(userID string) (int, string, error) {
+	if s.DB == nil {
+		return 0, "", errors.New("gamification: database is unavailable")
+	}
+	if userID == "" {
+		return 0, "", errors.New("gamification: user ID is required")
+	}
+
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return 0, "", fmt.Errorf("gamification: begin heartbeat transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var newXP int
+	err = tx.QueryRow(
+		`UPDATE users
+		 SET xp = xp + $1, last_heartbeat_at = CURRENT_TIMESTAMP
+		 WHERE id = $2 AND (last_heartbeat_at IS NULL OR last_heartbeat_at <= CURRENT_TIMESTAMP - INTERVAL '15 minutes')
+		 RETURNING xp`,
+		1, userID,
+	).Scan(&newXP)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			var currentXP int
+			if scanErr := tx.QueryRow("SELECT COALESCE(xp, 0) FROM users WHERE id = $1", userID).Scan(&currentXP); scanErr != nil {
+				return 0, "", fmt.Errorf("gamification: fetch current xp: %w", scanErr)
+			}
+			_ = tx.Rollback()
+			return currentXP, s.GetUserRank(currentXP).Title, nil
+		}
+		return 0, "", fmt.Errorf("gamification: heartbeat award: %w", err)
+	}
+
+	newRank := s.GetUserRank(newXP).Title
+	if _, err := tx.Exec(
+		"UPDATE users SET rank_title = $1 WHERE id = $2 AND xp = $3 AND rank_title IS DISTINCT FROM $1",
+		newRank, userID, newXP,
+	); err != nil {
+		return 0, "", fmt.Errorf("gamification: update rank: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, "", fmt.Errorf("gamification: commit heartbeat transaction: %w", err)
+	}
+
+	return newXP, newRank, nil
+}
+
 func (s *GamificationService) CheckForBadges(userID string) {
 	// 1. Check for "First Pull" badge
 	var count int

@@ -32,6 +32,9 @@ import (
 // reverse proxy or Docker network gateway normally connects from.
 const defaultTrustedProxies = "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
 
+// defaultCloudflareProxies covers official Cloudflare edge IP ranges (IPv4 & IPv6).
+const defaultCloudflareProxies = "173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22,2400:cb00::/32,2606:4700::/32,2803:f800::/32,2405:b500::/32,2405:8100::/32,2a06:98c0::/29,2c0f:f248::/32"
+
 // parseTrustedProxies parses a comma-separated list of CIDRs or single IPs.
 func parseTrustedProxies(value string) []*net.IPNet {
 	if strings.TrimSpace(value) == "" {
@@ -112,18 +115,25 @@ func ProxyMiddleware(next http.Handler) http.Handler {
 	trustProxy := os.Getenv("TRUST_PROXY") == "true"
 	trustCF := os.Getenv("TRUST_CLOUDFLARE") == "true"
 	trusted := parseTrustedProxies(os.Getenv("TRUSTED_PROXIES"))
+	cfProxies := parseTrustedProxies(os.Getenv("CLOUDFLARE_PROXIES"))
+	if len(cfProxies) == 0 || os.Getenv("CLOUDFLARE_PROXIES") == "" {
+		cfProxies = parseTrustedProxies(defaultCloudflareProxies)
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var realIP string
+		peerIP := net.ParseIP(clientIP(r))
 
-		if trustCF {
-			// Cloudflare specific header
+		// Cloudflare forwarding headers are only honoured from verified Cloudflare
+		// edge CIDRs or approved trusted proxy peers; otherwise an untrusted caller
+		// could spoof CF-Connecting-IP and pick their own rate-limit identity.
+		if trustCF && (isTrustedProxy(peerIP, cfProxies) || isTrustedProxy(peerIP, trusted)) {
 			realIP = parseHeaderIP(r.Header.Get("CF-Connecting-IP"))
 		}
 
 		// Forwarding headers are only honoured from a trusted proxy peer;
 		// otherwise any client could pick its own rate-limit bucket.
-		if realIP == "" && trustProxy && isTrustedProxy(net.ParseIP(clientIP(r)), trusted) {
+		if realIP == "" && trustProxy && isTrustedProxy(peerIP, trusted) {
 			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 				realIP = forwardedClientIP(xff, trusted)
 			} else {

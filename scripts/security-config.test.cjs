@@ -32,6 +32,7 @@ test('GHCR publishing minifies and validates JavaScript before building the imag
   assert.ok(imageBuild > minifyStep, 'image build must run after asset minification');
   assert.match(dockerJob, /npm run build:static/);
   assert.match(dockerJob, /npm run check:static/);
+  assert.match(dockerJob, /steps\.source\.outputs\.ref_name != 'latest'/);
 });
 
 test('repository default CodeQL setup is not duplicated by an advanced workflow', () => {
@@ -63,4 +64,16 @@ test('both Compose variants expose the same application configuration', () => {
   for (const key of ['SECURE_COOKIES', 'WRITE_TIMEOUT', 'SCAN_OCR_POOL_SIZE', 'SCAN_PHASH_HIGH_CONF', 'SCAN_PHASH_POTENTIAL', 'CATALOG_WEISS_MAX_PAGES']) {
     assert.ok(source.includes(`${key}=\${${key}:-`), `${key} is not configurable through Compose`);
   }
+});
+
+test('authenticated shell disables HTMX history cache to prevent sensitive snapshot persistence', () => {
+  const indexHtml = read('templates/index.html');
+  assert.match(indexHtml, /hx-history="false"/);
+  assert.match(indexHtml, /localStorage\.removeItem\('htmx-history-cache'\)/);
+
+  const vault = read('static/js/vault.js');
+  assert.match(vault, /localStorage\.removeItem\('htmx-history-cache'\)/);
+
+  const auth = read('static/js/auth.js');
+  assert.match(auth, /localStorage\.removeItem\('htmx-history-cache'\)/);
 });

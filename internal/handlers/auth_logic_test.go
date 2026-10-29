@@ -348,3 +348,59 @@ func TestLogoutRevokesSessionServerSide(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLogout_RevokeError(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	cookieRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	session, _ := auth.Store.Get(cookieRequest, "session")
+	session.Values["user_id"] = "user-1"
+	session.Values["session_version"] = int64(3)
+	cookieResponse := httptest.NewRecorder()
+	if err := session.Save(cookieRequest, cookieResponse); err != nil {
+		t.Fatal(err)
+	}
+
+	mock.ExpectExec("UPDATE users SET session_version").
+		WithArgs("user-1", int64(3)).
+		WillReturnError(sql.ErrConnDone)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	req.Header.Set("Cookie", cookieResponse.Header().Get("Set-Cookie"))
+	rr := httptest.NewRecorder()
+	h.Logout(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rr.Code)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRegister_ConcurrentConflict(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("POST", "/register", strings.NewReader("email=conflict@example.com&password=long-enough-pass&confirm_password=long-enough-pass"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	// Initial check reports no rows
+	mock.ExpectQuery("SELECT is_verified FROM users WHERE email = \\$1").
+		WithArgs("conflict@example.com").
+		WillReturnError(sql.ErrNoRows)
+
+	// Concurrent insert passes ON CONFLICT returning 0 rows affected
+	mock.ExpectExec("INSERT INTO users").
+		WithArgs("conflict@example.com", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	h.Mailer = &service.MockMailer{}
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Errorf("Expected status 201 on concurrent registration, got %d", rr.Code)
+	}
+}

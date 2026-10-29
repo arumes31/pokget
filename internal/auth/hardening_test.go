@@ -91,6 +91,54 @@ func TestProxyMiddlewareRejectsSpoofedHeaders(t *testing.T) {
 	}
 }
 
+func TestProxyMiddlewareCloudflarePeerVerification(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {})
+
+	tests := []struct {
+		name       string
+		remoteAddr string
+		headers    map[string]string
+		want       string
+	}{
+		{
+			name:       "untrusted peer cannot spoof CF-Connecting-IP",
+			remoteAddr: "203.0.113.9:4000",
+			headers:    map[string]string{"CF-Connecting-IP": "198.51.100.1"},
+			want:       "203.0.113.9:4000",
+		},
+		{
+			name:       "verified Cloudflare edge peer can provide CF-Connecting-IP",
+			remoteAddr: "173.245.48.10:4000",
+			headers:    map[string]string{"CF-Connecting-IP": "198.51.100.1"},
+			want:       "198.51.100.1",
+		},
+		{
+			name:       "trusted internal proxy can forward CF-Connecting-IP",
+			remoteAddr: "10.0.0.5:4000",
+			headers:    map[string]string{"CF-Connecting-IP": "198.51.100.1"},
+			want:       "198.51.100.1",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TRUST_CLOUDFLARE", "true")
+			t.Setenv("TRUST_PROXY", "false")
+
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.RemoteAddr = tc.remoteAddr
+			for key, value := range tc.headers {
+				req.Header.Set(key, value)
+			}
+			ProxyMiddleware(next).ServeHTTP(httptest.NewRecorder(), req)
+
+			if req.RemoteAddr != tc.want {
+				t.Errorf("RemoteAddr = %q, want %q", req.RemoteAddr, tc.want)
+			}
+		})
+	}
+}
+
 func TestLimiterKeyGroupsIPv6ByPrefix(t *testing.T) {
 	a := limiterKey("2001:db8:1:2:aaaa::1")
 	b := limiterKey("2001:db8:1:2:bbbb::2")
