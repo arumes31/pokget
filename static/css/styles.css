@@ -638,7 +638,7 @@ body {
 }
 
 /* Modals, Overlays & Menus Glassmorphism */
-dialog, [role="dialog"].card, [role="menu"].card, .modal-card {
+dialog, [role="dialog"].card, [role="menu"].card, .modal-card, [role="dialog"] .card {
     background: rgba(10, 10, 14, 0.96) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;

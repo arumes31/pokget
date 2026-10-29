@@ -13,7 +13,7 @@
     <link rel="icon" type="image/png" href="/static/img/favicon-32.png">
     <link rel="stylesheet" href="/static/css/styles.css?v=3">
     <link rel="stylesheet" href="/static/css/auth.css?v={{ .BuildVersion }}">
-    <meta name="theme-color" content="#080b14">
+    <meta name="theme-color" content="#050505">
 </head>
 
 <body class="auth-page">
@@ -27,8 +27,8 @@
         x-show="show" x-transition x-cloak
         class="fixed bottom-6 inset-x-4 z-50 flex justify-center pointer-events-none">
         <div class="card px-4 py-3 shadow-lg"
-            :class="type === 'error' ? 'border-red-300 dark:border-red-800' : 'border-red-500/40'">
-            <p data-i18n class="text-sm font-semibold text-zinc-900 dark:text-zinc-100" role="status" x-text="msg"></p>
+            :class="type === 'error' ? 'border-red-500' : 'border-red-500/40'">
+            <p data-i18n class="text-sm font-semibold text-zinc-100" role="status" x-text="msg"></p>
         </div>
     </div>
 </body>

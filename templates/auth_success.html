@@ -1,10 +1,10 @@
 <div class="w-full max-w-md mx-auto flex flex-col justify-center py-8"
     x-data="{ resendDisabled: false, countdown: 0 }">
     <div class="card p-6 sm:p-8 text-center">
-        <div class="w-16 h-16 bg-emerald-100 dark:bg-emerald-950 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div class="w-16 h-16 bg-emerald-950/40 border border-emerald-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                class="text-emerald-600 dark:text-emerald-300">
+                class="text-emerald-400">
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                 <polyline points="22 4 12 14.01 9 11.01" />
             </svg>
@@ -14,7 +14,7 @@
 
         <a data-i18n href="/auth" class="btn-primary w-full min-h-12">Return to login</a>
 
-        <div class="pt-6 mt-6 border-t border-zinc-200 dark:border-stone-200">
+        <div class="pt-6 mt-6 border-t border-red-500/20">
             <p data-i18n class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Didn't get the email?</p>
             <input type="hidden" x-ref="resendEmail" value="{{ .Email }}">
             <input type="hidden" x-ref="resendCSRF" value="{{ .CSRFToken }}">

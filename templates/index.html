@@ -278,7 +278,7 @@
     <!-- Edit Modal -->
     <div id="edit-modal" x-show="showEditModal" x-cloak role="dialog" aria-modal="true"
         aria-labelledby="edit-modal-title" @keydown.escape.window="if (showEditModal) { showEditModal = false; $nextTick(() => { if (!showEditModal) editTrigger?.focus() }) }"
-        class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-zinc-900/50"
+        class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-black/75 backdrop-blur-sm"
         @click.self="showEditModal = false; $nextTick(() => { if (!showEditModal) editTrigger?.focus() })">
         <div class="card w-full sm:max-w-md rounded-b-none sm:rounded-b-2xl p-5 sm:p-6 space-y-4 max-h-[90dvh] overflow-y-auto"
             style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))">
