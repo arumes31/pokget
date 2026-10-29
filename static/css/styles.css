@@ -295,8 +295,11 @@
         background: linear-gradient(0deg, rgba(5, 5, 5, 0.96) 0%, rgba(5, 5, 5, 0.7) 65%, transparent 100%);
         border-top: none;
         padding: 0.5rem 0.75rem 0.25rem;
-        overflow: visible;
-        max-height: none;
+        overflow-y: auto;
+        max-height: calc(100dvh - 5.5rem);
+    }
+    body:not(:has(.app-bottom-nav)) .scanner-controls {
+        bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
     }
     .scanner-controls > * + * {
         margin-top: 0.35rem;

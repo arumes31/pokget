@@ -92,6 +92,14 @@ const observeMisprintRequest = `(() => {
 
 func submitMisprintSearch(ctx context.Context, query, kind string) error {
 	return chromedp.Run(ctx,
+		chromedp.Poll(`(() => {
+			const form = document.querySelector('#misprint-search');
+			if (!form) return false;
+			if (window.htmx && (!form['htmx-internal-data'] || !form['htmx-internal-data'].listenerInfos)) {
+				window.htmx.process(form);
+			}
+			return true;
+		})()`, nil, chromedp.WithPollingTimeout(3*time.Second)),
 		chromedp.Evaluate(observeMisprintRequest, nil),
 		chromedp.Evaluate(fmt.Sprintf(`(() => {
 			const form = document.querySelector('#misprint-search');
@@ -105,6 +113,14 @@ func submitMisprintSearch(ctx context.Context, query, kind string) error {
 
 func clickMisprintLink(ctx context.Context, selector string) error {
 	return chromedp.Run(ctx,
+		chromedp.Poll(fmt.Sprintf(`(() => {
+			const link = document.querySelector(%q);
+			if (!link) return false;
+			if (window.htmx && (!link['htmx-internal-data'] || !link['htmx-internal-data'].listenerInfos)) {
+				window.htmx.process(link);
+			}
+			return true;
+		})()`, selector), nil, chromedp.WithPollingTimeout(3*time.Second)),
 		chromedp.Evaluate(observeMisprintRequest, nil),
 		chromedp.Click(selector, chromedp.ByQuery),
 		chromedp.Poll(`window.misprintSearchComplete`, nil, chromedp.WithPollingTimeout(3*time.Second)),

@@ -167,6 +167,7 @@ func loadReviewRoute(route string) chromedp.Tasks {
 			delete main.dataset.reviewReady;
 			const settled = event => {
 				if (event.detail.target !== main) return;
+				if (event.detail.requestConfig?.path && event.detail.requestConfig.path !== '`+route+`') return;
 				main.dataset.reviewReady = '1';
 				document.body.removeEventListener('htmx:afterSettle', settled);
 			};
