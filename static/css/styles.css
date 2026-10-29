@@ -251,7 +251,7 @@
     }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px) and (min-height: 501px) {
     .scanner-shell {
         position: relative;
         display: block;
@@ -270,6 +270,9 @@
         object-fit: cover !important;
         width: 100% !important;
         height: 100% !important;
+    }
+    .scanner-frame-empty .scanner-empty {
+        padding-bottom: calc(480px + env(safe-area-inset-bottom, 0px)) !important;
     }
     .scanner-toolbar {
         position: absolute;
@@ -312,17 +315,40 @@
 /* Short phone screens */
 @media (min-width: 480px) and (max-height: 500px) {
     .scanner-shell {
-        grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
-        grid-template-rows: auto minmax(0, 1fr);
+        display: grid !important;
+        grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr) !important;
+        grid-template-rows: auto minmax(0, 1fr) !important;
         padding: 0;
         gap: 0;
     }
-    .scanner-toolbar { grid-column: 1 / -1; padding: max(8px, env(safe-area-inset-top)) 12px 8px; }
+    .scanner-toolbar {
+        position: relative !important;
+        grid-column: 1 / -1 !important;
+        padding: max(8px, env(safe-area-inset-top)) 12px 8px;
+    }
     .scanner-toolbar button { min-width: 44px; min-height: 44px; }
-    .scanner-frame, .scanner-controls { border-radius: 0; }
-    .scanner-controls { border-top: 0; border-left: 1px solid rgba(239, 68, 68, 0.2); }
+    .scanner-frame {
+        position: relative !important;
+        inset: auto !important;
+        width: 100% !important;
+        height: 100% !important;
+        border-radius: 0;
+    }
+    .scanner-controls {
+        position: relative !important;
+        inset: auto !important;
+        border-radius: 0;
+        border-top: 0;
+        border-left: 1px solid rgba(239, 68, 68, 0.2);
+        max-height: 100% !important;
+        overflow-y: auto !important;
+    }
+    .scanner-frame-empty .scanner-empty {
+        padding-bottom: 0.75rem !important;
+    }
     .scanner-frame [data-testid="scanner-privacy-note"], .scanner-metric-overlay { display: none; }
     .scanner-privacy-compact { display: block; }
+    .app-bottom-nav { display: none !important; }
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -371,7 +397,7 @@ html[data-theme="dark"] .skeleton {
     }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px) and (min-height: 501px) {
   .scanner-controls {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
     overflow-y: auto;

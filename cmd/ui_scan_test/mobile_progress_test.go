@@ -112,10 +112,10 @@ func TestMobileScannerSeparatesCameraAndControls(t *testing.T) {
 	if layout.ToolbarLeft < 0 || layout.ToolbarRight > layout.ViewportWidth || layout.ToolbarTop < 0 {
 		t.Errorf("scanner toolbar is outside viewport: %+v", layout)
 	}
-	if difference(layout.FrameBottom, layout.ControlsTop) > 1 {
-		t.Errorf("camera and controls overlap or leave a gap: %+v", layout)
+	if difference(layout.FrameBottom, layout.ViewportHeight) > 1 {
+		t.Errorf("camera frame does not fill full-screen viewport: %+v", layout)
 	}
-	if difference(layout.ControlsBottom, layout.ViewportHeight) > 1 || !layout.PrivacyVisible {
+	if layout.ControlsBottom > layout.ViewportHeight+1 || !layout.PrivacyVisible {
 		t.Errorf("scanner controls or privacy note are misplaced: %+v", layout)
 	}
 }
@@ -147,7 +147,7 @@ func TestScannerResponsiveWorkspace(t *testing.T) {
 					if (box.left < -1 || box.right > innerWidth + 1 || box.top < -1 || box.bottom > innerHeight + 1) issues.push(name + ' outside viewport');
 					if (box.height < 150) issues.push(name + ' has insufficient usable height');
 				}
-				if (innerWidth >= 768 ? frame.right > controls.left + 1 : frame.bottom > controls.top + 1) issues.push('camera and controls overlap');
+				if (innerWidth >= 768 && frame.right > controls.left + 1) issues.push('camera and controls overlap');
 				return issues;
 			})()`, &issues)); err != nil {
 				t.Fatal(err)

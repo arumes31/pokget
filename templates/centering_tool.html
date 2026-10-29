@@ -125,7 +125,7 @@
             </button>
         </div>
 
-        <div x-show="!activeStream && !previewURL" class="scanner-empty absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <div x-show="!activeStream && !previewURL" class="scanner-empty absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center overflow-y-auto">
             <span class="material-symbols-outlined !text-4xl text-red-500" aria-hidden="true">photo_camera</span>
             <p data-i18n class="text-base font-semibold text-zinc-100">Add a photo to begin</p>
             <p data-i18n class="max-w-xs text-sm leading-6 text-zinc-400">Use the photo button below, or allow camera access to capture your card.</p>
@@ -293,6 +293,11 @@
                 <span data-i18n>Retry last crop</span>
             </button>
         </div>
+
+        <!-- Full-width fallback button for direct image upload -->
+        <button data-i18n type="button" x-show="lastScanBlob && (needsReview || scanError)" :disabled="scanning"
+            @click="submitPreparedBlob(lastScanBlob, lastScanName || 'retry.jpg', false, true)"
+            class="w-full min-h-11 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 px-3 text-xs font-mono text-red-200 transition-colors">Use server image scan</button>
 
         <!-- Identified Card Sheet -->
         <section x-show="detectedCard" x-cloak x-ref="scanResult" tabindex="-1" class="scan-result" aria-labelledby="scan-result-title">

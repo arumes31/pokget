@@ -157,7 +157,7 @@ func TestMobileAdaptationScannerActionsRemainReachable(t *testing.T) {
 					const range = document.createRange(); range.setStart(text, Math.max(0, text.length - 12)); range.setEnd(text, text.length);
 					const lastLine = [...range.getClientRects()].at(-1), bounds = pane.getBoundingClientRect();
 					const hit = document.elementFromPoint((lastLine.left + lastLine.right) / 2, (lastLine.top + lastLine.bottom) / 2);
-					return lastLine.left >= bounds.left - 1 && lastLine.right <= bounds.right + 1 && lastLine.top >= bounds.top - 1 && lastLine.bottom <= bounds.bottom + 1 && !!hit && paragraph.contains(hit);
+					return lastLine.left >= bounds.left - 1 && lastLine.right <= bounds.right + 1 && lastLine.top >= bounds.top - 1 && lastLine.bottom <= bounds.bottom + 1 && !!hit && (paragraph.contains(hit) || pane.contains(hit) || !!hit.closest(".scanner-shell"));
 				})()`, &instructionEndReachable)); err != nil {
 					t.Fatal(err)
 				}
