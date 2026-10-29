@@ -62,7 +62,7 @@ docker run -d \
   -e "POSTGRES_USER=${database_user}" \
   -e "POSTGRES_PASSWORD=${database_password}" \
   -e "POSTGRES_DB=${database_name}" \
-  postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b >/dev/null
+  postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5 >/dev/null
 
 database_ready=false
 for _ in $(seq 1 60); do

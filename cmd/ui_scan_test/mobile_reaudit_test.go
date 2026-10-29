@@ -239,7 +239,7 @@ func TestMobileEditorSaveRefreshCannotReplaceNewerNavigation(t *testing.T) {
 		markPhase("wait refresh request"),
 		chromedp.Poll(`window.editorRefreshStarted`, nil, chromedp.WithPollingTimeout(2*time.Second)),
 		markPhase("click navigation"),
-		chromedp.Click(`.app-bottom-nav [hx-get="/wantlist"]`, chromedp.ByQuery),
+		chromedp.Evaluate(`document.querySelector(".app-bottom-nav [hx-get=\"/wantlist\"]").click()`, nil),
 		markPhase("wait Grails"),
 		chromedp.Poll(`document.querySelector('#main-content .page-title')?.textContent.trim()==='Grails'`, nil, chromedp.WithPollingTimeout(2*time.Second)),
 		chromedp.Sleep(700*time.Millisecond),

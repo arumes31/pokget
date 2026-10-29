@@ -9,7 +9,7 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "window-controls-overlay"],
   "background_color": "#050505",
-  "theme_color": "#0a0a0a",
+  "theme_color": "#050505",
   "icons": [
     {
       "src": "/static/img/icon-192.png",

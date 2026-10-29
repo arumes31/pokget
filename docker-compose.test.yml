@@ -22,7 +22,9 @@ services:
     ports: !override
       - "127.0.0.1:5434:5432"
     volumes:
-      - pokget_test_postgres:/var/lib/postgresql/data
+      # PostgreSQL 18 stores cluster data under /var/lib/postgresql/18/docker.
+      # Note: Upgrading an existing database volume from PG15 requires pg_upgrade or pg_dump/restore.
+      - pokget_test_postgres:/var/lib/postgresql
 
   pokget_ollama:
     container_name: pokget_test_ollama

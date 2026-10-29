@@ -5,22 +5,22 @@
   <script src="/static/js/theme.js"></script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#593997">
+  <meta name="theme-color" content="#050505">
   <title data-i18n>Pokget is offline</title>
   <style>
-    :root { color-scheme: light; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --page: #f6f7f9; --ink: #22202d; --muted: #606271; --primary: #593997; }
-    :root[data-theme="dark"] { --page: #171821; --ink: #f6f5f8; --muted: #b8b6c3; }
-    :root[data-theme="dark"] main { background: #23232e; border-color: #454350; }
+    :root { color-scheme: dark; font-family: 'Courier New', Courier, monospace; --page: #050505; --ink: #f6f5f8; --muted: #a1a1aa; --primary: #ef4444; }
+    :root[data-theme="dark"], :root[data-theme="light"] { --page: #050505; --ink: #f6f5f8; --muted: #a1a1aa; --primary: #ef4444; }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); color: var(--ink); background: var(--page); }
-    main { width: min(100%, 28rem); min-width: 0; padding: clamp(1rem, 5vw, 2rem); text-align: center; border: 1px solid #e2e4eb; border-radius: .75rem; background: white; overflow-wrap: anywhere; }
+    main { width: min(100%, 28rem); min-width: 0; padding: clamp(1.25rem, 5vw, 2rem); text-align: center; border: 1px solid rgba(239, 68, 68, 0.25); border-radius: .85rem; background: rgba(14, 14, 18, 0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 16px rgba(239, 68, 68, 0.15); overflow-wrap: anywhere; }
     img { width: 4rem; height: 4rem; object-fit: contain; }
-    h1 { margin: 1rem 0 .5rem; font-size: 1.5rem; }
-    p { margin: 0 auto 1.5rem; max-width: 22rem; color: var(--muted); line-height: 1.6; }
-    button { min-height: 3rem; max-width: 100%; padding: .75rem 1.25rem; border: 0; border-radius: .75rem; color: white; background: var(--primary); font: inherit; font-weight: 600; cursor: pointer; }
-    button:hover { background: #452d75; }
+    h1 { margin: 1rem 0 .5rem; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em; color: #ffffff; }
+    p { margin: 0 auto 1.5rem; max-width: 22rem; color: var(--muted); line-height: 1.6; font-size: 0.875rem; }
+    button { min-height: 3rem; max-width: 100%; padding: .75rem 1.5rem; border: 1px solid rgba(239, 68, 68, 0.6); border-radius: .75rem; color: white; background: #dc2626; font: inherit; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 0.04em; box-shadow: 0 0 16px rgba(239, 68, 68, 0.4); transition: transform 0.15s, background-color 0.15s, box-shadow 0.15s; }
+    button:hover { background: #b91c1c; box-shadow: 0 0 24px rgba(239, 68, 68, 0.65); }
+    button:active { transform: scale(0.98); }
     button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
-    ::selection { color: var(--ink); background: #eae3f5; }
+    ::selection { color: #ffffff; background: rgba(239, 68, 68, 0.4); }
   </style>
 </head>
 <body>

@@ -221,10 +221,19 @@ func NewLLMServiceWithConfig(config LLMConfig) (*LLMService, error) {
 	}, nil
 }
 
+func fallbackOllamaHost() string {
+	host := strings.TrimSpace(os.Getenv("OLLAMA_HOST"))
+	if host == "" || host == "0.0.0.0" {
+		return defaultOllamaHost
+	}
+	return host
+}
+
 func normalizeOllamaBaseURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
+	fallbackHost := fallbackOllamaHost()
 	if raw == "" {
-		raw = defaultOllamaHost
+		raw = fallbackHost
 	}
 	if !strings.Contains(raw, "://") {
 		raw = "http://" + raw
@@ -239,7 +248,13 @@ func normalizeOllamaBaseURL(raw string) (string, error) {
 	if parsed.User != nil {
 		return "", errors.New("llm: Ollama URL must not contain user information")
 	}
-	if parsed.Port() == "" {
+	if parsed.Hostname() == "0.0.0.0" {
+		port := parsed.Port()
+		if port == "" {
+			port = "11434"
+		}
+		parsed.Host = net.JoinHostPort(fallbackHost, port)
+	} else if parsed.Port() == "" {
 		parsed.Host = net.JoinHostPort(parsed.Hostname(), "11434")
 	}
 	return strings.TrimRight(parsed.String(), "/"), nil
