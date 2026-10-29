@@ -98,6 +98,7 @@ func TestProxyMiddlewareCloudflarePeerVerification(t *testing.T) {
 		name       string
 		remoteAddr string
 		headers    map[string]string
+		cfProxies  string
 		want       string
 	}{
 		{
@@ -118,12 +119,22 @@ func TestProxyMiddlewareCloudflarePeerVerification(t *testing.T) {
 			headers:    map[string]string{"CF-Connecting-IP": "198.51.100.1"},
 			want:       "198.51.100.1",
 		},
+		{
+			name:       "whitespace CLOUDFLARE_PROXIES uses default list",
+			remoteAddr: "173.245.48.10:4000",
+			headers:    map[string]string{"CF-Connecting-IP": "198.51.100.1"},
+			cfProxies:  "   ",
+			want:       "198.51.100.1",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("TRUST_CLOUDFLARE", "true")
 			t.Setenv("TRUST_PROXY", "false")
+			if tc.cfProxies != "" {
+				t.Setenv("CLOUDFLARE_PROXIES", tc.cfProxies)
+			}
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.RemoteAddr = tc.remoteAddr

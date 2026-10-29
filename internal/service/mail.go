@@ -31,6 +31,7 @@ import (
 	"net/smtp"
 	"os"
 	"strings"
+	"time"
 )
 
 type Mailer interface {
@@ -91,9 +92,17 @@ func sendMailSecure(addr string, a smtp.Auth, from string, to []string, msg []by
 		return fmt.Errorf("mail: invalid smtp address %q: %w", addr, err)
 	}
 
-	c, err := smtp.Dial(addr)
+	conn, err := net.DialTimeout("tcp", addr, 15*time.Second)
 	if err != nil {
-		return err
+		return fmt.Errorf("mail: dial failed: %w", err)
+	}
+	defer conn.Close()
+
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+
+	c, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return fmt.Errorf("mail: new client failed: %w", err)
 	}
 	defer c.Close()
 

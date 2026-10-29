@@ -115,8 +115,12 @@ func ProxyMiddleware(next http.Handler) http.Handler {
 	trustProxy := os.Getenv("TRUST_PROXY") == "true"
 	trustCF := os.Getenv("TRUST_CLOUDFLARE") == "true"
 	trusted := parseTrustedProxies(os.Getenv("TRUSTED_PROXIES"))
-	cfProxies := parseTrustedProxies(os.Getenv("CLOUDFLARE_PROXIES"))
-	if len(cfProxies) == 0 || os.Getenv("CLOUDFLARE_PROXIES") == "" {
+	cfEnv := strings.TrimSpace(os.Getenv("CLOUDFLARE_PROXIES"))
+	var cfProxies []*net.IPNet
+	if cfEnv != "" {
+		cfProxies = parseTrustedProxies(cfEnv)
+	}
+	if len(cfProxies) == 0 {
 		cfProxies = parseTrustedProxies(defaultCloudflareProxies)
 	}
 

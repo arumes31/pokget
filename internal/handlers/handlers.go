@@ -763,7 +763,9 @@ func (h *Handler) AutoNameBinder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second))
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		slog.Warn("Failed to set write deadline for scan response", "error", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"name": newName})
 }
@@ -1268,7 +1270,9 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		if diagnostics && processedImg != nil {
 			resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
 		}
-		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second))
+		if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
+			slog.Warn("Failed to set write deadline for scan response", "error", err)
+		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			slog.Error("Failed to encode JSON response", "error", err)
 		}
@@ -1347,7 +1351,9 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	if diagnostics && processedImg != nil {
 		resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
 	}
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second))
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		slog.Warn("Failed to set write deadline for scan response", "error", err)
+	}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		slog.Error("Failed to encode JSON response", "error", err)
 	}
