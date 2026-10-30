@@ -5,26 +5,77 @@
     </header>
     {{ if .TotalCards }}
     <dl data-i18n-attrs="aria-label" class="collection-summary" aria-label="Collection summary">
-        <div><dt data-i18n>Estimated value</dt><dd>{{ if .PricedCardCount }}{{ .CurrencySymbol }}{{ printf "%.2f" .TotalValuation }}{{ else }}<span data-i18n class="text-base">Price unavailable</span>{{ end }}</dd></div>
+        <div><dt data-i18n>Estimated value</dt><dd>{{ if .PricedCardCount }}{{ .CurrencySymbol }}{{ printf "%.2f" .TotalValuation }}{{ if .Has24hChange }} <span class="ml-2 inline-flex items-center text-xs font-mono font-bold {{ if ge .Change24h 0.0 }}text-emerald-400{{ else }}text-red-400{{ end }}">{{ if ge .Change24h 0.0 }}+{{ end }}{{ printf "%.1f" .Change24h }}% <span data-i18n class="ml-1 text-zinc-500 font-normal text-[11px]">24h</span></span>{{ end }}{{ else }}<span data-i18n class="text-base">Price unavailable</span>{{ end }}</dd></div>
         <div><dt data-i18n>Cards</dt><dd data-collection-total>{{ .TotalCards }}</dd></div>
         <div><dt data-i18n>Binders</dt><dd>{{ .BinderCount }}</dd></div>
         <div><dt data-i18n>Collector level</dt><dd class="!text-base !mt-2">{{ .UserRank }}</dd></div>
     </dl>
     <p data-i18n class="-mt-3 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Value uses available catalog prices and your custom values. Prices may be missing or out of date.</p>
     {{ end }}
-    <section aria-labelledby="main-vault-title">
+    {{ if and .TotalCards .SetCompletion }}
+    <section aria-labelledby="set-completion-title" class="mb-6 rounded-2xl border border-red-500/25 bg-[#0a0a0c]/80 p-4 backdrop-blur">
+        <div class="mb-3 flex items-center justify-between">
+            <h2 data-i18n id="set-completion-title" class="text-xs font-bold uppercase tracking-[0.14em] text-red-400 font-mono">Master set progress</h2>
+            <span class="text-xs text-zinc-400 font-mono">{{ len .SetCompletion }} <span data-i18n>sets tracked</span></span>
+        </div>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {{ range .SetCompletion }}
+            <div class="rounded-xl border border-red-500/15 bg-black/40 p-3">
+                <div class="mb-1.5 flex items-center justify-between text-xs">
+                    <span class="truncate font-bold text-zinc-200" title="{{ .Name }}">{{ .Name }}</span>
+                    <span class="ml-2 shrink-0 font-mono text-zinc-400">{{ .OwnedCards }}/{{ .TotalCards }} <span class="text-red-400 font-bold">({{ .Percent }}%)</span></span>
+                </div>
+                <div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-900 border border-zinc-800">
+                    <div class="h-full rounded-full bg-red-500 transition-all duration-300" style="width: {{ .Percent }}%"></div>
+                </div>
+            </div>
+            {{ end }}
+        </div>
+    </section>
+    {{ end }}
+    <section aria-labelledby="main-vault-title" x-data="{
+        query: '',
+        condition: 'all',
+        matches(el) {
+            const q = this.query.trim().toLowerCase();
+            const matchesQuery = !q || (el.dataset.cardName + ' ' + el.dataset.cardSet).toLowerCase().includes(q);
+            const matchesCond = this.condition === 'all' || el.dataset.condition === this.condition;
+            return matchesQuery && matchesCond;
+        }
+    }">
         {{ if .Portfolio }}
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div><h2 data-i18n id="main-vault-title" class="section-title">Main vault</h2></div>
-            <button data-i18n class="btn-ghost text-red-400 hover:text-red-300 font-mono" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
-                hx-on::before-request="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'binders' } }))">View binders</button>
+            <div class="flex flex-wrap items-center gap-2">
+                <a data-i18n href="/portfolio/export" download class="btn-secondary flex items-center gap-1.5 py-1.5 px-3 text-xs font-mono" title="Export vault as CSV" data-i18n-attrs="title">
+                    <span class="material-symbols-outlined text-sm" aria-hidden="true">download</span>Export CSV
+                </a>
+                <button data-i18n class="btn-ghost text-red-400 hover:text-red-300 font-mono text-xs py-1.5 px-3" hx-get="/binders" hx-target="#main-content" hx-push-url="/?view=binders"
+                    hx-on::before-request="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'binders' } }))">View binders</button>
+            </div>
+        </div>
+        <div class="mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-center">
+            <div class="relative w-full max-w-full sm:flex-1">
+                <span class="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-zinc-500" aria-hidden="true">search</span>
+                <input type="text" x-model="query" placeholder="Filter cards by name or set..." data-i18n-attrs="placeholder"
+                    class="w-full max-w-full rounded-xl border border-red-500/20 bg-black/60 py-2 pl-9 pr-10 text-xs text-zinc-100 placeholder-zinc-500 backdrop-blur focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 font-mono">
+                <button type="button" x-show="query" x-cloak @click="query = ''" class="material-symbols-outlined absolute right-0 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-sm text-zinc-400 hover:text-zinc-200" aria-label="Clear filter" data-i18n-attrs="aria-label">close</button>
+            </div>
+            <select x-model="condition" class="w-full max-w-full sm:w-auto rounded-xl border border-red-500/20 bg-black/60 px-3 py-2 text-xs text-zinc-300 backdrop-blur focus:border-red-500 focus:outline-none font-mono">
+                <option value="all" data-i18n>All conditions</option>
+                <option value="NM" data-i18n>Near Mint</option>
+                <option value="LP" data-i18n>Lightly Played</option>
+                <option value="MP" data-i18n>Moderately Played</option>
+                <option value="HP" data-i18n>Heavily Played</option>
+                <option value="DMG" data-i18n>Damaged</option>
+            </select>
         </div>
         {{ else }}<h2 data-i18n id="main-vault-title" class="sr-only">Main vault</h2>{{ end }}
 
         {{ if .Portfolio }}
         <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
             {{ range .Portfolio }}
-            <article data-collection-item data-portfolio-item data-id="{{ .ID }}" data-binder-id="{{ .BinderID }}" class="card portfolio-card group min-w-0 overflow-hidden p-2.5 transition hover:border-red-500/50 hover:shadow-[0_0_16px_rgba(239,68,68,0.2)]">
+            <article data-collection-item data-portfolio-item data-id="{{ .ID }}" data-binder-id="{{ .BinderID }}" data-card-name="{{ .Card.Name }}" data-card-set="{{ .Card.Set }}" data-condition="{{ .Condition }}" x-show="matches($el)" class="card portfolio-card group min-w-0 overflow-hidden p-2.5 transition hover:border-red-500/50 hover:shadow-[0_0_16px_rgba(239,68,68,0.2)]">
                 <div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-[#0a0a0c] border border-red-500/20">
                     <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="h-full w-full object-contain" loading="lazy" decoding="async">
                     <span class="status-badge absolute right-2 top-2 border-red-500/30 bg-black/80 text-zinc-100 backdrop-blur font-mono">{{ .Condition }}</span>

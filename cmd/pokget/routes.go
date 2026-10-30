@@ -93,6 +93,7 @@ func buildRouter(cfg *config.Config, database *sql.DB, h *handlers.Handler) *mux
 	protected.HandleFunc("/portfolio/delete", h.DeletePortfolioItem).Methods("POST", "DELETE") // BUG-H02: Delete with ownership check
 	protected.HandleFunc("/portfolio/binder", h.UpdatePortfolioBinder).Methods("POST")
 	protected.HandleFunc("/portfolio/toggle-visibility", h.ToggleVisibility).Methods("POST")
+	protected.HandleFunc("/portfolio/export", h.ExportPortfolioCSV).Methods("GET")
 	protected.HandleFunc("/wantlist", h.Wantlist).Methods("GET")
 	protected.HandleFunc("/wantlist/add", h.AddToWantlist).Methods("POST")
 	protected.HandleFunc("/wantlist/edit", h.UpdateWantlistItem).Methods("POST")

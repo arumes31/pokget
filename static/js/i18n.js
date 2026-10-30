@@ -1,6 +1,16 @@
 (() => {
   'use strict';
   const german = {
+    "Export CSV": "CSV exportieren",
+    "Export vault as CSV": "Sammlung als CSV exportieren",
+    "Master set progress": "Master-Set-Fortschritt",
+    "sets tracked": "Sets erfasst",
+    "24h": "24 Std.",
+    "Filter cards by name or set...": "Karten nach Name oder Set filtern …",
+    "Clear filter": "Filter löschen",
+    "All conditions": "Alle Zustände",
+    "Heavily Played": "Starke Gebrauchsspuren",
+    "Damaged": "Beschädigt",
     "Device OCR: timeout. Uploading the crop for server detection.": "Geräte-OCR: Zeitlimit erreicht. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
     "Device OCR: weak text. Uploading the crop for server detection.": "Geräte-OCR: Text nicht sicher lesbar. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
     "Device OCR: error. Uploading the crop for server detection.": "Geräte-OCR: Fehler. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
