@@ -239,7 +239,7 @@ func startBackgroundWorkers(
 
 	// Wire up background sync callbacks to reload cache and rebuild the BK-tree dynamically.
 	reloadCards := func(source string) {
-		slog.Info("Worker: catalog changed, reloading cards cache and rebuilding BK-tree", "source", source)
+		slog.Info("Worker: catalog changed, reloading cards cache", "source", source)
 		if count, err := h.ReloadCardsCache(); err != nil {
 			slog.Error("Worker: Failed to reload cards cache", "source", source, "error", err)
 		} else {
