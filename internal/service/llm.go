@@ -289,6 +289,9 @@ func (s *LLMService) AutoSetup() {
 
 // AutoSetupContext ensures the configured Ollama model is available.
 func (s *LLMService) AutoSetupContext(ctx context.Context) {
+	if strings.TrimSpace(os.Getenv("OLLAMA_HOST")) == "" && (s.BaseURL == "" || s.BaseURL == "http://"+defaultOllamaHost+":11434") {
+		return
+	}
 	slog.Info("LLM: Auto-setup started")
 	baseURL, model, client := s.BaseURL, s.Model, s.httpClient()
 

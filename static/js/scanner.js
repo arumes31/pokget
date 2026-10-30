@@ -946,7 +946,7 @@
 
           if (this.needsReview) {
             this.notify('Review the possible printings before adding the card.', 'info');
-          } else if (this.detectedID) {
+          } else if (this.detectedID || this.detectedCard) {
             this.notify('Card detected.', 'success');
           } else {
             this.scanError = 'No confident match was found. Adjust the guides, retry, or enter a card ID.';
@@ -1073,7 +1073,7 @@
       },
 
       confirmMatch() {
-        if (this.scanning || !this.detectedID) return;
+        if (this.scanning || (!this.detectedID && !this.detectedCard)) return;
         this.matchConfirmed = true;
       },
 
@@ -1099,7 +1099,7 @@
       },
 
       async addToCollection() {
-        if (this.scanning || !this.detectedID || this.adding || this.added) return;
+        if (this.scanning || (!this.detectedID && !this.detectedCard) || this.adding || this.added) return;
         if (this.needsReview && !this.matchConfirmed) {
           this.notify('Confirm the intended printing before adding it.', 'error');
           return;
@@ -1108,7 +1108,12 @@
         this.adding = true;
         try {
           const formData = new FormData();
-          formData.append('card_id', this.detectedID);
+          formData.append('card_id', this.detectedID || '');
+          if (this.detectedCard) formData.append('card_name', this.detectedCard);
+          if (this.detectedSet) formData.append('set_name', this.detectedSet);
+          if (this.detectedNumber) formData.append('collector_number', this.detectedNumber);
+          if (this.detectedLanguage) formData.append('language', this.detectedLanguage);
+          if (this.game) formData.append('game', this.game);
           const response = await fetch('/portfolio/add', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken },

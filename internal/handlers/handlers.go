@@ -504,6 +504,27 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 	// BUG-H01 FIX: Validate required fields before inserting.
 	cardID := r.FormValue("card_id")
 	if cardID == "" {
+		cardName := strings.TrimSpace(r.FormValue("card_name"))
+		if cardName != "" {
+			setName := strings.TrimSpace(r.FormValue("set_name"))
+			if setName == "" {
+				setName = "Uncataloged Set"
+			}
+			c := models.Card{
+				Name:            cardName,
+				Set:             setName,
+				CollectorNumber: strings.TrimSpace(r.FormValue("collector_number")),
+				Language:        strings.TrimSpace(r.FormValue("language")),
+				Game:            strings.TrimSpace(r.FormValue("game")),
+			}
+			cardID = generateSyntheticCardID(c)
+			c.ID = cardID
+			if h.DB != nil {
+				h.persistSyntheticCard(r.Context(), c)
+			}
+		}
+	}
+	if cardID == "" {
 		http.Error(w, "card_id is required", http.StatusBadRequest)
 		return
 	}
@@ -512,8 +533,24 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 	var exists bool
 	err := h.DB.QueryRowContext(r.Context(), "SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1)", cardID).Scan(&exists)
 	if err != nil || !exists {
-		http.Error(w, "Invalid card_id: card not found", http.StatusBadRequest)
-		return
+		cardName := strings.TrimSpace(r.FormValue("card_name"))
+		if cardName != "" {
+			c := models.Card{
+				ID:              cardID,
+				Name:            cardName,
+				Set:             r.FormValue("set_name"),
+				CollectorNumber: r.FormValue("collector_number"),
+				Language:        r.FormValue("language"),
+				Game:            r.FormValue("game"),
+			}
+			if h.DB != nil {
+				h.persistSyntheticCard(r.Context(), c)
+			}
+			exists = true
+		} else {
+			http.Error(w, "Invalid card_id: card not found", http.StatusBadRequest)
+			return
+		}
 	}
 	notes := r.FormValue("notes")
 	customPriceStr := r.FormValue("custom_price")
@@ -1332,6 +1369,20 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 				detectedPrice, _ = best.PriceUSD.Float64()
 			}
 			detectedImage = best.ImageURL
+
+			if detectedID == "" && detectedCard != "" {
+				synthID := generateSyntheticCardID(*best)
+				best.ID = synthID
+				detectedID = synthID
+				if h.DB != nil {
+					h.persistSyntheticCard(r.Context(), *best)
+				}
+				for i := range result.TopMatches {
+					if result.TopMatches[i].Card != nil && result.TopMatches[i].Card.ID == "" {
+						result.TopMatches[i].Card.ID = synthID
+					}
+				}
+			}
 		}
 
 		// Build top matches for API response (SCAN-09)

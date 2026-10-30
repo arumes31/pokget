@@ -1,55 +1,41 @@
 services:
   pokget_app:
     container_name: pokget_app
-    image: ${POKGET_IMAGE:-ghcr.io/arumes31/pokget:latest}
+    image: ghcr.io/arumes31/pokget:latest
     ports:
       - "${APP_PORT:-18066}:${APP_PORT:-18066}"
     environment:
       - APP_NAME=${APP_NAME:-Pokget}
       - APP_PORT=${APP_PORT:-18066}
       - DEBUG=${DEBUG:-false}
-      - SECURE_COOKIES=${SECURE_COOKIES:-true}
-      - RATE_LIMIT=${RATE_LIMIT:-10}
+      - SECURE_COOKIES=${SECURE_COOKIES:-false}
+      - RATE_LIMIT=${RATE_LIMIT:-20}
       - BURST_LIMIT=${BURST_LIMIT:-50}
       - WRITE_TIMEOUT=${WRITE_TIMEOUT:-120}
+      - SCAN_RATE_LIMIT=${SCAN_RATE_LIMIT:-5}
+      - SCAN_BURST_LIMIT=${SCAN_BURST_LIMIT:-10}
       - DB_HOST=pokget_db
       - DB_PORT=5432
       - DB_USER=${DB_USER:-pokget_user}
       - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD must be set in .env}
       - DB_NAME=${DB_NAME:-pokget_db}
       - DB_SSLMODE=disable
-      # Text shortlist selector; separate from the optional image OCR model.
-      - OLLAMA_HOST=${OLLAMA_HOST:-pokget_ollama}
-      - LLM_BASE_URL=${LLM_BASE_URL:-}
-      - LLM_MODEL=${LLM_MODEL:-moonshotai/kimi-k3}
-      - LLM_API=${LLM_API:-}
-      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1024}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:1.5b}
-      - OLLAMA_TEMPERATURE=${OLLAMA_TEMPERATURE:-0}
-      - OLLAMA_SEED=${OLLAMA_SEED:-42}
-      - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-128}
-      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-2048}
-      - OLLAMA_NUM_THREAD=${OLLAMA_NUM_THREAD:-4}
-      - OLLAMA_MAX_CANDIDATES=${OLLAMA_MAX_CANDIDATES:-20}
-      - OLLAMA_MIN_EVIDENCE=${OLLAMA_MIN_EVIDENCE:-180}
-      - OLLAMA_MIN_CONFIDENCE=${OLLAMA_MIN_CONFIDENCE:-0.55}
-      - SCAN_TIMEOUT_SECONDS=${SCAN_TIMEOUT_SECONDS:-75}
-      - SCAN_OCR_POOL_SIZE=${SCAN_OCR_POOL_SIZE:-3}
-      - SCAN_PHASH_HIGH_CONF=${SCAN_PHASH_HIGH_CONF:-5}
-      - SCAN_PHASH_POTENTIAL=${SCAN_PHASH_POTENTIAL:-10}
-      # Slow CPU image fallback, off by default; pull its model before enabling.
-      - SCAN_VISION_OCR_ENABLED=${SCAN_VISION_OCR_ENABLED:-false}
-      - SCAN_VISION_OCR_URL=${SCAN_VISION_OCR_URL:-http://pokget_ollama:11434}
-      - SCAN_VISION_OCR_MODEL=${SCAN_VISION_OCR_MODEL:-qwen3.5:2b}
-      - SCAN_VISION_OCR_TIMEOUT_SECONDS=${SCAN_VISION_OCR_TIMEOUT_SECONDS:-45}
-      - SCAN_VISION_OCR_THREADS=${SCAN_VISION_OCR_THREADS:-4}
-      - OMP_THREAD_LIMIT=${OMP_THREAD_LIMIT:-1}
-      - CLAUDE_ENABLED=${CLAUDE_ENABLED:-false}
+      - CLAUDE_ENABLED=${CLAUDE_ENABLED:-true}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-5-5}
       - CLAUDE_BASE_URL=${CLAUDE_BASE_URL:-https://api.anthropic.com/v1/messages}
       - CLAUDE_TIMEOUT_SECONDS=${CLAUDE_TIMEOUT_SECONDS:-30}
       - CLAUDE_PROMPT_CACHING=${CLAUDE_PROMPT_CACHING:-true}
+      - SCAN_TIMEOUT_SECONDS=${SCAN_TIMEOUT_SECONDS:-75}
+      - SCAN_OCR_POOL_SIZE=${SCAN_OCR_POOL_SIZE:-3}
+      - SCAN_PHASH_HIGH_CONF=${SCAN_PHASH_HIGH_CONF:-5}
+      - SCAN_PHASH_POTENTIAL=${SCAN_PHASH_POTENTIAL:-10}
+      - SCAN_VISION_OCR_ENABLED=${SCAN_VISION_OCR_ENABLED:-false}
+      - OMP_THREAD_LIMIT=${OMP_THREAD_LIMIT:-1}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_API=${LLM_API:-}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1024}
       - SESSION_KEY=${SESSION_KEY}
       - LOG_FORMAT=${LOG_FORMAT:-text}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
@@ -86,8 +72,6 @@ services:
     depends_on:
       pokget_db:
         condition: service_healthy
-      pokget_ollama:
-        condition: service_started
     volumes:
       - ./data/cache:/app/data/cache
       - ./data/catalog-images:/app/data/catalog-images
@@ -119,17 +103,3 @@ services:
       # PostgreSQL 18 stores cluster data under /var/lib/postgresql/18/docker.
       # Note: Upgrading an existing database volume from PG15 requires pg_upgrade or pg_dump/restore.
       - ./data/postgres:/var/lib/postgresql
-
-  pokget_ollama:
-    container_name: pokget_ollama
-    image: ollama/ollama:0.32.3@sha256:ec24bcaa2a810eb74171ce7c517813ef4821ed678988845e8d76cf62467036d4
-    environment:
-      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
-      - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
-      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
-    ports:
-      # Not authenticated: published on loopback only. The app reaches it as
-      # pokget_ollama on the Compose network.
-      - "127.0.0.1:11434:11434"
-    volumes:
-      - ./data/ollama:/root/.ollama
