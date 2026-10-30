@@ -410,6 +410,8 @@
     "Didn't get the email?": "Keine E-Mail erhalten?",
     "Didn't receive the email?": "Keine E-Mail erhalten?",
     "Dismiss": "Schließen",
+    "Enter fullscreen": "Vollbild aktivieren",
+    "Exit fullscreen": "Vollbild beenden",
     "Dismiss install prompt": "Installationshinweis schließen",
     "Display currency": "Anzeigewährung",
     "Download trade log": "Tauschprotokoll herunterladen",
@@ -737,10 +739,27 @@
     translated
   }));
   const storageKey = 'pokget-language';
-  const normalizeLanguage = value => value === 'de' ? 'de' : 'en';
+  const detectDeviceLanguage = () => {
+    try {
+      const nav = window.navigator || (typeof navigator !== 'undefined' ? navigator : null);
+      const navLang = (nav?.language || (nav?.languages && nav?.languages[0]) || '').toLowerCase();
+      if (navLang.startsWith('en')) return 'en';
+      if (navLang.startsWith('de')) return 'de';
+    } catch (_) {}
+    return 'de';
+  };
+  const normalizeLanguage = value => {
+    if (value === 'de' || value === 'en') return value;
+    return detectDeviceLanguage();
+  };
   const normalizeText = value => value.replace(/\s+/g, ' ').trim();
-  let language = 'en';
-  try { language = normalizeLanguage(window.localStorage.getItem(storageKey)); } catch (_) { /* Use English when storage is unavailable. */ }
+  let language = 'de';
+  try {
+    const saved = window.localStorage.getItem(storageKey);
+    language = (saved === 'de' || saved === 'en') ? saved : detectDeviceLanguage();
+  } catch (_) {
+    language = detectDeviceLanguage();
+  }
   const originals = new WeakMap();
 
   function translate(text) {

@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const test = require('node:test');
 
-function setup({ saved = null, blocked = false } = {}) {
+function setup({ saved = null, blocked = false, navLang = "de" } = {}) {
   const events = {};
   let observe;
   function element(text, attributes = {}) {
@@ -26,7 +26,9 @@ function setup({ saved = null, blocked = false } = {}) {
     addEventListener: (name, fn) => { events[name] = fn; },
     querySelectorAll: selector => selector === '[data-language-select]' ? [select] : nodes.filter(el => el.hasAttribute('data-i18n') || el.hasAttribute('data-i18n-attrs')),
   };
-  const window = { localStorage: {
+  const window = {
+    navigator: { language: navLang, languages: [navLang] },
+    localStorage: {
     getItem() { if (blocked) throw Error('blocked'); return saved; },
     setItem(key, value) { if (blocked) throw Error('blocked'); saved = value; },
   }, addEventListener: (name, fn) => { events[name] = fn; } };
@@ -38,11 +40,16 @@ function setup({ saved = null, blocked = false } = {}) {
     choose(value) { select.value = value; events.change({ target: select }); } };
 }
 
-test('English is the default, regardless of browser language', () => {
+test('German is the default, and respects user device language', () => {
   const app = setup();
-  assert.equal(app.document.documentElement.lang, 'en');
-  assert.equal(app.select.value, 'en');
-  assert.equal(app.heading.childNodes[0].nodeValue, ' Settings ');
+  assert.equal(app.document.documentElement.lang, 'de');
+  assert.equal(app.select.value, 'de');
+  assert.equal(app.heading.childNodes[0].nodeValue, ' Einstellungen ');
+
+  const englishDevice = setup({ navLang: 'en' });
+  assert.equal(englishDevice.document.documentElement.lang, 'en');
+  assert.equal(englishDevice.select.value, 'en');
+  assert.equal(englishDevice.heading.childNodes[0].nodeValue, ' Settings ');
 });
 
 test('German selection translates marked copy and labels, persists, and reverses to English', () => {
@@ -59,12 +66,12 @@ test('German selection translates marked copy and labels, persists, and reverses
   assert.equal(app.field.attributes.placeholder, 'Card name');
 });
 
-test('invalid and unavailable storage fall back to English without disabling selection', () => {
+test('invalid and unavailable storage fall back to German or device language without disabling selection', () => {
   for (const options of [{ saved: 'fr' }, { blocked: true }]) {
     const app = setup(options);
-    assert.equal(app.select.value, 'en');
-    app.choose('de');
-    assert.equal(app.document.documentElement.lang, 'de');
+    assert.equal(app.select.value, 'de');
+    app.choose('en');
+    assert.equal(app.document.documentElement.lang, 'en');
   }
 });
 
@@ -84,7 +91,7 @@ test('HTMX swaps and Alpine text updates use the current language without stale 
 });
 
 test('another tab can change or clear the language preference', () => {
-  const app = setup();
+  const app = setup({ navLang: 'en' });
   app.events.storage({ key: 'pokget-language', newValue: 'de' });
   assert.equal(app.select.value, 'de');
   app.events.storage({ key: 'pokget-theme', newValue: 'light' });
