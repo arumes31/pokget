@@ -1,0 +1,5 @@
+[allowlist]
+description = "Ignore example and placeholder values"
+paths = [
+    '''example\.env''',
+]
