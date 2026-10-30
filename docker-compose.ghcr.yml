@@ -9,6 +9,8 @@ services:
       - APP_PORT=${APP_PORT:-18066}
       - DEBUG=${DEBUG:-false}
       - SECURE_COOKIES=${SECURE_COOKIES:-true}
+      - RATE_LIMIT=${RATE_LIMIT:-10}
+      - BURST_LIMIT=${BURST_LIMIT:-50}
       - WRITE_TIMEOUT=${WRITE_TIMEOUT:-120}
       - DB_HOST=pokget_db
       - DB_PORT=5432

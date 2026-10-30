@@ -59,7 +59,7 @@
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         <section class="card min-w-0 p-5" aria-labelledby="you-give-title">
             <div class="mb-4 flex flex-wrap items-center gap-3">
-                <span class="flex size-10 items-center justify-center rounded-xl bg-rose-100 text-rose-700"><span class="material-symbols-outlined">north_east</span></span>
+                <span class="flex size-10 items-center justify-center rounded-xl bg-red-950/60 border border-red-500/30 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.2)]"><span class="material-symbols-outlined">north_east</span></span>
                 <h3 data-i18n id="you-give-title" class="font-display text-xl font-bold">You give</h3>
             </div>
             <label data-i18n for="my-trade-card" class="field-label">Card from your vault</label>
@@ -72,7 +72,7 @@
                     data-label="{{ .Card.Name }} — {{ .Card.Set }} ({{ .Condition }})" data-image="{{ .Card.ImageURL }}">{{ .Card.Name }} — {{ .Card.Set }}</option>
                 {{ end }}
             </select>
-            <div class="mt-4 flex min-h-20 items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
+            <div class="mt-4 flex min-h-20 items-center gap-3 rounded-xl border border-red-500/25 bg-[#0a0a0c]/80 p-3">
                 <template x-if="myImage"><img :src="myImage" :alt="myCard" class="h-16 w-12 rounded-md object-contain"></template>
                 <div class="min-w-0 flex-1">
                     <p class="break-words text-sm font-semibold"><span x-show="myCard" x-text="myCard"></span><span data-i18n x-show="!myCard">No card selected</span></p>
@@ -81,7 +81,7 @@
             </div>
             <label data-i18n for="my-offer" class="field-label mt-4">Your value</label>
             <div class="relative">
-                <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-rose-700">{{ .CurrencySymbol }}</span>
+                <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-red-400 font-mono">{{ .CurrencySymbol }}</span>
                 <input id="my-offer" type="number" min="0.01" step="0.01" inputmode="decimal" x-model.number="myOffer" @input="myPriceSource = 'estimate'" :disabled="!myPortfolioId" aria-describedby="my-price-help" placeholder="0.00" class="form-control pl-9">
             </div>
             <p data-i18n id="my-price-help" class="mt-2 text-sm text-zinc-600 dark:text-zinc-300" x-text="!myPortfolioId ? 'Select a card first.' : !validValue(catalogPrice) ? 'No catalog price is available. Enter your estimate to compare.' : 'Adjust the catalog estimate for your card’s condition if needed.'"></p>
@@ -110,14 +110,14 @@
                 <span data-i18n class="status-badge" :class="!ready ? 'border-stone-200 bg-stone-100 text-zinc-600 dark:text-zinc-300' : Math.abs(difference) < 0.01 ? 'border-sky-200 bg-sky-50 text-sky-800' : difference > 0 ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300' : 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 text-amber-900 dark:text-amber-300'"
                     x-text="!ready ? 'Waiting for values' : Math.abs(difference) < 0.01 ? 'Even value' : difference > 0 ? 'In your favor' : 'You give more'"></span>
             </div>
-            <div class="mt-5 rounded-2xl bg-zinc-950 p-5 text-white">
+            <div class="mt-5 rounded-2xl bg-[#08080a] border border-red-500/25 p-5 text-white shadow-inner">
                 <p data-i18n class="text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">Net difference</p>
                 <p class="mt-1 font-display text-4xl font-extrabold tracking-[-0.04em]" :class="ready && difference > 0 ? 'text-emerald-300' : ready && difference < 0 ? 'text-amber-300' : 'text-white'"
                     x-text="ready ? (difference > 0 ? '+' : difference < 0 ? '−' : '') + '{{ .CurrencySymbol }}' + Math.abs(difference).toFixed(2) : '—'"></p>
                 <p data-i18n class="mt-2 text-sm text-zinc-300" x-text="!ready ? 'Enter a positive value for each side to compare.' : Math.abs(difference) < 0.01 ? 'Both sides have the same estimated value.' : difference > 0 ? 'At these estimates, the cards you receive are worth more.' : 'At these estimates, the cards you give are worth more.'"></p>
             </div>
         </div>
-        <div class="grid grid-cols-1 gap-2 border-t border-stone-200 bg-stone-50 p-4 sm:grid-cols-2">
+        <div class="grid grid-cols-1 gap-2 border-t border-red-500/25 bg-[#0c0d12]/90 p-4 sm:grid-cols-2">
             <button type="button" @click="copySummary()" :disabled="!ready" class="btn-secondary w-full"><span class="material-symbols-outlined">content_copy</span><span data-i18n x-text="copied ? 'Copied' : 'Copy summary'"></span></button>
             <button data-i18n type="button" @click="downloadLog()" :disabled="!ready" class="btn-primary w-full"><span class="material-symbols-outlined">download</span>Download trade log</button>
             <p data-i18n x-show="!ready" class="text-center text-xs text-zinc-500 dark:text-zinc-400 sm:col-span-2">Complete both sides to export</p>

@@ -33,10 +33,10 @@
                 <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{{
                     .Card.Game }}</p>
                 <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 break-words">{{ .Card.Set }}</p>
-                <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 break-words">{{ .Card.Name }}</h3>
+                <h3 class="text-sm font-semibold text-zinc-100 break-words">{{ .Card.Name }}</h3>
                 {{ $hasPrice := or (and (eq $.UserCurrency "EUR") .Card.PriceEURValid) (and (ne $.UserCurrency "EUR") .Card.PriceUSDValid) }}
                 <div class="flex flex-wrap justify-between items-center mt-1 gap-1">
-                    <span class="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                    <span class="font-bold text-sm text-zinc-100 font-mono">
                         {{ if or .CustomPrice $hasPrice }}{{ $.CurrencySymbol }}{{ if .CustomPrice }}
                         {{ printf "%.2f" .GetCustomPrice }}
                         {{ else }}
@@ -57,7 +57,7 @@
             <div class="empty-state-icon">
                 <span class="material-symbols-outlined text-3xl">inventory_2</span>
             </div>
-            <h3 data-i18n class="text-xl font-bold text-zinc-900 dark:text-zinc-100">This binder is empty</h3>
+            <h3 data-i18n class="text-xl font-bold text-zinc-100">This binder is empty</h3>
             <p data-i18n class="text-sm mt-2 max-w-sm leading-6 text-zinc-600 dark:text-zinc-300">Choose a card in your vault, open its edit menu, and assign it to this binder.</p>
             <button data-i18n type="button" class="btn-primary mt-5" hx-get="/dashboard" hx-target="#main-content" hx-push-url="/?view=home"
                 hx-on::before-request="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'home' } }))">Open your vault</button>
@@ -65,7 +65,7 @@
         {{ end }}
     </div>
     {{ with .Pagination }}{{ if or .PreviousURL .NextURL }}
-    <nav data-i18n-attrs="aria-label" aria-label="Collection pages" class="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 pt-5">
+    <nav data-i18n-attrs="aria-label" aria-label="Collection pages" class="flex flex-wrap items-center justify-between gap-3 border-t border-red-500/25 pt-5">
         {{ if .PreviousURL }}<a data-i18n rel="prev" href="{{ .PreviousURL }}" hx-get="{{ .PreviousFragmentURL }}" hx-target="#main-content" hx-push-url="{{ .PreviousURL }}" class="btn-secondary">Previous</a>{{ else }}<span></span>{{ end }}
         <span data-i18n class="text-sm text-zinc-600 dark:text-zinc-300">Page {{ .Page }}</span>
         {{ if .NextURL }}<a data-i18n rel="next" href="{{ .NextURL }}" hx-get="{{ .NextFragmentURL }}" hx-target="#main-content" hx-push-url="{{ .NextURL }}" class="btn-secondary">Next</a>{{ end }}

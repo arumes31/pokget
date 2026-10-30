@@ -43,14 +43,14 @@
     </form>
 
     <p data-i18n x-show="reportsLoading" x-cloak role="status" aria-live="polite" class="text-sm text-zinc-600 dark:text-zinc-300">Loading reports…</p>
-    <p data-i18n x-show="reportsError" x-cloak x-text="reportsError" role="alert" class="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 p-3 text-sm text-red-800 dark:text-red-300"></p>
+    <p data-i18n x-show="reportsError" x-cloak x-text="reportsError" role="alert" class="rounded-xl border border-red-500/40 bg-red-950/70 p-3 text-sm text-red-200 shadow-[0_0_12px_rgba(239,68,68,0.2)]"></p>
     <p id="misprint-results" tabindex="-1" class="text-sm text-zinc-600 dark:text-zinc-300"><span data-i18n>Showing</span> {{ if .Errors }}{{ len .Errors }} <span data-i18n>{{ if eq (len .Errors) 1 }}report{{ else }}reports{{ end }}</span>{{ else }}0 <span data-i18n>reports</span>{{ end }}{{ if or .MisprintPreviousURL .MisprintNextURL }} <span data-i18n>on this page</span>{{ end }}.</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4" :aria-busy="reportsLoading">
         {{ range .Errors }}
         <article data-misprint data-type="{{ .ErrorType }}"
             class="card card-summary p-4 transition-colors hover:border-red-500/50 hover:shadow-[0_0_16px_rgba(239,68,68,0.2)]">
-            <div class="card-summary-image aspect-[3/4] rounded-xl overflow-hidden bg-zinc-100 dark:bg-stone-100 border border-zinc-200 dark:border-stone-200">
+            <div class="card-summary-image aspect-[3/4] rounded-xl overflow-hidden bg-[#0a0a0c] border border-red-500/20">
                 {{ if .ImageURL }}
                 <img src="{{ .ImageURL }}" alt="{{ .CardName }}" loading="lazy" decoding="async" class="w-full h-full object-contain">
                 {{ else }}
@@ -60,7 +60,7 @@
             <div class="card-summary-body flex flex-col justify-between gap-3 py-0.5">
                 <div>
                     <span class="status-badge border-red-500/30 bg-red-950/60 text-red-300 font-mono">{{ .ErrorType }}</span>
-                    <h3 class="font-bold text-zinc-900 dark:text-zinc-100 mt-2">{{ .CardName }}</h3>
+                    <h3 class="font-bold text-zinc-100 mt-2">{{ .CardName }}</h3>
                     <p class="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">{{ .SetName }}</p>
                 </div>
                 <div class="space-y-1.5">
@@ -82,13 +82,13 @@
                 <span class="material-symbols-outlined text-3xl">find_in_page</span>
             </div>
             {{ if .MisprintPreviousURL }}
-            <h3 data-i18n class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">No reports on this page</h3>
+            <h3 data-i18n class="font-display text-xl font-bold text-zinc-100">No reports on this page</h3>
             <p data-i18n class="mt-2 max-w-sm text-sm leading-6 text-zinc-600 dark:text-zinc-300">Try the previous page or change your search.</p>
             {{ else if .MisprintFiltered }}
-            <h3 data-i18n class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">No matches</h3>
+            <h3 data-i18n class="font-display text-xl font-bold text-zinc-100">No matches</h3>
             <p data-i18n class="mt-2 max-w-sm text-sm leading-6 text-zinc-600 dark:text-zinc-300">Try another card name, set, description, or error type, or clear your filters above.</p>
             {{ else }}
-            <h3 data-i18n class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">Nothing documented yet</h3>
+            <h3 data-i18n class="font-display text-xl font-bold text-zinc-100">Nothing documented yet</h3>
             <p data-i18n class="mt-2 max-w-sm text-sm leading-6 text-zinc-600 dark:text-zinc-300">Share a printing error you have found. Your report will appear in the public community catalog.</p>
             {{ if .CanSubmit }}
             <button data-i18n type="button" x-ref="submitErrorTrigger" class="btn-primary mt-6" @click="submitError = ''; showSubmitErrorModal = true; $nextTick(() => $refs.errorCardId.focus())"><span class="material-symbols-outlined" aria-hidden="true">add</span>Add the first report</button>
@@ -117,7 +117,7 @@
             style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))"
             @click.outside="showSubmitErrorModal = false; $nextTick(() => $refs.submitErrorTrigger?.focus())">
             <div class="flex items-center justify-between">
-                <div><h3 data-i18n id="submit-error-title" class="font-display text-xl font-bold text-zinc-950 dark:text-zinc-50">Report a misprint</h3></div>
+                <div><h3 data-i18n id="submit-error-title" class="font-display text-xl font-bold text-zinc-100">Report a misprint</h3></div>
                 <button data-i18n-attrs="aria-label" type="button" @click="showSubmitErrorModal = false; $nextTick(() => $refs.submitErrorTrigger?.focus())" aria-label="Close submission dialog"
                     class="btn-ghost -mr-2 min-h-11 px-2">
                     <span class="material-symbols-outlined text-lg">close</span>
@@ -128,7 +128,7 @@
                 class="mt-5 space-y-4">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{ .CSRFToken }}">
                 <p data-i18n x-show="submitError" x-text="submitError" role="alert" aria-live="assertive"
-                    class="rounded-xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 px-3.5 py-3 text-sm font-medium text-red-700 dark:text-red-300"></p>
+                    class="rounded-xl bg-red-950/70 border border-red-500/40 px-3.5 py-3 text-sm font-medium text-red-200 shadow-[0_0_12px_rgba(239,68,68,0.2)]"></p>
                 <div>
                     <label data-i18n for="error-card-id" class="label">Exact catalog ID</label>
                     <input data-i18n-attrs="placeholder" id="error-card-id" x-ref="errorCardId" type="text" name="card_id" required placeholder="e.g. swsh4-19" aria-describedby="error-card-id-help" class="input">
@@ -149,7 +149,7 @@
                     <input id="error-multiplier" type="number" name="multiplier" value="1" min="0.01" max="100" step="0.01" required
                         class="input">
                 </div>
-                <p data-i18n class="rounded-xl bg-amber-50 dark:bg-amber-950 px-3 py-2 text-sm leading-6 text-amber-900 dark:text-amber-300"><strong data-i18n>This report becomes public immediately.</strong> Check the card ID, compare with a standard copy, and describe what differs. Reports are not reviewed before publication.</p>
+                <p data-i18n class="rounded-xl bg-amber-950/40 border border-amber-500/30 px-3 py-2 text-sm leading-6 text-amber-300"><strong data-i18n>This report becomes public immediately.</strong> Check the card ID, compare with a standard copy, and describe what differs. Reports are not reviewed before publication.</p>
                 <button data-i18n type="submit" class="btn-primary w-full min-h-12 text-base">Publish report</button>
             </form>
         </div>
