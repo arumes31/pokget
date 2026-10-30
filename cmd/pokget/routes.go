@@ -60,8 +60,8 @@ func buildRouter(cfg *config.Config, database *sql.DB, h *handlers.Handler) *mux
 	web.Use(csrfMiddleware)
 
 	// Public Web Routes
-	web.Handle("/", auth.Middleware(database)(http.HandlerFunc(h.Index))).Methods("GET")
-	web.HandleFunc("/auth", h.Auth).Methods("GET")
+	web.Handle("/", auth.Middleware(database)(http.HandlerFunc(h.Index))).Methods("GET", "HEAD")
+	web.HandleFunc("/auth", h.Auth).Methods("GET", "HEAD")
 	web.HandleFunc("/auth/register", h.Register).Methods("POST")
 	web.HandleFunc("/auth/login", h.Login).Methods("POST")
 	web.HandleFunc("/auth/resend", h.ResendVerification).Methods("POST")
