@@ -77,12 +77,34 @@ and extract their exact identity, printed collector number, set details, languag
    - Card ID: Bottom left or bottom center (e.g. "BD/W54-001", "SAO/S100-001").
    - Rarity: C, U, CR, CC, R, RR, RRR, SR, SP (Gold Foil Signature), SEC.
 
+
+7. Star Wars: Unlimited:
+   - Card Name: Top title bar.
+   - Collector Number: Bottom info line (e.g. "059", "252").
+   - Set Code: 3-letter abbreviation (e.g. "SOR", "SHD", "TWI").
+
+8. Flesh and Blood:
+   - Card Name: Printed at the top of the card.
+   - Collector Number: Printed at the bottom (e.g. "MST131", "WTR001").
+   - Set Code: 3-letter prefix of the card ID (e.g. "MST", "WTR", "OUT").
+   - Foiling / Variant: Rainbow Foil, Cold Foil, Gold Foil, Standard.
+
+9. Digimon Card Game:
+   - Card Name: Printed at top header or banner.
+   - Card Number / Collector Number: Found at bottom right corner (e.g. "BT5-103", "EX8-038", "ST1-03", "P-001").
+   - Set Code: Prefix before the dash (e.g. "BT5", "EX8", "ST1").
+
+10. Grand Archive TCG:
+   - Card Name: Printed at top header.
+   - Collector Number: Found at bottom info area (e.g. "000", "001").
+   - Set Code: Set prefix (e.g. "DOA", "ALC", "P24").
+
 === JSON OUTPUT CONTRACT ===
 
 You must return ONLY a valid, parseable JSON object without markdown wrapping or commentary.
 Required schema:
 {
-  "game": "pokemon" | "magic" | "yugioh" | "one_piece" | "lorcana" | "weiss_schwarz" | "star_wars_unlimited",
+  "game": "pokemon" | "magic" | "yugioh" | "one_piece" | "lorcana" | "weiss_schwarz" | "star_wars_unlimited" | "flesh_and_blood" | "digimon" | "grand_archive",
   "name": "Printed official name on the card",
   "collector_number": "Exact printed number or code (e.g. '16/110', 'OP01-001', '4/102')",
   "set": "Set name or set expansion title",

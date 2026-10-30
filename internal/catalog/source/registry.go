@@ -11,5 +11,8 @@ func DefaultProviders(options HTTPOptions, language string, maxWeissPages int) [
 		&WeissProvider{HTTP: options, MaxPages: maxWeissPages},
 		&YGOPRODeckProvider{HTTP: options},
 		&SWUDBProvider{HTTP: options},
+		&FabCubeProvider{HTTP: options},
+		&DigimonCardIOProvider{HTTP: options},
+		&GATCGProvider{HTTP: options},
 	}
 }

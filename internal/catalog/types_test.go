@@ -68,6 +68,9 @@ func TestGameValid(t *testing.T) {
 		GameWeissSchwarz,
 		GameYuGiOh,
 		GameStarWarsUnlimited,
+		GameFleshAndBlood,
+		GameDigimon,
+		GameGrandArchive,
 	} {
 		if !game.Valid() {
 			t.Fatalf("Game(%q).Valid() = false", game)

@@ -235,7 +235,10 @@
                         { id: 'lorcana', label: 'Disney Lorcana' },
                         { id: 'weiss_schwarz', label: 'Weiss Schwarz' },
                         { id: 'yugioh', label: 'Yu-Gi-Oh!' },
-                        { id: 'star_wars_unlimited', label: 'Star Wars: Unlimited' }
+                        { id: 'star_wars_unlimited', label: 'Star Wars: Unlimited' },
+                        { id: 'flesh_and_blood', label: 'Flesh and Blood' },
+                        { id: 'digimon', label: 'Digimon Card Game' },
+                        { id: 'grand_archive', label: 'Grand Archive TCG' }
                     ]" :key="g.id">
                         <button type="button" @click="setGame(g.id)"
                             class="w-full min-h-11 flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-mono transition-colors text-left"
@@ -256,6 +259,9 @@
                 <option data-i18n value="weiss_schwarz">Weiss Schwarz</option>
                 <option data-i18n value="yugioh">Yu-Gi-Oh!</option>
                 <option data-i18n value="star_wars_unlimited">Star Wars: Unlimited</option>
+                <option data-i18n value="flesh_and_blood">Flesh and Blood</option>
+                <option data-i18n value="digimon">Digimon Card Game</option>
+                <option data-i18n value="grand_archive">Grand Archive TCG</option>
             </select>
             <select id="scanner-language" x-model="lang" class="sr-only" tabindex="-1" aria-hidden="true">
                 <template x-for="language in availableLanguages" :key="language.value">

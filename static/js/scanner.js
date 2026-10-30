@@ -78,6 +78,16 @@
     star_wars_unlimited: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
     ]),
+    flesh_and_blood: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+    ]),
+    digimon: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
+    ]),
+    grand_archive: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+    ]),
   });
 
   const STORAGE_KEYS = Object.freeze({
@@ -418,8 +428,15 @@
           weiss_schwarz: 'Weiss Schwarz',
           yugioh: 'Yu-Gi-Oh!',
           star_wars_unlimited: 'Star Wars: Unlimited',
+          flesh_and_blood: 'Flesh and Blood',
+          digimon: 'Digimon Card Game',
+          grand_archive: 'Grand Archive TCG',
         };
         return labels[g || this.game] || 'Pokémon';
+      },
+
+      gameLabel(g) {
+        return this.gameDisplayName(g);
       },
 
       setLanguage(val) {
@@ -1209,6 +1226,21 @@
     centeringMetrics,
     createCardScanner,
     friendlyHTTPError,
+    gameLabel: (g) => {
+      const labels = {
+        pokemon: 'Pokémon',
+        magic: 'Magic: The Gathering',
+        one_piece: 'One Piece',
+        lorcana: 'Disney Lorcana',
+        weiss_schwarz: 'Weiss Schwarz',
+        yugioh: 'Yu-Gi-Oh!',
+        star_wars_unlimited: 'Star Wars: Unlimited',
+        flesh_and_blood: 'Flesh and Blood',
+        digimon: 'Digimon Card Game',
+        grand_archive: 'Grand Archive TCG',
+      };
+      return labels[g] || 'Pokémon';
+    },
     languagesForGame,
     normalizeLanguage,
     percentCropRect,

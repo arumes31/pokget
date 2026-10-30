@@ -100,6 +100,12 @@ func normalizeGame(game string) string {
 		return "yugioh"
 	case "star_wars", "star_wars_unlimited", "swu":
 		return "star_wars_unlimited"
+	case "flesh_and_blood", "fab":
+		return "flesh_and_blood"
+	case "digimon", "digimon_card_game":
+		return "digimon"
+	case "grand_archive", "gatcg":
+		return "grand_archive"
 	default:
 		return game
 	}

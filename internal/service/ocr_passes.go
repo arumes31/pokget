@@ -68,6 +68,18 @@ var ocrLayouts = map[string][]ocrLayoutROI{
 		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
 		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.02, MinY: 0.82, MaxX: 0.98, MaxY: 0.99}},
 	},
+	"flesh_and_blood": {
+		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
+		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.35, MinY: 0.82, MaxX: 0.99, MaxY: 0.99}},
+	},
+	"digimon": {
+		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
+		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.40, MinY: 0.82, MaxX: 0.99, MaxY: 0.99}},
+	},
+	"grand_archive": {
+		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
+		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.35, MinY: 0.82, MaxX: 0.99, MaxY: 0.99}},
+	},
 }
 
 func buildOCRPasses(src image.Image, config OCRScanConfig) ([]ocrPass, []byte, error) {
