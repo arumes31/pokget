@@ -101,7 +101,7 @@ func (p *AlteredProvider) Fetch(ctx context.Context, request catalog.FetchReques
 			return result, fmt.Errorf("altered: parse cards from %s: %w", baseURL, err)
 		}
 		for _, card := range cards {
-			record := buildAlteredRecord(card, language, "")
+			record := buildAlteredRecord(card, language, "", "")
 			if err := record.Validate(); err != nil {
 				return result, err
 			}
@@ -158,8 +158,44 @@ func (p *AlteredProvider) Fetch(ctx context.Context, request catalog.FetchReques
 			return result, fmt.Errorf("altered: parse set %s: %w", setRef, err)
 		}
 
+		hasEmptyName := false
 		for _, card := range cards {
-			record := buildAlteredRecord(card, language, setName)
+			if strings.TrimSpace(card.Name) == "" {
+				hasEmptyName = true
+				break
+			}
+		}
+
+		var enCardNames map[string]string
+		if hasEmptyName && language != "en" {
+			enFileURL := fmt.Sprintf("%s/SETS/%s/%s_EN.json", baseURL, setRef, setRef)
+			var enRaw json.RawMessage
+			if _, err := getJSON(ctx, p.HTTP, enFileURL, catalog.FetchRequest{}, &enRaw); err == nil {
+				if enCards, err := parseAlteredCards(enRaw); err == nil {
+					enCardNames = make(map[string]string, len(enCards))
+					for _, ec := range enCards {
+						ref := ec.Reference
+						if ref == "" {
+							ref = ec.ID
+						}
+						if ec.Name != "" && ref != "" {
+							enCardNames[ref] = ec.Name
+						}
+					}
+				}
+			}
+		}
+
+		for _, card := range cards {
+			fallbackName := ""
+			if enCardNames != nil {
+				ref := card.Reference
+				if ref == "" {
+					ref = card.ID
+				}
+				fallbackName = enCardNames[ref]
+			}
+			record := buildAlteredRecord(card, language, setName, fallbackName)
 			if err := record.Validate(); err != nil {
 				return result, err
 			}
@@ -196,10 +232,24 @@ func parseAlteredCards(raw json.RawMessage) ([]alteredCard, error) {
 	return hydra.Data, nil
 }
 
-func buildAlteredRecord(card alteredCard, language, fallbackSetName string) catalog.CardRecord {
+func buildAlteredRecord(card alteredCard, language, fallbackSetName, fallbackName string) catalog.CardRecord {
 	sourceID := card.Reference
 	if sourceID == "" {
 		sourceID = card.ID
+	}
+
+	cardName := strings.TrimSpace(card.Name)
+	if cardName == "" {
+		cardName = strings.TrimSpace(fallbackName)
+	}
+	if cardName == "" {
+		cardName = strings.TrimSpace(card.Reference)
+	}
+	if cardName == "" {
+		cardName = strings.TrimSpace(card.ID)
+	}
+	if cardName == "" {
+		cardName = "Unknown Card"
 	}
 
 	setRef := card.CardSet.Reference
@@ -238,7 +288,7 @@ func buildAlteredRecord(card alteredCard, language, fallbackSetName string) cata
 
 	record := catalog.CardRecord{
 		SourceCardID:    sourceID,
-		Name:            card.Name,
+		Name:            cardName,
 		SetCode:         setRef,
 		SetName:         setName,
 		CollectorNumber: collectorNum,
