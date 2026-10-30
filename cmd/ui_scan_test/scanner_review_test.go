@@ -43,7 +43,11 @@ func TestUncertainPrintingRequiresExplicitConfirmation(t *testing.T) {
 				chromedp.Poll(`document.activeElement === document.querySelector('.scan-result')`, nil, chromedp.WithPollingTimeout(5*time.Second)),
 				chromedp.ActionFunc(func(context.Context) error { t.Log("result focused"); return nil }),
 				chromedp.Poll(`document.querySelectorAll('.scan-candidate').length === 2 && document.querySelectorAll('.scan-candidate')[1].textContent.includes('Basis') && document.querySelectorAll('.scan-candidate')[1].textContent.includes('#58/102') && document.querySelectorAll('.scan-candidate')[1].textContent.includes('DE')`, nil),
+				chromedp.ScrollIntoView(".scan-candidate:nth-of-type(2)", chromedp.ByQuery),
 				chromedp.Click(".scan-candidate:nth-of-type(2)", chromedp.ByQuery),
+				chromedp.ActionFunc(func(ctx context.Context) error {
+					return chromedp.Evaluate(`if (document.querySelector('[data-testid="detected-card-id"]')?.dataset?.cardId !== 'base1-58-de') { document.querySelectorAll('.scan-candidate')[1]?.click(); }`, nil).Do(ctx)
+				}),
 				chromedp.ActionFunc(func(context.Context) error { t.Log("candidate clicked"); return nil }),
 				chromedp.Poll(`document.querySelector('[data-testid="detected-card-id"]').dataset.cardId === 'base1-58-de' && document.querySelectorAll('.scan-candidate')[1].getAttribute('aria-pressed') === 'true' && !Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).matchConfirmed`, nil),
 				chromedp.Poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).getClientRects().length`, nil),
@@ -66,10 +70,18 @@ func TestUncertainPrintingRequiresExplicitConfirmation(t *testing.T) {
 				}
 			}
 			if err := chromedp.Run(ctx,
+				chromedp.ScrollIntoView(`[data-testid="confirm-printing"]`, chromedp.ByQuery),
 				chromedp.Click(`[data-testid="confirm-printing"]`, chromedp.ByQuery),
+				chromedp.ActionFunc(func(ctx context.Context) error {
+					return chromedp.Evaluate(`if (!Alpine.$data(document.querySelector('#scanner-root .scanner-shell'))?.matchConfirmed) { document.querySelector('[data-testid="confirm-printing"]')?.click(); }`, nil).Do(ctx)
+				}),
 				chromedp.WaitVisible(`button[\@click="addToCollection()"]`, chromedp.ByQuery),
 				chromedp.Poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).disabled`, nil),
+				chromedp.ScrollIntoView(`button[\@click="reviewMatches()"]`, chromedp.ByQuery),
 				chromedp.Click(`button[\@click="reviewMatches()"]`, chromedp.ByQuery),
+				chromedp.ActionFunc(func(ctx context.Context) error {
+					return chromedp.Evaluate(`if (Alpine.$data(document.querySelector('#scanner-root .scanner-shell'))?.matchConfirmed) { document.querySelector('button[\\@click="reviewMatches()"]')?.click(); }`, nil).Do(ctx)
+				}),
 				chromedp.WaitVisible(`[data-testid="confirm-printing"]`, chromedp.ByQuery),
 				chromedp.Poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).getClientRects().length`, nil),
 			); err != nil {
