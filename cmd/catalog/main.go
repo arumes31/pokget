@@ -236,15 +236,27 @@ func runSync(ctx context.Context, database *sql.DB, args []string) error {
 			}
 
 			encMu.Lock()
-			_ = encoder.Encode(map[string]interface{}{
+			encErr := encoder.Encode(map[string]interface{}{
 				"source":     p.ID(),
 				"game":       p.Game(),
 				"completion": completion,
 			})
 			encMu.Unlock()
+
+			if encErr != nil {
+				errMu.Lock()
+				if firstErr == nil {
+					firstErr = encErr
+				}
+				errMu.Unlock()
+				return
+			}
 		}(provider)
 	}
 	wg.Wait()
+	if firstErr == nil {
+		firstErr = ctx.Err()
+	}
 	return firstErr
 }
 

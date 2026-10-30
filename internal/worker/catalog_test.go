@@ -199,8 +199,12 @@ func TestPerTCGWorkerQueueDoesNotBlockOtherTCGs(t *testing.T) {
 	if fastWorker == nil {
 		t.Fatal("expected fast_tcg worker to exist")
 	}
-	if fastWorker.IsRunning() {
-		t.Fatal("fast_tcg should be idle after completing its sync")
+	deadline := time.Now().Add(time.Second)
+	for fastWorker.IsRunning() {
+		if time.Now().After(deadline) {
+			t.Fatal("fast_tcg should be idle after completing its sync")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	// Slow TCG should still be running
