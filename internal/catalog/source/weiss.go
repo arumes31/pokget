@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/PuerkitoBio/goquery"
 	"pokget/internal/catalog"
@@ -48,8 +49,16 @@ func (p *WeissProvider) Fetch(ctx context.Context, request catalog.FetchRequest,
 	if pageCount < 1 {
 		return result, fmt.Errorf("weiss: invalid page count")
 	}
-	if p.MaxPages > 0 && pageCount > p.MaxPages {
-		pageCount = p.MaxPages
+
+	maxPages := p.MaxPages
+	if maxPages <= 0 && request.Mode == catalog.SyncModeIncremental {
+		// In incremental mode, card results are sorted by newest. Checking the
+		// first 25 pages (750 cards) captures new releases in seconds without
+		// scraping 1,040 historical pages from 2008.
+		maxPages = 25
+	}
+	if maxPages > 0 && pageCount > maxPages {
+		pageCount = maxPages
 		result.CompleteSnapshot = false
 	}
 
@@ -57,16 +66,69 @@ func (p *WeissProvider) Fetch(ctx context.Context, request catalog.FetchRequest,
 	if err := p.emitWeissPage(document, firstURL, seen, emit, &result); err != nil {
 		return result, err
 	}
+	if pageCount <= 1 {
+		return result, nil
+	}
+
+	type pageResult struct {
+		page int
+		doc  *goquery.Document
+		url  string
+		err  error
+	}
+
+	concurrency := 5
+	if pageCount-1 < concurrency {
+		concurrency = pageCount - 1
+	}
+
+	pageChan := make(chan int, pageCount-1)
+	resChan := make(chan pageResult, pageCount-1)
+	var wg sync.WaitGroup
+
+	for w := 0; w < concurrency; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for page := range pageChan {
+				if ctx.Err() != nil {
+					resChan <- pageResult{page: page, err: ctx.Err()}
+					continue
+				}
+				if p.HTTP.RequestDelay > 0 {
+					_ = waitRequestDelay(ctx, p.HTTP.RequestDelay)
+				}
+				endpoint := fmt.Sprintf("%s/cardlist/cardsearch_ex?view=text&page=%d", baseURL, page)
+				doc, _, err := getDocument(ctx, p.HTTP, endpoint, catalog.FetchRequest{})
+				resChan <- pageResult{page: page, doc: doc, url: endpoint, err: err}
+			}
+		}()
+	}
+
 	for page := 2; page <= pageCount; page++ {
-		if err := waitRequestDelay(ctx, p.HTTP.RequestDelay); err != nil {
-			return result, err
+		pageChan <- page
+	}
+	close(pageChan)
+
+	go func() {
+		wg.Wait()
+		close(resChan)
+	}()
+
+	pageDocs := make(map[int]pageResult, pageCount-1)
+	for res := range resChan {
+		pageDocs[res.page] = res
+	}
+
+	for page := 2; page <= pageCount; page++ {
+		res, exists := pageDocs[page]
+		if !exists || res.err != nil {
+			if res.err != nil {
+				return result, fmt.Errorf("weiss page %d: %w", page, res.err)
+			}
+			return result, fmt.Errorf("weiss page %d: missing page response", page)
 		}
-		endpoint := fmt.Sprintf("%s/cardlist/cardsearch_ex?view=text&page=%d", baseURL, page)
-		document, _, err := getDocument(ctx, p.HTTP, endpoint, catalog.FetchRequest{})
-		if err != nil {
-			return result, fmt.Errorf("weiss page %d: %w", page, err)
-		}
-		if err := p.emitWeissPage(document, endpoint, seen, emit, &result); err != nil {
+		if err := p.emitWeissPage(res.doc, res.url, seen, emit, &result); err != nil {
 			return result, err
 		}
 	}

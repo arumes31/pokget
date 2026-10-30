@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 
@@ -37,6 +38,11 @@ type tcgdexCard struct {
 	Image   string `json:"image"`
 }
 
+func escapeTCGdexPath(segment string) string {
+	escaped := url.PathEscape(segment)
+	return strings.ReplaceAll(escaped, "+", "%2B")
+}
+
 func (p *TCGdexProvider) Fetch(ctx context.Context, request catalog.FetchRequest, emit func(catalog.CardRecord) error) (catalog.FetchResult, error) {
 	languages := catalogLanguages(p.Language)
 	if len(languages) > 1 {
@@ -53,7 +59,7 @@ func (p *TCGdexProvider) Fetch(ctx context.Context, request catalog.FetchRequest
 	language := languages[0]
 
 	var sets []tcgdexSetBrief
-	meta, err := getJSON(ctx, p.HTTP, fmt.Sprintf("%s/%s/sets", baseURL, url.PathEscape(language)), request, &sets)
+	meta, err := getJSON(ctx, p.HTTP, fmt.Sprintf("%s/%s/sets", baseURL, escapeTCGdexPath(language)), request, &sets)
 	if err != nil {
 		return catalog.FetchResult{}, err
 	}
@@ -69,9 +75,13 @@ func (p *TCGdexProvider) Fetch(ctx context.Context, request catalog.FetchRequest
 			}
 		}
 		var set tcgdexSet
-		endpoint := fmt.Sprintf("%s/%s/sets/%s", baseURL, url.PathEscape(language), url.PathEscape(brief.ID))
+		endpoint := fmt.Sprintf("%s/%s/sets/%s", baseURL, escapeTCGdexPath(language), escapeTCGdexPath(brief.ID))
 		if _, err := getJSON(ctx, p.HTTP, endpoint, catalog.FetchRequest{}, &set); err != nil {
-			return result, err
+			if ctx.Err() != nil {
+				return result, ctx.Err()
+			}
+			slog.Warn("Catalog: skipping tcgdex set due to fetch error", "set", brief.ID, "language", language, "endpoint", endpoint, "error", err)
+			continue
 		}
 		for _, card := range set.Cards {
 			record := catalog.CardRecord{

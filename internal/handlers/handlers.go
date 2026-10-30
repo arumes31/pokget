@@ -1147,7 +1147,8 @@ func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(fmt.Sprintf("Successfully reloaded %d cards", count)))
 }
 
-func (h *Handler) ReloadCardsCache() (int, error) {
+// ReloadCardsOnly updates the in-memory card cache without rebuilding the BK-tree index.
+func (h *Handler) ReloadCardsOnly() (int, error) {
 	rows, err := h.DB.Query("SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash, COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, ''), COALESCE(set_code, ''), COALESCE(collector_number, ''), catalog_active FROM cards WHERE superseded_by_card_id IS NULL AND (source_id IS NULL OR catalog_active = TRUE)")
 	if err != nil {
 		return 0, err
@@ -1170,6 +1171,15 @@ func (h *Handler) ReloadCardsCache() (int, error) {
 	h.MockCards = allCards
 	h.CardsMu.Unlock()
 	slog.Info("Database: Reloaded cards into cache", "count", len(allCards))
+	return len(allCards), nil
+}
+
+// ReloadCardsCache updates the in-memory card cache and rebuilds the BK-tree index.
+func (h *Handler) ReloadCardsCache() (int, error) {
+	count, err := h.ReloadCardsOnly()
+	if err != nil {
+		return 0, err
+	}
 
 	// Rebuild BK-tree index for fingerprint matching
 	if h.Fingerprint != nil {
@@ -1177,7 +1187,7 @@ func (h *Handler) ReloadCardsCache() (int, error) {
 		slog.Info("Fingerprint: Rebuilt BK-tree index after cache reload")
 	}
 
-	return len(allCards), nil
+	return count, nil
 }
 
 func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {

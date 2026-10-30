@@ -12,6 +12,33 @@ import (
 	"pokget/internal/catalog"
 )
 
+func TestTCGdexProviderEscapesPlusInSetID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ja/sets":
+			_, _ = w.Write([]byte(`[{"id":"SM1+","name":"Sun & Moon"}]`))
+		case "/ja/sets/SM1+":
+			if !strings.Contains(r.RequestURI, "%2B") {
+				http.Error(w, "plus must be percent-encoded as %2B", http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write([]byte(`{"id":"SM1+","name":"Sun & Moon","releaseDate":"2017-01-27","cards":[{"id":"SM1+-1","localId":"1","name":"Pikachu"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := &TCGdexProvider{HTTP: testHTTP(server), BaseURL: server.URL, Language: "ja"}
+	records, result := fetchRecords(t, provider)
+	if result.Count != 1 || len(records) != 1 {
+		t.Fatalf("count = %d, records = %d, want 1", result.Count, len(records))
+	}
+	if records[0].SourceCardID != "SM1+-1" || records[0].SetCode != "SM1+" {
+		t.Fatalf("unexpected record: %+v", records[0])
+	}
+}
+
 func TestTCGdexProvider(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -156,6 +183,37 @@ func TestOnePieceOfficialProviderParsesAlternateArt(t *testing.T) {
 	}
 	if records[0].Images[0].URL != server.URL+"/images/ST01-001_p1.png" {
 		t.Fatalf("unexpected image URL: %q", records[0].Images[0].URL)
+	}
+}
+
+func TestWeissProviderIncrementalCapsPages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		card := func(number, name string) string {
+			return fmt.Sprintf(`<li><a href="/cardlist/?cardno=%s"><img src="/images/%s.png"></a><p class="number">%s</p><p class="ttl">%s</p><dl><dt>Rarity</dt><dd>RR</dd></dl></li>`, number, number, number, name)
+		}
+		if strings.Contains(r.URL.Path, "cardsearch_ex") {
+			page := r.URL.Query().Get("page")
+			_, _ = w.Write([]byte(card("SET/W01-" + page, "Second")))
+			return
+		}
+		_, _ = w.Write([]byte(`<script>var max_page = 100;</script>` + card("SET/W01-001", "First")))
+	}))
+	defer server.Close()
+
+	provider := &WeissProvider{HTTP: testHTTP(server), BaseURL: server.URL}
+	records := make([]catalog.CardRecord, 0)
+	result, err := provider.Fetch(context.Background(), catalog.FetchRequest{Mode: catalog.SyncModeIncremental}, func(record catalog.CardRecord) error {
+		records = append(records, record)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if result.CompleteSnapshot {
+		t.Fatal("incremental mode with capped pages must not mark CompleteSnapshot=true")
+	}
+	if result.Count != 25 {
+		t.Fatalf("expected 25 records (1 per page for 25 pages), got %d", result.Count)
 	}
 }
 
