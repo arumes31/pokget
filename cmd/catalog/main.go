@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"pokget/internal/catalog"
@@ -148,6 +149,7 @@ func runSync(ctx context.Context, database *sql.DB, args []string) error {
 	timeout := flags.Duration("timeout", 6*time.Hour, "per-source sync timeout")
 	requestDelay := flags.Duration("request-delay", 100*time.Millisecond, "delay between paginated upstream requests")
 	maxWeissPages := flags.Int("weiss-max-pages", 0, "limit Weiss pages for diagnostics; 0 means complete catalog")
+	concurrency := flags.Int("concurrency", 4, "number of concurrent sync workers across card games")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -166,26 +168,84 @@ func runSync(ctx context.Context, database *sql.DB, args []string) error {
 	syncer := &catalog.Syncer{Repository: repository, BatchSize: *batchSize}
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
-	for _, provider := range providers {
-		state, err := repository.SourceState(ctx, provider.ID())
-		if err != nil {
-			return err
+
+	if *concurrency <= 1 || len(providers) <= 1 {
+		for _, provider := range providers {
+			state, err := repository.SourceState(ctx, provider.ID())
+			if err != nil {
+				return err
+			}
+			sourceCtx, cancel := context.WithTimeout(ctx, *timeout)
+			completion, syncErr := syncer.Sync(sourceCtx, provider, mode, state.FetchRequest(mode))
+			cancel()
+			if syncErr != nil {
+				return fmt.Errorf("catalog: sync %s: %w", provider.ID(), syncErr)
+			}
+			if err := encoder.Encode(map[string]interface{}{
+				"source":     provider.ID(),
+				"game":       provider.Game(),
+				"completion": completion,
+			}); err != nil {
+				return err
+			}
 		}
-		sourceCtx, cancel := context.WithTimeout(ctx, *timeout)
-		completion, syncErr := syncer.Sync(sourceCtx, provider, mode, state.FetchRequest(mode))
-		cancel()
-		if syncErr != nil {
-			return fmt.Errorf("catalog: sync %s: %w", provider.ID(), syncErr)
-		}
-		if err := encoder.Encode(map[string]interface{}{
-			"source":     provider.ID(),
-			"game":       provider.Game(),
-			"completion": completion,
-		}); err != nil {
-			return err
-		}
+		return nil
 	}
-	return nil
+
+	var encMu sync.Mutex
+	sem := make(chan struct{}, *concurrency)
+	var wg sync.WaitGroup
+	var firstErr error
+	var errMu sync.Mutex
+
+	for _, provider := range providers {
+		if ctx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		go func(p catalog.Provider) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				return
+			}
+
+			state, err := repository.SourceState(ctx, p.ID())
+			if err != nil {
+				errMu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				errMu.Unlock()
+				return
+			}
+
+			sourceCtx, cancel := context.WithTimeout(ctx, *timeout)
+			completion, syncErr := syncer.Sync(sourceCtx, p, mode, state.FetchRequest(mode))
+			cancel()
+
+			if syncErr != nil {
+				errMu.Lock()
+				if firstErr == nil {
+					firstErr = fmt.Errorf("catalog: sync %s: %w", p.ID(), syncErr)
+				}
+				errMu.Unlock()
+				return
+			}
+
+			encMu.Lock()
+			_ = encoder.Encode(map[string]interface{}{
+				"source":     p.ID(),
+				"game":       p.Game(),
+				"completion": completion,
+			})
+			encMu.Unlock()
+		}(provider)
+	}
+	wg.Wait()
+	return firstErr
 }
 
 func providersFor(gameName, language string, delay time.Duration, maxWeissPages int) ([]catalog.Provider, error) {
