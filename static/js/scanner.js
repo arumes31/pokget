@@ -25,47 +25,58 @@
   const NO_CARDS_FOR_LANGUAGE = 'No cards are available for the selected TCG and language';
   const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+  const LANGUAGE_METADATA = Object.freeze({
+    eng: Object.freeze({ flag: '🇺🇸', code: 'EN' }),
+    jpn: Object.freeze({ flag: '🇯🇵', code: 'JP' }),
+    deu: Object.freeze({ flag: '🇩🇪', code: 'DE' }),
+    fra: Object.freeze({ flag: '🇫🇷', code: 'FR' }),
+    chi_sim: Object.freeze({ flag: '🇨🇳', code: '简' }),
+    chi_tra: Object.freeze({ flag: '🇹🇼', code: '繁' }),
+    kor: Object.freeze({ flag: '🇰🇷', code: 'KO' }),
+    [AUTO_LANGUAGE]: Object.freeze({ flag: '🌐', code: 'AUTO' }),
+  });
+
   const LANGUAGE_OPTIONS = Object.freeze({
     pokemon: Object.freeze([
-      { value: 'eng', label: 'English' },
-      { value: 'jpn', label: 'Japanese' },
-      { value: 'deu', label: 'German' },
-      { value: 'fra', label: 'French' },
-      { value: 'chi_sim', label: 'Chinese (Simplified)' },
-      { value: 'chi_tra', label: 'Chinese (Traditional)' },
-      { value: 'kor', label: 'Korean' },
-      { value: AUTO_LANGUAGE, label: 'Auto detect' },
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
+      { value: 'deu', label: 'German', flag: '🇩🇪', code: 'DE' },
+      { value: 'fra', label: 'French', flag: '🇫🇷', code: 'FR' },
+      { value: 'chi_sim', label: 'Chinese (Simplified)', flag: '🇨🇳', code: '简' },
+      { value: 'chi_tra', label: 'Chinese (Traditional)', flag: '🇹🇼', code: '繁' },
+      { value: 'kor', label: 'Korean', flag: '🇰🇷', code: 'KO' },
+      { value: AUTO_LANGUAGE, label: 'Auto detect', flag: '🌐', code: 'AUTO' },
     ]),
     magic: Object.freeze([
-      { value: 'eng', label: 'English' },
-      { value: 'jpn', label: 'Japanese' },
-      { value: 'deu', label: 'German' },
-      { value: 'fra', label: 'French' },
-      { value: AUTO_LANGUAGE, label: 'Auto detect' },
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
+      { value: 'deu', label: 'German', flag: '🇩🇪', code: 'DE' },
+      { value: 'fra', label: 'French', flag: '🇫🇷', code: 'FR' },
+      { value: AUTO_LANGUAGE, label: 'Auto detect', flag: '🌐', code: 'AUTO' },
     ]),
     one_piece: Object.freeze([
-      { value: 'eng', label: 'English' },
-      { value: 'jpn', label: 'Japanese' },
-      { value: AUTO_LANGUAGE, label: 'Auto detect' },
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
+      { value: AUTO_LANGUAGE, label: 'Auto detect', flag: '🌐', code: 'AUTO' },
     ]),
     lorcana: Object.freeze([
-      { value: 'eng', label: 'English' },
-      { value: 'deu', label: 'German' },
-      { value: 'fra', label: 'French' },
-      { value: AUTO_LANGUAGE, label: 'Auto detect' },
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+      { value: 'deu', label: 'German', flag: '🇩🇪', code: 'DE' },
+      { value: 'fra', label: 'French', flag: '🇫🇷', code: 'FR' },
+      { value: AUTO_LANGUAGE, label: 'Auto detect', flag: '🌐', code: 'AUTO' },
     ]),
     weiss_schwarz: Object.freeze([
-      { value: 'eng', label: 'English' },
-      { value: 'jpn', label: 'Japanese' },
-      { value: AUTO_LANGUAGE, label: 'Auto detect' },
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
+      { value: AUTO_LANGUAGE, label: 'Auto detect', flag: '🌐', code: 'AUTO' },
     ]),
     yugioh: Object.freeze([
-      { value: 'eng', label: 'English' },
-      { value: 'jpn', label: 'Japanese' },
-      { value: 'deu', label: 'German' },
-      { value: 'fra', label: 'French' },
-      { value: 'kor', label: 'Korean' },
-      { value: AUTO_LANGUAGE, label: 'Auto detect' },
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
+      { value: 'deu', label: 'German', flag: '🇩🇪', code: 'DE' },
+      { value: 'fra', label: 'French', flag: '🇫🇷', code: 'FR' },
+      { value: 'kor', label: 'Korean', flag: '🇰🇷', code: 'KO' },
+      { value: AUTO_LANGUAGE, label: 'Auto detect', flag: '🌐', code: 'AUTO' },
     ]),
   });
 
@@ -374,6 +385,39 @@
       manualCardID: '',
       manualCardName: '',
       csrfToken: String(config.csrfToken || ''),
+      showLangPopover: false,
+      showGamePopover: false,
+
+      currentLangFlag(l) {
+        return (LANGUAGE_METADATA[l] || LANGUAGE_METADATA[this.lang])?.flag || '🌐';
+      },
+
+      currentLangCode(l) {
+        return (LANGUAGE_METADATA[l] || LANGUAGE_METADATA[this.lang])?.code || 'AUTO';
+      },
+
+      gameDisplayName(g) {
+        const labels = {
+          pokemon: 'Pokémon',
+          magic: 'Magic: The Gathering',
+          one_piece: 'One Piece',
+          lorcana: 'Disney Lorcana',
+          weiss_schwarz: 'Weiss Schwarz',
+          yugioh: 'Yu-Gi-Oh!',
+        };
+        return labels[g || this.game] || 'Pokémon';
+      },
+
+      setLanguage(val) {
+        this.lang = normalizeLanguage(this.game, val);
+        this.showLangPopover = false;
+      },
+
+      setGame(val) {
+        this.game = val;
+        this.showGamePopover = false;
+      },
+
       deviceChangeHandler: null,
 
       get availableLanguages() {
@@ -511,6 +555,8 @@
         this.topMatches = [];
         this.added = false;
         this.scanError = '';
+        this.showLangPopover = false;
+        this.showGamePopover = false;
       },
 
       resetAll() {
@@ -1136,6 +1182,7 @@
   return Object.freeze({
     AUTO_LANGUAGE,
     DEFAULT_LINES,
+    LANGUAGE_METADATA,
     LANGUAGE_OPTIONS,
     MAX_FILE_BYTES,
     centeringMetrics,
