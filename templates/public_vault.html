@@ -43,20 +43,20 @@
             {{ $priceAvailable := .Card.PriceUSDValid }}
             {{ if eq $.UserCurrency "EUR" }}{{ $priceAvailable = .Card.PriceEURValid }}{{ end }}
             <article data-collection-item class="card min-w-0 p-2.5 flex flex-col gap-3">
-                <div class="aspect-[3/4] rounded-xl overflow-hidden relative bg-zinc-100 dark:bg-stone-100">
+                <div class="aspect-[3/4] rounded-xl overflow-hidden relative bg-[#0a0a0c] border border-red-500/20">
                     <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="w-full h-full object-contain" loading="lazy">
                     {{ if .Grade }}
-                    <div class="absolute top-2 right-2 px-2 py-1 bg-surface/90 backdrop-blur rounded-lg border border-zinc-200 dark:border-stone-200 shadow-sm">
+                    <div class="absolute top-2 right-2 px-2 py-1 bg-black/80 backdrop-blur rounded-lg border border-red-500/30 shadow-sm">
                         <span class="text-xs font-bold text-red-400 font-mono">{{ .Grade }}</span>
                     </div>
                     {{ end }}
                 </div>
                 <div class="px-1 min-w-0">
                     <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 break-words">{{ .Card.Set }}</p>
-                    <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 break-words">{{ .Card.Name }}</h3>
+                    <h3 class="text-sm font-semibold text-zinc-100 break-words">{{ .Card.Name }}</h3>
                     <div class="flex flex-wrap justify-between items-center gap-2 mt-2">
                         {{ if $priceAvailable }}
-                        <span class="text-base font-bold text-zinc-900 dark:text-zinc-100">
+                        <span class="text-base font-bold text-zinc-100 font-mono">
                             {{ $.CurrencySymbol }}{{ if eq $.UserCurrency "EUR" }}
                                 {{ .Card.PriceEUR.StringFixed 2 }}
                             {{ else }}
@@ -90,7 +90,7 @@
         {{ end }}
     </main>
 
-    <footer class="mt-16 py-8 border-t border-zinc-200 dark:border-stone-200 text-center px-4">
+    <footer class="mt-16 py-8 border-t border-red-500/25 text-center px-4">
         <a data-i18n href="/auth" class="btn-ghost text-sm">Organize your collection with Pokget<span class="material-symbols-outlined text-lg">arrow_forward</span></a>
     </footer>
 </body>

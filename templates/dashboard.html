@@ -25,20 +25,20 @@
         <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
             {{ range .Portfolio }}
             <article data-collection-item data-portfolio-item data-id="{{ .ID }}" data-binder-id="{{ .BinderID }}" class="card portfolio-card group min-w-0 overflow-hidden p-2.5 transition hover:border-red-500/50 hover:shadow-[0_0_16px_rgba(239,68,68,0.2)]">
-                <div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-stone-100">
+                <div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-[#0a0a0c] border border-red-500/20">
                     <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="h-full w-full object-contain" loading="lazy" decoding="async">
                     <span class="status-badge absolute right-2 top-2 border-red-500/30 bg-black/80 text-zinc-100 backdrop-blur font-mono">{{ .Condition }}</span>
                 </div>
                 <div class="px-1 pb-1 pt-3">
                     <p class="truncate text-xs font-bold uppercase tracking-[0.12em] text-red-400 font-mono">{{ .Card.Set }}</p>
                     <div class="mt-0.5 flex min-w-0 items-start justify-between gap-1">
-                        <h3 class="min-w-0 break-words text-sm font-bold text-zinc-950 dark:text-zinc-50">{{ .Card.Name }}</h3>
+                        <h3 class="min-w-0 break-words text-sm font-bold text-zinc-100">{{ .Card.Name }}</h3>
                         <button data-i18n-attrs="aria-label" type="button" class="material-symbols-outlined -mr-2 -mt-2 flex min-h-11 min-w-11 items-center justify-center rounded-xl text-xl text-zinc-500 dark:text-zinc-400 hover:bg-red-950/50 hover:text-red-400"
                             aria-label="Edit {{ .Card.Name }}" data-id="{{ .ID }}" data-notes="{{ .Notes }}"
                             data-price="{{ if .CustomPrice }}{{ printf "%.2f" .GetCustomPrice }}{{ end }}" data-grade="{{ .Grade }}"
                             data-public="{{ .IsPublic }}" data-binder-id="{{ .BinderID }}" onclick="openEditModalFromButton(this)">more_horiz</button>
                     </div>
-                    <div class="mt-3 flex items-end justify-between border-t border-stone-200 pt-3">
+                    <div class="mt-3 flex items-end justify-between border-t border-red-500/25 pt-3">
                         {{ $hasPrice := or (and (eq $.UserCurrency "EUR") .Card.PriceEURValid) (and (ne $.UserCurrency "EUR") .Card.PriceUSDValid) }}
                         <div class="min-w-0"><span data-i18n class="block text-xs font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Market</span><span class="font-display text-base font-extrabold">{{ if or .CustomPrice $hasPrice }}{{ $.CurrencySymbol }}{{ if .CustomPrice }}{{ printf "%.2f" .GetCustomPrice }}{{ else }}{{ if eq $.UserCurrency "EUR" }}{{ .Card.PriceEUR.StringFixed 2 }}{{ else }}{{ .Card.PriceUSD.StringFixed 2 }}{{ end }}{{ end }}{{ else }}<span data-i18n class="text-sm font-medium text-zinc-500 dark:text-zinc-400">Price unavailable</span>{{ end }}</span></div>
                         {{ if .CustomPrice }}<span data-i18n class="status-badge border-red-500/30 bg-red-950/60 text-red-300 font-mono">Custom</span>{{ end }}
@@ -64,7 +64,7 @@
         {{ end }}
     </section>
     {{ with .Pagination }}{{ if or .PreviousURL .NextURL }}
-    <nav data-i18n-attrs="aria-label" aria-label="Collection pages" class="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 pt-5">
+    <nav data-i18n-attrs="aria-label" aria-label="Collection pages" class="flex flex-wrap items-center justify-between gap-3 border-t border-red-500/25 pt-5">
         {{ if .PreviousURL }}<a data-i18n rel="prev" href="{{ .PreviousURL }}" hx-get="{{ .PreviousFragmentURL }}" hx-target="#main-content" hx-push-url="{{ .PreviousURL }}" class="btn-secondary">Previous</a>{{ else }}<span></span>{{ end }}
         <span data-i18n class="text-sm text-zinc-600 dark:text-zinc-300">Page {{ .Page }}</span>
         {{ if .NextURL }}<a data-i18n rel="next" href="{{ .NextURL }}" hx-get="{{ .NextFragmentURL }}" hx-target="#main-content" hx-push-url="{{ .NextURL }}" class="btn-secondary">Next</a>{{ end }}
