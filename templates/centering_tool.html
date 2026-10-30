@@ -76,6 +76,11 @@
             </div>
         </div>
         <div class="flex items-center gap-1">
+            <button data-i18n-attrs="aria-label" type="button" @click="toggleFullscreen()"
+                class="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                :aria-label="fullscreenActive ? 'Exit fullscreen' : 'Enter fullscreen'">
+                <span class="material-symbols-outlined" x-text="fullscreenActive ? 'fullscreen_exit' : 'fullscreen'"></span>
+            </button>
             <button data-i18n-attrs="aria-label" type="button" x-show="torchAvailable && !previewURL" @click="toggleTorch()"
                 class="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition-colors"
                 :aria-pressed="torchOn.toString()" :aria-label="torchOn ? 'Turn flashlight off' : 'Turn flashlight on'">
