@@ -22,3 +22,8 @@ ON CONFLICT (id) DO UPDATE SET
     attribution_url = EXCLUDED.attribution_url,
     coverage_note = EXCLUDED.coverage_note,
     enabled = EXCLUDED.enabled;
+
+-- 3. Initialize source state for Star Wars: Unlimited
+INSERT INTO catalog_source_state (source_id)
+VALUES ('swudb')
+ON CONFLICT (source_id) DO NOTHING;
