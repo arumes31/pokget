@@ -16,6 +16,11 @@ func TestParseTCG(t *testing.T) {
 		"Flesh and Blood":     TCGFleshAndBlood,
 		"Digimon":             TCGDigimon,
 		"Grand Archive":       TCGGrandArchive,
+		"Altered":             TCGAltered,
+		"Sorcery":             TCGSorcery,
+		"Sorcery: Contested Realm": TCGSorcery,
+		"World of Warcraft":   TCGWorldOfWarcraft,
+		"WoW TCG":             TCGWorldOfWarcraft,
 	}
 	for input, want := range tests {
 		got, err := ParseTCG(input)
@@ -46,6 +51,9 @@ func TestParseLanguageAndTesseractCode(t *testing.T) {
 		"spa":     LanguageSpanish,
 		"Spanish": LanguageSpanish,
 		"es":      LanguageSpanish,
+		"ita":     LanguageItalian,
+		"Italian": LanguageItalian,
+		"it":      LanguageItalian,
 	}
 	for input, want := range tests {
 		got, err := ParseLanguage(input)

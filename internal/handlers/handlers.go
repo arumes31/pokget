@@ -1530,7 +1530,8 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 func filterCardsByGame(cards []models.Card, game string) ([]models.Card, bool) {
 	validGames := map[string]struct{}{
 		"pokemon": {}, "magic": {}, "one_piece": {}, "lorcana": {}, "weiss_schwarz": {}, "yugioh": {}, "star_wars_unlimited": {},
-		"flesh_and_blood": {}, "digimon": {}, "grand_archive": {},
+		"flesh_and_blood": {}, "digimon": {}, "grand_archive": {}, "altered": {}, "sorcery": {},
+		"dragon_ball_super": {}, "dbs_fusion_world": {}, "union_arena": {}, "gundam": {}, "battlespirits_saga": {},
 	}
 	game = models.NormalizeGame(game)
 	if _, ok := validGames[game]; !ok {

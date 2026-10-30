@@ -127,9 +127,44 @@ test('scanner exposes game-specific languages and repairs stale selections', () 
     scanner.languagesForGame('grand_archive').map(({ value }) => value),
     ['eng'],
   );
+  assert.deepEqual(
+    scanner.languagesForGame('altered').map(({ value }) => value),
+    ['eng', 'fra', 'deu', 'ita', 'spa'],
+  );
+  assert.deepEqual(
+    scanner.languagesForGame('sorcery').map(({ value }) => value),
+    ['eng'],
+  );
+  assert.deepEqual(
+    scanner.languagesForGame('dragon_ball_super').map(({ value }) => value),
+    ['eng'],
+  );
+  assert.deepEqual(
+    scanner.languagesForGame('dbs_fusion_world').map(({ value }) => value),
+    ['eng'],
+  );
+  assert.deepEqual(
+    scanner.languagesForGame('union_arena').map(({ value }) => value),
+    ['eng', 'jpn'],
+  );
+  assert.deepEqual(
+    scanner.languagesForGame('gundam').map(({ value }) => value),
+    ['eng'],
+  );
+  assert.deepEqual(
+    scanner.languagesForGame('battlespirits_saga').map(({ value }) => value),
+    ['eng'],
+  );
   assert.equal(scanner.gameLabel('flesh_and_blood'), 'Flesh and Blood');
   assert.equal(scanner.gameLabel('digimon'), 'Digimon Card Game');
   assert.equal(scanner.gameLabel('grand_archive'), 'Grand Archive TCG');
+  assert.equal(scanner.gameLabel('altered'), 'Altered');
+  assert.equal(scanner.gameLabel('sorcery'), 'Sorcery: Contested Realm');
+  assert.equal(scanner.gameLabel('dragon_ball_super'), 'Dragon Ball Super');
+  assert.equal(scanner.gameLabel('dbs_fusion_world'), 'DBS Fusion World');
+  assert.equal(scanner.gameLabel('union_arena'), 'Union Arena');
+  assert.equal(scanner.gameLabel('gundam'), 'Gundam Card Game');
+  assert.equal(scanner.gameLabel('battlespirits_saga'), 'Battle Spirits Saga');
   assert.ok(scanner.languagesForGame('pokemon').some(({ value }) => value === 'kor'));
   assert.ok(scanner.languagesForGame('pokemon').some(({ value }) => value === 'spa'));
   assert.equal(scanner.normalizeLanguage('lorcana', 'jpn'), 'eng');

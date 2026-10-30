@@ -32,6 +32,22 @@ func NormalizeGame(game string) string {
 		return "digimon"
 	case "grand_archive", "gatcg":
 		return "grand_archive"
+	case "dragon_ball_super", "dragonball_super", "dragon_ball", "dbs", "dbs_masters", "dbs_cg":
+		return "dragon_ball_super"
+	case "dbs_fusion_world", "fusion_world", "dragon_ball_super_fusion_world", "dbsfw":
+		return "dbs_fusion_world"
+	case "union_arena", "unionarena", "ua":
+		return "union_arena"
+	case "gundam", "gundam_tcg", "gundam_card_game", "gcg":
+		return "gundam"
+	case "battlespirits_saga", "battle_spirits_saga", "battlespirits", "battle_spirits", "bss":
+		return "battlespirits_saga"
+	case "altered", "altered_tcg":
+		return "altered"
+	case "sorcery", "sorcery_contested_realm", "sorcerytcg":
+		return "sorcery"
+	case "world_of_warcraft", "wow_tcg", "wow", "warcraft":
+		return "world_of_warcraft"
 	default:
 		return normalized
 	}

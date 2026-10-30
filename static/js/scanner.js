@@ -88,6 +88,32 @@
     grand_archive: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
     ]),
+    altered: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+      { value: 'fra', label: 'French', flag: '🇫🇷', code: 'FR' },
+      { value: 'deu', label: 'German', flag: '🇩🇪', code: 'DE' },
+      { value: 'ita', label: 'Italian', flag: '🇮🇹', code: 'IT' },
+      { value: 'spa', label: 'Spanish', flag: '🇪🇸', code: 'ES' },
+    ]),
+    sorcery: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+    ]),
+    dragon_ball_super: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+    ]),
+    dbs_fusion_world: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+    ]),
+    union_arena: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
+    ]),
+    gundam: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+    ]),
+    battlespirits_saga: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+    ]),
   });
 
   const STORAGE_KEYS = Object.freeze({
@@ -431,6 +457,13 @@
           flesh_and_blood: 'Flesh and Blood',
           digimon: 'Digimon Card Game',
           grand_archive: 'Grand Archive TCG',
+          altered: 'Altered',
+          sorcery: 'Sorcery: Contested Realm',
+          dragon_ball_super: 'Dragon Ball Super',
+          dbs_fusion_world: 'DBS Fusion World',
+          union_arena: 'Union Arena',
+          gundam: 'Gundam Card Game',
+          battlespirits_saga: 'Battle Spirits Saga',
         };
         return labels[g || this.game] || 'Pokémon';
       },
@@ -1238,6 +1271,13 @@
         flesh_and_blood: 'Flesh and Blood',
         digimon: 'Digimon Card Game',
         grand_archive: 'Grand Archive TCG',
+        altered: 'Altered',
+        sorcery: 'Sorcery: Contested Realm',
+        dragon_ball_super: 'Dragon Ball Super',
+        dbs_fusion_world: 'DBS Fusion World',
+        union_arena: 'Union Arena',
+        gundam: 'Gundam Card Game',
+        battlespirits_saga: 'Battle Spirits Saga',
       };
       return labels[g] || 'Pokémon';
     },

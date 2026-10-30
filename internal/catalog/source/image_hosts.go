@@ -15,5 +15,13 @@ func DefaultImageHosts() map[string][]string {
 		"fabcube":           {"storage.googleapis.com"},
 		"digimoncardio":     {"images.digimoncard.io"},
 		"gatcg":             {"api.gatcg.com"},
+		"altered":           {"cdn.alteredcore.org", "altered-prod-eu.s3.amazonaws.com", "img.altered-db.com"},
+		"sorcery":           {"d27a44hjr9gen3.cloudfront.net", "fourcores-home.netlify.app", "sorcerytcg.com", "curiosa.io"},
+		"dbs_official":              {"www.dbs-cardgame.com", "dbs-cardgame.com"},
+		"dbs_fusion_world_official": {"www.dbs-cardgame.com", "dbs-cardgame.com", "www.dbs-fusionworld.com", "dbs-fusionworld.com"},
+		"unionarena_official":       {"www.unionarena-tcg.com", "unionarena-tcg.com"},
+		"gundam_official":           {"www.gundam-gcg.com", "gundam-gcg.com", "images.gundam-tcg.com"},
+		"battlespirits_official":    {"battlespirits-saga.com", "www.battlespirits-saga.com"},
+		"wowtcg":                    {"wow.tcgbrowser.com", "tcgbrowser.com", "tcgplayer-cdn.tcgplayer.com"},
 	}
 }

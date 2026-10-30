@@ -11,6 +11,8 @@ export const invariant = new Set([
   'Pokget', 'Pokémon', 'Disney Lorcana', 'Magic: The Gathering', 'One Piece', 'Weiss Schwarz', 'Yu-Gi-Oh!',
   'Star Wars: Unlimited',
   'Flesh and Blood', 'Digimon Card Game', 'Grand Archive TCG',
+  'Altered', 'Sorcery: Contested Realm',
+  'Dragon Ball Super', 'DBS Fusion World', 'Union Arena', 'Gundam Card Game', 'Battle Spirits Saga',
   'PSA', 'BGS', 'CGC', 'SGC', 'TAG', 'ACE', 'TCG', 'EUR', 'USD', 'Euro',
   'English', 'Deutsch', 'NO. 001', 'NO. 018', 'NO. 032', 'POKGET ORIGINALS',
   'Shining Fates • SV107/SV122', 'https://…/card.jpg', '© 2026 Pokget',

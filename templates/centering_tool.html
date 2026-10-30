@@ -238,7 +238,14 @@
                         { id: 'star_wars_unlimited', label: 'Star Wars: Unlimited' },
                         { id: 'flesh_and_blood', label: 'Flesh and Blood' },
                         { id: 'digimon', label: 'Digimon Card Game' },
-                        { id: 'grand_archive', label: 'Grand Archive TCG' }
+                        { id: 'grand_archive', label: 'Grand Archive TCG' },
+                        { id: 'altered', label: 'Altered' },
+                        { id: 'sorcery', label: 'Sorcery: Contested Realm' },
+                        { id: 'dragon_ball_super', label: 'Dragon Ball Super' },
+                        { id: 'dbs_fusion_world', label: 'DBS Fusion World' },
+                        { id: 'union_arena', label: 'Union Arena' },
+                        { id: 'gundam', label: 'Gundam Card Game' },
+                        { id: 'battlespirits_saga', label: 'Battle Spirits Saga' }
                     ]" :key="g.id">
                         <button type="button" @click="setGame(g.id)"
                             class="w-full min-h-11 flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-mono transition-colors text-left"
@@ -262,6 +269,13 @@
                 <option data-i18n value="flesh_and_blood">Flesh and Blood</option>
                 <option data-i18n value="digimon">Digimon Card Game</option>
                 <option data-i18n value="grand_archive">Grand Archive TCG</option>
+                <option data-i18n value="altered">Altered</option>
+                <option data-i18n value="sorcery">Sorcery: Contested Realm</option>
+                <option data-i18n value="dragon_ball_super">Dragon Ball Super</option>
+                <option data-i18n value="dbs_fusion_world">DBS Fusion World</option>
+                <option data-i18n value="union_arena">Union Arena</option>
+                <option data-i18n value="gundam">Gundam Card Game</option>
+                <option data-i18n value="battlespirits_saga">Battle Spirits Saga</option>
             </select>
             <select id="scanner-language" x-model="lang" class="sr-only" tabindex="-1" aria-hidden="true">
                 <template x-for="language in availableLanguages" :key="language.value">
