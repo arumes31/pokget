@@ -317,6 +317,48 @@ test('an uncertain printing must be inspected and explicitly confirmed before sa
   assert.equal(component.detectedLanguage, '');
 });
 
+test('an uncataloged printing can be confirmed and added with synthetic card details', async () => {
+  const originalFetch = global.fetch;
+  let request;
+  global.fetch = async (url, options) => {
+    request = { url, options };
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    const component = scanner.createCardScanner({ csrfToken: 'test-csrf' });
+    component.game = 'pokemon';
+    component.notify = () => {};
+    component.applyScanResult({
+      detected: 'ピジョットex',
+      id: '',
+      needs_review: true,
+      set: 'Shiny Treasure ex',
+      collector_number: '129/190',
+      language: 'jpn',
+    });
+    assert.equal(component.detectedCard, 'ピジョットex');
+    assert.equal(component.matchConfirmed, false);
+    await component.addToCollection();
+    assert.equal(component.added, false);
+    assert.equal(request, undefined);
+
+    component.confirmMatch();
+    assert.equal(component.matchConfirmed, true);
+
+    await component.addToCollection();
+    assert.equal(component.added, true);
+    assert.equal(request.url, '/portfolio/add');
+    assert.equal(request.options.headers['X-CSRF-Token'], 'test-csrf');
+    assert.equal(request.options.body.get('card_name'), 'ピジョットex');
+    assert.equal(request.options.body.get('set_name'), 'Shiny Treasure ex');
+    assert.equal(request.options.body.get('collector_number'), '129/190');
+    assert.equal(request.options.body.get('language'), 'jpn');
+    assert.equal(request.options.body.get('game'), 'pokemon');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test('missing catalog preserves the selected language and crop without an automatic retry', async () => {
   const originalFetch = global.fetch;
   const requests = [];

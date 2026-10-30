@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   pokget_app:
     container_name: pokget_app
@@ -13,6 +11,7 @@ services:
       - SECURE_COOKIES=${SECURE_COOKIES:-false}
       - RATE_LIMIT=${RATE_LIMIT:-20}
       - BURST_LIMIT=${BURST_LIMIT:-50}
+      - WRITE_TIMEOUT=${WRITE_TIMEOUT:-120}
       - SCAN_RATE_LIMIT=${SCAN_RATE_LIMIT:-5}
       - SCAN_BURST_LIMIT=${SCAN_BURST_LIMIT:-10}
       - DB_HOST=pokget_db
@@ -21,7 +20,6 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD must be set in .env}
       - DB_NAME=${DB_NAME:-pokget_db}
       - DB_SSLMODE=disable
-      # Claude AI Card Detector (Anthropic Claude API)
       - CLAUDE_ENABLED=${CLAUDE_ENABLED:-true}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-5-5}
@@ -32,7 +30,12 @@ services:
       - SCAN_OCR_POOL_SIZE=${SCAN_OCR_POOL_SIZE:-3}
       - SCAN_PHASH_HIGH_CONF=${SCAN_PHASH_HIGH_CONF:-5}
       - SCAN_PHASH_POTENTIAL=${SCAN_PHASH_POTENTIAL:-10}
+      - SCAN_VISION_OCR_ENABLED=${SCAN_VISION_OCR_ENABLED:-false}
       - OMP_THREAD_LIMIT=${OMP_THREAD_LIMIT:-1}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_API=${LLM_API:-}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1024}
       - SESSION_KEY=${SESSION_KEY}
       - LOG_FORMAT=${LOG_FORMAT:-text}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
