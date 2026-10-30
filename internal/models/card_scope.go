@@ -28,6 +28,18 @@ const (
 	TCGAltered               TCG = "altered"
 	TCGSorcery               TCG = "sorcery"
 	TCGWorldOfWarcraft       TCG = "world_of_warcraft"
+	TCGFFTCG                 TCG = "fftcg"
+	TCGGodzilla              TCG = "godzilla"
+	TCGShadowverseEvolve     TCG = "shadowverse_evolve"
+	TCGUniVersus             TCG = "universus"
+	TCGCardfightVanguard     TCG = "vanguard"
+	TCGHololive              TCG = "hololive"
+	TCGDuelMasters           TCG = "duel_masters"
+	TCGCookieRun             TCG = "cookie_run"
+	TCGForceOfWill           TCG = "force_of_will"
+	TCGWIXOSS                TCG = "wixoss"
+	TCGAlphaClash            TCG = "alpha_clash"
+	TCGRiftbound             TCG = "riftbound"
 )
 
 // ParseTCG converts a user-facing game label into a supported catalog ID.
@@ -44,7 +56,9 @@ func (t TCG) Valid() bool {
 	switch t {
 	case TCGPokemon, TCGMagic, TCGOnePiece, TCGLorcana, TCGWeissSchwarz, TCGYuGiOh, TCGStarWarsUnlimited,
 		TCGFleshAndBlood, TCGDigimon, TCGGrandArchive, TCGDragonBallSuper, TCGDragonBallFusionWorld,
-		TCGUnionArena, TCGGundam, TCGBattleSpiritsSaga, TCGAltered, TCGSorcery, TCGWorldOfWarcraft:
+		TCGUnionArena, TCGGundam, TCGBattleSpiritsSaga, TCGAltered, TCGSorcery, TCGWorldOfWarcraft,
+		TCGFFTCG, TCGGodzilla, TCGShadowverseEvolve, TCGUniVersus, TCGCardfightVanguard,
+		TCGHololive, TCGDuelMasters, TCGCookieRun, TCGForceOfWill, TCGWIXOSS, TCGAlphaClash, TCGRiftbound:
 		return true
 	default:
 		return false

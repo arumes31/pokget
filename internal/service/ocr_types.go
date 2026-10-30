@@ -120,6 +120,32 @@ func normalizeGame(game string) string {
 		return "gundam"
 	case "battlespirits_saga", "battle_spirits_saga", "bss":
 		return "battlespirits_saga"
+	case "world_of_warcraft", "wow_tcg", "wow", "warcraft":
+		return "world_of_warcraft"
+	case "fftcg", "final_fantasy":
+		return "fftcg"
+	case "godzilla":
+		return "godzilla"
+	case "shadowverse_evolve", "shadowverse", "sve":
+		return "shadowverse_evolve"
+	case "universus", "uvs":
+		return "universus"
+	case "vanguard", "cardfight_vanguard", "vg":
+		return "vanguard"
+	case "hololive":
+		return "hololive"
+	case "duel_masters", "duelmasters":
+		return "duel_masters"
+	case "cookie_run", "cookierun":
+		return "cookie_run"
+	case "force_of_will", "fow":
+		return "force_of_will"
+	case "wixoss":
+		return "wixoss"
+	case "alpha_clash", "alphaclash":
+		return "alpha_clash"
+	case "riftbound":
+		return "riftbound"
 	default:
 		return game
 	}

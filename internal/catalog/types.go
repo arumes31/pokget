@@ -40,6 +40,8 @@ const (
 	GameCookieRun         Game = "cookie_run"
 	GameForceOfWill       Game = "force_of_will"
 	GameWIXOSS            Game = "wixoss"
+	GameAlphaClash        Game = "alpha_clash"
+	GameRiftbound         Game = "riftbound"
 )
 
 func (g Game) Valid() bool {
@@ -48,7 +50,7 @@ func (g Game) Valid() bool {
 		GameFleshAndBlood, GameDigimon, GameGrandArchive, GameDragonBallSuper, GameDragonBallFusionWorld,
 		GameUnionArena, GameGundam, GameBattleSpiritsSaga, GameAltered, GameSorcery, GameWorldOfWarcraft, GameFFTCG,
 		GameGodzilla, GameShadowverseEvolve, GameUniVersus, GameCardfightVanguard, GameHololive, GameDuelMasters,
-		GameCookieRun, GameForceOfWill, GameWIXOSS:
+		GameCookieRun, GameForceOfWill, GameWIXOSS, GameAlphaClash, GameRiftbound:
 		return true
 	default:
 		return false

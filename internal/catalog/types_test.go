@@ -89,6 +89,8 @@ func TestGameValid(t *testing.T) {
 		GameCookieRun,
 		GameForceOfWill,
 		GameWIXOSS,
+		GameAlphaClash,
+		GameRiftbound,
 	} {
 		if !game.Valid() {
 			t.Fatalf("Game(%q).Valid() = false", game)

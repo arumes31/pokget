@@ -1532,6 +1532,9 @@ func filterCardsByGame(cards []models.Card, game string) ([]models.Card, bool) {
 		"pokemon": {}, "magic": {}, "one_piece": {}, "lorcana": {}, "weiss_schwarz": {}, "yugioh": {}, "star_wars_unlimited": {},
 		"flesh_and_blood": {}, "digimon": {}, "grand_archive": {}, "altered": {}, "sorcery": {},
 		"dragon_ball_super": {}, "dbs_fusion_world": {}, "union_arena": {}, "gundam": {}, "battlespirits_saga": {},
+		"world_of_warcraft": {}, "fftcg": {}, "godzilla": {}, "shadowverse_evolve": {}, "universus": {},
+		"vanguard": {}, "hololive": {}, "duel_masters": {}, "cookie_run": {}, "force_of_will": {}, "wixoss": {},
+		"alpha_clash": {}, "riftbound": {},
 	}
 	game = models.NormalizeGame(game)
 	if _, ok := validGames[game]; !ok {

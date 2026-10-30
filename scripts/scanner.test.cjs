@@ -155,6 +155,22 @@ test('scanner exposes game-specific languages and repairs stale selections', () 
     scanner.languagesForGame('battlespirits_saga').map(({ value }) => value),
     ['eng'],
   );
+  assert.deepEqual(
+    scanner.languagesForGame('world_of_warcraft').map(({ value }) => value),
+    ['eng'],
+  );
+  assert.deepEqual(
+    scanner.languagesForGame('fftcg').map(({ value }) => value),
+    ['eng', 'jpn', 'deu', 'fra', 'spa', 'ita'],
+  );
+  assert.deepEqual(
+    scanner.languagesForGame('godzilla').map(({ value }) => value),
+    ['eng', 'jpn'],
+  );
+  assert.deepEqual(
+    scanner.languagesForGame('universus').map(({ value }) => value),
+    ['eng'],
+  );
   assert.equal(scanner.gameLabel('flesh_and_blood'), 'Flesh and Blood');
   assert.equal(scanner.gameLabel('digimon'), 'Digimon Card Game');
   assert.equal(scanner.gameLabel('grand_archive'), 'Grand Archive TCG');
@@ -165,6 +181,19 @@ test('scanner exposes game-specific languages and repairs stale selections', () 
   assert.equal(scanner.gameLabel('union_arena'), 'Union Arena');
   assert.equal(scanner.gameLabel('gundam'), 'Gundam Card Game');
   assert.equal(scanner.gameLabel('battlespirits_saga'), 'Battle Spirits Saga');
+  assert.equal(scanner.gameLabel('world_of_warcraft'), 'World of Warcraft TCG');
+  assert.equal(scanner.gameLabel('fftcg'), 'Final Fantasy TCG');
+  assert.equal(scanner.gameLabel('godzilla'), 'Godzilla Card Game');
+  assert.equal(scanner.gameLabel('shadowverse_evolve'), 'Shadowverse: Evolve');
+  assert.equal(scanner.gameLabel('universus'), 'UniVersus');
+  assert.equal(scanner.gameLabel('vanguard'), 'Cardfight!! Vanguard');
+  assert.equal(scanner.gameLabel('hololive'), 'hololive OCG');
+  assert.equal(scanner.gameLabel('duel_masters'), 'Duel Masters');
+  assert.equal(scanner.gameLabel('cookie_run'), 'CookieRun: Braverse');
+  assert.equal(scanner.gameLabel('force_of_will'), 'Force of Will');
+  assert.equal(scanner.gameLabel('wixoss'), 'WIXOSS');
+  assert.equal(scanner.gameLabel('alpha_clash'), 'Alpha Clash');
+  assert.equal(scanner.gameLabel('riftbound'), 'Riftbound TCG');
   assert.ok(scanner.languagesForGame('pokemon').some(({ value }) => value === 'kor'));
   assert.ok(scanner.languagesForGame('pokemon').some(({ value }) => value === 'spa'));
   assert.equal(scanner.normalizeLanguage('lorcana', 'jpn'), 'eng');

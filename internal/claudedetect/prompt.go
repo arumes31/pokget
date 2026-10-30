@@ -117,12 +117,23 @@ and extract their exact identity, printed collector number, set details, languag
    - Collector Number: Printed at bottom or top info line (e.g. "BT1-001", "FB11-123", "UE17BT/SLG-1-001", "GD01-001", "BSS06-001").
    - Set Code: Set code prefix before dash or bracketed (e.g. "BT1", "FB11", "UE17BT", "GD01", "BSS06").
 
+14. World of Warcraft TCG (WoW TCG):
+   - Card Name: Printed at the top header banner (e.g. "Spectral Tiger", "Leeroy Jenkins", "El Pollo Grande").
+   - Collector Number: Printed at the bottom edge or info line (e.g. "193/252", "212").
+   - Set Code & Name: Printed next to collector number or set icon (e.g. "FoO", "WBR", "ARC", "HOA", "TOT").
+   - Loot Cards: Identify scratch-off MMO loot cards (variant: "Loot") redeemable for in-game mounts, pets, and tabards.
+
+15. Anime, Gaming & Crossover TCGs (FFTCG, Godzilla, Shadowverse, UniVersus, Vanguard, hololive, Duel Masters, CookieRun, Force of Will, WIXOSS, Alpha Clash, Riftbound):
+   - Card Name: Printed at top header or banner.
+   - Collector Number: Printed at bottom border or card frame.
+   - Set Code: Set identifier prefix or code in collector number.
+
 === JSON OUTPUT CONTRACT ===
 
 You must return ONLY a valid, parseable JSON object without markdown wrapping or commentary.
 Required schema:
 {
-  "game": "pokemon" | "magic" | "yugioh" | "one_piece" | "lorcana" | "weiss_schwarz" | "star_wars_unlimited" | "flesh_and_blood" | "digimon" | "grand_archive" | "altered" | "sorcery" | "dragon_ball_super" | "dbs_fusion_world" | "union_arena" | "gundam" | "battlespirits_saga",
+  "game": "pokemon" | "magic" | "yugioh" | "one_piece" | "lorcana" | "weiss_schwarz" | "star_wars_unlimited" | "flesh_and_blood" | "digimon" | "grand_archive" | "altered" | "sorcery" | "dragon_ball_super" | "dbs_fusion_world" | "union_arena" | "gundam" | "battlespirits_saga" | "world_of_warcraft" | "fftcg" | "godzilla" | "shadowverse_evolve" | "universus" | "vanguard" | "hololive" | "duel_masters" | "cookie_run" | "force_of_will" | "wixoss" | "alpha_clash" | "riftbound",
   "name": "Printed official name on the card",
   "collector_number": "Exact printed number or code (e.g. '16/110', 'OP01-001', '4/102')",
   "set": "Set name or set expansion title",

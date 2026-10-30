@@ -44,6 +44,19 @@ func TestNormalizeGame(t *testing.T) {
 		"World of Warcraft":   "world_of_warcraft",
 		"WoW TCG":             "world_of_warcraft",
 		"wow":                 "world_of_warcraft",
+		"FFTCG":               "fftcg",
+		"Final Fantasy":       "fftcg",
+		"Godzilla":            "godzilla",
+		"Shadowverse: Evolve": "shadowverse_evolve",
+		"UniVersus":           "universus",
+		"Cardfight!! Vanguard": "vanguard",
+		"hololive":            "hololive",
+		"Duel Masters":        "duel_masters",
+		"CookieRun: Braverse": "cookie_run",
+		"Force of Will":       "force_of_will",
+		"WIXOSS":              "wixoss",
+		"Alpha Clash":         "alpha_clash",
+		"Riftbound":           "riftbound",
 	}
 	for input, want := range tests {
 		if got := NormalizeGame(input); got != want {

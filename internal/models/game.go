@@ -5,7 +5,7 @@ import "strings"
 // NormalizeGame converts user-facing and legacy game labels to catalog slugs.
 func NormalizeGame(game string) string {
 	normalized := strings.ToLower(strings.TrimSpace(game))
-	normalized = strings.NewReplacer("-", "_", " ", "_", ":", "").Replace(normalized)
+	normalized = strings.NewReplacer("-", "_", " ", "_", ":", "", "!", "").Replace(normalized)
 	for strings.Contains(normalized, "__") {
 		normalized = strings.ReplaceAll(normalized, "__", "_")
 	}
@@ -48,6 +48,30 @@ func NormalizeGame(game string) string {
 		return "sorcery"
 	case "world_of_warcraft", "wow_tcg", "wow", "warcraft":
 		return "world_of_warcraft"
+	case "fftcg", "final_fantasy", "final_fantasy_tcg":
+		return "fftcg"
+	case "godzilla", "godzilla_tcg", "godzilla_card_game":
+		return "godzilla"
+	case "shadowverse_evolve", "shadowverse", "sve":
+		return "shadowverse_evolve"
+	case "universus", "uvs":
+		return "universus"
+	case "vanguard", "cardfight_vanguard", "cardfight!!_vanguard", "cf_vanguard", "vg":
+		return "vanguard"
+	case "hololive", "hololive_ocg", "hololive_tcg":
+		return "hololive"
+	case "duel_masters", "duelmasters", "dm":
+		return "duel_masters"
+	case "cookie_run", "cookierun", "cookierun_braverse":
+		return "cookie_run"
+	case "force_of_will", "fow":
+		return "force_of_will"
+	case "wixoss":
+		return "wixoss"
+	case "alpha_clash", "alphaclash":
+		return "alpha_clash"
+	case "riftbound", "rift_bound":
+		return "riftbound"
 	default:
 		return normalized
 	}

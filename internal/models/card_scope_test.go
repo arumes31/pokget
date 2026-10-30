@@ -21,6 +21,18 @@ func TestParseTCG(t *testing.T) {
 		"Sorcery: Contested Realm": TCGSorcery,
 		"World of Warcraft":   TCGWorldOfWarcraft,
 		"WoW TCG":             TCGWorldOfWarcraft,
+		"FFTCG":               TCGFFTCG,
+		"Godzilla":            TCGGodzilla,
+		"Shadowverse: Evolve": TCGShadowverseEvolve,
+		"UniVersus":           TCGUniVersus,
+		"Cardfight!! Vanguard": TCGCardfightVanguard,
+		"hololive":            TCGHololive,
+		"Duel Masters":        TCGDuelMasters,
+		"CookieRun: Braverse": TCGCookieRun,
+		"Force of Will":       TCGForceOfWill,
+		"WIXOSS":              TCGWIXOSS,
+		"Alpha Clash":         TCGAlphaClash,
+		"Riftbound":           TCGRiftbound,
 	}
 	for input, want := range tests {
 		got, err := ParseTCG(input)
