@@ -80,6 +80,34 @@ var ocrLayouts = map[string][]ocrLayoutROI{
 		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
 		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.35, MinY: 0.82, MaxX: 0.99, MaxY: 0.99}},
 	},
+	"altered": {
+		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
+		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.02, MinY: 0.82, MaxX: 0.98, MaxY: 0.99}},
+	},
+	"sorcery": {
+		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
+		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.02, MinY: 0.82, MaxX: 0.98, MaxY: 0.99}},
+	},
+	"dragon_ball_super": {
+		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
+		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.35, MinY: 0.82, MaxX: 0.99, MaxY: 0.99}},
+	},
+	"dbs_fusion_world": {
+		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
+		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.35, MinY: 0.82, MaxX: 0.99, MaxY: 0.99}},
+	},
+	"union_arena": {
+		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
+		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.35, MinY: 0.82, MaxX: 0.99, MaxY: 0.99}},
+	},
+	"gundam": {
+		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
+		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.35, MinY: 0.82, MaxX: 0.99, MaxY: 0.99}},
+	},
+	"battlespirits_saga": {
+		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
+		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.35, MinY: 0.82, MaxX: 0.99, MaxY: 0.99}},
+	},
 }
 
 func buildOCRPasses(src image.Image, config OCRScanConfig) ([]ocrPass, []byte, error) {

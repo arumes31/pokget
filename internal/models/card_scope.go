@@ -20,6 +20,14 @@ const (
 	TCGFleshAndBlood     TCG = "flesh_and_blood"
 	TCGDigimon           TCG = "digimon"
 	TCGGrandArchive      TCG = "grand_archive"
+	TCGDragonBallSuper       TCG = "dragon_ball_super"
+	TCGDragonBallFusionWorld TCG = "dbs_fusion_world"
+	TCGUnionArena            TCG = "union_arena"
+	TCGGundam                TCG = "gundam"
+	TCGBattleSpiritsSaga     TCG = "battlespirits_saga"
+	TCGAltered               TCG = "altered"
+	TCGSorcery               TCG = "sorcery"
+	TCGWorldOfWarcraft       TCG = "world_of_warcraft"
 )
 
 // ParseTCG converts a user-facing game label into a supported catalog ID.
@@ -35,7 +43,8 @@ func ParseTCG(value string) (TCG, error) {
 func (t TCG) Valid() bool {
 	switch t {
 	case TCGPokemon, TCGMagic, TCGOnePiece, TCGLorcana, TCGWeissSchwarz, TCGYuGiOh, TCGStarWarsUnlimited,
-		TCGFleshAndBlood, TCGDigimon, TCGGrandArchive:
+		TCGFleshAndBlood, TCGDigimon, TCGGrandArchive, TCGDragonBallSuper, TCGDragonBallFusionWorld,
+		TCGUnionArena, TCGGundam, TCGBattleSpiritsSaga, TCGAltered, TCGSorcery, TCGWorldOfWarcraft:
 		return true
 	default:
 		return false
@@ -56,12 +65,13 @@ const (
 	LanguageChineseTraditional Language = "zh-hant"
 	LanguageKorean             Language = "ko"
 	LanguageSpanish            Language = "es"
+	LanguageItalian            Language = "it"
 )
 
 // Valid reports whether l identifies a supported card language.
 func (l Language) Valid() bool {
 	switch l {
-	case LanguageAny, LanguageEnglish, LanguageJapanese, LanguageGerman, LanguageFrench, LanguageSpanish,
+	case LanguageAny, LanguageEnglish, LanguageJapanese, LanguageGerman, LanguageFrench, LanguageSpanish, LanguageItalian,
 		LanguageChineseSimplified, LanguageChineseTraditional, LanguageKorean:
 		return true
 	default:
@@ -89,6 +99,8 @@ func ParseLanguage(value string) (Language, error) {
 		language = LanguageFrench
 	case "es", "esp", "spa", "spanish":
 		language = LanguageSpanish
+	case "it", "ita", "italian":
+		language = LanguageItalian
 	case "zh", "zh-cn", "zh-hans", "chi-sim", "zhs":
 		language = LanguageChineseSimplified
 	case "zh-tw", "zh-hant", "chi-tra", "zht":
@@ -122,6 +134,8 @@ func (l Language) TesseractCode() string {
 		return "kor"
 	case LanguageSpanish:
 		return "spa"
+	case LanguageItalian:
+		return "ita"
 	default:
 		return ""
 	}

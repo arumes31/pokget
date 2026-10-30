@@ -22,12 +22,33 @@ const (
 	GameFleshAndBlood     Game = "flesh_and_blood"
 	GameDigimon           Game = "digimon"
 	GameGrandArchive      Game = "grand_archive"
+	GameDragonBallSuper   Game = "dragon_ball_super"
+	GameDragonBallFusionWorld Game = "dbs_fusion_world"
+	GameUnionArena        Game = "union_arena"
+	GameGundam            Game = "gundam"
+	GameBattleSpiritsSaga Game = "battlespirits_saga"
+	GameAltered           Game = "altered"
+	GameSorcery           Game = "sorcery"
+	GameWorldOfWarcraft   Game = "world_of_warcraft"
+	GameFFTCG             Game = "fftcg"
+	GameGodzilla          Game = "godzilla"
+	GameShadowverseEvolve Game = "shadowverse_evolve"
+	GameUniVersus         Game = "universus"
+	GameCardfightVanguard Game = "vanguard"
+	GameHololive          Game = "hololive"
+	GameDuelMasters       Game = "duel_masters"
+	GameCookieRun         Game = "cookie_run"
+	GameForceOfWill       Game = "force_of_will"
+	GameWIXOSS            Game = "wixoss"
 )
 
 func (g Game) Valid() bool {
 	switch g {
 	case GamePokemon, GameMagic, GameOnePiece, GameLorcana, GameWeissSchwarz, GameYuGiOh, GameStarWarsUnlimited,
-		GameFleshAndBlood, GameDigimon, GameGrandArchive:
+		GameFleshAndBlood, GameDigimon, GameGrandArchive, GameDragonBallSuper, GameDragonBallFusionWorld,
+		GameUnionArena, GameGundam, GameBattleSpiritsSaga, GameAltered, GameSorcery, GameWorldOfWarcraft, GameFFTCG,
+		GameGodzilla, GameShadowverseEvolve, GameUniVersus, GameCardfightVanguard, GameHololive, GameDuelMasters,
+		GameCookieRun, GameForceOfWill, GameWIXOSS:
 		return true
 	default:
 		return false

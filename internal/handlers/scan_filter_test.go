@@ -24,7 +24,11 @@ func TestFilterCardsByGame(t *testing.T) {
 	if _, ok := filterCardsByGame(cards, "unknown"); ok {
 		t.Fatal("unsupported game was accepted")
 	}
-	for _, game := range []string{"flesh_and_blood", "fab", "digimon", "grand_archive", "gatcg"} {
+	for _, game := range []string{
+		"flesh_and_blood", "fab", "digimon", "grand_archive", "gatcg", "altered", "sorcery",
+		"dragon_ball_super", "dbs", "dbs_masters", "dbs_fusion_world", "fusion_world",
+		"union_arena", "unionarena", "gundam", "gundam_tcg", "battlespirits_saga", "bss",
+	} {
 		if _, ok := filterCardsByGame(cards, game); !ok {
 			t.Fatalf("expected game %q to be valid", game)
 		}

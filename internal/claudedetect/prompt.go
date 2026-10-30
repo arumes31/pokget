@@ -99,12 +99,30 @@ and extract their exact identity, printed collector number, set details, languag
    - Collector Number: Found at bottom info area (e.g. "000", "001").
    - Set Code: Set prefix (e.g. "DOA", "ALC", "P24").
 
+11. Altered TCG:
+   - Card Name: Printed horizontally on the upper card banner.
+   - Collector Number: Lower corner or QR code area (e.g. "BTG-021-C-EN", "ALT_CORE_A_AX_22_C").
+   - Set Code: 3-letter abbreviation (e.g. "BTG", "CORE", "TBF", "WFM", "SKY").
+   - Faction: Axiom, Bravos, Lyra, Muna, Ordis, Yzmir.
+   - Rarity: Common, Rare, Unique.
+
+12. Sorcery: Contested Realm:
+   - Card Name: Top header banner.
+   - Collector Number: Bottom info line (e.g. "001", "004-13_treasures_of_britain-b-s").
+   - Set Code: Set name or abbreviation (e.g. "ALE", "004", "BETA").
+   - Rarity: Ordinary, Exceptional, Elite, Unique.
+
+13. Dragon Ball Super / DBS Fusion World / Union Arena / Gundam / Battle Spirits:
+   - Card Name: Printed on card header.
+   - Collector Number: Printed at bottom or top info line (e.g. "BT1-001", "FB11-123", "UE17BT/SLG-1-001", "GD01-001", "BSS06-001").
+   - Set Code: Set code prefix before dash or bracketed (e.g. "BT1", "FB11", "UE17BT", "GD01", "BSS06").
+
 === JSON OUTPUT CONTRACT ===
 
 You must return ONLY a valid, parseable JSON object without markdown wrapping or commentary.
 Required schema:
 {
-  "game": "pokemon" | "magic" | "yugioh" | "one_piece" | "lorcana" | "weiss_schwarz" | "star_wars_unlimited" | "flesh_and_blood" | "digimon" | "grand_archive",
+  "game": "pokemon" | "magic" | "yugioh" | "one_piece" | "lorcana" | "weiss_schwarz" | "star_wars_unlimited" | "flesh_and_blood" | "digimon" | "grand_archive" | "altered" | "sorcery" | "dragon_ball_super" | "dbs_fusion_world" | "union_arena" | "gundam" | "battlespirits_saga",
   "name": "Printed official name on the card",
   "collector_number": "Exact printed number or code (e.g. '16/110', 'OP01-001', '4/102')",
   "set": "Set name or set expansion title",

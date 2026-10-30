@@ -424,6 +424,7 @@
     "Enable public profile": "Öffentliches Profil aktivieren",
     "English": "Englisch",
     "Spanish": "Spanisch",
+    "Italian": "Italienisch",
     "Enter a catalog ID instead": "Stattdessen eine Katalog-ID eingeben",
     "Entering your collection": "Deine Sammlung wird geöffnet",
     "Error type": "Fehlerart",

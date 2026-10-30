@@ -420,3 +420,130 @@ func TestGATCGProvider(t *testing.T) {
 		t.Fatalf("unexpected count: %d", result.Count)
 	}
 }
+
+func TestAlteredProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/META/card_sets_en.json":
+			_, _ = w.Write([]byte(`{
+				"hydra:member": [
+					{
+						"id": "set-core",
+						"reference": "CORE",
+						"name": "Beyond the Gates",
+						"code": "BTG"
+					}
+				]
+			}`))
+		case "/SETS/CORE/CORE_EN.json":
+			_, _ = w.Write([]byte(`[
+				{
+					"id": "alt-card-1",
+					"reference": "ALT_CORE_A_AX_22_C",
+					"name": "Mechanical Training",
+					"collectorNumber": "BTG-021-C-EN",
+					"imagePath": "https://images.example/card.jpg",
+					"cardSet": {
+						"reference": "CORE",
+						"name": "Beyond the Gates",
+						"code": "BTG"
+					},
+					"rarity": {
+						"reference": "COMMON",
+						"name": "Common"
+					}
+				}
+			]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	records, result := fetchRecords(t, &AlteredProvider{HTTP: testHTTP(server), BaseURL: server.URL, Language: "en"})
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Name != "Mechanical Training" || records[0].CollectorNumber != "BTG-021-C-EN" || records[0].SetCode != "CORE" {
+		t.Fatalf("unexpected record: %+v", records[0])
+	}
+	if records[0].Language != "en" || records[0].Rarity != "Common" {
+		t.Fatalf("unexpected language/rarity: %+v", records[0])
+	}
+	if len(records[0].Images) != 1 || records[0].Images[0].URL != "https://cdn.alteredcore.org/cards/en/CORE/ALT_CORE_A_AX_22_C.webp" {
+		t.Fatalf("unexpected image: %+v", records[0].Images)
+	}
+	if result.Count != 1 {
+		t.Fatalf("unexpected count: %d", result.Count)
+	}
+}
+
+func TestSorceryProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "cards") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`[
+			{
+				"id": "cmt865vva04mqnwcyrl8c2h8l",
+				"name": "13 Treasures of Britain",
+				"slug": "13_treasures_of_britain",
+				"engine": {
+					"category": "Spell",
+					"type": "Artifact",
+					"rarity": "Unique"
+				},
+				"printings": [
+					{
+						"id": "cmt865x7l04ninwcyyju3668s",
+						"slug": "004-13_treasures_of_britain-b-s",
+						"set": {
+							"name": "Arthurian Legends",
+							"code": "004"
+						},
+						"meta": {
+							"finish": "Standard",
+							"product": "Booster",
+							"typeline": "A Unique collection of Relics"
+						}
+					},
+					{
+						"id": "cmt865wcd04n1nwcy6l8uye2o",
+						"slug": "004-13_treasures_of_britain-b-f",
+						"set": {
+							"name": "Arthurian Legends",
+							"code": "004"
+						},
+						"meta": {
+							"finish": "Foil",
+							"product": "Booster",
+							"typeline": "A Unique collection of Relics"
+						}
+					}
+				]
+			}
+		]`))
+	}))
+	defer server.Close()
+
+	records, result := fetchRecords(t, &SorceryProvider{HTTP: testHTTP(server), BaseURL: server.URL})
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(records))
+	}
+	if records[0].Name != "13 Treasures of Britain" || records[0].CollectorNumber != "004-13_treasures_of_britain-b-s" {
+		t.Fatalf("unexpected record 0: %+v", records[0])
+	}
+	if records[0].SetCode != "004" || records[0].SetName != "Arthurian Legends" {
+		t.Fatalf("unexpected set info: %+v", records[0])
+	}
+	if records[0].Variant != "Normal" || records[1].Variant != "Foil" {
+		t.Fatalf("unexpected variants: r0=%s, r1=%s", records[0].Variant, records[1].Variant)
+	}
+	if records[0].Images[0].URL != "https://d27a44hjr9gen3.cloudfront.net/cards/004-13_treasures_of_britain-b-s.png" {
+		t.Fatalf("unexpected image URL: %q", records[0].Images[0].URL)
+	}
+	if result.Count != 2 {
+		t.Fatalf("unexpected count: %d", result.Count)
+	}
+}
