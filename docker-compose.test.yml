@@ -26,11 +26,6 @@ services:
       # Note: Upgrading an existing database volume from PG15 requires pg_upgrade or pg_dump/restore.
       - pokget_test_postgres:/var/lib/postgresql
 
-  pokget_ollama:
-    container_name: pokget_test_ollama
-    ports: !override
-      - "127.0.0.1:11435:11434"
-
 volumes:
   pokget_test_cache:
   pokget_test_catalog_images:
