@@ -8,8 +8,9 @@
   "lang": "de",
   "display": "standalone",
   "display_override": [
-    "fullscreen",
-    "standalone"
+    "standalone",
+    "minimal-ui",
+    "window-controls-overlay"
   ],
   "background_color": "#050505",
   "theme_color": "#050505",

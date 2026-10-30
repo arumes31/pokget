@@ -13,8 +13,8 @@ func registerHealthRoutes(router *mux.Router, database *sql.DB) {
 	router.HandleFunc("/health/live", func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Cache-Control", "no-store")
 		writer.WriteHeader(http.StatusNoContent)
-	}).Methods(http.MethodGet)
-	router.HandleFunc("/health/ready", databaseReadinessHandler(database)).Methods(http.MethodGet)
+	}).Methods(http.MethodGet, http.MethodHead)
+	router.HandleFunc("/health/ready", databaseReadinessHandler(database)).Methods(http.MethodGet, http.MethodHead)
 }
 
 func databaseReadinessHandler(database *sql.DB) http.HandlerFunc {
