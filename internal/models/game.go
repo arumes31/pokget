@@ -5,7 +5,7 @@ import "strings"
 // NormalizeGame converts user-facing and legacy game labels to catalog slugs.
 func NormalizeGame(game string) string {
 	normalized := strings.ToLower(strings.TrimSpace(game))
-	normalized = strings.NewReplacer("-", "_", " ", "_").Replace(normalized)
+	normalized = strings.NewReplacer("-", "_", " ", "_", ":", "").Replace(normalized)
 	for strings.Contains(normalized, "__") {
 		normalized = strings.ReplaceAll(normalized, "__", "_")
 	}
@@ -24,6 +24,8 @@ func NormalizeGame(game string) string {
 		return "weiss_schwarz"
 	case "yugioh", "yu_gi_oh", "yu_gi_oh!":
 		return "yugioh"
+	case "star_wars", "star_wars_unlimited", "swu", "starwars":
+		return "star_wars_unlimited"
 	default:
 		return normalized
 	}

@@ -29,6 +29,7 @@
     "@tesseract.js-data/fra": "1.0.0",
     "@tesseract.js-data/jpn": "1.0.0",
     "@tesseract.js-data/kor": "1.0.0",
+    "@tesseract.js-data/spa": "^1.0.0",
     "acorn": "^8.19.0",
     "parse5": "^8.0.1",
     "terser": "5.51.2",

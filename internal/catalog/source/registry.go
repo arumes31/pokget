@@ -10,5 +10,6 @@ func DefaultProviders(options HTTPOptions, language string, maxWeissPages int) [
 		&LorcanaJSONProvider{HTTP: options, Language: language},
 		&WeissProvider{HTTP: options, MaxPages: maxWeissPages},
 		&YGOPRODeckProvider{HTTP: options},
+		&SWUDBProvider{HTTP: options},
 	}
 }

@@ -109,10 +109,16 @@ test('local preview replacement preserves current image and ignores cancelled or
 test('scanner exposes game-specific languages and repairs stale selections', () => {
   assert.deepEqual(
     scanner.languagesForGame('one_piece').map(({ value }) => value),
-    ['eng', 'jpn', scanner.AUTO_LANGUAGE],
+    ['eng'],
   );
-  assert.ok(scanner.languagesForGame('yugioh').some(({ value }) => value === 'kor'));
+  assert.deepEqual(
+    scanner.languagesForGame('yugioh').map(({ value }) => value),
+    ['eng'],
+  );
+  assert.ok(scanner.languagesForGame('pokemon').some(({ value }) => value === 'kor'));
+  assert.ok(scanner.languagesForGame('pokemon').some(({ value }) => value === 'spa'));
   assert.equal(scanner.normalizeLanguage('lorcana', 'jpn'), 'eng');
+  assert.equal(scanner.normalizeLanguage('one_piece', 'jpn'), 'eng');
   assert.equal(scanner.normalizeLanguage('magic', 'deu'), 'deu');
   assert.equal(scanner.languagesForGame('unsupported'), scanner.LANGUAGE_OPTIONS.pokemon);
 });
@@ -252,7 +258,7 @@ test('one submission pipeline sends the selected TCG and language', async () => 
 
   try {
     const component = scanner.createCardScanner({ csrfToken: 'csrf' });
-    component.game = 'one_piece';
+    component.game = 'pokemon';
     component.lang = 'jpn';
     component.notify = () => {};
     const crop = new Blob(['jpeg'], { type: 'image/jpeg' });
@@ -261,7 +267,7 @@ test('one submission pipeline sends the selected TCG and language', async () => 
 
     assert.equal(request.url, '/api/scan');
     assert.equal(request.options.headers['X-CSRF-Token'], 'csrf');
-    assert.equal(request.options.body.get('game'), 'one_piece');
+    assert.equal(request.options.body.get('game'), 'pokemon');
     assert.equal(request.options.body.get('lang'), 'jpn');
     assert.equal(request.options.body.get('card_image').name, 'crop.jpg');
     assert.equal(component.detectedID, 'op01-016');

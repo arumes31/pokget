@@ -5,7 +5,7 @@
 }(typeof globalThis !== 'undefined' ? globalThis : window, (root) => {
   'use strict';
 
-  const LANGUAGES = new Set(['eng', 'deu', 'fra', 'jpn', 'chi_sim', 'chi_tra', 'kor']);
+  const LANGUAGES = new Set(['eng', 'deu', 'fra', 'jpn', 'chi_sim', 'chi_tra', 'kor', 'spa']);
   const WORKER_URL = '/static/js/device-ocr-worker.js?v=2';
   const STAGES = new Set(['initializing', 'loading_language', 'full_card', 'top_band', 'bottom_band']);
 

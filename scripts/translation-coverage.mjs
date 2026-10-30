@@ -9,6 +9,7 @@ const ignoredTags = new Set(['script', 'style']);
 // These names/identifiers deliberately retain their spelling in either language.
 export const invariant = new Set([
   'Pokget', 'Pokémon', 'Disney Lorcana', 'Magic: The Gathering', 'One Piece', 'Weiss Schwarz', 'Yu-Gi-Oh!',
+  'Star Wars: Unlimited',
   'PSA', 'BGS', 'CGC', 'SGC', 'TAG', 'ACE', 'TCG', 'EUR', 'USD', 'Euro',
   'English', 'Deutsch', 'NO. 001', 'NO. 018', 'NO. 032', 'POKGET ORIGINALS',
   'Shining Fates • SV107/SV122', 'https://…/card.jpg', '© 2026 Pokget',

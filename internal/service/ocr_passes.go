@@ -64,6 +64,10 @@ var ocrLayouts = map[string][]ocrLayoutROI{
 		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.05, MinY: 0.07, MaxX: 0.95, MaxY: 0.23}},
 		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.42, MinY: 0.82, MaxX: 0.99, MaxY: 0.98}},
 	},
+	"star_wars_unlimited": {
+		{Name: "name", Role: "name", Rect: OCRNormalizedRect{MinX: 0.04, MinY: 0.03, MaxX: 0.96, MaxY: 0.20}},
+		{Name: "number", Role: "identifier", Rect: OCRNormalizedRect{MinX: 0.02, MinY: 0.82, MaxX: 0.98, MaxY: 0.99}},
+	},
 }
 
 func buildOCRPasses(src image.Image, config OCRScanConfig) ([]ocrPass, []byte, error) {

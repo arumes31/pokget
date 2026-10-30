@@ -11,5 +11,6 @@ func DefaultImageHosts() map[string][]string {
 		"lorcanajson":       {"api.lorcana.ravensburger.com"},
 		"weiss_official":    {"en.ws-tcg.com", "ws-tcg.com", "www.ws-tcg.com"},
 		"ygoprodeck":        {"images.ygoprodeck.com"},
+		"swudb":             {"cdn.swu-db.com"},
 	}
 }
