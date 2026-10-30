@@ -25,6 +25,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -379,6 +380,112 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		"SetCompletion":   setCompletion,
 		"Portfolio":       portfolio,
 	})
+}
+
+
+// ExportPortfolioCSV exports the user's entire portfolio collection as an RFC 4180 CSV file.
+func (h *Handler) ExportPortfolioCSV(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := r.Context().Value(auth.UserContextKey{}).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var currency string
+	_ = h.DB.QueryRowContext(r.Context(), "SELECT currency FROM users WHERE id = $1", userID).Scan(&currency)
+	if currency == "" {
+		currency = "USD"
+	}
+
+	rows, err := h.DB.QueryContext(r.Context(), `
+		SELECT c.name, COALESCE(c.game, ''), c.set_name, COALESCE(c.set_code, ''), COALESCE(c.collector_number, ''),
+		       p.condition, COALESCE(p.grade, ''), COALESCE(p.grading_company, ''),
+		       p.custom_price, c.price_usd, c.price_eur, COALESCE(p.notes, ''),
+		       COALESCE(b.name, ''), p.is_public, p.added_at
+		FROM portfolio p
+		JOIN cards c ON p.card_id = c.id
+		LEFT JOIN binders b ON p.binder_id = b.id
+		WHERE p.user_id = $1
+		ORDER BY p.added_at DESC, p.id DESC`, userID)
+	if err != nil {
+		slog.Error("Failed to query portfolio for export", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	filename := fmt.Sprintf("pokget-vault-%s.csv", time.Now().UTC().Format("2006-01-02"))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	_ = writer.Write([]string{
+		"Card Name", "Game", "Set", "Set Code", "Collector Number",
+		"Condition", "Grade", "Grading Company",
+		"Custom Price", "Market Price", "Currency", "Notes", "Binder", "Public", "Added At",
+	})
+
+	for rows.Next() {
+		var name, game, setName, setCode, collectorNum, condition, grade, gradingCo, notes, binderName string
+		var customPrice sql.NullFloat64
+		var priceUSD, priceEUR decimal.NullDecimal
+		var isPublic bool
+		var addedAt time.Time
+
+		if err := rows.Scan(&name, &game, &setName, &setCode, &collectorNum,
+			&condition, &grade, &gradingCo,
+			&customPrice, &priceUSD, &priceEUR, &notes,
+			&binderName, &isPublic, &addedAt); err != nil {
+			slog.Error("Failed to scan portfolio export row", "error", err)
+			return
+		}
+
+		var customPriceStr string
+		if customPrice.Valid {
+			customPriceStr = fmt.Sprintf("%.2f", customPrice.Float64)
+		}
+
+		var marketPriceStr string
+		if currency == "EUR" && priceEUR.Valid {
+			marketPriceStr = priceEUR.Decimal.StringFixed(2)
+		} else if currency != "EUR" && priceUSD.Valid {
+			marketPriceStr = priceUSD.Decimal.StringFixed(2)
+		}
+
+		publicStr := "No"
+		if isPublic {
+			publicStr = "Yes"
+		}
+
+		_ = writer.Write([]string{
+			name,
+			game,
+			setName,
+			setCode,
+			collectorNum,
+			condition,
+			grade,
+			gradingCo,
+			customPriceStr,
+			marketPriceStr,
+			currency,
+			notes,
+			binderName,
+			publicStr,
+			addedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("Failed during portfolio export streaming", "error", err)
+	}
 }
 
 func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {

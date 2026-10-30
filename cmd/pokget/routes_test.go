@@ -60,6 +60,7 @@ func TestBuildRouterRegistersRoutes(t *testing.T) {
 		{http.MethodDelete, "/portfolio/delete"},
 		{http.MethodPost, "/portfolio/binder"},
 		{http.MethodPost, "/portfolio/toggle-visibility"},
+		{http.MethodGet, "/portfolio/export"},
 		{http.MethodGet, "/wantlist"},
 		{http.MethodPost, "/wantlist/add"},
 		{http.MethodPost, "/wantlist/edit"},
