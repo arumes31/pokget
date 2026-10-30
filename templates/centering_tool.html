@@ -205,52 +205,84 @@
     <!-- Scanner Bottom Controls (Thumb-Zone Ergonomics) -->
     <div :inert="scanning" data-testid="scanner-controls"
         class="scanner-controls">
-        <p data-i18n class="scanner-privacy-compact text-xs leading-relaxed text-zinc-400">Only the area inside the guides is uploaded.</p>
+        <p data-i18n class="sr-only">Only the area inside the guides is uploaded.</p>
 
-        <!-- TCG & Language Options -->
-        <fieldset class="grid grid-cols-2 gap-2.5">
-            <legend data-i18n class="sr-only">Scan options</legend>
-            <label data-i18n for="scanner-game" class="text-xs font-mono font-semibold uppercase tracking-wider text-white/70">
-                TCG
-                <select id="scanner-game" x-model="game"
-                    :disabled="scanning"
-                    class="mt-1.5 w-full min-h-11 bg-black/75 border border-white/15 rounded-xl px-3 text-sm text-white focus:border-red-500 transition-colors">
-                    <option data-i18n value="pokemon">Pokémon</option>
-                    <option data-i18n value="magic">Magic: The Gathering</option>
-                    <option data-i18n value="one_piece">One Piece</option>
-                    <option data-i18n value="lorcana">Disney Lorcana</option>
-                    <option data-i18n value="weiss_schwarz">Weiss Schwarz</option>
-                    <option data-i18n value="yugioh">Yu-Gi-Oh!</option>
-                </select>
-            </label>
-            <label data-i18n for="scanner-language" class="text-xs font-mono font-semibold uppercase tracking-wider text-white/70">
-                Card language
-                <select id="scanner-language" x-model="lang"
-                    :disabled="scanning"
-                    class="mt-1.5 w-full min-h-11 bg-black/75 border border-white/15 rounded-xl px-3 text-sm text-white focus:border-red-500 transition-colors">
-                    <template x-for="language in availableLanguages" :key="language.value">
-                        <option data-i18n :value="language.value" x-text="language.label"></option>
+        <!-- Compact Glass Quick Controls: TCG & Language Flag Popover (Concept B) -->
+        <div class="scanner-quick-bar relative flex items-center justify-between gap-2 z-30">
+            <!-- TCG Selector Pill -->
+            <div class="relative flex-1 min-w-0" @click.away="showGamePopover = false">
+                <button data-i18n-attrs="aria-label" type="button" @click="showGamePopover = !showGamePopover" :disabled="scanning"
+                    class="w-full flex items-center justify-between min-h-11 px-3 rounded-xl bg-black/60 hover:bg-black/80 border border-white/15 text-xs font-mono text-white transition-all shadow-md backdrop-blur-md"
+                    :class="showGamePopover ? 'border-red-500 bg-red-950/30 ring-1 ring-red-500/50' : ''"
+                    aria-label="Select Trading Card Game" :aria-expanded="showGamePopover.toString()">
+                    <span class="truncate font-semibold text-white" x-text="gameDisplayName(game)"></span>
+                    <span class="material-symbols-outlined text-sm text-red-400 ml-1 shrink-0" :class="showGamePopover ? 'rotate-180 transition-transform' : 'transition-transform'">expand_more</span>
+                </button>
+
+                <!-- TCG Dropdown Popover (Opens upward) -->
+                <div x-show="showGamePopover" x-cloak
+                    class="absolute bottom-full mb-1.5 left-0 z-50 w-full min-w-[180px] rounded-xl border border-red-500/40 bg-zinc-950/95 backdrop-blur-xl p-1.5 shadow-2xl shadow-black/80 space-y-1">
+                    <div class="text-[10px] font-mono uppercase tracking-wider text-zinc-400 px-2 py-1 border-b border-white/10" data-i18n>Select TCG</div>
+                    <template x-for="g in [
+                        { id: 'pokemon', label: 'Pokémon' },
+                        { id: 'magic', label: 'Magic: The Gathering' },
+                        { id: 'one_piece', label: 'One Piece' },
+                        { id: 'lorcana', label: 'Disney Lorcana' },
+                        { id: 'weiss_schwarz', label: 'Weiss Schwarz' },
+                        { id: 'yugioh', label: 'Yu-Gi-Oh!' }
+                    ]" :key="g.id">
+                        <button type="button" @click="setGame(g.id)"
+                            class="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-mono transition-colors text-left"
+                            :class="game === g.id ? 'bg-red-600 text-white font-bold' : 'text-zinc-300 hover:bg-white/10 hover:text-white'">
+                            <span x-text="g.label"></span>
+                            <span class="material-symbols-outlined text-sm text-white" x-show="game === g.id" aria-hidden="true">check</span>
+                        </button>
                     </template>
-                </select>
-            </label>
-        </fieldset>
+                </div>
+            </div>
 
-        <!-- TCG Fast Selector Pills & Language (Thumb-friendly touch bar) -->
-        <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
-            <template x-for="g in [
-                { id: 'pokemon', label: 'Pokémon' },
-                { id: 'magic', label: 'MTG' },
-                { id: 'one_piece', label: 'One Piece' },
-                { id: 'lorcana', label: 'Lorcana' },
-                { id: 'weiss_schwarz', label: 'Weiß' },
-                { id: 'yugioh', label: 'Yu-Gi-Oh!' }
-            ]" :key="g.id">
-                <button type="button" @click="game = g.id" :disabled="scanning"
-                    :aria-pressed="game === g.id ? 'true' : 'false'"
-                    class="min-h-11 shrink-0 rounded-xl px-3.5 py-1 text-xs font-mono font-medium transition-all flex items-center justify-center"
-                    :class="game === g.id ? 'bg-red-600 text-white shadow-md shadow-red-950/40 border border-red-400' : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10 border border-white/10'"
-                    x-text="g.label"></button>
-            </template>
+            <!-- Hidden accessible selects for backwards compatibility & tests -->
+            <select id="scanner-game" x-model="game" class="sr-only" tabindex="-1" aria-hidden="true">
+                <option data-i18n value="pokemon">Pokémon</option>
+                <option data-i18n value="magic">Magic: The Gathering</option>
+                <option data-i18n value="one_piece">One Piece</option>
+                <option data-i18n value="lorcana">Disney Lorcana</option>
+                <option data-i18n value="weiss_schwarz">Weiss Schwarz</option>
+                <option data-i18n value="yugioh">Yu-Gi-Oh!</option>
+            </select>
+            <select id="scanner-language" x-model="lang" class="sr-only" tabindex="-1" aria-hidden="true">
+                <template x-for="language in availableLanguages" :key="language.value">
+                    <option data-i18n :value="language.value" x-text="language.label"></option>
+                </template>
+            </select>
+
+            <!-- Language Flag Pill Popover (Concept B) -->
+            <div class="relative shrink-0" @click.away="showLangPopover = false">
+                <button data-i18n-attrs="aria-label" type="button" @click="showLangPopover = !showLangPopover" :disabled="scanning"
+                    class="flex items-center gap-1.5 min-h-11 px-3 rounded-xl bg-black/60 hover:bg-black/80 border border-white/15 text-xs font-mono text-white transition-all shadow-md backdrop-blur-md"
+                    :class="showLangPopover ? 'border-red-500 bg-red-950/30 ring-1 ring-red-500/50' : ''"
+                    aria-label="Select card language" :aria-expanded="showLangPopover.toString()">
+                    <span class="text-base leading-none" x-text="currentLangFlag(lang)"></span>
+                    <span class="font-bold text-red-300 uppercase" x-text="currentLangCode(lang)"></span>
+                    <span class="material-symbols-outlined text-sm text-red-400 shrink-0" :class="showLangPopover ? 'rotate-180 transition-transform' : 'transition-transform'">expand_more</span>
+                </button>
+
+                <!-- Language Flag Grid Popover (Opens upward) -->
+                <div x-show="showLangPopover" x-cloak
+                    class="absolute bottom-full mb-1.5 right-0 z-50 w-64 rounded-xl border border-red-500/40 bg-zinc-950/95 backdrop-blur-xl p-2 shadow-2xl shadow-black/80">
+                    <div class="text-[10px] font-mono uppercase tracking-wider text-zinc-400 px-1.5 pb-1.5 mb-1.5 border-b border-white/10" data-i18n>Card language</div>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <template x-for="l in availableLanguages" :key="l.value">
+                            <button type="button" @click="setLanguage(l.value)"
+                                class="flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-mono transition-colors text-left"
+                                :class="lang === l.value ? 'bg-red-600 text-white font-bold shadow-md shadow-red-950/50' : 'bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white border border-white/5'">
+                                <span class="text-base leading-none" x-text="l.flag || currentLangFlag(l.value)"></span>
+                                <span class="truncate" x-text="l.code || currentLangCode(l.value)"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Error Feedback -->
@@ -301,9 +333,16 @@
 
         <!-- Identified Card Sheet -->
         <section x-show="detectedCard" x-cloak x-ref="scanResult" tabindex="-1" class="scan-result" aria-labelledby="scan-result-title">
-            <div class="flex items-start justify-between gap-3">
-                <h3 data-i18n id="scan-result-title" class="text-base font-semibold font-mono" x-text="needsReview && !matchConfirmed ? 'Check this printing' : (added ? 'Saved to your collection' : (result === 'Manual catalog ID' ? 'Manual selection' : 'Card identified'))"></h3>
-                <span class="material-symbols-outlined" aria-hidden="true" :class="needsReview && !matchConfirmed ? 'text-amber-400' : 'text-emerald-400'" x-text="needsReview && !matchConfirmed ? 'fact_check' : 'check_circle'"></span>
+            <div class="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
+                <div class="flex items-center gap-2 min-w-0">
+                    <span class="size-2 rounded-full shrink-0" :class="needsReview && !matchConfirmed ? 'bg-amber-400' : 'bg-emerald-400'"></span>
+                    <h3 data-i18n id="scan-result-title" class="text-sm font-semibold font-mono truncate" x-text="needsReview && !matchConfirmed ? 'Check this printing' : (added ? 'Saved to your collection' : (result === 'Manual catalog ID' ? 'Manual selection' : 'Card identified'))"></h3>
+                </div>
+                <button data-i18n-attrs="aria-label" type="button" @click="resetResult()"
+                    class="flex size-7 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                    aria-label="Dismiss">
+                    <span class="material-symbols-outlined text-lg" aria-hidden="true">close</span>
+                </button>
             </div>
             <p data-i18n class="mt-1.5 text-xs text-zinc-300" x-show="needsReview && !matchConfirmed">Similar cards can share a name or artwork. Compare your physical card before saving.</p>
 
