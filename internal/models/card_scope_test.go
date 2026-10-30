@@ -12,6 +12,7 @@ func TestParseTCG(t *testing.T) {
 		"Disney Lorcana": TCGLorcana,
 		"Weiss Schwarz":  TCGWeissSchwarz,
 		"Yu-Gi-Oh!":      TCGYuGiOh,
+		"Star Wars: Unlimited": TCGStarWarsUnlimited,
 	}
 	for input, want := range tests {
 		got, err := ParseTCG(input)
@@ -39,6 +40,9 @@ func TestParseLanguageAndTesseractCode(t *testing.T) {
 		"chi_sim": LanguageChineseSimplified,
 		"zh-Hant": LanguageChineseTraditional,
 		"kor":     LanguageKorean,
+		"spa":     LanguageSpanish,
+		"Spanish": LanguageSpanish,
+		"es":      LanguageSpanish,
 	}
 	for input, want := range tests {
 		got, err := ParseLanguage(input)
@@ -59,7 +63,7 @@ func TestParseLanguageAndTesseractCode(t *testing.T) {
 }
 
 func TestParseLanguageAutoDetect(t *testing.T) {
-	for _, input := range []string{"auto", "any", "eng+jpn+deu+fra+chi_sim+chi_tra+kor"} {
+	for _, input := range []string{"auto", "any", "eng+jpn+deu+fra+chi_sim+chi_tra+kor", "eng+jpn+deu+fra+chi_sim+chi_tra+kor+spa"} {
 		language, err := ParseLanguage(input)
 		if err != nil {
 			t.Fatalf("ParseLanguage(%q): %v", input, err)
@@ -68,10 +72,10 @@ func TestParseLanguageAutoDetect(t *testing.T) {
 			t.Errorf("ParseLanguage(%q) = %q, want %q", input, language, LanguageAny)
 		}
 	}
-	if got := LanguageAny.TesseractCode(); got != "eng+jpn+deu+fra+chi_sim+chi_tra+kor" {
+	if got := LanguageAny.TesseractCode(); got != "eng+jpn+deu+fra+chi_sim+chi_tra+kor+spa" {
 		t.Errorf("LanguageAny.TesseractCode() = %q", got)
 	}
-	if !LanguageAny.Matches("jpn") || !LanguageAny.Matches("de") {
+	if !LanguageAny.Matches("jpn") || !LanguageAny.Matches("de") || !LanguageAny.Matches("es") {
 		t.Error("LanguageAny must match every supported catalog language")
 	}
 }

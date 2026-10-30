@@ -14,7 +14,7 @@ function progress(nextStage, fraction = 0) {
   stage = nextStage;
   if (currentJob !== null) self.postMessage({ id: currentJob, type: 'progress', stage, progress: fraction });
 }
-const languages = new Set(['eng', 'deu', 'fra', 'jpn', 'chi_sim', 'chi_tra', 'kor']);
+const languages = new Set(['eng', 'deu', 'fra', 'jpn', 'chi_sim', 'chi_tra', 'kor', 'spa']);
 
 async function readPrintingBands(blob) {
   if (typeof OffscreenCanvas !== 'function' || typeof createImageBitmap !== 'function') return '';

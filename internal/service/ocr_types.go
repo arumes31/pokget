@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	defaultOCRLanguage  = "eng+jpn+deu+fra+chi_sim+chi_tra+kor"
+	defaultOCRLanguage  = "eng+jpn+deu+fra+chi_sim+chi_tra+kor+spa"
 	defaultOCRMaxBytes  = 20 << 20
 	defaultOCRMaxPixels = int64(40_000_000)
 )
@@ -98,6 +98,8 @@ func normalizeGame(game string) string {
 		return "weiss_schwarz"
 	case "yugioh", "yu_gi_oh", "yu_gi_oh!":
 		return "yugioh"
+	case "star_wars", "star_wars_unlimited", "swu":
+		return "star_wars_unlimited"
 	default:
 		return game
 	}

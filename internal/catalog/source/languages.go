@@ -9,12 +9,15 @@ import (
 	"pokget/internal/catalog"
 )
 
-const DefaultLanguages = "en,de,ja,fr,zh-cn,zh-tw,ko"
+const DefaultLanguages = "en,de,ja,fr,zh-cn,zh-tw,ko,es"
 
 func catalogLanguages(value string) []string {
 	var languages []string
 	for _, language := range strings.Split(value, ",") {
 		language = strings.ToLower(strings.TrimSpace(language))
+		if language == "spanish" {
+			language = "es"
+		}
 		if language != "" && !slices.Contains(languages, language) {
 			languages = append(languages, language)
 		}

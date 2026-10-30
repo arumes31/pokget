@@ -116,7 +116,7 @@ export async function copyDeviceOCRAssets(outputDir) {
       await cp(path.join(coreDir, name), path.join(vendor, 'core', name));
     }
   }
-  for (const language of ['eng', 'deu', 'fra', 'jpn', 'chi_sim', 'chi_tra', 'kor']) {
+  for (const language of ['eng', 'deu', 'fra', 'jpn', 'chi_sim', 'chi_tra', 'kor', 'spa']) {
     await cp(path.join(modules, '@tesseract.js-data', language, '4.0.0_best_int', `${language}.traineddata.gz`),
       path.join(vendor, 'lang', `${language}.traineddata.gz`));
   }

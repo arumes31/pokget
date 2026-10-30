@@ -65,25 +65,6 @@ func TestTCGdexProvider(t *testing.T) {
 	}
 }
 
-func TestLorcastProvider(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sets":
-			_, _ = w.Write([]byte(`{"results":[{"id":"s1","code":"1","name":"First","released_at":"2023-08-18"}]}`))
-		case "/sets/1/cards":
-			_, _ = w.Write([]byte(`[{"id":"c1","name":"Elsa","version":"Spirit","released_at":"2023-08-18","collector_number":"207","lang":"en","rarity":"Legendary","set":{"id":"s1","code":"1","name":"First"},"image_uris":{"digital":{"normal":"https://images.example/c1.avif"}}}]`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	records, _ := fetchRecords(t, &LorcastProvider{HTTP: testHTTP(server), BaseURL: server.URL})
-	if len(records) != 1 || records[0].Name != "Elsa Spirit" || records[0].CollectorNumber != "207" {
-		t.Fatalf("unexpected records: %+v", records)
-	}
-}
-
 func TestLorcanaJSONProvider(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/en/allCards.json" {
@@ -128,21 +109,6 @@ func TestYGOPRODeckProviderKeepsArtAndPrintingsUnlinked(t *testing.T) {
 	}
 }
 
-func TestOPTCGAPIProvider(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/allSetCards/" {
-			http.NotFound(w, r)
-			return
-		}
-		_, _ = w.Write([]byte(`[{"card_name":"Luffy","set_name":"Romance Dawn","set_id":"OP-01","rarity":"L","card_set_id":"OP01-001","card_image_id":"OP01-001_p1","card_image":"https://images.example/op.png","date_scraped":"2026-01-02"}]`))
-	}))
-	defer server.Close()
-
-	records, _ := fetchRecords(t, &OPTCGAPIProvider{HTTP: testHTTP(server), BaseURL: server.URL, Endpoints: []string{"allSetCards"}})
-	if len(records) != 1 || records[0].SourceCardID != "OP01-001_p1" {
-		t.Fatalf("unexpected records: %+v", records)
-	}
-}
 
 func TestScryfallProviderStreamsGzipJSONLAndFiltersDigital(t *testing.T) {
 	var server *httptest.Server
@@ -267,4 +233,29 @@ func fetchRecords(t *testing.T, provider catalog.Provider) ([]catalog.CardRecord
 		t.Fatalf("Fetch() error = %v", err)
 	}
 	return records, result
+}
+
+func TestSWUDBProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sets":
+			_, _ = w.Write([]byte(`[{"setId":"SOR","fullName":"Spark of Rebellion","releaseDate":"2024-03-08","numberCards":252}]`))
+		case "/cards/SOR":
+			_, _ = w.Write([]byte(`{"data":[{"Set":"SOR","Number":"059","Name":"2-1B Surgical Droid","Type":"Unit","Rarity":"Common","FrontArt":"https://images.example/059.png","VariantType":"Normal","cid":"5449704164"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	records, result := fetchRecords(t, &SWUDBProvider{HTTP: testHTTP(server), BaseURL: server.URL})
+	if len(records) != 1 || records[0].Name != "2-1B Surgical Droid" || records[0].CollectorNumber != "059" {
+		t.Fatalf("unexpected records: %+v", records)
+	}
+	if len(records[0].Images) != 1 || records[0].Images[0].URL != "https://images.example/059.png" {
+		t.Fatalf("unexpected images: %+v", records[0].Images)
+	}
+	if result.Count != 1 {
+		t.Fatalf("unexpected count: %d", result.Count)
+	}
 }

@@ -15,7 +15,7 @@
 }(typeof globalThis !== 'undefined' ? globalThis : window, () => {
   'use strict';
 
-  const AUTO_LANGUAGE = 'eng+jpn+deu+fra+chi_sim+chi_tra+kor';
+  const AUTO_LANGUAGE = 'eng+jpn+deu+fra+chi_sim+chi_tra+kor+spa';
   const DEFAULT_LINES = Object.freeze({ left: 10, right: 90, top: 10, bottom: 90 });
   const MAX_FILE_BYTES = 15 * 1024 * 1024;
   const MAX_SOURCE_DIMENSION = 12000;
@@ -30,6 +30,7 @@
     jpn: Object.freeze({ flag: '🇯🇵', code: 'JP' }),
     deu: Object.freeze({ flag: '🇩🇪', code: 'DE' }),
     fra: Object.freeze({ flag: '🇫🇷', code: 'FR' }),
+    spa: Object.freeze({ flag: '🇪🇸', code: 'ES' }),
     chi_sim: Object.freeze({ flag: '🇨🇳', code: '简' }),
     chi_tra: Object.freeze({ flag: '🇹🇼', code: '繁' }),
     kor: Object.freeze({ flag: '🇰🇷', code: 'KO' }),
@@ -42,6 +43,7 @@
       { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
       { value: 'deu', label: 'German', flag: '🇩🇪', code: 'DE' },
       { value: 'fra', label: 'French', flag: '🇫🇷', code: 'FR' },
+      { value: 'spa', label: 'Spanish', flag: '🇪🇸', code: 'ES' },
       { value: 'chi_sim', label: 'Chinese (Simplified)', flag: '🇨🇳', code: '简' },
       { value: 'chi_tra', label: 'Chinese (Traditional)', flag: '🇹🇼', code: '繁' },
       { value: 'kor', label: 'Korean', flag: '🇰🇷', code: 'KO' },
@@ -52,11 +54,10 @@
       { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
       { value: 'deu', label: 'German', flag: '🇩🇪', code: 'DE' },
       { value: 'fra', label: 'French', flag: '🇫🇷', code: 'FR' },
-      { value: AUTO_LANGUAGE, label: 'Auto detect', flag: '🌐', code: 'AUTO' },
-    ]),
-    one_piece: Object.freeze([
-      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
+      { value: 'spa', label: 'Spanish', flag: '🇪🇸', code: 'ES' },
+      { value: 'chi_sim', label: 'Chinese (Simplified)', flag: '🇨🇳', code: '简' },
+      { value: 'chi_tra', label: 'Chinese (Traditional)', flag: '🇹🇼', code: '繁' },
+      { value: 'kor', label: 'Korean', flag: '🇰🇷', code: 'KO' },
       { value: AUTO_LANGUAGE, label: 'Auto detect', flag: '🌐', code: 'AUTO' },
     ]),
     lorcana: Object.freeze([
@@ -65,18 +66,17 @@
       { value: 'fra', label: 'French', flag: '🇫🇷', code: 'FR' },
       { value: AUTO_LANGUAGE, label: 'Auto detect', flag: '🌐', code: 'AUTO' },
     ]),
+    one_piece: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
+    ]),
     weiss_schwarz: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
-      { value: AUTO_LANGUAGE, label: 'Auto detect', flag: '🌐', code: 'AUTO' },
     ]),
     yugioh: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
-      { value: 'deu', label: 'German', flag: '🇩🇪', code: 'DE' },
-      { value: 'fra', label: 'French', flag: '🇫🇷', code: 'FR' },
-      { value: 'kor', label: 'Korean', flag: '🇰🇷', code: 'KO' },
-      { value: AUTO_LANGUAGE, label: 'Auto detect', flag: '🌐', code: 'AUTO' },
+    ]),
+    star_wars_unlimited: Object.freeze([
+      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
     ]),
   });
 
@@ -417,6 +417,7 @@
           lorcana: 'Disney Lorcana',
           weiss_schwarz: 'Weiss Schwarz',
           yugioh: 'Yu-Gi-Oh!',
+          star_wars_unlimited: 'Star Wars: Unlimited',
         };
         return labels[g || this.game] || 'Pokémon';
       },

@@ -12,17 +12,18 @@ import (
 type Game string
 
 const (
-	GamePokemon      Game = "pokemon"
-	GameMagic        Game = "magic"
-	GameOnePiece     Game = "one_piece"
-	GameLorcana      Game = "lorcana"
-	GameWeissSchwarz Game = "weiss_schwarz"
-	GameYuGiOh       Game = "yugioh"
+	GamePokemon           Game = "pokemon"
+	GameMagic             Game = "magic"
+	GameOnePiece          Game = "one_piece"
+	GameLorcana           Game = "lorcana"
+	GameWeissSchwarz      Game = "weiss_schwarz"
+	GameYuGiOh            Game = "yugioh"
+	GameStarWarsUnlimited Game = "star_wars_unlimited"
 )
 
 func (g Game) Valid() bool {
 	switch g {
-	case GamePokemon, GameMagic, GameOnePiece, GameLorcana, GameWeissSchwarz, GameYuGiOh:
+	case GamePokemon, GameMagic, GameOnePiece, GameLorcana, GameWeissSchwarz, GameYuGiOh, GameStarWarsUnlimited:
 		return true
 	default:
 		return false

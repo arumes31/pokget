@@ -234,7 +234,8 @@
                         { id: 'one_piece', label: 'One Piece' },
                         { id: 'lorcana', label: 'Disney Lorcana' },
                         { id: 'weiss_schwarz', label: 'Weiss Schwarz' },
-                        { id: 'yugioh', label: 'Yu-Gi-Oh!' }
+                        { id: 'yugioh', label: 'Yu-Gi-Oh!' },
+                        { id: 'star_wars_unlimited', label: 'Star Wars: Unlimited' }
                     ]" :key="g.id">
                         <button type="button" @click="setGame(g.id)"
                             class="w-full min-h-11 flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-mono transition-colors text-left"
@@ -254,6 +255,7 @@
                 <option data-i18n value="lorcana">Disney Lorcana</option>
                 <option data-i18n value="weiss_schwarz">Weiss Schwarz</option>
                 <option data-i18n value="yugioh">Yu-Gi-Oh!</option>
+                <option data-i18n value="star_wars_unlimited">Star Wars: Unlimited</option>
             </select>
             <select id="scanner-language" x-model="lang" class="sr-only" tabindex="-1" aria-hidden="true">
                 <template x-for="language in availableLanguages" :key="language.value">
@@ -262,7 +264,7 @@
             </select>
 
             <!-- Language Flag Pill Popover (Concept B) -->
-            <div class="relative shrink-0" @click.away="showLangPopover = false">
+            <div class="relative shrink-0" x-show="availableLanguages.length > 1" @click.away="showLangPopover = false">
                 <button data-i18n-attrs="aria-label" type="button" @click="showLangPopover = !showLangPopover" :disabled="scanning"
                     class="flex items-center gap-1.5 min-h-11 px-3 rounded-xl bg-black/60 hover:bg-black/80 border border-white/15 text-xs font-mono text-white transition-all shadow-md backdrop-blur-md"
                     :class="showLangPopover ? 'border-red-500 bg-red-950/30 ring-1 ring-red-500/50' : ''"

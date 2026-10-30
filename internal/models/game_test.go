@@ -18,6 +18,8 @@ func TestNormalizeGame(t *testing.T) {
 		"weiss-schwarz":       "weiss_schwarz",
 		"Yu-Gi-Oh!":           "yugioh",
 		"yugioh":              "yugioh",
+		"Star Wars: Unlimited": "star_wars_unlimited",
+		"swu":                 "star_wars_unlimited",
 	}
 	for input, want := range tests {
 		if got := NormalizeGame(input); got != want {

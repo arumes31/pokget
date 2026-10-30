@@ -44,6 +44,7 @@ jobs:
             tesseract-ocr-fra \
             tesseract-ocr-jpn \
             tesseract-ocr-kor \
+            tesseract-ocr-spa \
             libtesseract-dev \
             libleptonica-dev \
             pkg-config
@@ -94,6 +95,7 @@ jobs:
             tesseract-ocr-fra \
             tesseract-ocr-jpn \
             tesseract-ocr-kor \
+            tesseract-ocr-spa \
             libtesseract-dev \
             libleptonica-dev \
             pkg-config

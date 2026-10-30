@@ -82,7 +82,7 @@ and extract their exact identity, printed collector number, set details, languag
 You must return ONLY a valid, parseable JSON object without markdown wrapping or commentary.
 Required schema:
 {
-  "game": "pokemon" | "magic" | "yugioh" | "one_piece" | "lorcana" | "weiss_schwarz",
+  "game": "pokemon" | "magic" | "yugioh" | "one_piece" | "lorcana" | "weiss_schwarz" | "star_wars_unlimited",
   "name": "Printed official name on the card",
   "collector_number": "Exact printed number or code (e.g. '16/110', 'OP01-001', '4/102')",
   "set": "Set name or set expansion title",
