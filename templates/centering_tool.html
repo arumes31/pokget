@@ -245,7 +245,20 @@
                         { id: 'dbs_fusion_world', label: 'DBS Fusion World' },
                         { id: 'union_arena', label: 'Union Arena' },
                         { id: 'gundam', label: 'Gundam Card Game' },
-                        { id: 'battlespirits_saga', label: 'Battle Spirits Saga' }
+                        { id: 'battlespirits_saga', label: 'Battle Spirits Saga' },
+                        { id: 'world_of_warcraft', label: 'World of Warcraft TCG' },
+                        { id: 'fftcg', label: 'Final Fantasy TCG' },
+                        { id: 'godzilla', label: 'Godzilla Card Game' },
+                        { id: 'shadowverse_evolve', label: 'Shadowverse: Evolve' },
+                        { id: 'universus', label: 'UniVersus' },
+                        { id: 'vanguard', label: 'Cardfight!! Vanguard' },
+                        { id: 'hololive', label: 'hololive OCG' },
+                        { id: 'duel_masters', label: 'Duel Masters' },
+                        { id: 'cookie_run', label: 'CookieRun: Braverse' },
+                        { id: 'force_of_will', label: 'Force of Will' },
+                        { id: 'wixoss', label: 'WIXOSS' },
+                        { id: 'alpha_clash', label: 'Alpha Clash' },
+                        { id: 'riftbound', label: 'Riftbound TCG' }
                     ]" :key="g.id">
                         <button type="button" @click="setGame(g.id)"
                             class="w-full min-h-11 flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-mono transition-colors text-left"
@@ -276,6 +289,19 @@
                 <option data-i18n value="union_arena">Union Arena</option>
                 <option data-i18n value="gundam">Gundam Card Game</option>
                 <option data-i18n value="battlespirits_saga">Battle Spirits Saga</option>
+                <option data-i18n value="world_of_warcraft">World of Warcraft TCG</option>
+                <option data-i18n value="fftcg">Final Fantasy TCG</option>
+                <option data-i18n value="godzilla">Godzilla Card Game</option>
+                <option data-i18n value="shadowverse_evolve">Shadowverse: Evolve</option>
+                <option data-i18n value="universus">UniVersus</option>
+                <option data-i18n value="vanguard">Cardfight!! Vanguard</option>
+                <option data-i18n value="hololive">hololive OCG</option>
+                <option data-i18n value="duel_masters">Duel Masters</option>
+                <option data-i18n value="cookie_run">CookieRun: Braverse</option>
+                <option data-i18n value="force_of_will">Force of Will</option>
+                <option data-i18n value="wixoss">WIXOSS</option>
+                <option data-i18n value="alpha_clash">Alpha Clash</option>
+                <option data-i18n value="riftbound">Riftbound TCG</option>
             </select>
             <select id="scanner-language" x-model="lang" class="sr-only" tabindex="-1" aria-hidden="true">
                 <template x-for="language in availableLanguages" :key="language.value">

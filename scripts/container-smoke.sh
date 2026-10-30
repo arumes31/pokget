@@ -135,14 +135,14 @@ fi
 
 migration_version="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT version FROM schema_migrations')"
 migration_dirty="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT dirty FROM schema_migrations')"
-if [[ "${migration_version}" != "33" || "${migration_dirty}" != "f" ]]; then
+if [[ "${migration_version}" != "36" || "${migration_dirty}" != "f" ]]; then
   echo "unexpected migration state: version=${migration_version}, dirty=${migration_dirty}" >&2
   exit 1
 fi
 
 # Reproduce a legacy installation whose migration ledger reached version 27
 # even though card metadata, price, and catalog objects were absent. Restarting
-# the application must apply migrations 28-33 and pass runtime schema validation.
+# the application must apply migrations 28-36 and pass runtime schema validation.
 docker stop "${application_container}" >/dev/null
 docker exec "${database_container}" psql -v ON_ERROR_STOP=1 -U "${database_user}" -d "${database_name}" -c '
   ALTER TABLE cards
@@ -196,7 +196,7 @@ fi
 
 migration_version="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT version FROM schema_migrations')"
 migration_dirty="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT dirty FROM schema_migrations')"
-if [[ "${migration_version}" != "33" || "${migration_dirty}" != "f" ]]; then
+if [[ "${migration_version}" != "36" || "${migration_dirty}" != "f" ]]; then
   echo "schema reconciliation did not advance migration state: version=${migration_version}, dirty=${migration_dirty}" >&2
   exit 1
 fi

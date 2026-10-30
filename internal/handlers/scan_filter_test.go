@@ -28,6 +28,10 @@ func TestFilterCardsByGame(t *testing.T) {
 		"flesh_and_blood", "fab", "digimon", "grand_archive", "gatcg", "altered", "sorcery",
 		"dragon_ball_super", "dbs", "dbs_masters", "dbs_fusion_world", "fusion_world",
 		"union_arena", "unionarena", "gundam", "gundam_tcg", "battlespirits_saga", "bss",
+		"world_of_warcraft", "wow", "wow_tcg",
+		"fftcg", "godzilla", "shadowverse_evolve", "universus", "vanguard",
+		"hololive", "duel_masters", "cookie_run", "force_of_will", "wixoss",
+		"alpha_clash", "riftbound",
 	} {
 		if _, ok := filterCardsByGame(cards, game); !ok {
 			t.Fatalf("expected game %q to be valid", game)
