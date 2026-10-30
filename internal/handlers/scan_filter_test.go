@@ -24,6 +24,11 @@ func TestFilterCardsByGame(t *testing.T) {
 	if _, ok := filterCardsByGame(cards, "unknown"); ok {
 		t.Fatal("unsupported game was accepted")
 	}
+	for _, game := range []string{"flesh_and_blood", "fab", "digimon", "grand_archive", "gatcg"} {
+		if _, ok := filterCardsByGame(cards, game); !ok {
+			t.Fatalf("expected game %q to be valid", game)
+		}
+	}
 	onePiece, ok := filterCardsByGame(cards, "one-piece")
 	if !ok || len(onePiece) != 1 || onePiece[0].ID != "one-piece-card" {
 		t.Fatalf("legacy One Piece label was not normalized: ok=%v cards=%+v", ok, onePiece)

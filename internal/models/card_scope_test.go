@@ -13,6 +13,9 @@ func TestParseTCG(t *testing.T) {
 		"Weiss Schwarz":  TCGWeissSchwarz,
 		"Yu-Gi-Oh!":      TCGYuGiOh,
 		"Star Wars: Unlimited": TCGStarWarsUnlimited,
+		"Flesh and Blood":     TCGFleshAndBlood,
+		"Digimon":             TCGDigimon,
+		"Grand Archive":       TCGGrandArchive,
 	}
 	for input, want := range tests {
 		got, err := ParseTCG(input)

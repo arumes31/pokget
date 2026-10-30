@@ -19,11 +19,15 @@ const (
 	GameWeissSchwarz      Game = "weiss_schwarz"
 	GameYuGiOh            Game = "yugioh"
 	GameStarWarsUnlimited Game = "star_wars_unlimited"
+	GameFleshAndBlood     Game = "flesh_and_blood"
+	GameDigimon           Game = "digimon"
+	GameGrandArchive      Game = "grand_archive"
 )
 
 func (g Game) Valid() bool {
 	switch g {
-	case GamePokemon, GameMagic, GameOnePiece, GameLorcana, GameWeissSchwarz, GameYuGiOh, GameStarWarsUnlimited:
+	case GamePokemon, GameMagic, GameOnePiece, GameLorcana, GameWeissSchwarz, GameYuGiOh, GameStarWarsUnlimited,
+		GameFleshAndBlood, GameDigimon, GameGrandArchive:
 		return true
 	default:
 		return false

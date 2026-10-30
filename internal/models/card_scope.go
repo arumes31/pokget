@@ -17,6 +17,9 @@ const (
 	TCGWeissSchwarz TCG = "weiss_schwarz"
 	TCGYuGiOh            TCG = "yugioh"
 	TCGStarWarsUnlimited TCG = "star_wars_unlimited"
+	TCGFleshAndBlood     TCG = "flesh_and_blood"
+	TCGDigimon           TCG = "digimon"
+	TCGGrandArchive      TCG = "grand_archive"
 )
 
 // ParseTCG converts a user-facing game label into a supported catalog ID.
@@ -31,7 +34,8 @@ func ParseTCG(value string) (TCG, error) {
 // Valid reports whether t identifies a supported catalog.
 func (t TCG) Valid() bool {
 	switch t {
-	case TCGPokemon, TCGMagic, TCGOnePiece, TCGLorcana, TCGWeissSchwarz, TCGYuGiOh, TCGStarWarsUnlimited:
+	case TCGPokemon, TCGMagic, TCGOnePiece, TCGLorcana, TCGWeissSchwarz, TCGYuGiOh, TCGStarWarsUnlimited,
+		TCGFleshAndBlood, TCGDigimon, TCGGrandArchive:
 		return true
 	default:
 		return false

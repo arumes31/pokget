@@ -302,7 +302,7 @@ func TestExecuteScan_RequestValidation(t *testing.T) {
 
 	t.Run("UnsupportedGame", func(t *testing.T) {
 		h := &Handler{MockCards: []models.Card{pokemonCard}}
-		req := scanRequest(t, imgBytes, map[string]string{"game": "digimon"})
+		req := scanRequest(t, imgBytes, map[string]string{"game": "unsupported_tcg"})
 		rr := httptest.NewRecorder()
 
 		h.executeScan(rr, req)

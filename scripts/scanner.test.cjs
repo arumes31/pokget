@@ -115,6 +115,21 @@ test('scanner exposes game-specific languages and repairs stale selections', () 
     scanner.languagesForGame('yugioh').map(({ value }) => value),
     ['eng'],
   );
+  assert.deepEqual(
+    scanner.languagesForGame('flesh_and_blood').map(({ value }) => value),
+    ['eng'],
+  );
+  assert.deepEqual(
+    scanner.languagesForGame('digimon').map(({ value }) => value),
+    ['eng', 'jpn'],
+  );
+  assert.deepEqual(
+    scanner.languagesForGame('grand_archive').map(({ value }) => value),
+    ['eng'],
+  );
+  assert.equal(scanner.gameLabel('flesh_and_blood'), 'Flesh and Blood');
+  assert.equal(scanner.gameLabel('digimon'), 'Digimon Card Game');
+  assert.equal(scanner.gameLabel('grand_archive'), 'Grand Archive TCG');
   assert.ok(scanner.languagesForGame('pokemon').some(({ value }) => value === 'kor'));
   assert.ok(scanner.languagesForGame('pokemon').some(({ value }) => value === 'spa'));
   assert.equal(scanner.normalizeLanguage('lorcana', 'jpn'), 'eng');

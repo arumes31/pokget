@@ -259,3 +259,164 @@ func TestSWUDBProvider(t *testing.T) {
 		t.Fatalf("unexpected count: %d", result.Count)
 	}
 }
+
+func TestFabCubeProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/json/english/set.json":
+			_, _ = w.Write([]byte(`[{"id":"MST","name":"Part the Mistveil"}]`))
+		case "/json/english/card.json":
+			_, _ = w.Write([]byte(`[
+				{
+					"unique_id": "c1",
+					"name": "10,000 Year Reunion",
+					"printings": [
+						{
+							"unique_id": "p1",
+							"id": "MST131",
+							"set_id": "MST",
+							"edition": "N",
+							"foiling": "R",
+							"rarity": "M",
+							"image_url": "https://storage.googleapis.com/fabmaster/cardfaces/MST131.png"
+						}
+					]
+				}
+			]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	records, result := fetchRecords(t, &FabCubeProvider{HTTP: testHTTP(server), BaseURL: server.URL})
+	if len(records) != 1 || records[0].Name != "10,000 Year Reunion" || records[0].CollectorNumber != "MST131" {
+		t.Fatalf("unexpected records: %+v", records)
+	}
+	if records[0].SetName != "Part the Mistveil" || records[0].SetCode != "MST" {
+		t.Fatalf("unexpected set: %+v", records[0])
+	}
+	if records[0].Variant != "Rainbow Foil" || records[0].Rarity != "Majestic" {
+		t.Fatalf("unexpected variant/rarity: %+v", records[0])
+	}
+	if len(records[0].Images) != 1 || records[0].Images[0].URL != "https://storage.googleapis.com/fabmaster/cardfaces/MST131.png" {
+		t.Fatalf("unexpected images: %+v", records[0].Images)
+	}
+	if result.Count != 1 {
+		t.Fatalf("unexpected count: %d", result.Count)
+	}
+}
+
+func TestDigimonCardIOProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "getAllCards") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`[
+			{"name":"A Blazing Storm of Metal!","cardnumber":"BT5-103"}
+		]`))
+	}))
+	defer server.Close()
+
+	provider := &DigimonCardIOProvider{
+		HTTP:         testHTTP(server),
+		BaseURL:      server.URL,
+		ImageBaseURL: "https://images.digimoncard.io/images/cards",
+	}
+	records, result := fetchRecords(t, provider)
+	if len(records) != 1 || records[0].Name != "A Blazing Storm of Metal!" || records[0].CollectorNumber != "BT5-103" {
+		t.Fatalf("unexpected records: %+v", records)
+	}
+	if records[0].SetCode != "BT5" {
+		t.Fatalf("unexpected set code: %q", records[0].SetCode)
+	}
+	if len(records[0].Images) != 1 || records[0].Images[0].URL != "https://images.digimoncard.io/images/cards/BT5-103.jpg" {
+		t.Fatalf("unexpected images: %+v", records[0].Images)
+	}
+	if result.Count != 1 {
+		t.Fatalf("unexpected count: %d", result.Count)
+	}
+}
+
+func TestGATCGProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		switch page {
+		case "1":
+			_, _ = w.Write([]byte(`{
+				"page": 1,
+				"total_pages": 2,
+				"has_more": true,
+				"data": [
+					{
+						"uuid": "ga-c1",
+						"name": "Apotheosis Rite",
+						"editions": [
+							{
+								"uuid": "ed-1",
+								"collector_number": "000",
+								"image": "/cards/images/2zw7a98f7b.jpg",
+								"rarity": 8,
+								"set": {
+									"id": "muw6lmtzwg",
+									"prefix": "P24",
+									"name": "Promotional 2024",
+									"language": "EN"
+								}
+							}
+						]
+					}
+				]
+			}`))
+		case "2":
+			_, _ = w.Write([]byte(`{
+				"page": 2,
+				"total_pages": 2,
+				"has_more": false,
+				"data": [
+					{
+						"uuid": "ga-c2",
+						"name": "Second Card",
+						"editions": [
+							{
+								"uuid": "ed-2",
+								"collector_number": "001",
+								"image": "/cards/images/second.jpg",
+								"rarity": 3,
+								"set": {
+									"prefix": "DOA",
+									"name": "Dawn of Ashes",
+									"language": "EN"
+								}
+							}
+						]
+					}
+				]
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	records, result := fetchRecords(t, &GATCGProvider{HTTP: testHTTP(server), BaseURL: server.URL})
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records across 2 pages, got %d", len(records))
+	}
+	if records[0].Name != "Apotheosis Rite" || records[0].CollectorNumber != "000" || records[0].SetCode != "P24" {
+		t.Fatalf("unexpected record 0: %+v", records[0])
+	}
+	if records[0].Images[0].URL != server.URL+"/cards/images/2zw7a98f7b.jpg" {
+		t.Fatalf("unexpected image URL: %q", records[0].Images[0].URL)
+	}
+	if records[1].Name != "Second Card" || records[1].CollectorNumber != "001" || records[1].SetCode != "DOA" {
+		t.Fatalf("unexpected record 1: %+v", records[1])
+	}
+	if records[1].Rarity != "Rare" {
+		t.Fatalf("unexpected rarity: %q", records[1].Rarity)
+	}
+	if result.Count != 2 {
+		t.Fatalf("unexpected count: %d", result.Count)
+	}
+}
