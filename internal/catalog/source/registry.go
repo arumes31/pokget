@@ -16,11 +16,5 @@ func DefaultProviders(options HTTPOptions, language string, maxWeissPages int) [
 		&GATCGProvider{HTTP: options},
 		&AlteredProvider{HTTP: options, Language: language},
 		&SorceryProvider{HTTP: options},
-		&DBSMastersOfficialProvider{HTTP: options},
-		&DBSFusionWorldOfficialProvider{HTTP: options},
-		&UnionArenaOfficialProvider{HTTP: options},
-		&GundamOfficialProvider{HTTP: options},
-		&BattleSpiritsSagaOfficialProvider{HTTP: options},
-		&WoWTCGProvider{HTTP: options},
 	}
 }
