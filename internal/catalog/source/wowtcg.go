@@ -117,6 +117,7 @@ func decompressWoWLZW(data string) (string, error) {
 
 	h := make([]string, 256)
 	for i := 0; i < 256; i++ {
+		// #nosec G115 -- i is strictly bounded [0, 255]
 		h[i] = string(rune(i))
 	}
 
@@ -124,7 +125,11 @@ func decompressWoWLZW(data string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid initial token %q: %w", parts[0], err)
 	}
+	if firstVal < 0 || firstVal > 0x10FFFF {
+		return "", fmt.Errorf("initial token out of rune range: %d", firstVal)
+	}
 
+	// #nosec G115 -- firstVal is verified within valid Unicode code points
 	c := string(rune(firstVal))
 	var b strings.Builder
 	b.Grow(len(parts) * 2)
