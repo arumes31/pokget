@@ -122,7 +122,7 @@ func clickMisprintLink(ctx context.Context, selector string) error {
 			return true;
 		})()`, selector), chromedp.WithPollingTimeout(3*time.Second)),
 		evaluate(observeMisprintRequest),
-		chromedp.Click(selector),
+		chromedp.Click(chromedp.CSS(selector)),
 		poll(`window.misprintSearchComplete`, chromedp.WithPollingTimeout(3*time.Second)),
 	)
 }
@@ -287,11 +287,11 @@ func TestMobileOptimizationPublicationRetainsFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := chromedp.Do(ctx,
-		chromedp.Click(`[x-ref="submitErrorTrigger"]`),
-		chromedp.WaitVisible("#error-card-id"),
+		chromedp.Click(chromedp.CSS(`[x-ref="submitErrorTrigger"]`)),
+		chromedp.WaitVisible(chromedp.CSS("#error-card-id")),
 		evaluate(`document.querySelector('#error-card-id').value = 'test-card'; document.querySelector('#error-type').value = 'Miscut'; document.querySelector('#error-description').value = 'Synthetic fixture report'`),
 		evaluate(observeMisprintRequest),
-		chromedp.Click(`[role="dialog"] button[type="submit"]`),
+		chromedp.Click(chromedp.CSS(`[role="dialog"] button[type="submit"]`)),
 		poll(`window.misprintSearchComplete`, chromedp.WithPollingTimeout(3*time.Second)),
 	); err != nil {
 		t.Fatalf("synthetic report publication did not refresh the list: %v", err)

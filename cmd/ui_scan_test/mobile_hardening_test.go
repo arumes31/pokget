@@ -27,7 +27,7 @@ func mobileHardeningPage(t *testing.T, path string) context.Context {
 	if err := chromedp.Do(ctx,
 		chromedp.EmulateViewport(390, 844),
 		chromedp.Navigate(server.URL+path),
-		chromedp.WaitVisible("#main-content .app-page"),
+		chromedp.WaitVisible(chromedp.CSS("#main-content .app-page")),
 		poll(`document.readyState === 'complete' && window.Alpine`),
 	); err != nil {
 		t.Fatal(err)
@@ -46,13 +46,13 @@ func TestMobileHardeningHelperTextContrast(t *testing.T) {
 				t.Fatal(err)
 			}
 			if target.name == "binder-optional" {
-				if err := chromedp.Do(ctx, chromedp.Click(`[x-ref="newBinderTrigger"]`), chromedp.WaitVisible("#new-binder-name")); err != nil {
+				if err := chromedp.Do(ctx, chromedp.Click(chromedp.CSS(`[x-ref="newBinderTrigger"]`)), chromedp.WaitVisible(chromedp.CSS("#new-binder-name"))); err != nil {
 					t.Fatal(err)
 				}
 			}
 			var ratio float64
 			if err := chromedp.Do(ctx,
-				chromedp.WaitVisible(target.selector),
+				chromedp.WaitVisible(chromedp.CSS(target.selector)),
 				evaluateInto(fmt.Sprintf(`(() => {
 				const element = document.querySelector(%q);
 				const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
@@ -120,14 +120,14 @@ func TestMobileHardeningEmptyMisprintFocusReturn(t *testing.T) {
 			ctx := mobileHardeningPage(t, "/?filled=0&view=errors")
 			if err := chromedp.Do(ctx,
 				evaluate(`window.hardeningOpener = document.querySelector('[x-ref="submitErrorTrigger"]')`),
-				chromedp.Click(`[x-ref="submitErrorTrigger"]`),
+				chromedp.Click(chromedp.CSS(`[x-ref="submitErrorTrigger"]`)),
 				poll(`document.activeElement.id === 'error-card-id'`),
 			); err != nil {
 				t.Fatal(err)
 			}
 			var closeAction action = chromedp.KeyEvent(kb.Escape)
 			if closeMethod == "button" {
-				closeAction = chromedp.Click(`[aria-label="Close submission dialog"]`)
+				closeAction = chromedp.Click(chromedp.CSS(`[aria-label="Close submission dialog"]`))
 			}
 			if err := chromedp.Do(ctx, closeAction,
 				poll(`document.activeElement === window.hardeningOpener`, chromedp.WithPollingTimeout(2*time.Second)),
@@ -146,8 +146,8 @@ func TestMobileClarificationMisprintPublicationNotice(t *testing.T) {
 			if err := chromedp.Do(ctx,
 				chromedp.EmulateViewport(320, 844),
 				evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size', '%dpx', 'important')`, fontSize)),
-				chromedp.Click(`[x-ref="submitErrorTrigger"]`),
-				chromedp.WaitVisible("#error-card-id"),
+				chromedp.Click(chromedp.CSS(`[x-ref="submitErrorTrigger"]`)),
+				chromedp.WaitVisible(chromedp.CSS("#error-card-id")),
 				evaluateInto(`(() => {
 					const issues = [], field = document.querySelector('#error-card-id');
 					const form = field.closest('form'), button = form.querySelector('button[type="submit"]');
@@ -176,7 +176,7 @@ func TestMobileClarificationMisprintPublicationNotice(t *testing.T) {
 func TestMobileHardeningStandaloneMisprintFocusTrap(t *testing.T) {
 	ctx := mobileHardeningPage(t, "/errors?hardening=1")
 	if err := chromedp.Do(ctx,
-		chromedp.Click(`[x-ref="submitErrorTrigger"]`),
+		chromedp.Click(chromedp.CSS(`[x-ref="submitErrorTrigger"]`)),
 		poll(`document.activeElement.id === 'error-card-id'`),
 	); err != nil {
 		t.Fatal(err)
@@ -190,7 +190,7 @@ func TestMobileHardeningStandaloneMisprintFocusTrap(t *testing.T) {
 	} {
 		t.Run(direction.name, func(t *testing.T) {
 			var contained bool
-			if err := chromedp.Do(ctx, chromedp.Focus(direction.selector), chromedp.KeyEvent(kb.Tab, chromedp.KeyModifiers(direction.modifiers)), evaluateInto(`Boolean(document.activeElement.closest('[role="dialog"]'))`, &contained)); err != nil {
+			if err := chromedp.Do(ctx, chromedp.Focus(chromedp.CSS(direction.selector)), chromedp.KeyEvent(kb.Tab, chromedp.KeyModifiers(direction.modifiers)), evaluateInto(`Boolean(document.activeElement.closest('[role="dialog"]'))`, &contained)); err != nil {
 				t.Fatal(err)
 			}
 			if !contained {

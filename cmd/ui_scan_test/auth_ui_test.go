@@ -48,14 +48,14 @@ func TestAuthFormPendingAndRecovery(t *testing.T) {
 	if err := chromedp.Do(ctx,
 		chromedp.EmulateViewport(390, 844),
 		chromedp.Navigate(server.URL+"/auth"),
-		chromedp.WaitVisible("#login-email"),
-		chromedp.SendKeys("#login-email", "collector@example.invalid"),
-		chromedp.SendKeys("#login-password", "test-password"),
-		chromedp.Click("#login-panel .auth-password-toggle"),
+		chromedp.WaitVisible(chromedp.CSS("#login-email")),
+		chromedp.SendKeys(chromedp.CSS("#login-email"), "collector@example.invalid"),
+		chromedp.SendKeys(chromedp.CSS("#login-password"), "test-password"),
+		chromedp.Click(chromedp.CSS("#login-panel .auth-password-toggle")),
 		poll(`document.querySelector('#login-password').type === 'text'`),
-		chromedp.Click("#login-panel .auth-password-toggle"),
-		chromedp.Click("#login-panel [name=remember]"),
-		chromedp.Focus("#login-password"),
+		chromedp.Click(chromedp.CSS("#login-panel .auth-password-toggle")),
+		chromedp.Click(chromedp.CSS("#login-panel [name=remember]")),
+		chromedp.Focus(chromedp.CSS("#login-password")),
 		chromedp.KeyEvent(kb.Enter),
 		poll(`document.querySelector('#login-panel').getAttribute('aria-busy') === 'true' && document.querySelector('#login-panel button[type=submit]').disabled && getComputedStyle(document.querySelector('#login-panel .auth-submit-pending')).display === 'flex'`),
 		// Repeated Enter and programmatic submits must not queue a second request.
@@ -76,7 +76,7 @@ func TestAuthFormPendingAndRecovery(t *testing.T) {
 	}
 	// The same form can retry after an error.
 	if err := chromedp.Do(ctx,
-		chromedp.Click("#login-panel button[type=submit]"),
+		chromedp.Click(chromedp.CSS("#login-panel button[type=submit]")),
 		poll(`document.activeElement.id === 'auth-error' && document.querySelector('#login-panel').getAttribute('aria-busy') === 'false'`),
 	); err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestAuthMotionAndCompactViewport(t *testing.T) {
 		chromedp.EmulateViewport(320, 568),
 		setEmulatedMediaFeatures([]*emulation.MediaFeature{{Name: "prefers-reduced-motion", Value: "no-preference"}}),
 		chromedp.Navigate(server.URL+"/auth"),
-		chromedp.WaitVisible("#login-email"),
+		chromedp.WaitVisible(chromedp.CSS("#login-email")),
 		poll(`document.getAnimations().some(a => a.animationName === 'auth-float' && a.playState === 'running')`),
 	)
 	run("reduced motion",
@@ -117,7 +117,7 @@ func TestAuthMotionAndCompactViewport(t *testing.T) {
 	run("keyboard viewport",
 		// Approximate a resized visual viewport when a software keyboard opens.
 		chromedp.EmulateViewport(320, 300),
-		chromedp.Focus("#login-password"),
+		chromedp.Focus(chromedp.CSS("#login-password")),
 		chromedp.ScrollIntoView("#login-panel button[type=submit]"),
 	)
 	run("button is reachable",
@@ -125,7 +125,7 @@ func TestAuthMotionAndCompactViewport(t *testing.T) {
 		poll(`document.querySelector('#login-panel button[type=submit]').getBoundingClientRect().bottom <= innerHeight + 1 && document.documentElement.scrollWidth === innerWidth`),
 	)
 	run("keyboard tabs",
-		chromedp.Click("#login-tab"),
+		chromedp.Click(chromedp.CSS("#login-tab")),
 		chromedp.KeyEvent(kb.ArrowRight),
 		poll(`document.activeElement.id === 'register-tab' && document.querySelector('#register-tab').getAttribute('aria-selected') === 'true'`),
 	)
@@ -171,7 +171,7 @@ func TestAuthArtworkChangesWhileIdle(t *testing.T) {
 		poll(`parseFloat(document.querySelector('[data-foil-scene]').style.getPropertyValue('--tilt-y')) > 0`, chromedp.WithPollingTimeout(3*time.Second)),
 	)
 	run("focus input",
-		chromedp.Focus("#login-email"),
+		chromedp.Focus(chromedp.CSS("#login-email")),
 	)
 	run("focus stops artwork",
 		poll(`document.querySelector('.auth-experience').dataset.artPaused === 'true'`, chromedp.WithPollingTimeout(2*time.Second)),

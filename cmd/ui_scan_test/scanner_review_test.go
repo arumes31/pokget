@@ -37,13 +37,13 @@ func TestUncertainPrintingRequiresExplicitConfirmation(t *testing.T) {
 						{id: 'base1-58-de', name: 'Pikachu', price: 14.75, image_url: '/static/img/logo.png', set: 'Basis', collector_number: '58/102', language: 'de'}
 					]
 				})`),
-				chromedp.WaitVisible(".scan-result"),
+				chromedp.WaitVisible(chromedp.CSS(".scan-result")),
 				poll(`!document.querySelector('.scan-result').innerText.includes('base1-58')`, chromedp.WithPollingTimeout(time.Second)),
 				poll(`document.activeElement === document.querySelector('.scan-result')`, chromedp.WithPollingTimeout(5*time.Second)),
 				actionFunc(func(context.Context) error { t.Log("result focused"); return nil }),
 				poll(`document.querySelectorAll('.scan-candidate').length === 2 && document.querySelectorAll('.scan-candidate')[1].textContent.includes('Basis') && document.querySelectorAll('.scan-candidate')[1].textContent.includes('#58/102') && document.querySelectorAll('.scan-candidate')[1].textContent.includes('DE')`),
 				chromedp.ScrollIntoView(".scan-candidate:nth-of-type(2)"),
-				chromedp.Click(".scan-candidate:nth-of-type(2)"),
+				chromedp.Click(chromedp.CSS(".scan-candidate:nth-of-type(2)")),
 				actionFunc(func(ctx context.Context) error {
 					return chromedp.Do(ctx, evaluate(`if (document.querySelector('[data-testid="detected-card-id"]')?.dataset?.cardId !== 'base1-58-de') { document.querySelectorAll('.scan-candidate')[1]?.click(); }`))
 				}),
@@ -70,18 +70,18 @@ func TestUncertainPrintingRequiresExplicitConfirmation(t *testing.T) {
 			}
 			if err := chromedp.Do(ctx,
 				chromedp.ScrollIntoView(`[data-testid="confirm-printing"]`),
-				chromedp.Click(`[data-testid="confirm-printing"]`),
+				chromedp.Click(chromedp.CSS(`[data-testid="confirm-printing"]`)),
 				actionFunc(func(ctx context.Context) error {
 					return chromedp.Do(ctx, evaluate(`if (!Alpine.$data(document.querySelector('#scanner-root .scanner-shell'))?.matchConfirmed) { document.querySelector('[data-testid="confirm-printing"]')?.click(); }`))
 				}),
-				chromedp.WaitVisible(`button[\@click="addToCollection()"]`),
+				chromedp.WaitVisible(chromedp.CSS(`button[\@click="addToCollection()"]`)),
 				poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).disabled`),
 				chromedp.ScrollIntoView(`button[\@click="reviewMatches()"]`),
-				chromedp.Click(`button[\@click="reviewMatches()"]`),
+				chromedp.Click(chromedp.CSS(`button[\@click="reviewMatches()"]`)),
 				actionFunc(func(ctx context.Context) error {
 					return chromedp.Do(ctx, evaluate(`if (Alpine.$data(document.querySelector('#scanner-root .scanner-shell'))?.matchConfirmed) { document.querySelector('button[\\@click="reviewMatches()"]')?.click(); }`))
 				}),
-				chromedp.WaitVisible(`[data-testid="confirm-printing"]`),
+				chromedp.WaitVisible(chromedp.CSS(`[data-testid="confirm-printing"]`)),
 				poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).getClientRects().length`),
 			); err != nil {
 				t.Fatalf("confirm and reopen printing review: %v", err)

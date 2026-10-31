@@ -17,6 +17,10 @@ func newHeadlessBrowserContext(t *testing.T, chromePath string) context.Context 
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.Flag("no-sandbox", true),
+		// The rendered assertions compare English copy and labels. Pin the
+		// browser language so a non-English desktop locale cannot translate
+		// data-i18n attributes away from the expected selectors.
+		chromedp.Flag("lang", "en-US"),
 	)
 	allocatorContext, cancelAllocator := chromedp.NewExecAllocator(t.Context(), options...)
 	t.Cleanup(cancelAllocator)

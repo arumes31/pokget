@@ -71,7 +71,7 @@ func TestMobileScannerSeparatesCameraAndControls(t *testing.T) {
 	actions := []action{
 		chromedp.EmulateViewport(390, 844),
 		chromedp.Navigate(server.URL),
-		chromedp.WaitVisible(`[data-testid="scanner-controls"]`),
+		chromedp.WaitVisible(chromedp.CSS(`[data-testid="scanner-controls"]`)),
 		evaluateInto(`(() => {
 			const toolbar = document.querySelector('[data-testid="scanner-toolbar"]').getBoundingClientRect();
 			const frame = document.querySelector('[data-testid="scanner-frame"]').getBoundingClientRect();
@@ -138,7 +138,7 @@ func TestScannerResponsiveWorkspace(t *testing.T) {
 			ctx, timeout := context.WithTimeout(ctx, 30*time.Second)
 			defer timeout()
 			var issues []string
-			if err := chromedp.Do(ctx, chromedp.EmulateViewport(viewport.width, viewport.height), chromedp.Navigate(server.URL), chromedp.WaitVisible(`[data-testid="scanner-controls"]`), evaluateInto(`(() => {
+			if err := chromedp.Do(ctx, chromedp.EmulateViewport(viewport.width, viewport.height), chromedp.Navigate(server.URL), chromedp.WaitVisible(chromedp.CSS(`[data-testid="scanner-controls"]`)), evaluateInto(`(() => {
 				const issues = [];
 				const frame = document.querySelector('[data-testid="scanner-frame"]').getBoundingClientRect();
 				const controls = document.querySelector('[data-testid="scanner-controls"]').getBoundingClientRect();
@@ -257,7 +257,7 @@ func inspectProgressAtViewport(
 			state.scanTimer = null;
 			state.scanElapsedSeconds = 16;
 		})()`),
-		chromedp.WaitVisible(`[data-testid="scan-progress-overlay"]`),
+		chromedp.WaitVisible(chromedp.CSS(`[data-testid="scan-progress-overlay"]`)),
 		poll(`document.activeElement === document.querySelector('[data-testid="scan-progress-cancel"]')`, chromedp.WithPollingTimeout(3*time.Second)),
 		evaluateInto(`(() => {
 			const overlay = document.querySelector('[data-testid="scan-progress-overlay"]');
@@ -294,7 +294,7 @@ func inspectProgressAtViewport(
 		actions = append(actions, captureScreenshotInto(&screenshot))
 	}
 	actions = append(actions,
-		chromedp.Click(`[data-testid="scan-progress-cancel"]`),
+		chromedp.Click(chromedp.CSS(`[data-testid="scan-progress-cancel"]`)),
 		poll(`(() => {
 			const root = document.querySelector('#scanner-root .scanner-shell');
 			return !Alpine.$data(root).scanning && !document.documentElement.classList.contains('scan-progress-open');

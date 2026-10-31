@@ -171,11 +171,11 @@ func loadCollectionRoute(ctx context.Context, route string) error {
 	if err != nil {
 		return err
 	}
-	return chromedp.Do(ctx, chromedp.Navigate(base.Scheme+"://"+base.Host+route), chromedp.WaitVisible("main"))
+	return chromedp.Do(ctx, chromedp.Navigate(base.Scheme+"://"+base.Host+route), chromedp.WaitVisible(chromedp.CSS("main")))
 }
 
 func clickCollectionPage(ctx context.Context, standalone bool, relation string) error {
-	action := chromedp.Click(`nav[aria-label="Collection pages"] a[rel="`+relation+`"]`)
+	action := chromedp.Click(chromedp.CSS(`nav[aria-label="Collection pages"] a[rel="` + relation + `"]`))
 	if standalone {
 		_, err := chromedp.RunResponse(ctx, action)
 		return err

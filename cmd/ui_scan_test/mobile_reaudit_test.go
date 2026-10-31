@@ -29,7 +29,7 @@ func mobileScannerRegressionPageAtViewport(t *testing.T, width, height int64) co
 	t.Cleanup(cancel)
 	if err := chromedp.Do(ctx, chromedp.EmulateViewport(width, height),
 		chromedp.Navigate(server.URL+"/?view=scan"),
-		chromedp.WaitVisible(".scanner-controls"),
+		chromedp.WaitVisible(chromedp.CSS(".scanner-controls")),
 		poll(`window.Alpine && Alpine.$data(document.querySelector('.scanner-shell')).$refs.video`),
 		poll(`document.body.classList.contains('scanner-active')`, chromedp.WithPollingTimeout(3*time.Second)),
 	); err != nil {
@@ -97,7 +97,7 @@ func TestMobileFailedScanNavigationRemainsRecoverable(t *testing.T) {
 			var state struct{ Header, Nav, OldPage, Alert bool }
 			if err := chromedp.Do(ctx,
 				evaluate(`window.scanNavigationFailed=false; for(const event of ['htmx:sendError','htmx:responseError']) document.body.addEventListener(event,()=>window.scanNavigationFailed=true,{once:true})`),
-				chromedp.Click(`.app-bottom-nav [hx-get="/centering"]`),
+				chromedp.Click(chromedp.CSS(`.app-bottom-nav [hx-get="/centering"]`)),
 				poll(`window.scanNavigationFailed`, chromedp.WithPollingTimeout(3*time.Second)),
 				poll(`[...document.querySelectorAll('[role=alert]')].some(e=>e.getClientRects().length&&e.textContent.trim())`, chromedp.WithPollingTimeout(2*time.Second)),
 				evaluateInto(`(() => {const visible=e=>e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';return {Header:visible(document.querySelector('.app-header')),Nav:visible(document.querySelector('.app-bottom-nav')),OldPage:!!document.querySelector('#main-content .app-page')&&!document.querySelector('.scanner-shell'),Alert:[...document.querySelectorAll('[role=alert]')].some(e=>visible(e)&&e.textContent.trim())}})()`, &state),
@@ -113,8 +113,8 @@ func TestMobileFailedScanNavigationRemainsRecoverable(t *testing.T) {
 			}
 			if err := chromedp.Do(ctx, setOffline(false),
 				evaluate(`document.cookie='ui-fixture-navigation-fail=0; path=/'`),
-				chromedp.Click(retrySelector),
-				chromedp.WaitVisible(".scanner-controls"),
+				chromedp.Click(chromedp.CSS(retrySelector)),
+				chromedp.WaitVisible(chromedp.CSS(".scanner-controls")),
 				poll(`new URLSearchParams(location.search).get('view')==='scan'`, chromedp.WithPollingTimeout(2*time.Second)),
 			); err != nil {
 				t.Fatalf("Scan did not recover after connection/service returned: %v", err)
@@ -213,7 +213,7 @@ func TestMobileEditorMetadataFailureCanRetry(t *testing.T) {
 	}
 	if err := chromedp.Do(ctx,
 		evaluate(`document.cookie='ui-fixture-editor=updated; path=/'`),
-		chromedp.Click(`[data-testid="edit-metadata-retry"]`),
+		chromedp.Click(chromedp.CSS(`[data-testid="edit-metadata-retry"]`)),
 		poll(`document.querySelector('#edit-binder option[value="new"]') && document.querySelector('label[for="edit-custom-price"]').textContent.includes('$') && [...document.querySelectorAll('#edit-modal button[type=submit]')].every(e=>!e.disabled)`, chromedp.WithPollingTimeout(2*time.Second)),
 	); err != nil {
 		t.Fatalf("metadata retry did not restore editable current data: %v", err)
@@ -234,7 +234,7 @@ func TestMobileEditorSaveRefreshCannotReplaceNewerNavigation(t *testing.T) {
 		poll(`document.querySelector('#edit-binder option[value="test"]') && !document.querySelector('#edit-form button[type=submit]').disabled`, chromedp.WithPollingTimeout(2*time.Second)),
 		evaluate(`document.cookie='ui-fixture-delay-dashboard=1; path=/'; window.editorRefreshStarted=false; document.body.addEventListener('htmx:beforeRequest',e=>{if(e.detail.requestConfig.path==='/dashboard') window.editorRefreshStarted=true})`),
 		markPhase("click save"),
-		chromedp.Click(`#edit-form button[type=submit]`),
+		chromedp.Click(chromedp.CSS(`#edit-form button[type=submit]`)),
 		markPhase("wait refresh request"),
 		poll(`window.editorRefreshStarted`, chromedp.WithPollingTimeout(2*time.Second)),
 		markPhase("click navigation"),

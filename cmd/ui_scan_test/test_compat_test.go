@@ -79,9 +79,9 @@ func locationInto(target *string) chromedp.Action[chromedp.Void] {
 	}
 }
 
-func textInto[S chromedp.Selectable](sel S, target *string, opts ...chromedp.QueryOption) chromedp.Action[chromedp.Void] {
+func textInto(sel string, target *string, opts ...chromedp.QueryOption) chromedp.Action[chromedp.Void] {
 	return func(ctx context.Context, t *chromedp.Target) (chromedp.Void, error) {
-		val, err := chromedp.Text(sel, opts...)(ctx, t)
+		val, err := chromedp.Text(chromedp.CSS(sel), opts...)(ctx, t)
 		if err != nil {
 			var zero chromedp.Void
 			return zero, err

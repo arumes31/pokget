@@ -68,7 +68,7 @@ func TestMobilePrimaryPagesStayInsideViewport(t *testing.T) {
 			var screenshot []byte
 			marker := strings.ReplaceAll(page.marker, "'", "\\'")
 			actions := []action{
-				evaluate(`htmx.ajax('GET', '`+page.route+`', { target: '#main-content', source: document.body })`),
+				evaluate(`htmx.ajax('GET', '` + page.route + `', { target: '#main-content', source: document.body })`),
 				poll(`document.querySelector('#main-content .app-page') && document.querySelector('#main-content').textContent.includes('`+marker+`')`, chromedp.WithPollingTimeout(5*time.Second)),
 				evaluateInto(`(() => {
 					const page = document.querySelector('#main-content .app-page').getBoundingClientRect();

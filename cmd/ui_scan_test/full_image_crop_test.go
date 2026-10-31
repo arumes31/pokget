@@ -73,7 +73,7 @@ func TestScanFixtureUsesExistingAppShell(t *testing.T) {
 	ctx, cancel := context.WithTimeout(newHeadlessBrowserContext(t, chrome), 30*time.Second)
 	defer cancel()
 	capture := newScanArtifactCapture(ctx)
-	if err := chromedp.Do(ctx, enableNetwork(), chromedp.EmulateViewport(390, 844), chromedp.Navigate(server.URL+"/"), chromedp.WaitVisible("#main-content .app-page")); err != nil {
+	if err := chromedp.Do(ctx, enableNetwork(), chromedp.EmulateViewport(390, 844), chromedp.Navigate(server.URL+"/"), chromedp.WaitVisible(chromedp.CSS("#main-content .app-page"))); err != nil {
 		t.Fatal(err)
 	}
 	fixture, err := filepath.Abs(filepath.Join("..", "..", "static", "img", "logo.png"))
@@ -128,7 +128,7 @@ func TestScannerPreviewRendersWithProductionSecurityPolicy(t *testing.T) {
 	if err := chromedp.Do(ctx,
 		chromedp.EmulateViewport(390, 844),
 		chromedp.Navigate(server.URL+"/?view=scan"),
-		chromedp.WaitReady(fileInputSelector),
+		chromedp.WaitReady(chromedp.CSS(fileInputSelector)),
 		chromedp.SetUploadFiles(fileInputSelector, []string{fixture}),
 		poll(`Boolean(Alpine.$data(document.querySelector('.scanner-shell')).previewURL)`),
 		poll(`(() => {const image=document.querySelector('.scanner-frame img');return image.complete && image.naturalWidth>0 && image.getBoundingClientRect().height>0})()`, chromedp.WithPollingTimeout(2*time.Second)),

@@ -24,7 +24,7 @@ func TestMeasureTouchPanPreservesUnsavedPhoto(t *testing.T) {
 		Photo    bool
 	}
 	if err := chromedp.Do(ctx,
-		chromedp.Click(`[data-testid="open-measure"]`),
+		chromedp.Click(chromedp.CSS(`[data-testid="open-measure"]`)),
 		evaluate(`(() => { const s=Alpine.$data(document.querySelector('.measure-shell')); Object.assign(s.current,{image:'/static/img/logo-128.webp',width:128,height:128}); s.setZoom(2); window.measureRefreshRequests=0; document.body.addEventListener('htmx:beforeRequest', e=>{if(e.detail.requestConfig.path==='/centering')window.measureRefreshRequests++}); })()`),
 		poll(`document.querySelector('.measure-stage').getClientRects().length > 0`),
 		evaluateInto(`(() => { const r=document.querySelector('.measure-viewport').getBoundingClientRect();return {X:r.left+10,Y:r.top+60}; })()`, &point),
@@ -101,51 +101,51 @@ func TestMeasurePhotoGuidesPersistenceAndPerspective(t *testing.T) {
 	}
 	const state = `Alpine.$data(document.querySelector('.measure-shell'))`
 	run(chromedp.EmulateViewport(1280, 900), chromedp.Navigate(server.URL),
-		chromedp.Click(`[data-testid="open-measure"]`),
-		chromedp.WaitVisible(`.measure-empty`))
+		chromedp.Click(chromedp.CSS(`[data-testid="open-measure"]`)),
+		chromedp.WaitVisible(chromedp.CSS(`.measure-empty`)))
 	assertJS(`!s.ready && getComputedStyle(document.querySelector('.measure-stage')).display === 'none'`, "empty state exposes guides or a grade")
 	run(chromedp.SetUploadFiles(`[aria-label="Choose measurement photo"]`, []string{fixture}),
 		poll(state+`.current.image && !`+state+`.busy`),
-		chromedp.Click(`button[\@click="autoDetect()"]`),
+		chromedp.Click(chromedp.CSS(`button[\@click="autoDetect()"]`)),
 		poll(`!`+state+`.busy && `+state+`.notice.includes('suggestions')`))
 	assertJS(`!s.ready && Math.abs(s.metrics.lr - 38.46) < 2`, "border detection disagrees with known fixture geometry")
-	run(chromedp.Click(`button[\@click="confirm()"]`))
+	run(chromedp.Click(chromedp.CSS(`button[\@click="confirm()"]`)))
 	assertJS(`s.ready && s.grades.find(g => g.company === 'PSA').display === '8'`, "confirmed geometry did not update grades")
-	run(chromedp.Click(`[data-guide="outer-left"]`),
+	run(chromedp.Click(chromedp.CSS(`[data-guide="outer-left"]`)),
 		chromedp.KeyEvent(kb.ArrowRight))
 	assertJS(`s.current.guides.outer.left > 9.5`, "keyboard adjustment did not move the selected guide")
-	run(chromedp.SendKeys(`#measure-name`, "Browser test card"),
-		chromedp.SendKeys(`#measure-tags`, "grade, test"),
-		chromedp.Click(`button[\@click="save()"]`),
+	run(chromedp.SendKeys(chromedp.CSS(`#measure-name`), "Browser test card"),
+		chromedp.SendKeys(chromedp.CSS(`#measure-tags`), "grade, test"),
+		chromedp.Click(chromedp.CSS(`button[\@click="save()"]`)),
 		poll(state+`.saved.length === 1 && !`+state+`.busy`))
 	assertJS(`!s.dirty && s.saved[0].tags === 'grade, test'`, "saved card is missing metadata")
-	run(chromedp.Click(`button[\@click="setSide('back')"]`))
+	run(chromedp.Click(chromedp.CSS(`button[\@click="setSide('back')"]`)))
 	assertJS(`!s.ready && !s.current.image && s.sides.front.confirmed`, "front and back state leaked")
 	run(chromedp.SetUploadFiles(`[aria-label="Choose measurement photo"]`, []string{fixture}),
 		poll(state+`.current.image && !`+state+`.busy`),
-		chromedp.Click(`button[\@click="confirm()"]`),
-		chromedp.Click(`button[\@click="save()"]`),
+		chromedp.Click(chromedp.CSS(`button[\@click="confirm()"]`)),
+		chromedp.Click(chromedp.CSS(`button[\@click="save()"]`)),
 		poll(`!`+state+`.busy`), chromedp.Reload(),
-		chromedp.Click(`[data-testid="open-measure"]`),
+		chromedp.Click(chromedp.CSS(`[data-testid="open-measure"]`)),
 		poll(state+`.saved.length === 1`),
-		chromedp.Click(`button[\@click="tab = 'saved'; refreshSaved()"]`),
-		chromedp.Click(`button[\@click="openSaved(record)"]`))
+		chromedp.Click(chromedp.CSS(`button[\@click="tab = 'saved'; refreshSaved()"]`)),
+		chromedp.Click(chromedp.CSS(`button[\@click="openSaved(record)"]`)))
 	assertJS(`s.sides.front.confirmed && s.sides.back.confirmed && s.title === 'Browser test card'`, "saved images or guides were lost on reload")
 	run(evaluate(`window.__measureDownloads = []; window.__measureCreateURL = URL.createObjectURL; window.__measureAnchorClick = HTMLAnchorElement.prototype.click; URL.createObjectURL = function(blob) { window.__measureDownloads.push(blob); return window.__measureCreateURL(blob); }; HTMLAnchorElement.prototype.click = function() {};`),
-		chromedp.Click(`button[\@click="exportPNG()"]`),
+		chromedp.Click(chromedp.CSS(`button[\@click="exportPNG()"]`)),
 		poll(`!`+state+`.busy && window.__measureDownloads.length === 1`),
-		chromedp.Click(`button[\@click="exportJSON()"]`),
+		chromedp.Click(chromedp.CSS(`button[\@click="exportJSON()"]`)),
 		evaluate(`Promise.all([createImageBitmap(window.__measureDownloads[0]), window.__measureDownloads[1].text()]).then(([image, json]) => { const data = JSON.parse(json); window.__measureExportValid = image.width === 1000 && image.height === 1200 && data.records[0].title === 'Browser test card' && data.records[0].sides.back.confirmed; image.close(); });`),
 		poll(`window.__measureExportValid === true`),
 		evaluate(`URL.createObjectURL = window.__measureCreateURL; HTMLAnchorElement.prototype.click = window.__measureAnchorClick; window.__measureBeforeCrop = {...`+state+`.metrics};`))
-	run(chromedp.Click(`details.measure-block summary`),
-		chromedp.Click(`button[\@click="cropToEdges()"]`),
+	run(chromedp.Click(chromedp.CSS(`details.measure-block summary`)),
+		chromedp.Click(chromedp.CSS(`button[\@click="cropToEdges()"]`)),
 		poll(`!`+state+`.busy`))
 	assertJS(`s.ready && s.current.width < 200 && Math.abs(s.metrics.lr - window.__measureBeforeCrop.lr) < 1e-8 && Math.abs(s.metrics.tb - window.__measureBeforeCrop.tb) < 1e-8`, "crop changed the measured border ratios")
 	run(
-		chromedp.Click(`button[\@click="startPerspective()"]`))
+		chromedp.Click(chromedp.CSS(`button[\@click="startPerspective()"]`)))
 	assertJS(`s.perspective && !s.ready && [...document.querySelectorAll('.measure-guide')].every(e => getComputedStyle(e).display === 'none')`, "perspective mode exposes stale grades or guides")
-	run(chromedp.Click(`button[\@click="applyPerspective()"]`),
+	run(chromedp.Click(chromedp.CSS(`button[\@click="applyPerspective()"]`)),
 		poll(`!`+state+`.busy && !`+state+`.perspective`))
 	assertJS(`!s.error && !s.ready && s.current.guides.outer.left === 0 && s.current.guides.outer.right === 100`, "perspective correction failed to reset measurement geometry")
 	for _, viewport := range []struct{ width, height int64 }{{320, 568}, {390, 844}, {844, 390}, {1280, 900}} {

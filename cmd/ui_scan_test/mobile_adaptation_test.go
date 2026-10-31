@@ -31,7 +31,7 @@ func TestMobileAdaptationContentReflows(t *testing.T) {
 				if err := chromedp.Do(ctx,
 					chromedp.EmulateViewport(width, 844),
 					chromedp.Navigate(server.URL+"/?filled=1"),
-					chromedp.WaitVisible("#main-content .app-page"),
+					chromedp.WaitVisible(chromedp.CSS("#main-content .app-page")),
 					evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size', '%dpx', 'important')`, fontSize)),
 				); err != nil {
 					t.Fatal(err)
@@ -93,7 +93,7 @@ func TestMobileAdaptationScannerActionsRemainReachable(t *testing.T) {
 				if err := chromedp.Do(ctx,
 					chromedp.EmulateViewport(viewport.width, viewport.height),
 					chromedp.Navigate(server.URL+"/?view=scan"),
-					chromedp.WaitVisible(".scanner-controls"),
+					chromedp.WaitVisible(chromedp.CSS(".scanner-controls")),
 					poll(`window.Alpine && Alpine.$data(document.querySelector('.scanner-shell')).$refs.video`),
 					evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size', '%dpx', 'important')`, fontSize)),
 				); err != nil {
@@ -187,7 +187,7 @@ func TestMobileAdaptationOfflineRetryRemainsReachable(t *testing.T) {
 				if err := chromedp.Do(ctx,
 					chromedp.EmulateViewport(width, 844),
 					chromedp.Navigate(server.URL+"/static/offline.html"),
-					chromedp.WaitVisible("main"),
+					chromedp.WaitVisible(chromedp.CSS("main")),
 					evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size','%dpx','important')`, font)),
 					actionFunc(func(ctx context.Context) error {
 						if err := dispatchTouchEvent(ctx, touchStart, []*input.TouchPoint{{X: 100, Y: 620}}); err != nil {

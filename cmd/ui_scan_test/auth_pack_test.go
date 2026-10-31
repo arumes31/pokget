@@ -58,9 +58,9 @@ func TestAuthPackSuccessfulLogin(t *testing.T) {
 		chromedp.EmulateViewport(320, 568), setFocusEmulationEnabled(true),
 		setEmulatedMediaFeatures([]*emulation.MediaFeature{{Name: "prefers-reduced-motion", Value: "no-preference"}}),
 		chromedp.Navigate(server.URL+"/auth"),
-		chromedp.SendKeys("#login-email", "collector@example.invalid"),
-		chromedp.SendKeys("#login-password", "test-password"),
-		chromedp.Click("#login-panel button[type=submit]"),
+		chromedp.SendKeys(chromedp.CSS("#login-email"), "collector@example.invalid"),
+		chromedp.SendKeys(chromedp.CSS("#login-password"), "test-password"),
+		chromedp.Click(chromedp.CSS("#login-panel button[type=submit]")),
 		poll(`document.querySelector('#login-panel').getAttribute('aria-busy') === 'true' && !document.querySelector('[data-pack-opening]')`),
 	); err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestAuthPackSuccessfulLogin(t *testing.T) {
 		poll(`document.querySelector('[data-pack-opening]')?.dataset.stage === 'card-reveal'`),
 		poll(`new DOMMatrix(getComputedStyle(document.querySelector('.pack-flipper')).transform).m11 < -.99 && Number(getComputedStyle(document.querySelector('.pack-top')).opacity) === 0`),
 		waitPackDestination("?entered=collection#cards"),
-		chromedp.WaitReady("body"),
+		chromedp.WaitReady(chromedp.CSS("body")),
 		poll(`!document.querySelector('[data-pack-opening]')`),
 	); err != nil {
 		t.Fatal(err)
@@ -145,13 +145,13 @@ func TestAuthPackShortPaths(t *testing.T) {
 				chromedp.EmulateViewport(390, 844), setFocusEmulationEnabled(true),
 				setEmulatedMediaFeatures([]*emulation.MediaFeature{{Name: "prefers-reduced-motion", Value: preference}}),
 				chromedp.Navigate(server.URL+"/auth"),
-				chromedp.SendKeys("#login-email", "collector@example.invalid"),
-				chromedp.SendKeys("#login-password", "test-password"),
+				chromedp.SendKeys(chromedp.CSS("#login-email"), "collector@example.invalid"),
+				chromedp.SendKeys(chromedp.CSS("#login-password"), "test-password"),
 			); err != nil {
 				t.Fatal(err)
 			}
 			started := time.Now()
-			if err := chromedp.Do(ctx, chromedp.Click("#login-panel button[type=submit]")); err != nil {
+			if err := chromedp.Do(ctx, chromedp.Click(chromedp.CSS("#login-panel button[type=submit]"))); err != nil {
 				t.Fatal(err)
 			}
 			if mode != "missing-css" {
@@ -180,7 +180,7 @@ func TestAuthPackShortPaths(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				if err := chromedp.Do(ctx, waitPackDestination("?short="+mode), chromedp.WaitReady("body")); err != nil {
+				if err := chromedp.Do(ctx, waitPackDestination("?short="+mode), chromedp.WaitReady(chromedp.CSS("body"))); err != nil {
 					t.Fatal(err)
 				}
 				if elapsed := time.Since(started); elapsed > 3*time.Second {

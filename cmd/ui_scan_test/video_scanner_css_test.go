@@ -82,7 +82,7 @@ func TestVideoScannerSpinnerRemainsCircular(t *testing.T) {
 	var issues []string
 	if err := chromedp.Do(ctx,
 		evaluate(`(() => { const state = Alpine.$data(document.querySelector('.scanner-shell')); state.setStatus('Uploading the crop and running detection…', 2); state.setScanning(true); })()`),
-		chromedp.WaitVisible(".scan-progress-overlay"),
+		chromedp.WaitVisible(chromedp.CSS(".scan-progress-overlay")),
 		evaluateInto(`(() => {
 			const ring = document.querySelector('.scan-progress-orbit');
 			const animation = ring.getAnimations()[0];
@@ -122,7 +122,7 @@ func TestVideoScannerShowsPreparedCropWhileWaiting(t *testing.T) {
 	}
 	captureVideoCSS(t, ctx, "phone-card-progress")
 	if err := chromedp.Do(ctx,
-		chromedp.Click(`[data-testid="scan-progress-cancel"]`),
+		chromedp.Click(chromedp.CSS(`[data-testid="scan-progress-cancel"]`)),
 		poll(`(() => {const state=Alpine.$data(document.querySelector('.scanner-shell'));return !state.scanning && !state.scanPreviewURL && !!state.lastScanBlob})()`),
 	); err != nil {
 		t.Fatal(err)
