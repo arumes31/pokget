@@ -13,7 +13,6 @@ import (
 	"sync"
 
 	"github.com/chromedp/cdproto/network"
-	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 )
 
@@ -26,29 +25,36 @@ type scanArtifactCapture struct {
 
 func newScanArtifactCapture(ctx context.Context) *scanArtifactCapture {
 	capture := &scanArtifactCapture{}
-	chromedp.ListenTarget(ctx, func(event any) {
-		response, ok := event.(*network.EventResponseReceived)
-		if !ok {
-			return
+	events := chromedp.Events(ctx, network.ResponseReceived)
+	go func() {
+		for ev, err := range events {
+			if err != nil {
+				return
+			}
+			address, err := url.Parse(ev.Response.URL)
+			if err != nil || address.Path != "/api/scan" {
+				continue
+			}
+			capture.mu.Lock()
+			capture.responseID = ev.RequestID
+			capture.mu.Unlock()
 		}
-		address, err := url.Parse(response.Response.URL)
-		if err != nil || address.Path != "/api/scan" {
-			return
-		}
-		capture.mu.Lock()
-		capture.responseID = response.RequestID
-		capture.mu.Unlock()
-	})
+	}()
 	return capture
 }
 
 func (capture *scanArtifactCapture) save(ctx context.Context, directory string, result scanResult) error {
-	var dataURL string
-	var metadata json.RawMessage
-	if err := chromedp.Run(ctx,
-		chromedp.Evaluate(`(() => {const blob=Alpine.$data(document.querySelector('.scanner-shell')).lastScanBlob;if(!blob)throw new Error('No submitted scan Blob');return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob)})})()`, &dataURL, func(params *runtime.EvaluateParams) *runtime.EvaluateParams { return params.WithAwaitPromise(true) }),
-		chromedp.Evaluate(`(() => {const state=Alpine.$data(document.querySelector('.scanner-shell'));const image=document.querySelector('.scanner-frame img');return {lines:{left:state.lines.left,right:state.lines.right,top:state.lines.top,bottom:state.lines.bottom},rotation:state.previewRotation,game:state.game,language:state.lang,needs_review:state.needsReview,match_confirmed:state.matchConfirmed,uploaded_bytes:state.lastScanBlob?.size,uploaded_type:state.lastScanBlob?.type,preview_rendered:Boolean(image?.complete&&image?.naturalWidth),viewport:{width:innerWidth,height:innerHeight}}})()`, &metadata),
-	); err != nil {
+	dataURL, err := chromedp.Run(ctx, chromedp.Evaluate[string](
+		`(() => {const blob=Alpine.$data(document.querySelector('.scanner-shell')).lastScanBlob;if(!blob)throw new Error('No submitted scan Blob');return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob)})})()`,
+		chromedp.EvalAwaitPromise,
+	))
+	if err != nil {
+		return err
+	}
+	metadata, err := chromedp.Run(ctx, chromedp.Evaluate[json.RawMessage](
+		`(() => {const state=Alpine.$data(document.querySelector('.scanner-shell'));const image=document.querySelector('.scanner-frame img');return {lines:{left:state.lines.left,right:state.lines.right,top:state.lines.top,bottom:state.lines.bottom},rotation:state.previewRotation,game:state.game,language:state.lang,needs_review:state.needsReview,match_confirmed:state.matchConfirmed,uploaded_bytes:state.lastScanBlob?.size,uploaded_type:state.lastScanBlob?.type,preview_rendered:Boolean(image?.complete&&image?.naturalWidth),viewport:{width:innerWidth,height:innerHeight}}})()`,
+	))
+	if err != nil {
 		return err
 	}
 	_, encoded, found := strings.Cut(dataURL, ",")
@@ -65,14 +71,11 @@ func (capture *scanArtifactCapture) save(ctx context.Context, directory string, 
 	if responseID == "" {
 		return fmt.Errorf("no actual /api/scan response was observed")
 	}
-	var response []byte
-	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		var err error
-		response, err = network.GetResponseBody(responseID).Do(ctx)
-		return err
-	})); err != nil {
+	bodyResult, err := chromedp.Call(ctx, network.GetResponseBody, network.GetResponseBodyParams{RequestID: responseID})
+	if err != nil {
 		return fmt.Errorf("read actual scan response: %w", err)
 	}
+	response := bodyResult.Body
 	if err := os.MkdirAll(directory, 0750); err != nil {
 		return err
 	}

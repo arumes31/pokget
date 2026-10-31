@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/accessibility"
-	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
 )
@@ -25,11 +24,11 @@ func mobileHardeningPage(t *testing.T, path string) context.Context {
 	browser := newHeadlessBrowserContext(t, chromePath)
 	ctx, cancel := context.WithTimeout(browser, 40*time.Second)
 	t.Cleanup(cancel)
-	if err := chromedp.Run(ctx,
+	if err := chromedp.Do(ctx,
 		chromedp.EmulateViewport(390, 844),
 		chromedp.Navigate(server.URL+path),
-		chromedp.WaitVisible("#main-content .app-page"),
-		chromedp.Poll(`document.readyState === 'complete' && window.Alpine`, nil),
+		chromedp.WaitVisible(chromedp.CSS("#main-content .app-page")),
+		poll(`document.readyState === 'complete' && window.Alpine`),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -43,18 +42,18 @@ func TestMobileHardeningHelperTextContrast(t *testing.T) {
 	} {
 		t.Run(target.name, func(t *testing.T) {
 			ctx := mobileHardeningPage(t, "/?filled=1")
-			if err := chromedp.Run(ctx, loadReviewRoute(target.route)); err != nil {
+			if err := chromedp.Do(ctx, loadReviewRoute(target.route)); err != nil {
 				t.Fatal(err)
 			}
 			if target.name == "binder-optional" {
-				if err := chromedp.Run(ctx, chromedp.Click(`[x-ref="newBinderTrigger"]`, chromedp.ByQuery), chromedp.WaitVisible("#new-binder-name")); err != nil {
+				if err := chromedp.Do(ctx, chromedp.Click(chromedp.CSS(`[x-ref="newBinderTrigger"]`)), chromedp.WaitVisible(chromedp.CSS("#new-binder-name"))); err != nil {
 					t.Fatal(err)
 				}
 			}
 			var ratio float64
-			if err := chromedp.Run(ctx,
-				chromedp.WaitVisible(target.selector, chromedp.ByQuery),
-				chromedp.Evaluate(fmt.Sprintf(`(() => {
+			if err := chromedp.Do(ctx,
+				chromedp.WaitVisible(chromedp.CSS(target.selector)),
+				evaluateInto(fmt.Sprintf(`(() => {
 				const element = document.querySelector(%q);
 				const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
 				const context = canvas.getContext('2d', {willReadFrequently: true});
@@ -80,9 +79,9 @@ func TestMobileHardeningHelperTextContrast(t *testing.T) {
 func TestMobileHardeningNavigationAccessibleNames(t *testing.T) {
 	ctx := mobileHardeningPage(t, "/?filled=1")
 	var nodes []*accessibility.Node
-	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+	if err := chromedp.Do(ctx, actionFunc(func(ctx context.Context) error {
 		var err error
-		nodes, err = accessibility.GetFullAXTree().Do(ctx)
+		nodes, err = getFullAXTree(ctx)
 		return err
 	})); err != nil {
 		t.Fatal(err)
@@ -119,19 +118,19 @@ func TestMobileHardeningEmptyMisprintFocusReturn(t *testing.T) {
 	for _, closeMethod := range []string{"button", "escape"} {
 		t.Run(closeMethod, func(t *testing.T) {
 			ctx := mobileHardeningPage(t, "/?filled=0&view=errors")
-			if err := chromedp.Run(ctx,
-				chromedp.Evaluate(`window.hardeningOpener = document.querySelector('[x-ref="submitErrorTrigger"]')`, nil),
-				chromedp.Click(`[x-ref="submitErrorTrigger"]`, chromedp.ByQuery),
-				chromedp.Poll(`document.activeElement.id === 'error-card-id'`, nil),
+			if err := chromedp.Do(ctx,
+				evaluate(`window.hardeningOpener = document.querySelector('[x-ref="submitErrorTrigger"]')`),
+				chromedp.Click(chromedp.CSS(`[x-ref="submitErrorTrigger"]`)),
+				poll(`document.activeElement.id === 'error-card-id'`),
 			); err != nil {
 				t.Fatal(err)
 			}
-			var closeAction chromedp.Action = chromedp.KeyEvent(kb.Escape)
+			var closeAction action = chromedp.KeyEvent(kb.Escape)
 			if closeMethod == "button" {
-				closeAction = chromedp.Click(`[aria-label="Close submission dialog"]`, chromedp.ByQuery)
+				closeAction = chromedp.Click(chromedp.CSS(`[aria-label="Close submission dialog"]`))
 			}
-			if err := chromedp.Run(ctx, closeAction,
-				chromedp.Poll(`document.activeElement === window.hardeningOpener`, nil, chromedp.WithPollingTimeout(2*time.Second)),
+			if err := chromedp.Do(ctx, closeAction,
+				poll(`document.activeElement === window.hardeningOpener`, chromedp.WithPollingTimeout(2*time.Second)),
 			); err != nil {
 				t.Errorf("closing empty-state dialog did not restore its opener: %v", err)
 			}
@@ -144,12 +143,12 @@ func TestMobileClarificationMisprintPublicationNotice(t *testing.T) {
 		t.Run(fmt.Sprintf("font-%d", fontSize), func(t *testing.T) {
 			ctx := mobileHardeningPage(t, "/?filled=0&view=errors")
 			var issues []string
-			if err := chromedp.Run(ctx,
+			if err := chromedp.Do(ctx,
 				chromedp.EmulateViewport(320, 844),
-				chromedp.Evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size', '%dpx', 'important')`, fontSize), nil),
-				chromedp.Click(`[x-ref="submitErrorTrigger"]`, chromedp.ByQuery),
-				chromedp.WaitVisible("#error-card-id"),
-				chromedp.Evaluate(`(() => {
+				evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size', '%dpx', 'important')`, fontSize)),
+				chromedp.Click(chromedp.CSS(`[x-ref="submitErrorTrigger"]`)),
+				chromedp.WaitVisible(chromedp.CSS("#error-card-id")),
+				evaluateInto(`(() => {
 					const issues = [], field = document.querySelector('#error-card-id');
 					const form = field.closest('form'), button = form.querySelector('button[type="submit"]');
 					const help = document.getElementById(field.getAttribute('aria-describedby'));
@@ -176,22 +175,22 @@ func TestMobileClarificationMisprintPublicationNotice(t *testing.T) {
 
 func TestMobileHardeningStandaloneMisprintFocusTrap(t *testing.T) {
 	ctx := mobileHardeningPage(t, "/errors?hardening=1")
-	if err := chromedp.Run(ctx,
-		chromedp.Click(`[x-ref="submitErrorTrigger"]`, chromedp.ByQuery),
-		chromedp.Poll(`document.activeElement.id === 'error-card-id'`, nil),
+	if err := chromedp.Do(ctx,
+		chromedp.Click(chromedp.CSS(`[x-ref="submitErrorTrigger"]`)),
+		poll(`document.activeElement.id === 'error-card-id'`),
 	); err != nil {
 		t.Fatal(err)
 	}
 	for _, direction := range []struct {
 		name, selector string
-		modifiers      input.Modifier
+		modifiers      chromedp.Modifier
 	}{
-		{"forward", `[role="dialog"] button[type="submit"]`, input.ModifierNone},
-		{"backward", `[aria-label="Close submission dialog"]`, input.ModifierShift},
+		{"forward", `[role="dialog"] button[type="submit"]`, chromedp.ModifierNone},
+		{"backward", `[aria-label="Close submission dialog"]`, chromedp.ModifierShift},
 	} {
 		t.Run(direction.name, func(t *testing.T) {
 			var contained bool
-			if err := chromedp.Run(ctx, chromedp.Focus(direction.selector), chromedp.KeyEvent(kb.Tab, chromedp.KeyModifiers(direction.modifiers)), chromedp.Evaluate(`Boolean(document.activeElement.closest('[role="dialog"]'))`, &contained)); err != nil {
+			if err := chromedp.Do(ctx, chromedp.Focus(chromedp.CSS(direction.selector)), chromedp.KeyEvent(kb.Tab, chromedp.KeyModifiers(direction.modifiers)), evaluateInto(`Boolean(document.activeElement.closest('[role="dialog"]'))`, &contained)); err != nil {
 				t.Fatal(err)
 			}
 			if !contained {
@@ -207,7 +206,7 @@ func TestMobileHardeningMisprintFilterRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	var canClear bool
-	if err := chromedp.Run(ctx, chromedp.Evaluate(`document.querySelectorAll('[data-misprint]').length === 0 && [...document.querySelectorAll('a[href="/errors"]')].some(link => link.getClientRects().length && link.textContent.includes('Clear filters'))`, &canClear)); err != nil {
+	if err := chromedp.Do(ctx, evaluateInto(`document.querySelectorAll('[data-misprint]').length === 0 && [...document.querySelectorAll('a[href="/errors"]')].some(link => link.getClientRects().length && link.textContent.includes('Clear filters'))`, &canClear)); err != nil {
 		t.Fatal(err)
 	}
 	if !canClear {
@@ -216,11 +215,11 @@ func TestMobileHardeningMisprintFilterRecovery(t *testing.T) {
 	if err := clickMisprintLink(ctx, `a[href="/errors"]`); err != nil {
 		t.Fatal(err)
 	}
-	if err := chromedp.Run(ctx,
-		chromedp.Poll(`document.querySelector('#misprint-search [name=q]').value === '' && document.querySelector('#misprint-search [name=type]').value === 'all' && document.querySelector('[data-misprint]').getClientRects().length > 0 && document.activeElement === document.querySelector('#misprint-query')`, nil, chromedp.WithPollingTimeout(3*time.Second)),
+	if err := chromedp.Do(ctx,
+		poll(`document.querySelector('#misprint-search [name=q]').value === '' && document.querySelector('#misprint-search [name=type]').value === 'all' && document.querySelector('[data-misprint]').getClientRects().length > 0 && document.activeElement === document.querySelector('#misprint-query')`, chromedp.WithPollingTimeout(3*time.Second)),
 	); err != nil {
 		var state string
-		_ = chromedp.Run(ctx, chromedp.Evaluate(`JSON.stringify({query: document.querySelector('#misprint-query')?.value, type: document.querySelector('#misprint-search [name=type]')?.value, count: document.querySelectorAll('[data-misprint]').length, active: document.activeElement?.outerHTML?.slice(0,150)})`, &state))
+		_ = chromedp.Do(ctx, evaluateInto(`JSON.stringify({query: document.querySelector('#misprint-query')?.value, type: document.querySelector('#misprint-search [name=type]')?.value, count: document.querySelectorAll('[data-misprint]').length, active: document.activeElement?.outerHTML?.slice(0,150)})`, &state))
 		t.Log(state)
 		t.Fatalf("clear filters did not restore results: %v", err)
 	}
@@ -229,16 +228,16 @@ func TestMobileHardeningMisprintFilterRecovery(t *testing.T) {
 func TestMobileHardeningMisprintDescriptionDisclosure(t *testing.T) {
 	ctx := mobileHardeningPage(t, "/errors?hardening=1")
 	var hasDisclosure bool
-	if err := chromedp.Run(ctx, chromedp.Evaluate(`[...document.querySelectorAll('summary')].some(summary => summary.textContent.trim() === 'Read description')`, &hasDisclosure)); err != nil {
+	if err := chromedp.Do(ctx, evaluateInto(`[...document.querySelectorAll('summary')].some(summary => summary.textContent.trim() === 'Read description')`, &hasDisclosure)); err != nil {
 		t.Fatal(err)
 	}
 	if !hasDisclosure {
 		t.Fatal("long misprint description has no Read description disclosure")
 	}
 	var readable bool
-	if err := chromedp.Run(ctx,
-		chromedp.Click(`//summary[normalize-space(.)='Read description']`, chromedp.BySearch),
-		chromedp.Evaluate(`(() => { const details = document.querySelector('[data-misprint] details'); const text = [...details.querySelectorAll('p')].find(element => element.textContent.includes('Final diagnostic detail.')); return details.open && !!text && text.getClientRects().length > 0 && text.scrollHeight <= text.clientHeight + 1; })()`, &readable),
+	if err := chromedp.Do(ctx,
+		chromedp.Click(`//summary[normalize-space(.)='Read description']`),
+		evaluateInto(`(() => { const details = document.querySelector('[data-misprint] details'); const text = [...details.querySelectorAll('p')].find(element => element.textContent.includes('Final diagnostic detail.')); return details.open && !!text && text.getClientRects().length > 0 && text.scrollHeight <= text.clientHeight + 1; })()`, &readable),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -249,27 +248,27 @@ func TestMobileHardeningMisprintDescriptionDisclosure(t *testing.T) {
 
 func TestMobileHardeningUnpricedTradeCanRecover(t *testing.T) {
 	ctx := mobileHardeningPage(t, "/?filled=1")
-	if err := chromedp.Run(ctx, loadReviewRoute("/trade?hardening=1"), chromedp.Evaluate(`(() => {
+	if err := chromedp.Do(ctx, loadReviewRoute("/trade?hardening=1"), evaluate(`(() => {
 		const card = document.querySelector('#my-trade-card'); card.value = 'unpriced-item'; card.dispatchEvent(new Event('change', {bubbles:true}));
 		const offer = document.querySelector('#their-offer'); offer.value = '10'; offer.dispatchEvent(new Event('input', {bubbles:true}));
-	})()`, nil)); err != nil {
+	})()`)); err != nil {
 		t.Fatal(err)
 	}
 	var editable bool
-	if err := chromedp.Run(ctx, chromedp.Evaluate(`Boolean(document.querySelector('#my-offer')?.getClientRects().length)`, &editable)); err != nil {
+	if err := chromedp.Do(ctx, evaluateInto(`Boolean(document.querySelector('#my-offer')?.getClientRects().length)`, &editable)); err != nil {
 		t.Fatal(err)
 	}
 	if !editable {
 		t.Fatal("selected card without market price has no editable own-value input")
 	}
-	if err := chromedp.Run(ctx,
-		chromedp.Evaluate(`const offer = document.querySelector('#my-offer'); offer.value = '12.50'; offer.dispatchEvent(new Event('input', {bubbles:true}))`, nil),
-		chromedp.Poll(`document.querySelectorAll('[data-testid="trade-verdict"] button').length === 2 && [...document.querySelectorAll('[data-testid="trade-verdict"] button')].every(button => !button.disabled)`, nil),
+	if err := chromedp.Do(ctx,
+		evaluate(`const offer = document.querySelector('#my-offer'); offer.value = '12.50'; offer.dispatchEvent(new Event('input', {bubbles:true}))`),
+		poll(`document.querySelectorAll('[data-testid="trade-verdict"] button').length === 2 && [...document.querySelectorAll('[data-testid="trade-verdict"] button')].every(button => !button.disabled)`),
 	); err != nil {
 		t.Fatalf("entering own value did not enable exports: %v", err)
 	}
 	var summary string
-	if err := chromedp.Run(ctx, chromedp.Evaluate(`Alpine.$data(document.querySelector('#main-content .app-page')).summary()`, &summary)); err != nil {
+	if err := chromedp.Do(ctx, evaluateInto(`Alpine.$data(document.querySelector('#main-content .app-page')).summary()`, &summary)); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(summary, "12.50") || !strings.Contains(summary, "unpriced-item") {
@@ -283,9 +282,9 @@ func TestMobileHardeningTradeRejectsInvalidValues(t *testing.T) {
 		for _, value := range []string{"-1", "NaN", "Infinity"} {
 			t.Run(field+"/"+value, func(t *testing.T) {
 				var invalid bool
-				if err := chromedp.Run(ctx,
-					chromedp.Evaluate(fmt.Sprintf(`(() => { const state = Alpine.$data(document.querySelector('#main-content .app-page')); state.myPortfolioId = 'test-item'; state.myOffer = 12.5; state.theirOffer = 10; state[%q] = %s; })()`, field, value), nil),
-					chromedp.Evaluate(`!Alpine.$data(document.querySelector('#main-content .app-page')).ready && document.querySelectorAll('[data-testid="trade-verdict"] button').length === 2 && [...document.querySelectorAll('[data-testid="trade-verdict"] button')].every(button => button.disabled)`, &invalid),
+				if err := chromedp.Do(ctx,
+					evaluate(fmt.Sprintf(`(() => { const state = Alpine.$data(document.querySelector('#main-content .app-page')); state.myPortfolioId = 'test-item'; state.myOffer = 12.5; state.theirOffer = 10; state[%q] = %s; })()`, field, value)),
+					evaluateInto(`!Alpine.$data(document.querySelector('#main-content .app-page')).ready && document.querySelectorAll('[data-testid="trade-verdict"] button').length === 2 && [...document.querySelectorAll('[data-testid="trade-verdict"] button')].every(button => button.disabled)`, &invalid),
 				); err != nil {
 					t.Fatal(err)
 				}
@@ -299,13 +298,13 @@ func TestMobileHardeningTradeRejectsInvalidValues(t *testing.T) {
 
 func TestMobileHardeningBinderInitialOrderMatchesNameSort(t *testing.T) {
 	ctx := mobileHardeningPage(t, "/?filled=1")
-	if err := chromedp.Run(ctx, loadReviewRoute("/binders?hardening=1")); err != nil {
+	if err := chromedp.Do(ctx, loadReviewRoute("/binders?hardening=1")); err != nil {
 		t.Fatal(err)
 	}
-	err := chromedp.Run(ctx, chromedp.Poll(`[...document.querySelectorAll('[data-binder-card]')].map(card => card.dataset.name).join(',') === 'Alpha,Moon,Zeta'`, nil, chromedp.WithPollingTimeout(2*time.Second)))
+	err := chromedp.Do(ctx, poll(`[...document.querySelectorAll('[data-binder-card]')].map(card => card.dataset.name).join(',') === 'Alpha,Moon,Zeta'`, chromedp.WithPollingTimeout(2*time.Second)))
 	if err != nil {
 		var names []string
-		if readErr := chromedp.Run(ctx, chromedp.Evaluate(`[...document.querySelectorAll('[data-binder-card]')].map(card => card.dataset.name)`, &names)); readErr != nil {
+		if readErr := chromedp.Do(ctx, evaluateInto(`[...document.querySelectorAll('[data-binder-card]')].map(card => card.dataset.name)`, &names)); readErr != nil {
 			t.Fatal(readErr)
 		}
 		t.Errorf("initial Name sorting does not match rendered order: %v", names)

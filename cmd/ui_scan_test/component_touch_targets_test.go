@@ -23,7 +23,7 @@ func TestScopedComponentButtonsPreserveTouchTargets(t *testing.T) {
 			Name   string
 			Height float64
 		}
-		if err := chromedp.Run(ctx, chromedp.Evaluate(`Array.from(document.querySelectorAll(`+"`"+selector+"`"+`)).filter(e=>e.getClientRects().length).map(e=>({Name:e.getAttribute('aria-label')||e.textContent.trim(),Height:e.getBoundingClientRect().height}))`, &buttons)); err != nil {
+		if err := chromedp.Do(ctx, evaluateInto(`Array.from(document.querySelectorAll(`+"`"+selector+"`"+`)).filter(e=>e.getClientRects().length).map(e=>({Name:e.getAttribute('aria-label')||e.textContent.trim(),Height:e.getBoundingClientRect().height}))`, &buttons)); err != nil {
 			t.Fatal(err)
 		}
 		if len(buttons) == 0 {
@@ -36,15 +36,15 @@ func TestScopedComponentButtonsPreserveTouchTargets(t *testing.T) {
 		}
 		t.Logf("measured %d visible %s controls", len(buttons), selector)
 	}
-	if err := chromedp.Run(ctx, chromedp.EmulateViewport(320, 568), chromedp.Navigate(server.URL+"/auth"), chromedp.WaitVisible("#login-email", chromedp.ByQuery)); err != nil {
+	if err := chromedp.Do(ctx, chromedp.EmulateViewport(320, 568), chromedp.Navigate(server.URL+"/auth"), chromedp.WaitVisible(chromedp.CSS("#login-email"))); err != nil {
 		t.Fatal(err)
 	}
 	check(".auth-experience button")
-	if err := chromedp.Run(ctx, chromedp.Click("#register-tab", chromedp.ByQuery), chromedp.WaitVisible("#register-email", chromedp.ByQuery)); err != nil {
+	if err := chromedp.Do(ctx, chromedp.Click(chromedp.CSS("#register-tab")), chromedp.WaitVisible(chromedp.CSS("#register-email"))); err != nil {
 		t.Fatal(err)
 	}
 	check(".auth-experience button")
-	if err := chromedp.Run(ctx, chromedp.Navigate(server.URL+"/?view=scan"), chromedp.WaitVisible("[data-testid=open-measure]", chromedp.ByQuery), chromedp.Click("[data-testid=open-measure]", chromedp.ByQuery), chromedp.WaitVisible(".measure-text-button", chromedp.ByQuery)); err != nil {
+	if err := chromedp.Do(ctx, chromedp.Navigate(server.URL+"/?view=scan"), chromedp.WaitVisible(chromedp.CSS("[data-testid=open-measure]")), chromedp.Click(chromedp.CSS("[data-testid=open-measure]")), chromedp.WaitVisible(chromedp.CSS(".measure-text-button"))); err != nil {
 		t.Fatal(err)
 	}
 	check(".card-tools button")

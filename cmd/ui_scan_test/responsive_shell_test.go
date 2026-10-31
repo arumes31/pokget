@@ -34,13 +34,13 @@ func TestResponsivePagesAndCollectionFormatting(t *testing.T) {
 				defer cancel()
 				ctx, timeout := context.WithTimeout(ctx, 60*time.Second)
 				defer timeout()
-				if err := chromedp.Run(ctx, chromedp.EmulateViewport(viewport.width, viewport.height), chromedp.Navigate(fmt.Sprintf("%s/?filled=%d", server.URL, filled)), chromedp.WaitVisible("#main-content .app-page")); err != nil {
+				if err := chromedp.Do(ctx, chromedp.EmulateViewport(viewport.width, viewport.height), chromedp.Navigate(fmt.Sprintf("%s/?filled=%d", server.URL, filled)), chromedp.WaitVisible(chromedp.CSS("#main-content .app-page"))); err != nil {
 					t.Fatal(err)
 				}
 				for _, page := range []struct{ name, route string }{{"vault", "/dashboard"}, {"grails", "/wantlist"}, {"binders", "/binders"}, {"binder", "/binders/test"}, {"misprints", "/errors"}, {"trade", "/trade"}, {"settings", "/settings"}} {
 					t.Run(page.name, func(t *testing.T) {
 						var issues []string
-						if err := chromedp.Run(ctx, loadReviewRoute(page.route), chromedp.Evaluate(`(() => {
+						if err := chromedp.Do(ctx, loadReviewRoute(page.route), evaluateInto(`(() => {
 							const issues = [];
 							const main = document.querySelector('#main-content');
 							if (document.documentElement.scrollWidth > innerWidth + 1) issues.push('horizontal page overflow');
@@ -59,7 +59,7 @@ func TestResponsivePagesAndCollectionFormatting(t *testing.T) {
 						}
 						if dir := os.Getenv("POKGET_UI_SCREENSHOT_DIR"); dir != "" {
 							var shot []byte
-							if err := chromedp.Run(ctx, chromedp.CaptureScreenshot(&shot)); err != nil {
+							if err := chromedp.Do(ctx, captureScreenshotInto(&shot)); err != nil {
 								t.Fatal(err)
 							}
 							if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -95,11 +95,11 @@ func TestCollectionDialogsRestoreKeyboardFocus(t *testing.T) {
 				defer cancel()
 				ctx, timeout := context.WithTimeout(ctx, 20*time.Second)
 				defer timeout()
-				if err := chromedp.Run(ctx, chromedp.EmulateViewport(390, 844), chromedp.Navigate(fmt.Sprintf("%s/?filled=%d", server.URL, filled)), chromedp.WaitVisible("#main-content .app-page"), loadReviewRoute(page.route), chromedp.Click(page.trigger, chromedp.ByQuery), chromedp.Poll(`document.activeElement === document.querySelector('`+page.input+`')`, nil),
-					chromedp.Evaluate(`document.activeElement.closest('[role="dialog"]').querySelector('button[type="submit"]').focus()`, nil),
+				if err := chromedp.Do(ctx, chromedp.EmulateViewport(390, 844), chromedp.Navigate(fmt.Sprintf("%s/?filled=%d", server.URL, filled)), chromedp.WaitVisible(chromedp.CSS("#main-content .app-page")), loadReviewRoute(page.route), chromedp.Click(page.trigger), poll(`document.activeElement === document.querySelector('`+page.input+`')`),
+					evaluate(`document.activeElement.closest('[role="dialog"]').querySelector('button[type="submit"]').focus()`),
 					chromedp.KeyEvent(kb.Tab),
-					chromedp.Poll(`Boolean(document.activeElement.closest('[role="dialog"]'))`, nil, chromedp.WithPollingTimeout(2*time.Second)),
-					chromedp.KeyEvent(kb.Escape), chromedp.Poll(`document.activeElement === document.querySelector('`+page.trigger+`')`, nil)); err != nil {
+					poll(`Boolean(document.activeElement.closest('[role="dialog"]'))`, chromedp.WithPollingTimeout(2*time.Second)),
+					chromedp.KeyEvent(kb.Escape), poll(`document.activeElement === document.querySelector('`+page.trigger+`')`)); err != nil {
 					t.Fatalf("dialog keyboard focus: %v", err)
 				}
 			})
@@ -121,20 +121,20 @@ func TestStandaloneAccountAndPublicVault(t *testing.T) {
 			defer cancel()
 			ctx, timeout := context.WithTimeout(ctx, 30*time.Second)
 			defer timeout()
-			if err := chromedp.Run(ctx, chromedp.EmulateViewport(width, 900), chromedp.Navigate(server.URL+"/?filled=1"), chromedp.WaitVisible("#main-content .app-page")); err != nil {
+			if err := chromedp.Do(ctx, chromedp.EmulateViewport(width, 900), chromedp.Navigate(server.URL+"/?filled=1"), chromedp.WaitVisible(chromedp.CSS("#main-content .app-page"))); err != nil {
 				t.Fatal(err)
 			}
 			for _, route := range []struct{ name, path, marker string }{{"auth", "/auth", "#login-tab"}, {"public", "/vault/test", "article"}} {
 				var body string
 				var overflow bool
-				if err := chromedp.Run(ctx, chromedp.Navigate(server.URL+route.path), chromedp.WaitVisible(route.marker), chromedp.Text("body", &body), chromedp.Evaluate(`document.documentElement.scrollWidth > innerWidth + 1`, &overflow)); err != nil {
+				if err := chromedp.Do(ctx, chromedp.Navigate(server.URL+route.path), chromedp.WaitVisible(chromedp.CSS(route.marker)), textInto("body", &body), evaluateInto(`document.documentElement.scrollWidth > innerWidth + 1`, &overflow)); err != nil {
 					t.Fatal(err)
 				}
 				if overflow {
 					t.Errorf("%s overflows at %dpx", route.name, width)
 				}
 				if route.name == "auth" {
-					if err := chromedp.Run(ctx, chromedp.Focus("#login-tab"), chromedp.KeyEvent(kb.ArrowRight), chromedp.Poll(`document.activeElement.id === 'register-tab' && document.querySelector('#register-tab').getAttribute('aria-selected') === 'true'`, nil)); err != nil {
+					if err := chromedp.Do(ctx, chromedp.Focus(chromedp.CSS("#login-tab")), chromedp.KeyEvent(kb.ArrowRight), poll(`document.activeElement.id === 'register-tab' && document.querySelector('#register-tab').getAttribute('aria-selected') === 'true'`)); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -143,7 +143,7 @@ func TestStandaloneAccountAndPublicVault(t *testing.T) {
 				}
 				if dir := os.Getenv("POKGET_UI_SCREENSHOT_DIR"); dir != "" {
 					var shot []byte
-					if err := chromedp.Run(ctx, chromedp.CaptureScreenshot(&shot)); err != nil {
+					if err := chromedp.Do(ctx, captureScreenshotInto(&shot)); err != nil {
 						t.Fatal(err)
 					}
 					if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -158,11 +158,11 @@ func TestStandaloneAccountAndPublicVault(t *testing.T) {
 	}
 }
 
-func loadReviewRoute(route string) chromedp.Tasks {
+func loadReviewRoute(route string) action {
 	view := map[string]string{"/dashboard": "home", "/wantlist": "wantlist", "/binders": "binders", "/binders/test": "binders", "/errors": "errors", "/trade": "trade", "/settings": "settings"}[route]
-	return chromedp.Tasks{
-		chromedp.Evaluate(`window.dispatchEvent(new CustomEvent('pokget-view-change', {detail: {view: '`+view+`'}}))`, nil),
-		chromedp.Evaluate(`(() => {
+	return chromedp.Steps(
+		evaluate(`window.dispatchEvent(new CustomEvent('pokget-view-change', {detail: {view: '`+view+`'}}))`),
+		evaluate(`(() => {
 			const main = document.querySelector('#main-content');
 			delete main.dataset.reviewReady;
 			const settled = event => {
@@ -173,9 +173,9 @@ func loadReviewRoute(route string) chromedp.Tasks {
 			};
 			document.body.addEventListener('htmx:afterSettle', settled);
 			htmx.ajax('GET', '`+route+`', {target: main, source: document.body});
-		})()`, nil),
-		chromedp.Poll(`document.querySelector('#main-content').dataset.reviewReady === '1'`, nil, chromedp.WithPollingTimeout(5*time.Second)),
-	}
+		})()`),
+		poll(`document.querySelector('#main-content').dataset.reviewReady === '1'`, chromedp.WithPollingTimeout(5*time.Second)),
+	)
 }
 
 func TestDesktopScanCancelsOlderNavigation(t *testing.T) {
@@ -204,7 +204,7 @@ func TestDesktopScanCancelsOlderNavigation(t *testing.T) {
 	browser := newHeadlessBrowserContext(t, chromePath)
 	ctx, timeout := context.WithTimeout(browser, 25*time.Second)
 	defer timeout()
-	if err := chromedp.Run(ctx, chromedp.EmulateViewport(1440, 1000), chromedp.Navigate(server.URL), chromedp.WaitVisible("#main-content .app-page"), chromedp.Click(`.app-sidebar [hx-get="/dashboard"]`, chromedp.ByQuery)); err != nil {
+	if err := chromedp.Do(ctx, chromedp.EmulateViewport(1440, 1000), chromedp.Navigate(server.URL), chromedp.WaitVisible(chromedp.CSS("#main-content .app-page")), chromedp.Click(chromedp.CSS(`.app-sidebar [hx-get="/dashboard"]`))); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -212,7 +212,7 @@ func TestDesktopScanCancelsOlderNavigation(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("older navigation did not start")
 	}
-	if err := chromedp.Run(ctx, chromedp.Click(`.app-sidebar [hx-get="/centering"]`, chromedp.ByQuery), chromedp.WaitVisible(".scanner-shell")); err != nil {
+	if err := chromedp.Do(ctx, chromedp.Click(chromedp.CSS(`.app-sidebar [hx-get="/centering"]`)), chromedp.WaitVisible(chromedp.CSS(".scanner-shell"))); err != nil {
 		t.Fatal(err)
 	}
 	select {

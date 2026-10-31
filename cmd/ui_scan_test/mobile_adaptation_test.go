@@ -28,11 +28,11 @@ func TestMobileAdaptationContentReflows(t *testing.T) {
 				defer cancel()
 				ctx, timeout := context.WithTimeout(ctx, 45*time.Second)
 				defer timeout()
-				if err := chromedp.Run(ctx,
+				if err := chromedp.Do(ctx,
 					chromedp.EmulateViewport(width, 844),
 					chromedp.Navigate(server.URL+"/?filled=1"),
-					chromedp.WaitVisible("#main-content .app-page"),
-					chromedp.Evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size', '%dpx', 'important')`, fontSize), nil),
+					chromedp.WaitVisible(chromedp.CSS("#main-content .app-page")),
+					evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size', '%dpx', 'important')`, fontSize)),
 				); err != nil {
 					t.Fatal(err)
 				}
@@ -43,7 +43,7 @@ func TestMobileAdaptationContentReflows(t *testing.T) {
 				} {
 					t.Run(page.name, func(t *testing.T) {
 						var issues []string
-						if err := chromedp.Run(ctx, loadReviewRoute(page.route), chromedp.Evaluate(`(() => {
+						if err := chromedp.Do(ctx, loadReviewRoute(page.route), evaluateInto(`(() => {
 							const issues = [];
 							const elements = document.querySelectorAll('#main-content .app-page *');
 							for (const element of elements) {
@@ -90,12 +90,12 @@ func TestMobileAdaptationScannerActionsRemainReachable(t *testing.T) {
 				defer cancel()
 				ctx, timeout := context.WithTimeout(ctx, 30*time.Second)
 				defer timeout()
-				if err := chromedp.Run(ctx,
+				if err := chromedp.Do(ctx,
 					chromedp.EmulateViewport(viewport.width, viewport.height),
 					chromedp.Navigate(server.URL+"/?view=scan"),
-					chromedp.WaitVisible(".scanner-controls"),
-					chromedp.Poll(`window.Alpine && Alpine.$data(document.querySelector('.scanner-shell')).$refs.video`, nil),
-					chromedp.Evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size', '%dpx', 'important')`, fontSize), nil),
+					chromedp.WaitVisible(chromedp.CSS(".scanner-controls")),
+					poll(`window.Alpine && Alpine.$data(document.querySelector('.scanner-shell')).$refs.video`),
+					evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size', '%dpx', 'important')`, fontSize)),
 				); err != nil {
 					t.Fatal(err)
 				}
@@ -115,8 +115,8 @@ func TestMobileAdaptationScannerActionsRemainReachable(t *testing.T) {
 							PaneRight     float64 `json:"paneRight"`
 							ViewportWidth float64 `json:"viewportWidth"`
 						}
-						if err := chromedp.Run(ctx,
-							chromedp.Evaluate(fmt.Sprintf(`(() => {
+						if err := chromedp.Do(ctx,
+							evaluateInto(fmt.Sprintf(`(() => {
 								const element = document.querySelector(%q);
 								// scrollIntoView also scrolls overflow:hidden ancestors, which
 								// cannot be scrolled by touch. Move only user-scrollable panes.
@@ -149,7 +149,7 @@ func TestMobileAdaptationScannerActionsRemainReachable(t *testing.T) {
 					})
 				}
 				var instructionEndReachable bool
-				if err := chromedp.Run(ctx, chromedp.Evaluate(`(() => {
+				if err := chromedp.Do(ctx, evaluateInto(`(() => {
 					const pane = document.querySelector('.scanner-empty');
 					if (pane.scrollHeight > pane.clientHeight + 1 && !/auto|scroll/.test(getComputedStyle(pane).overflowY)) return false;
 					pane.scrollTop = pane.scrollHeight;
@@ -184,21 +184,21 @@ func TestMobileAdaptationOfflineRetryRemainsReachable(t *testing.T) {
 				defer cancel()
 				ctx, timeout := context.WithTimeout(ctx, 20*time.Second)
 				defer timeout()
-				if err := chromedp.Run(ctx,
+				if err := chromedp.Do(ctx,
 					chromedp.EmulateViewport(width, 844),
 					chromedp.Navigate(server.URL+"/static/offline.html"),
-					chromedp.WaitVisible("main", chromedp.ByQuery),
-					chromedp.Evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size','%dpx','important')`, font), nil),
-					chromedp.ActionFunc(func(ctx context.Context) error {
-						if err := input.DispatchTouchEvent(input.TouchStart, []*input.TouchPoint{{X: 100, Y: 620}}).Do(ctx); err != nil {
+					chromedp.WaitVisible(chromedp.CSS("main")),
+					evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size','%dpx','important')`, font)),
+					actionFunc(func(ctx context.Context) error {
+						if err := dispatchTouchEvent(ctx, touchStart, []*input.TouchPoint{{X: 100, Y: 620}}); err != nil {
 							return err
 						}
-						if err := input.DispatchTouchEvent(input.TouchMove, []*input.TouchPoint{{X: 100, Y: 220}}).Do(ctx); err != nil {
+						if err := dispatchTouchEvent(ctx, touchMove, []*input.TouchPoint{{X: 100, Y: 220}}); err != nil {
 							return err
 						}
-						return input.DispatchTouchEvent(input.TouchEnd, nil).Do(ctx)
+						return dispatchTouchEvent(ctx, touchEnd, nil)
 					}),
-					chromedp.Poll(`(() => {const button=document.querySelector('main button'), box=button.getBoundingClientRect(); const hit=document.elementFromPoint((box.left+box.right)/2,(box.top+box.bottom)/2); return box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth && box.width >= 44 && box.height >= 44 && !!hit && button.contains(hit)})()`, nil, chromedp.WithPollingTimeout(3*time.Second)),
+					poll(`(() => {const button=document.querySelector('main button'), box=button.getBoundingClientRect(); const hit=document.elementFromPoint((box.left+box.right)/2,(box.top+box.bottom)/2); return box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth && box.width >= 44 && box.height >= 44 && !!hit && button.contains(hit)})()`, chromedp.WithPollingTimeout(3*time.Second)),
 				); err != nil {
 					t.Fatalf("offline Retry is not reachable after page scrolling: %v", err)
 				}

@@ -68,11 +68,11 @@ func TestMobileScannerSeparatesCameraAndControls(t *testing.T) {
 
 	var layout scannerWorkspaceLayout
 	var screenshot []byte
-	actions := []chromedp.Action{
+	actions := []action{
 		chromedp.EmulateViewport(390, 844),
 		chromedp.Navigate(server.URL),
-		chromedp.WaitVisible(`[data-testid="scanner-controls"]`, chromedp.ByQuery),
-		chromedp.Evaluate(`(() => {
+		chromedp.WaitVisible(chromedp.CSS(`[data-testid="scanner-controls"]`)),
+		evaluateInto(`(() => {
 			const toolbar = document.querySelector('[data-testid="scanner-toolbar"]').getBoundingClientRect();
 			const frame = document.querySelector('[data-testid="scanner-frame"]').getBoundingClientRect();
 			const controls = document.querySelector('[data-testid="scanner-controls"]').getBoundingClientRect();
@@ -95,14 +95,14 @@ func TestMobileScannerSeparatesCameraAndControls(t *testing.T) {
 		if err := os.MkdirAll(screenshotDir, 0o750); err != nil {
 			t.Fatalf("create screenshot directory: %v", err)
 		}
-		actions = append(actions, chromedp.CaptureScreenshot(&screenshot))
+		actions = append(actions, captureScreenshotInto(&screenshot))
 		defer func() {
 			if err := os.WriteFile(filepath.Join(screenshotDir, "scanner-workspace.png"), screenshot, 0o600); err != nil {
 				t.Errorf("write scanner workspace screenshot: %v", err)
 			}
 		}()
 	}
-	if err := chromedp.Run(ctx, actions...); err != nil {
+	if err := chromedp.Do(ctx, actions...); err != nil {
 		t.Fatalf("inspect rendered scanner workspace: %v", err)
 	}
 
@@ -138,7 +138,7 @@ func TestScannerResponsiveWorkspace(t *testing.T) {
 			ctx, timeout := context.WithTimeout(ctx, 30*time.Second)
 			defer timeout()
 			var issues []string
-			if err := chromedp.Run(ctx, chromedp.EmulateViewport(viewport.width, viewport.height), chromedp.Navigate(server.URL), chromedp.WaitVisible(`[data-testid="scanner-controls"]`), chromedp.Evaluate(`(() => {
+			if err := chromedp.Do(ctx, chromedp.EmulateViewport(viewport.width, viewport.height), chromedp.Navigate(server.URL), chromedp.WaitVisible(chromedp.CSS(`[data-testid="scanner-controls"]`)), evaluateInto(`(() => {
 				const issues = [];
 				const frame = document.querySelector('[data-testid="scanner-frame"]').getBoundingClientRect();
 				const controls = document.querySelector('[data-testid="scanner-controls"]').getBoundingClientRect();
@@ -157,7 +157,7 @@ func TestScannerResponsiveWorkspace(t *testing.T) {
 			}
 			if dir := os.Getenv("POKGET_UI_SCREENSHOT_DIR"); dir != "" {
 				var shot []byte
-				if err := chromedp.Run(ctx, chromedp.CaptureScreenshot(&shot)); err != nil {
+				if err := chromedp.Do(ctx, captureScreenshotInto(&shot)); err != nil {
 					t.Fatal(err)
 				}
 				if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -244,12 +244,11 @@ func inspectProgressAtViewport(
 
 	var layout progressLayout
 	var screenshot []byte
-	actions := []chromedp.Action{
+	actions := []action{
 		chromedp.EmulateViewport(width, height),
 		chromedp.Navigate(pageURL),
-		chromedp.Poll(`document.querySelector('#scanner-root .scanner-shell') && window.Alpine && Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).setScanning`, nil,
-			chromedp.WithPollingTimeout(10*time.Second)),
-		chromedp.Evaluate(`(() => {
+		poll(`document.querySelector('#scanner-root .scanner-shell') && window.Alpine && Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).setScanning`, chromedp.WithPollingTimeout(10*time.Second)),
+		evaluate(`(() => {
 			const state = Alpine.$data(document.querySelector('#scanner-root .scanner-shell'));
 			state.setStatus('Uploading the crop and running detection…', 2);
 			state.setScanning(true);
@@ -257,11 +256,10 @@ func inspectProgressAtViewport(
 			clearInterval(state.scanTimer);
 			state.scanTimer = null;
 			state.scanElapsedSeconds = 16;
-		})()`, nil),
-		chromedp.WaitVisible(`[data-testid="scan-progress-overlay"]`, chromedp.ByQuery),
-		chromedp.Poll(`document.activeElement === document.querySelector('[data-testid="scan-progress-cancel"]')`, nil,
-			chromedp.WithPollingTimeout(3*time.Second)),
-		chromedp.Evaluate(`(() => {
+		})()`),
+		chromedp.WaitVisible(chromedp.CSS(`[data-testid="scan-progress-overlay"]`)),
+		poll(`document.activeElement === document.querySelector('[data-testid="scan-progress-cancel"]')`, chromedp.WithPollingTimeout(3*time.Second)),
+		evaluateInto(`(() => {
 			const overlay = document.querySelector('[data-testid="scan-progress-overlay"]');
 			const cancel = document.querySelector('[data-testid="scan-progress-cancel"]');
 			const card = document.querySelector('.scan-progress-card');
@@ -293,16 +291,16 @@ func inspectProgressAtViewport(
 		})()`, &layout),
 	}
 	if screenshotPath != "" {
-		actions = append(actions, chromedp.CaptureScreenshot(&screenshot))
+		actions = append(actions, captureScreenshotInto(&screenshot))
 	}
 	actions = append(actions,
-		chromedp.Click(`[data-testid="scan-progress-cancel"]`, chromedp.ByQuery),
-		chromedp.Poll(`(() => {
+		chromedp.Click(chromedp.CSS(`[data-testid="scan-progress-cancel"]`)),
+		poll(`(() => {
 			const root = document.querySelector('#scanner-root .scanner-shell');
 			return !Alpine.$data(root).scanning && !document.documentElement.classList.contains('scan-progress-open');
-		})()`, nil, chromedp.WithPollingTimeout(5*time.Second)),
+		})()`, chromedp.WithPollingTimeout(5*time.Second)),
 	)
-	err := chromedp.Run(ctx, actions...)
+	err := chromedp.Do(ctx, actions...)
 	if err != nil {
 		t.Fatalf("inspect rendered mobile progress: %v", err)
 	}

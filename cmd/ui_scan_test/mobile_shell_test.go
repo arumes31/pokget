@@ -45,11 +45,10 @@ func TestMobilePrimaryPagesStayInsideViewport(t *testing.T) {
 	ctx, cancel := context.WithTimeout(tabContext, 45*time.Second)
 	defer cancel()
 
-	if err := chromedp.Run(ctx,
+	if err := chromedp.Do(ctx,
 		chromedp.EmulateViewport(390, 844),
 		chromedp.Navigate(server.URL),
-		chromedp.Poll(`document.querySelector('#main-content .app-page') && document.querySelector('#main-content').textContent.includes('Main vault')`, nil,
-			chromedp.WithPollingTimeout(10*time.Second)),
+		poll(`document.querySelector('#main-content .app-page') && document.querySelector('#main-content').textContent.includes('Main vault')`, chromedp.WithPollingTimeout(10*time.Second)),
 	); err != nil {
 		t.Fatalf("open mobile shell: %v", err)
 	}
@@ -68,11 +67,10 @@ func TestMobilePrimaryPagesStayInsideViewport(t *testing.T) {
 			var layout mobilePageLayout
 			var screenshot []byte
 			marker := strings.ReplaceAll(page.marker, "'", "\\'")
-			actions := []chromedp.Action{
-				chromedp.Evaluate(`htmx.ajax('GET', '`+page.route+`', { target: '#main-content', source: document.body })`, nil),
-				chromedp.Poll(`document.querySelector('#main-content .app-page') && document.querySelector('#main-content').textContent.includes('`+marker+`')`, nil,
-					chromedp.WithPollingTimeout(5*time.Second)),
-				chromedp.Evaluate(`(() => {
+			actions := []action{
+				evaluate(`htmx.ajax('GET', '` + page.route + `', { target: '#main-content', source: document.body })`),
+				poll(`document.querySelector('#main-content .app-page') && document.querySelector('#main-content').textContent.includes('`+marker+`')`, chromedp.WithPollingTimeout(5*time.Second)),
+				evaluateInto(`(() => {
 					const page = document.querySelector('#main-content .app-page').getBoundingClientRect();
 					const header = document.querySelector('.app-header').getBoundingClientRect();
 					const nav = document.querySelector('.app-bottom-nav').getBoundingClientRect();
@@ -96,14 +94,14 @@ func TestMobilePrimaryPagesStayInsideViewport(t *testing.T) {
 				if err := os.MkdirAll(screenshotDir, 0o750); err != nil {
 					t.Fatalf("create screenshot directory: %v", err)
 				}
-				actions = append(actions, chromedp.CaptureScreenshot(&screenshot))
+				actions = append(actions, captureScreenshotInto(&screenshot))
 				defer func() {
 					if err := os.WriteFile(filepath.Join(screenshotDir, "page-"+page.name+".png"), screenshot, 0o600); err != nil {
 						t.Errorf("write %s screenshot: %v", page.name, err)
 					}
 				}()
 			}
-			if err := chromedp.Run(ctx, actions...); err != nil {
+			if err := chromedp.Do(ctx, actions...); err != nil {
 				t.Fatalf("inspect %s: %v", page.name, err)
 			}
 			if layout.ScrollWidth > layout.ViewportWidth+1 || layout.PageLeft < -1 || layout.PageRight > layout.ViewportWidth+1 {

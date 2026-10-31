@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 )
 
@@ -24,16 +23,16 @@ func TestFullImageCropUsesGuideControls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := chromedp.Run(ctx,
-		chromedp.SetUploadFiles(fileInputSelector, []string{fixture}, chromedp.ByQuery),
-		chromedp.Poll(`Boolean(Alpine.$data(document.querySelector('.scanner-shell')).previewURL)`, nil),
+	if err := chromedp.Do(ctx,
+		chromedp.SetUploadFiles(fileInputSelector, []string{fixture}),
+		poll(`Boolean(Alpine.$data(document.querySelector('.scanner-shell')).previewURL)`),
 	); err != nil {
 		t.Fatal(err)
 	}
 	if err := includeFullImageWithGuides(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := chromedp.Run(ctx, chromedp.Poll(`(() => {const state=Alpine.$data(document.querySelector('.scanner-shell'));return state.lines.left===0&&state.lines.top===0&&state.lines.right===100&&state.lines.bottom===100&&Boolean(state.previewURL)&&!state.scanning})()`, nil)); err != nil {
+	if err := chromedp.Do(ctx, poll(`(() => {const state=Alpine.$data(document.querySelector('.scanner-shell'));return state.lines.left===0&&state.lines.top===0&&state.lines.right===100&&state.lines.bottom===100&&Boolean(state.previewURL)&&!state.scanning})()`)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -74,7 +73,7 @@ func TestScanFixtureUsesExistingAppShell(t *testing.T) {
 	ctx, cancel := context.WithTimeout(newHeadlessBrowserContext(t, chrome), 30*time.Second)
 	defer cancel()
 	capture := newScanArtifactCapture(ctx)
-	if err := chromedp.Run(ctx, network.Enable(), chromedp.EmulateViewport(390, 844), chromedp.Navigate(server.URL+"/"), chromedp.WaitVisible("#main-content .app-page", chromedp.ByQuery)); err != nil {
+	if err := chromedp.Do(ctx, enableNetwork(), chromedp.EmulateViewport(390, 844), chromedp.Navigate(server.URL+"/"), chromedp.WaitVisible(chromedp.CSS("#main-content .app-page"))); err != nil {
 		t.Fatal(err)
 	}
 	fixture, err := filepath.Abs(filepath.Join("..", "..", "static", "img", "logo.png"))
@@ -126,20 +125,20 @@ func TestScannerPreviewRendersWithProductionSecurityPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := chromedp.Run(ctx,
+	if err := chromedp.Do(ctx,
 		chromedp.EmulateViewport(390, 844),
 		chromedp.Navigate(server.URL+"/?view=scan"),
-		chromedp.WaitReady(fileInputSelector, chromedp.ByQuery),
-		chromedp.SetUploadFiles(fileInputSelector, []string{fixture}, chromedp.ByQuery),
-		chromedp.Poll(`Boolean(Alpine.$data(document.querySelector('.scanner-shell')).previewURL)`, nil),
-		chromedp.Poll(`(() => {const image=document.querySelector('.scanner-frame img');return image.complete && image.naturalWidth>0 && image.getBoundingClientRect().height>0})()`, nil, chromedp.WithPollingTimeout(2*time.Second)),
+		chromedp.WaitReady(chromedp.CSS(fileInputSelector)),
+		chromedp.SetUploadFiles(fileInputSelector, []string{fixture}),
+		poll(`Boolean(Alpine.$data(document.querySelector('.scanner-shell')).previewURL)`),
+		poll(`(() => {const image=document.querySelector('.scanner-frame img');return image.complete && image.naturalWidth>0 && image.getBoundingClientRect().height>0})()`, chromedp.WithPollingTimeout(2*time.Second)),
 	); err != nil {
 		t.Fatalf("uploaded photo must decode and render under the production CSP: %v", err)
 	}
-	if err := chromedp.Run(ctx,
-		chromedp.Evaluate(`window.createImageBitmap=undefined; Alpine.$data(document.querySelector('.scanner-shell')).clearPreview()`, nil),
-		chromedp.SetUploadFiles(fileInputSelector, []string{fixture}, chromedp.ByQuery),
-		chromedp.Poll(`(() => {const state=Alpine.$data(document.querySelector('.scanner-shell'));const image=document.querySelector('.scanner-frame img');return state.previewURL.startsWith('data:image/jpeg;base64,')&&image.complete&&image.naturalWidth>0})()`, nil, chromedp.WithPollingTimeout(3*time.Second)),
+	if err := chromedp.Do(ctx,
+		evaluate(`window.createImageBitmap=undefined; Alpine.$data(document.querySelector('.scanner-shell')).clearPreview()`),
+		chromedp.SetUploadFiles(fileInputSelector, []string{fixture}),
+		poll(`(() => {const state=Alpine.$data(document.querySelector('.scanner-shell'));const image=document.querySelector('.scanner-frame img');return state.previewURL.startsWith('data:image/jpeg;base64,')&&image.complete&&image.naturalWidth>0})()`, chromedp.WithPollingTimeout(3*time.Second)),
 	); err != nil {
 		t.Fatalf("Image decoding fallback must also respect the unchanged production CSP: %v", err)
 	}

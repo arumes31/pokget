@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 )
 
@@ -26,40 +25,40 @@ func TestUncertainPrintingRequiresExplicitConfirmation(t *testing.T) {
 			defer cancel()
 			ctx, timeout := context.WithTimeout(ctx, 30*time.Second)
 			defer timeout()
-			if err := chromedp.Run(ctx,
+			if err := chromedp.Do(ctx,
 				chromedp.EmulateViewport(viewport.width, viewport.height),
 				chromedp.Navigate(server.URL),
-				chromedp.Poll(`document.readyState === 'complete' && window.Alpine && document.querySelector('#scanner-root .scanner-shell') && Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).$refs.scanResult`, nil),
-				chromedp.ActionFunc(func(context.Context) error { t.Log("scanner ready"); return nil }),
-				chromedp.Evaluate(`Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).applyScanResult({
+				poll(`document.readyState === 'complete' && window.Alpine && document.querySelector('#scanner-root .scanner-shell') && Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).$refs.scanResult`),
+				actionFunc(func(context.Context) error { t.Log("scanner ready"); return nil }),
+				evaluate(`Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).applyScanResult({
 					detected: 'Pikachu', id: 'base1-58-en', price: 12.5, image_url: '/static/img/logo.png', set: 'Base Set', collector_number: '58/102', language: 'en', needs_review: true,
 					top_matches: [
 						{id: 'base1-58-en', name: 'Pikachu', price: 12.5, image_url: '/static/img/logo.png', set: 'Base Set', collector_number: '58/102', language: 'en'},
 						{id: 'base1-58-de', name: 'Pikachu', price: 14.75, image_url: '/static/img/logo.png', set: 'Basis', collector_number: '58/102', language: 'de'}
 					]
-				})`, nil),
-				chromedp.WaitVisible(".scan-result"),
-				chromedp.Poll(`!document.querySelector('.scan-result').innerText.includes('base1-58')`, nil, chromedp.WithPollingTimeout(time.Second)),
-				chromedp.Poll(`document.activeElement === document.querySelector('.scan-result')`, nil, chromedp.WithPollingTimeout(5*time.Second)),
-				chromedp.ActionFunc(func(context.Context) error { t.Log("result focused"); return nil }),
-				chromedp.Poll(`document.querySelectorAll('.scan-candidate').length === 2 && document.querySelectorAll('.scan-candidate')[1].textContent.includes('Basis') && document.querySelectorAll('.scan-candidate')[1].textContent.includes('#58/102') && document.querySelectorAll('.scan-candidate')[1].textContent.includes('DE')`, nil),
-				chromedp.ScrollIntoView(".scan-candidate:nth-of-type(2)", chromedp.ByQuery),
-				chromedp.Click(".scan-candidate:nth-of-type(2)", chromedp.ByQuery),
-				chromedp.ActionFunc(func(ctx context.Context) error {
-					return chromedp.Evaluate(`if (document.querySelector('[data-testid="detected-card-id"]')?.dataset?.cardId !== 'base1-58-de') { document.querySelectorAll('.scan-candidate')[1]?.click(); }`, nil).Do(ctx)
+				})`),
+				chromedp.WaitVisible(chromedp.CSS(".scan-result")),
+				poll(`!document.querySelector('.scan-result').innerText.includes('base1-58')`, chromedp.WithPollingTimeout(time.Second)),
+				poll(`document.activeElement === document.querySelector('.scan-result')`, chromedp.WithPollingTimeout(5*time.Second)),
+				actionFunc(func(context.Context) error { t.Log("result focused"); return nil }),
+				poll(`document.querySelectorAll('.scan-candidate').length === 2 && document.querySelectorAll('.scan-candidate')[1].textContent.includes('Basis') && document.querySelectorAll('.scan-candidate')[1].textContent.includes('#58/102') && document.querySelectorAll('.scan-candidate')[1].textContent.includes('DE')`),
+				chromedp.ScrollIntoView(".scan-candidate:nth-of-type(2)"),
+				chromedp.Click(chromedp.CSS(".scan-candidate:nth-of-type(2)")),
+				actionFunc(func(ctx context.Context) error {
+					return chromedp.Do(ctx, evaluate(`if (document.querySelector('[data-testid="detected-card-id"]')?.dataset?.cardId !== 'base1-58-de') { document.querySelectorAll('.scan-candidate')[1]?.click(); }`))
 				}),
-				chromedp.ActionFunc(func(context.Context) error { t.Log("candidate clicked"); return nil }),
-				chromedp.Poll(`document.querySelector('[data-testid="detected-card-id"]').dataset.cardId === 'base1-58-de' && document.querySelectorAll('.scan-candidate')[1].getAttribute('aria-pressed') === 'true' && !Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).matchConfirmed`, nil),
-				chromedp.Poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).getClientRects().length`, nil),
+				actionFunc(func(context.Context) error { t.Log("candidate clicked"); return nil }),
+				poll(`document.querySelector('[data-testid="detected-card-id"]').dataset.cardId === 'base1-58-de' && document.querySelectorAll('.scan-candidate')[1].getAttribute('aria-pressed') === 'true' && !Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).matchConfirmed`),
+				poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).getClientRects().length`),
 			); err != nil {
 				var diagnostic string
-				_ = chromedp.Run(ctx, chromedp.Evaluate(`JSON.stringify({active: document.activeElement?.outerHTML?.slice(0,180), visibility: document.visibilityState, focused: document.hasFocus(), result: document.querySelector('.scan-result')?.getBoundingClientRect().toJSON(), display: getComputedStyle(document.querySelector('.scan-result')).display, refMatches: Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).$refs.scanResult === document.querySelector('.scan-result')})`, &diagnostic))
+				_ = chromedp.Do(ctx, evaluateInto(`JSON.stringify({active: document.activeElement?.outerHTML?.slice(0,180), visibility: document.visibilityState, focused: document.hasFocus(), result: document.querySelector('.scan-result')?.getBoundingClientRect().toJSON(), display: getComputedStyle(document.querySelector('.scan-result')).display, refMatches: Alpine.$data(document.querySelector('#scanner-root .scanner-shell')).$refs.scanResult === document.querySelector('.scan-result')})`, &diagnostic))
 				t.Log(diagnostic)
 				t.Fatalf("review uncertain fixture: %v", err)
 			}
 			if dir := os.Getenv("POKGET_UI_SCREENSHOT_DIR"); dir != "" {
 				var shot []byte
-				if err := chromedp.Run(ctx, chromedp.Evaluate(`document.querySelector('.scan-result').scrollIntoView({block: 'start'})`, nil), chromedp.CaptureScreenshot(&shot)); err != nil {
+				if err := chromedp.Do(ctx, evaluate(`document.querySelector('.scan-result').scrollIntoView({block: 'start'})`), captureScreenshotInto(&shot)); err != nil {
 					t.Fatal(err)
 				}
 				if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -69,21 +68,21 @@ func TestUncertainPrintingRequiresExplicitConfirmation(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := chromedp.Run(ctx,
-				chromedp.ScrollIntoView(`[data-testid="confirm-printing"]`, chromedp.ByQuery),
-				chromedp.Click(`[data-testid="confirm-printing"]`, chromedp.ByQuery),
-				chromedp.ActionFunc(func(ctx context.Context) error {
-					return chromedp.Evaluate(`if (!Alpine.$data(document.querySelector('#scanner-root .scanner-shell'))?.matchConfirmed) { document.querySelector('[data-testid="confirm-printing"]')?.click(); }`, nil).Do(ctx)
+			if err := chromedp.Do(ctx,
+				chromedp.ScrollIntoView(`[data-testid="confirm-printing"]`),
+				chromedp.Click(chromedp.CSS(`[data-testid="confirm-printing"]`)),
+				actionFunc(func(ctx context.Context) error {
+					return chromedp.Do(ctx, evaluate(`if (!Alpine.$data(document.querySelector('#scanner-root .scanner-shell'))?.matchConfirmed) { document.querySelector('[data-testid="confirm-printing"]')?.click(); }`))
 				}),
-				chromedp.WaitVisible(`button[\@click="addToCollection()"]`, chromedp.ByQuery),
-				chromedp.Poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).disabled`, nil),
-				chromedp.ScrollIntoView(`button[\@click="reviewMatches()"]`, chromedp.ByQuery),
-				chromedp.Click(`button[\@click="reviewMatches()"]`, chromedp.ByQuery),
-				chromedp.ActionFunc(func(ctx context.Context) error {
-					return chromedp.Evaluate(`if (Alpine.$data(document.querySelector('#scanner-root .scanner-shell'))?.matchConfirmed) { document.querySelector('button[\\@click="reviewMatches()"]')?.click(); }`, nil).Do(ctx)
+				chromedp.WaitVisible(chromedp.CSS(`button[\@click="addToCollection()"]`)),
+				poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).disabled`),
+				chromedp.ScrollIntoView(`button[\@click="reviewMatches()"]`),
+				chromedp.Click(chromedp.CSS(`button[\@click="reviewMatches()"]`)),
+				actionFunc(func(ctx context.Context) error {
+					return chromedp.Do(ctx, evaluate(`if (Alpine.$data(document.querySelector('#scanner-root .scanner-shell'))?.matchConfirmed) { document.querySelector('button[\\@click="reviewMatches()"]')?.click(); }`))
 				}),
-				chromedp.WaitVisible(`[data-testid="confirm-printing"]`, chromedp.ByQuery),
-				chromedp.Poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).getClientRects().length`, nil),
+				chromedp.WaitVisible(chromedp.CSS(`[data-testid="confirm-printing"]`)),
+				poll(`!document.querySelector('button[\\@click="addToCollection()"]' ).getClientRects().length`),
 			); err != nil {
 				t.Fatalf("confirm and reopen printing review: %v", err)
 			}
@@ -100,8 +99,8 @@ func TestServerImageRetryVisibleForReviewAndErrors(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(newHeadlessBrowserContext(t, chromePath), 30*time.Second)
 	defer cancel()
-	if err := chromedp.Run(ctx, chromedp.Navigate(server.URL),
-		chromedp.Poll(`window.Alpine && document.querySelector('#scanner-root .scanner-shell')`, nil)); err != nil {
+	if err := chromedp.Do(ctx, chromedp.Navigate(server.URL),
+		poll(`window.Alpine && document.querySelector('#scanner-root .scanner-shell')`)); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
@@ -125,9 +124,7 @@ func TestServerImageRetryVisibleForReviewAndErrors(t *testing.T) {
 				const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Use server image scan');
 				return !!button && button.getClientRects().length > 0;
 			})()`, tc.blob, tc.review, tc.scanError)
-			if err := chromedp.Run(ctx, chromedp.Evaluate(script, &visible, func(params *runtime.EvaluateParams) *runtime.EvaluateParams {
-				return params.WithAwaitPromise(true)
-			})); err != nil {
+			if err := chromedp.Do(ctx, evaluateInto(script, &visible, chromedp.EvalAwaitPromise)); err != nil {
 				t.Fatal(err)
 			}
 			if visible != tc.visible {
