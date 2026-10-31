@@ -36,7 +36,7 @@ func registerStaticRoutes(router *mux.Router) {
 // the build version, so a deploy refreshes the icons an installed app shows.
 func manifestHandler(path, version string) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		payload, err := os.ReadFile(path)
+		payload, err := os.ReadFile(path) // #nosec G304 -- fixed, application-owned manifest path, never request input.
 		if err != nil {
 			http.Error(writer, "manifest unavailable", http.StatusInternalServerError)
 			return
@@ -88,7 +88,6 @@ func versionManifestIcons(manifest map[string]any, version string) {
 		}
 	}
 }
-
 
 func serviceWorkerHandler(path string) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
