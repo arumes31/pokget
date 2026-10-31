@@ -2,10 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  checksRateLimited,
   decideCodeRabbitAction,
   quotaExhausted,
   requestMarker,
+  reviewCommit,
   reviewedHead,
+  shouldWait,
+  waitForReview,
 } from './coderabbit-review.mjs';
 
 const HEAD = 'a'.repeat(40);
@@ -59,8 +63,106 @@ test('an exhausted hourly quota blocks new requests until CodeRabbit reports aga
   );
 });
 
+test('a rate limited CodeRabbit check blocks the request as well', () => {
+  const runs = [
+    { name: 'CodeRabbit', conclusion: 'success', output: { title: 'Review rate limited', summary: '' } },
+    { name: 'test', conclusion: 'success', output: { title: '', summary: '' } },
+  ];
+  assert.equal(checksRateLimited(runs), true);
+  assert.equal(checksRateLimited([{ name: 'CodeRabbit', output: { title: 'Review completed' } }]), false);
+  assert.equal(checksRateLimited([{ name: 'test', output: { title: 'rate limit reached' } }]), false);
+  assert.equal(
+    decideCodeRabbitAction({ state: 'OPEN', isDraft: false, headSha: HEAD, reviews: [], comments: [], rateLimited: true }),
+    'skip:quota-exhausted',
+  );
+  // A pending request must not make --wait spin while the quota is exhausted.
+  assert.equal(
+    decideCodeRabbitAction({
+      state: 'OPEN',
+      isDraft: false,
+      headSha: HEAD,
+      reviews: [],
+      comments: [comment(requestMarker(HEAD))],
+      rateLimited: true,
+    }),
+    'skip:quota-exhausted',
+  );
+});
+
 test('human comments never trigger the quota or review heuristics', () => {
   const comments = [comment('review limit reached', 'some-human')];
   assert.equal(quotaExhausted(comments), false);
   assert.equal(reviewedHead(HEAD, [review(HEAD, 'some-human')]), false);
+});
+
+test('reviewCommit prefers the REST commit_id used by gh api', () => {
+  assert.equal(reviewCommit({ commit_id: HEAD, commit: { oid: 'b'.repeat(40) } }), HEAD);
+  assert.equal(reviewCommit({ commit: { oid: HEAD } }), HEAD);
+  assert.equal(reviewCommit({}), '');
+});
+
+test('only an outstanding request keeps --wait polling', () => {
+  assert.equal(shouldWait('request'), true);
+  assert.equal(shouldWait('skip:already-requested'), true);
+  assert.equal(shouldWait('skip:quota-exhausted'), false);
+  assert.equal(shouldWait('skip:already-reviewed'), false);
+  assert.equal(shouldWait('skip:closed'), false);
+  assert.equal(shouldWait('skip:draft'), false);
+  assert.equal(shouldWait('skip:unknown-head'), false);
+});
+
+function fakeClock() {
+  let ticks = 0;
+  return {
+    now: () => ticks * 1000,
+    sleep: async () => { ticks += 1; },
+  };
+}
+
+test('waitForReview resolves once CodeRabbit reviewed the head commit', async () => {
+  const clock = fakeClock();
+  const responses = [
+    { headRefOid: HEAD, reviews: [] },
+    { headRefOid: HEAD, reviews: [review(HEAD)] },
+  ];
+  const result = await waitForReview({
+    headSha: HEAD,
+    timeoutMs: 60000,
+    fetchPr: async () => responses.shift(),
+    ...clock,
+  });
+  assert.equal(result.status, 'reviewed');
+});
+
+test('waitForReview surfaces a requested change', async () => {
+  const clock = fakeClock();
+  const result = await waitForReview({
+    headSha: HEAD,
+    timeoutMs: 60000,
+    fetchPr: async () => ({ headRefOid: HEAD, reviews: [{ ...review(HEAD), state: 'CHANGES_REQUESTED' }] }),
+    ...clock,
+  });
+  assert.equal(result.status, 'changes-requested');
+});
+
+test('waitForReview stops when the head commit moved', async () => {
+  const clock = fakeClock();
+  const result = await waitForReview({
+    headSha: HEAD,
+    timeoutMs: 60000,
+    fetchPr: async () => ({ headRefOid: 'b'.repeat(40), reviews: [] }),
+    ...clock,
+  });
+  assert.equal(result.status, 'head-changed');
+});
+
+test('waitForReview times out when CodeRabbit never answers', async () => {
+  const clock = fakeClock();
+  const result = await waitForReview({
+    headSha: HEAD,
+    timeoutMs: 2500,
+    fetchPr: async () => ({ headRefOid: HEAD, reviews: [] }),
+    ...clock,
+  });
+  assert.equal(result.status, 'timeout');
 });
