@@ -35,9 +35,13 @@ test('all primary screens use the shared mobile page structure', () => {
 
 test('scanner exposes immersive tool and compact control regions', () => {
   const scanner = read('templates/centering_tool.html');
-  for (const testID of ['scanner-toolbar', 'scanner-frame', 'scanner-controls', 'scanner-privacy-note']) {
+  for (const testID of ['scanner-mode-scan', 'scanner-frame', 'scanner-controls', 'scanner-privacy-note']) {
     assert.match(scanner, new RegExp(`data-testid="${testID}"`));
   }
+  // The scanner top bars were removed: modes float as translucent pills.
+  assert.doesNotMatch(scanner, /class="card-tools-bar"/);
+  assert.doesNotMatch(scanner, /class="scanner-toolbar"/);
+  assert.match(scanner, /class="card-tools-modes"/);
   assert.match(scanner, /L\/R/);
   assert.match(scanner, /T\/B/);
 });

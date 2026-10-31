@@ -6,7 +6,7 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-func TestScannerMissingLanguageKeepsSelectionAndRetry(t *testing.T) {
+func TestScannerMissingLanguageKeepsSelectionAndSavedCrop(t *testing.T) {
 	ctx := mobileScannerRegressionPage(t)
 	if err := chromedp.Do(ctx,
 		evaluate(`(() => {
@@ -22,10 +22,11 @@ func TestScannerMissingLanguageKeepsSelectionAndRetry(t *testing.T) {
 		poll(`(() => {
 			const state = Alpine.$data(document.querySelector('.scanner-shell'));
 			const alert = document.querySelector('[x-text="scanError"]');
-			const retry = document.querySelector('button[aria-label="RETRY LAST CROP"]');
-			return !state.scanning && state.lang === 'deu' && state.lastScanBlob &&
+			const serverScan = document.querySelector('[data-testid="scanner-server-scan"]');
+			return !state.scanning && state.lang === 'deu' && !!state.lastScanBlob &&
 				window.scanRequests === 1 && alert.getBoundingClientRect().height > 0 &&
-				alert.textContent.includes('sync this language') && !retry.disabled;
+				alert.textContent.includes('sync this language') && !!serverScan &&
+				serverScan.getBoundingClientRect().height > 0 && !serverScan.disabled;
 		})()`),
 	); err != nil {
 		t.Fatal(err)

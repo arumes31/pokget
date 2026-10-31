@@ -434,7 +434,7 @@ func verifiedComponentTouchTargets(t *testing.T) string {
 		{authCSS, ".auth-tab", ".auth-tab"},
 		{authCSS, ".auth-password-toggle", ".auth-password-toggle"},
 		{authCSS, ".auth-switch button, .auth-text-action", ".auth-switch button, .auth-text-action"},
-		{measureCSS, ".card-tools-bar>button", ".card-tools-bar > button"},
+		{measureCSS, ".card-tools-modes>button", ".card-tools-modes > button"},
 		{measureCSS, ".measure-shell button:not(.measure-guide):not(.measure-corner)", ".measure-shell button:not(.measure-guide):not(.measure-corner):not(.measure-text-button)"},
 		{measureCSS, ".measure-shell button.measure-text-button", ".measure-shell button.measure-text-button"},
 	} {

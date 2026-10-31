@@ -64,8 +64,8 @@ func TestVideoScannerFeedbackLayout(t *testing.T) {
 					if (getComputedStyle(controls).colorScheme !== 'dark') issues.push('native scanner controls use the light color scheme');
 					return issues;
 				})()`, &issues),
-				chromedp.ScrollIntoView(`button[aria-label="RETRY LAST CROP"]`),
-				poll(`(() => {const pane=document.querySelector('.scanner-controls').getBoundingClientRect();const retry=document.querySelector('button[aria-label="RETRY LAST CROP"]').getBoundingClientRect();return retry.top>=pane.top && retry.bottom<=innerHeight+1 && retry.height>=44})()`),
+				chromedp.ScrollIntoView(`[data-testid="scanner-server-scan"]`),
+				poll(`(() => {const pane=document.querySelector('.scanner-controls').getBoundingClientRect();const retry=document.querySelector('[data-testid="scanner-server-scan"]').getBoundingClientRect();return retry.top>=pane.top && retry.bottom<=innerHeight+1 && retry.height>=44})()`),
 			); err != nil {
 				t.Fatalf("retry control did not become reachable: %v", err)
 			}

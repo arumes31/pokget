@@ -276,12 +276,10 @@ test('result selection and full reset clear all transient state', () => {
   assert.equal(component.topMatches.length, 1);
 
   component.lastScanBlob = {};
-  component.manualCardID = 'set-3';
   component.lines = { left: 0, right: 100, top: 0, bottom: 100 };
   component.resetAll();
   assert.equal(component.detectedID, '');
   assert.equal(component.lastScanBlob, null);
-  assert.equal(component.manualCardID, '');
   assert.deepEqual(component.metrics, { lr: '50/50', tb: '50/50' });
 });
 
