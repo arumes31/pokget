@@ -5,7 +5,9 @@ import {
   decideCodeRabbitAction,
   quotaExhausted,
   requestMarker,
+  reviewCommit,
   reviewedHead,
+  shouldWait,
   waitForReview,
 } from './coderabbit-review.mjs';
 
@@ -64,6 +66,22 @@ test('human comments never trigger the quota or review heuristics', () => {
   const comments = [comment('review limit reached', 'some-human')];
   assert.equal(quotaExhausted(comments), false);
   assert.equal(reviewedHead(HEAD, [review(HEAD, 'some-human')]), false);
+});
+
+test('reviewCommit prefers the REST commit_id used by gh api', () => {
+  assert.equal(reviewCommit({ commit_id: HEAD, commit: { oid: 'b'.repeat(40) } }), HEAD);
+  assert.equal(reviewCommit({ commit: { oid: HEAD } }), HEAD);
+  assert.equal(reviewCommit({}), '');
+});
+
+test('only an outstanding request keeps --wait polling', () => {
+  assert.equal(shouldWait('request'), true);
+  assert.equal(shouldWait('skip:already-requested'), true);
+  assert.equal(shouldWait('skip:quota-exhausted'), false);
+  assert.equal(shouldWait('skip:already-reviewed'), false);
+  assert.equal(shouldWait('skip:closed'), false);
+  assert.equal(shouldWait('skip:draft'), false);
+  assert.equal(shouldWait('skip:unknown-head'), false);
 });
 
 function fakeClock() {

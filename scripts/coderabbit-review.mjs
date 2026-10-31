@@ -41,17 +41,24 @@ export function requestMarker(headSha) {
 }
 
 export function reviewCommit(review) {
-  return review?.commit?.oid || review?.commit_id || '';
+  // `commit_id` is the shape returned by the REST reviews endpoint; `commit.oid`
+  // is what gh's GraphQL view would expose. `gh pr view --json reviews` returns
+  // neither, which is why reviews are fetched through `gh api`.
+  return review?.commit_id || review?.commit?.oid || '';
 }
 
 /** True when a CodeRabbit review already covers the given head commit. */
 export function reviewedHead(headSha, reviews) {
   return (reviews || []).some((review) => {
     if (!isCodeRabbit(review?.author?.login)) return false;
-    const commit = reviewCommit(review);
     // Without a commit hash we must assume it reviewed something recent.
-    return commit === '' || commit === headSha;
+    return reviewCommit(review) === '' || reviewCommit(review) === headSha;
   });
+}
+
+/** `--wait` only makes sense for an outstanding request or new request. */
+export function shouldWait(action) {
+  return action === 'request' || action === 'skip:already-requested';
 }
 
 /** True when the newest CodeRabbit comment reports an exhausted review quota. */
@@ -129,11 +136,26 @@ async function main(argv) {
   const prFlag = readFlag(argv, '--pr');
   const viewArgs = ['pr', 'view'];
   if (typeof prFlag === 'string') viewArgs.push(prFlag);
-  viewArgs.push('--json', 'number,state,isDraft,headRefOid,reviews,comments');
+  viewArgs.push('--json', 'number,state,isDraft,headRefOid,comments');
+
+  // `gh pr view --json reviews` omits the reviewed commit, so reviews come from
+  // the REST endpoint, which exposes `commit_id`.
+  const readPr = () => {
+    const pr = JSON.parse(gh(viewArgs));
+    const reviews = JSON.parse(gh(['api', `repos/{owner}/{repo}/pulls/${pr.number}/reviews?per_page=100`]));
+    return {
+      ...pr,
+      reviews: (reviews || []).map((review) => ({
+        author: { login: review?.user?.login },
+        state: review?.state,
+        commit_id: review?.commit_id,
+      })),
+    };
+  };
 
   let pr;
   try {
-    pr = JSON.parse(gh(viewArgs));
+    pr = readPr();
   } catch (error) {
     console.error(`cannot read pull request: ${error.stderr || error.message}`);
     return 2;
@@ -149,7 +171,7 @@ async function main(argv) {
 
   if (action !== 'request') {
     console.log(`PR #${pr.number}: ${action}`);
-    if (!wait || action === 'skip:closed' || action === 'skip:draft') return 0;
+    if (!wait || !shouldWait(action)) return 0;
   } else if (dryRun) {
     console.log(`PR #${pr.number}: would request a CodeRabbit review for ${pr.headRefOid}`);
     return 0;
@@ -169,7 +191,7 @@ async function main(argv) {
   const result = await waitForReview({
     headSha: pr.headRefOid,
     timeoutMs,
-    fetchPr: () => JSON.parse(gh(viewArgs)),
+    fetchPr: readPr,
   });
   console.log(`PR #${pr.number}: coderabbit=${result.status}`);
   if (result.status === 'timeout') return 3;
