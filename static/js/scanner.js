@@ -475,19 +475,6 @@
       csrfToken: String(config.csrfToken || ''),
       showLangPopover: false,
       showGamePopover: false,
-      fullscreenActive: false,
-
-      toggleFullscreen() {
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen?.().then(() => {
-            this.fullscreenActive = true;
-          }).catch(() => {});
-        } else {
-          document.exitFullscreen?.().then(() => {
-            this.fullscreenActive = false;
-          }).catch(() => {});
-        }
-      },
 
       currentLangFlag(l) {
         return (LANGUAGE_METADATA[l] || LANGUAGE_METADATA[this.lang])?.flag || '🌐';
@@ -594,10 +581,6 @@
           storageSet(STORAGE_KEYS.language, this.lang);
         });
         this.$watch('lang', (language) => storageSet(STORAGE_KEYS.language, language));
-        if (typeof document !== 'undefined') {
-          this.fsHandler = () => { this.fullscreenActive = !!document.fullscreenElement; };
-          document.addEventListener('fullscreenchange', this.fsHandler);
-        }
         this.setupScanner();
       },
 
@@ -611,9 +594,6 @@
         this.torchAvailable = false;
         this.torchOn = false;
         this.clearPreview();
-        if (this.fsHandler && typeof document !== 'undefined') {
-          document.removeEventListener('fullscreenchange', this.fsHandler);
-        }
         if (this.deviceChangeHandler
           && typeof navigator.mediaDevices?.removeEventListener === 'function') {
           navigator.mediaDevices.removeEventListener('devicechange', this.deviceChangeHandler);
