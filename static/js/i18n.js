@@ -409,8 +409,6 @@
     "Didn't get the email?": "Keine E-Mail erhalten?",
     "Didn't receive the email?": "Keine E-Mail erhalten?",
     "Dismiss": "Schließen",
-    "Enter fullscreen": "Vollbild aktivieren",
-    "Exit fullscreen": "Vollbild beenden",
     "Dismiss install prompt": "Installationshinweis schließen",
     "Display currency": "Anzeigewährung",
     "Download trade log": "Tauschprotokoll herunterladen",
