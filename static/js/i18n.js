@@ -455,7 +455,7 @@
     "Graded": "Bewertet",
     "Grading Company": "Bewertungsunternehmen",
     "Grading references": "Bewertungsreferenzen",
-    "Grails": "Wunschliste",
+    "Grails": "Wünsche",
     "Grid": "Raster",
     "Group your cards by set, collection, deck, or any system that works for you.": "Gruppiere deine Karten nach Set, Sammlung, Deck oder deinem eigenen System.",
     "Guide position as percentage of image": "Hilfslinienposition in Prozent des Bildes",

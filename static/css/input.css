@@ -84,6 +84,13 @@
     disabled:bg-stone-100 disabled:text-zinc-600 disabled:shadow-none disabled:cursor-not-allowed
     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500;
   font-family: 'Courier New', Courier, monospace;
+  /* Labels must stay inside the button: allow the flex child to shrink below
+     its min-content width and break long words instead of spilling out. */
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.15;
 }
 
 @layer components {
@@ -178,6 +185,7 @@
   .page-title {
     @apply font-display text-[clamp(1.6rem,5vw,2rem)] font-bold leading-tight tracking-[-0.03em] text-zinc-50;
     font-family: 'Courier New', Courier, monospace;
+    overflow-wrap: anywhere;
   }
 
   .page-description {
@@ -199,15 +207,17 @@
   }
 
   .metric-card {
-    @apply flex min-h-24 flex-col justify-between rounded-2xl p-4;
+    @apply flex min-h-24 min-w-0 flex-col justify-between rounded-2xl p-4;
     background: rgba(14, 14, 18, 0.85);
     backdrop-filter: blur(16px);
     border: 1px solid rgba(239, 68, 68, 0.22);
+    overflow-wrap: anywhere;
   }
 
   .status-badge {
-    @apply inline-flex min-h-7 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold;
+    @apply inline-flex min-h-7 max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold;
     font-family: 'Courier New', Courier, monospace;
+    overflow-wrap: anywhere;
     border-color: rgba(239, 68, 68, 0.35);
     background: rgba(239, 68, 68, 0.14);
     color: #fca5a5;
@@ -217,6 +227,7 @@
   .section-title {
     @apply font-display text-xl font-bold tracking-[-0.02em] text-zinc-50 sm:text-2xl;
     font-family: 'Courier New', Courier, monospace;
+    overflow-wrap: anywhere;
   }
 
   .app-header {
@@ -268,7 +279,7 @@
   }
 
   .nav-label {
-    @apply relative z-10 text-[11px] font-semibold leading-none;
+    @apply relative z-10 block w-full max-w-full truncate text-center text-[11px] font-semibold leading-none;
   }
 
   .scanner-active .app-header {
@@ -345,8 +356,9 @@
   .skip-link:focus { top: 1rem; }
   .app-sidebar { display: none; }
   .collection-summary { display: flex; flex-wrap: wrap; gap: 1.5rem 2.5rem; padding: 1.25rem 0; border-block: 1px solid rgba(239, 68, 68, 0.25); font-family: 'Courier New', Courier, monospace; }
-  .collection-summary dt { font-size: .75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-muted-ink); }
-  .collection-summary dd { margin-top: .25rem; font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.025em; color: #ef4444; text-shadow: 0 0 10px rgba(239, 68, 68, 0.3); }
+  .collection-summary > div { min-width: 0; max-width: 100%; }
+  .collection-summary dt { font-size: .75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-muted-ink); overflow-wrap: anywhere; }
+  .collection-summary dd { margin-top: .25rem; font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.025em; color: #ef4444; text-shadow: 0 0 10px rgba(239, 68, 68, 0.3); overflow-wrap: anywhere; }
   .vault-welcome { display: grid; gap: 1.5rem; padding: clamp(1.5rem, 5vw, 3rem); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: .85rem; background: rgba(14, 14, 18, 0.88); backdrop-filter: blur(16px); box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 20px rgba(239, 68, 68, 0.1); }
   .vault-welcome h2 { font-family: 'Courier New', Courier, monospace; max-width: 16ch; font-size: clamp(1.75rem, 4vw, 2.6rem); line-height: 1.15; font-weight: 700; letter-spacing: -.035em; color: #ffffff; }
   .vault-welcome p { max-width: 45ch; color: var(--color-muted-ink); line-height: 1.6; margin-top: .75rem; }
@@ -387,6 +399,7 @@
     align-items: center;
     gap: .75rem;
     min-height: 48px;
+    min-width: 0;
     width: 100%;
     padding: .75rem;
     border-radius: .6rem;
@@ -397,6 +410,10 @@
     text-align: left;
     cursor: pointer;
     transition: all .15s ease;
+    overflow-wrap: anywhere;
+  }
+  .sidebar-link > .material-symbols-outlined {
+    flex: 0 0 auto;
   }
   .sidebar-link:hover {
     background: rgba(239, 68, 68, 0.1);

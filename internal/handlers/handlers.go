@@ -38,6 +38,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -59,10 +60,20 @@ type Binder struct {
 	UpdatedAt   string
 }
 
+// SetProgress summarizes how much of a card set the current user owns.
+type SetProgress struct {
+	Name       string
+	TotalCards int
+	OwnedCards int
+	Percent    int
+}
+
 type Handler struct {
 	Templates      *template.Template
 	MockCards      []models.Card
 	CardsMu        sync.RWMutex // Protects concurrent access to MockCards
+	setTotals      map[string]int
+	setTotalsMu    sync.RWMutex // Protects concurrent access to setTotals
 	Fingerprint    *service.FingerprintService
 	Detection      *service.DetectionPipeline // SCAN-07, SCAN-09, SCAN-16: Detection pipeline
 	Mailer         service.Mailer
@@ -225,50 +236,12 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch Set Completion Data from DB
-	type SetProgress struct {
-		Name       string
-		TotalCards int
-		OwnedCards int
-		Percent    int
-	}
-
-	// BUG-H03 FIX: Added p.user_id = $1 filter to the LEFT JOIN condition
-	// so that owned_cards only counts the current user's portfolio items.
-	// Previously, the JOIN matched all users' portfolio items, returning
-	// combined completion across ALL users.
-	rows, err := h.DB.QueryContext(r.Context(), `
-		SELECT
-			c.set_name,
-			COUNT(DISTINCT c.id) FILTER (WHERE p.id IS NOT NULL) as owned_cards,
-			COUNT(DISTINCT c.id) as total_cards
-		FROM cards c
-		LEFT JOIN portfolio p ON c.id = p.card_id AND p.user_id = $1
-		GROUP BY c.set_name`, userID)
-
-	setCompletion := make([]SetProgress, 0, 8) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var s SetProgress
-			if err := rows.Scan(&s.Name, &s.OwnedCards, &s.TotalCards); err != nil {
-				slog.Warn("Failed to scan row in dashboard query", "error", err)
-			} else {
-				if s.TotalCards > 0 {
-					s.Percent = (s.OwnedCards * 100) / s.TotalCards
-				}
-				setCompletion = append(setCompletion, s)
-			}
-		}
-	}
-
-	// Fallback to mock if DB is empty for demo purposes
-	if len(setCompletion) == 0 {
-		setCompletion = []SetProgress{
-			{Name: "151", TotalCards: 165, OwnedCards: 42, Percent: 25},
-			{Name: "Paldean Fates", TotalCards: 245, OwnedCards: 180, Percent: 73},
-		}
-	}
+	// Fetch set completion. The totals per set come from the in-memory card
+	// cache; aggregating the whole cards table on every dashboard request took
+	// seconds once the catalog grew past a few hundred thousand rows. Only the
+	// sets that this user owns cards of are returned, because rendering every
+	// catalog set (thousands, almost all at 0%) made the page enormous.
+	setCompletion := h.collectionSetCompletion(r.Context(), userID)
 
 	// Aggregate the whole collection without materializing every card row.
 	var multipliers map[string]float64
@@ -382,6 +355,133 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// collectionSetCompletion returns the master-set progress of one user, ordered
+// from the most to the least complete set. Only sets that the user owns at
+// least one card of are returned: the catalog has thousands of sets, and
+// rendering the untouched ones made the dashboard both slow and unreadable.
+func (h *Handler) collectionSetCompletion(ctx context.Context, userID string) []SetProgress {
+	owned := make(map[string]int, 32)
+	if h.DB != nil && userID != "" {
+		rows, err := h.DB.QueryContext(ctx, `
+			SELECT c.set_name, COUNT(DISTINCT c.id)
+			FROM portfolio p
+			JOIN cards c ON p.card_id = c.id
+			WHERE p.user_id = $1
+			GROUP BY c.set_name`, userID)
+		if err != nil {
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				slog.Warn("Failed to query owned set counts", "error", err)
+			}
+			return nil
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var name string
+			var count int
+			if err := rows.Scan(&name, &count); err != nil {
+				slog.Warn("Failed to scan owned set count", "error", err)
+				continue
+			}
+			if name != "" && count > 0 {
+				owned[name] = count
+			}
+		}
+		if err := rows.Err(); err != nil {
+			slog.Warn("Failed while reading owned set counts", "error", err)
+		}
+	}
+	if len(owned) == 0 {
+		return nil
+	}
+	totals := h.cardTotalsBySet(ctx)
+	if len(totals) == 0 {
+		return nil
+	}
+	completion := make([]SetProgress, 0, len(owned))
+	for name, ownedCards := range owned {
+		total := totals[name]
+		if total <= 0 {
+			continue
+		}
+		percent := ownedCards * 100 / total
+		if percent > 100 {
+			percent = 100
+		}
+		completion = append(completion, SetProgress{
+			Name:       name,
+			TotalCards: total,
+			OwnedCards: ownedCards,
+			Percent:    percent,
+		})
+	}
+	sort.Slice(completion, func(i, j int) bool {
+		if completion[i].Percent != completion[j].Percent {
+			return completion[i].Percent > completion[j].Percent
+		}
+		if completion[i].OwnedCards != completion[j].OwnedCards {
+			return completion[i].OwnedCards > completion[j].OwnedCards
+		}
+		return completion[i].Name < completion[j].Name
+	})
+	return completion
+}
+
+// cardTotalsBySet returns how many active cards the catalog holds per set. The
+// totals are derived from the in-memory card cache and cached until the cache
+// reloads, so a dashboard request never aggregates the cards table.
+func (h *Handler) cardTotalsBySet(ctx context.Context) map[string]int {
+	h.setTotalsMu.RLock()
+	cached := h.setTotals
+	h.setTotalsMu.RUnlock()
+	if cached != nil {
+		return cached
+	}
+
+	h.setTotalsMu.Lock()
+	defer h.setTotalsMu.Unlock()
+	if h.setTotals != nil {
+		return h.setTotals
+	}
+
+	h.CardsMu.RLock()
+	cards := h.MockCards
+	h.CardsMu.RUnlock()
+
+	totals := make(map[string]int, 1024)
+	for i := range cards {
+		if set := cards[i].Set; set != "" {
+			totals[set]++
+		}
+	}
+	if len(totals) == 0 && h.DB != nil {
+		totals = h.queryCardTotals(ctx)
+	}
+	h.setTotals = totals
+	return totals
+}
+
+// queryCardTotals aggregates the cards table when the in-memory cache is empty,
+// for example in tests or when the cache could not be loaded.
+func (h *Handler) queryCardTotals(ctx context.Context) map[string]int {
+	rows, err := h.DB.QueryContext(ctx, `SELECT set_name, COUNT(*) FROM cards GROUP BY set_name`)
+	if err != nil {
+		slog.Warn("Failed to query card totals per set", "error", err)
+		return map[string]int{}
+	}
+	defer rows.Close()
+	totals := make(map[string]int, 1024)
+	for rows.Next() {
+		var name string
+		var count int
+		if err := rows.Scan(&name, &count); err != nil {
+			continue
+		}
+		if name != "" && count > 0 {
+			totals[name] = count
+		}
+	}
+	return totals
+}
 
 // ExportPortfolioCSV exports the user's entire portfolio collection as an RFC 4180 CSV file.
 func (h *Handler) ExportPortfolioCSV(w http.ResponseWriter, r *http.Request) {
@@ -1170,6 +1270,10 @@ func (h *Handler) ReloadCardsOnly() (int, error) {
 	h.CardsMu.Lock()
 	h.MockCards = allCards
 	h.CardsMu.Unlock()
+	// The per-set totals are derived from the card cache, so drop them with it.
+	h.setTotalsMu.Lock()
+	h.setTotals = nil
+	h.setTotalsMu.Unlock()
 	slog.Info("Database: Reloaded cards into cache", "count", len(allCards))
 	return len(allCards), nil
 }
