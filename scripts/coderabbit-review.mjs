@@ -70,17 +70,28 @@ export function quotaExhausted(comments) {
 }
 
 /**
+ * True when the CodeRabbit check reports the hourly quota as exhausted
+ * (CodeRabbit reports "Review rate limited" as its check summary).
+ */
+export function checksRateLimited(checkRuns) {
+  return (checkRuns || [])
+    .filter((run) => isCodeRabbit(run?.name))
+    .some((run) => /rate limit/i.test(`${run?.output?.title || ''} ${run?.output?.summary || ''} ${run?.conclusion || ''}`));
+}
+
+/**
  * Pure decision function: `request`, or a `skip:<reason>` string.
  */
-export function decideCodeRabbitAction({ state, isDraft, headSha, reviews, comments }) {
+export function decideCodeRabbitAction({ state, isDraft, headSha, reviews, comments, rateLimited = false }) {
   if (String(state || '').toUpperCase() !== 'OPEN') return 'skip:closed';
   if (isDraft) return 'skip:draft';
   if (!headSha) return 'skip:unknown-head';
+  if (reviewedHead(headSha, reviews)) return 'skip:already-reviewed';
+  // An exhausted quota is terminal: waiting for a review cannot succeed.
+  if (rateLimited || quotaExhausted(comments)) return 'skip:quota-exhausted';
   if ((comments || []).some((comment) => String(comment?.body || '').includes(requestMarker(headSha)))) {
     return 'skip:already-requested';
   }
-  if (reviewedHead(headSha, reviews)) return 'skip:already-reviewed';
-  if (quotaExhausted(comments)) return 'skip:quota-exhausted';
   return 'request';
 }
 
@@ -143,8 +154,16 @@ async function main(argv) {
   const readPr = () => {
     const pr = JSON.parse(gh(viewArgs));
     const reviews = JSON.parse(gh(['api', `repos/{owner}/{repo}/pulls/${pr.number}/reviews?per_page=100`]));
+    let rateLimited = false;
+    try {
+      const runs = JSON.parse(gh(['api', `repos/{owner}/{repo}/commits/${pr.headRefOid}/check-runs?per_page=100&filter=latest`]));
+      rateLimited = checksRateLimited(runs?.check_runs);
+    } catch {
+      // A missing check-runs permission must not block the review request.
+    }
     return {
       ...pr,
+      rateLimited,
       reviews: (reviews || []).map((review) => ({
         author: { login: review?.user?.login },
         state: review?.state,
@@ -167,6 +186,7 @@ async function main(argv) {
     headSha: pr.headRefOid,
     reviews: pr.reviews,
     comments: pr.comments,
+    rateLimited: pr.rateLimited,
   });
 
   if (action !== 'request') {

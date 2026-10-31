@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  checksRateLimited,
   decideCodeRabbitAction,
   quotaExhausted,
   requestMarker,
@@ -59,6 +60,32 @@ test('an exhausted hourly quota blocks new requests until CodeRabbit reports aga
   assert.equal(
     decideCodeRabbitAction({ state: 'OPEN', isDraft: false, headSha: HEAD, reviews: [], comments: recovered }),
     'request',
+  );
+});
+
+test('a rate limited CodeRabbit check blocks the request as well', () => {
+  const runs = [
+    { name: 'CodeRabbit', conclusion: 'success', output: { title: 'Review rate limited', summary: '' } },
+    { name: 'test', conclusion: 'success', output: { title: '', summary: '' } },
+  ];
+  assert.equal(checksRateLimited(runs), true);
+  assert.equal(checksRateLimited([{ name: 'CodeRabbit', output: { title: 'Review completed' } }]), false);
+  assert.equal(checksRateLimited([{ name: 'test', output: { title: 'rate limit reached' } }]), false);
+  assert.equal(
+    decideCodeRabbitAction({ state: 'OPEN', isDraft: false, headSha: HEAD, reviews: [], comments: [], rateLimited: true }),
+    'skip:quota-exhausted',
+  );
+  // A pending request must not make --wait spin while the quota is exhausted.
+  assert.equal(
+    decideCodeRabbitAction({
+      state: 'OPEN',
+      isDraft: false,
+      headSha: HEAD,
+      reviews: [],
+      comments: [comment(requestMarker(HEAD))],
+      rateLimited: true,
+    }),
+    'skip:quota-exhausted',
   );
 });
 
