@@ -20,7 +20,7 @@ func captureVideoCSS(t *testing.T, ctx context.Context, name string) {
 		t.Fatal(err)
 	}
 	var screenshot []byte
-	if err := chromedp.Run(ctx, chromedp.CaptureScreenshot(&screenshot)); err != nil {
+	if err := chromedp.Do(ctx, captureScreenshotInto(&screenshot)); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(directory, name+".png"), screenshot, 0o600); err != nil {
@@ -40,21 +40,21 @@ func TestVideoScannerFeedbackLayout(t *testing.T) {
 			// Set the viewport before navigation so dvh layout does not race a resize.
 			ctx := mobileScannerRegressionPageAtViewport(t, viewport.width, viewport.height)
 			var issues []string
-			if err := chromedp.Run(ctx,
-				chromedp.Evaluate(fmt.Sprintf(`(() => {
+			if err := chromedp.Do(ctx,
+				evaluate(fmt.Sprintf(`(() => {
 					document.documentElement.style.fontSize = '%dpx';
 					const state = Alpine.$data(document.querySelector('.scanner-shell'));
 					state.lastScanBlob = new Blob(['image']);
 					state.handleScanError(new Error('The catalog has no cards for this game and language. Ask the administrator to sync this language, then retry your saved image.'));
-				})()`, viewport.font), nil),
+				})()`, viewport.font)),
 				// Alpine updates the text/class before the alert's focus callback.
 				// Let that callback finish scrolling the alert before scrolling the retry.
-				chromedp.Poll(`document.querySelector('[x-text="scanError"]').textContent.includes('catalog') && document.querySelector('.scanner-shell').classList.contains('scanner-has-error') && document.activeElement === document.querySelector('[x-ref="scanError"]')`, nil),
+				poll(`document.querySelector('[x-text="scanError"]').textContent.includes('catalog') && document.querySelector('.scanner-shell').classList.contains('scanner-has-error') && document.activeElement === document.querySelector('[x-ref="scanError"]')`),
 			); err != nil {
 				t.Fatalf("scanner error did not receive focus: %v", err)
 			}
-			if err := chromedp.Run(ctx,
-				chromedp.Evaluate(`(() => {
+			if err := chromedp.Do(ctx,
+				evaluateInto(`(() => {
 					const issues = [];
 					const controls = document.querySelector('.scanner-controls');
 					const bounds = controls.getBoundingClientRect();
@@ -64,8 +64,8 @@ func TestVideoScannerFeedbackLayout(t *testing.T) {
 					if (getComputedStyle(controls).colorScheme !== 'dark') issues.push('native scanner controls use the light color scheme');
 					return issues;
 				})()`, &issues),
-				chromedp.ScrollIntoView(`button[aria-label="RETRY LAST CROP"]`, chromedp.ByQuery),
-				chromedp.Poll(`(() => {const pane=document.querySelector('.scanner-controls').getBoundingClientRect();const retry=document.querySelector('button[aria-label="RETRY LAST CROP"]').getBoundingClientRect();return retry.top>=pane.top && retry.bottom<=innerHeight+1 && retry.height>=44})()`, nil),
+				chromedp.ScrollIntoView(`button[aria-label="RETRY LAST CROP"]`),
+				poll(`(() => {const pane=document.querySelector('.scanner-controls').getBoundingClientRect();const retry=document.querySelector('button[aria-label="RETRY LAST CROP"]').getBoundingClientRect();return retry.top>=pane.top && retry.bottom<=innerHeight+1 && retry.height>=44})()`),
 			); err != nil {
 				t.Fatalf("retry control did not become reachable: %v", err)
 			}
@@ -80,10 +80,10 @@ func TestVideoScannerFeedbackLayout(t *testing.T) {
 func TestVideoScannerSpinnerRemainsCircular(t *testing.T) {
 	ctx := mobileScannerRegressionPage(t)
 	var issues []string
-	if err := chromedp.Run(ctx,
-		chromedp.Evaluate(`(() => { const state = Alpine.$data(document.querySelector('.scanner-shell')); state.setStatus('Uploading the crop and running detection…', 2); state.setScanning(true); })()`, nil),
+	if err := chromedp.Do(ctx,
+		evaluate(`(() => { const state = Alpine.$data(document.querySelector('.scanner-shell')); state.setStatus('Uploading the crop and running detection…', 2); state.setScanning(true); })()`),
 		chromedp.WaitVisible(".scan-progress-overlay"),
-		chromedp.Evaluate(`(() => {
+		evaluateInto(`(() => {
 			const ring = document.querySelector('.scan-progress-orbit');
 			const animation = ring.getAnimations()[0];
 			if (animation) { animation.pause(); animation.currentTime = animation.effect.getTiming().duration / 8; }
@@ -104,8 +104,8 @@ func TestVideoScannerSpinnerRemainsCircular(t *testing.T) {
 
 func TestVideoScannerShowsPreparedCropWhileWaiting(t *testing.T) {
 	ctx := mobileScannerRegressionPage(t)
-	if err := chromedp.Run(ctx,
-		chromedp.Evaluate(`(() => {
+	if err := chromedp.Do(ctx,
+		evaluate(`(() => {
 			const canvas = document.createElement('canvas'); canvas.width = 120; canvas.height = 180;
 			const paint = canvas.getContext('2d');
 			paint.fillStyle = '#eee2b5'; paint.fillRect(0, 0, 120, 180);
@@ -115,15 +115,15 @@ func TestVideoScannerShowsPreparedCropWhileWaiting(t *testing.T) {
 				window.fetch = (_url, options) => new Promise(resolve => options.signal.addEventListener('abort', () => resolve(new Response('{}'))));
 				Alpine.$data(document.querySelector('.scanner-shell')).submitPreparedBlob(blob, 'crop.png');
 			}, 'image/png');
-		})()`, nil),
-		chromedp.Poll(`(() => {const image=document.querySelector('[data-testid="scan-progress-preview"]');return image && image.complete && image.naturalWidth === 120 && image.getBoundingClientRect().height > 0})()`, nil),
+		})()`),
+		poll(`(() => {const image=document.querySelector('[data-testid="scan-progress-preview"]');return image && image.complete && image.naturalWidth === 120 && image.getBoundingClientRect().height > 0})()`),
 	); err != nil {
 		t.Fatal(err)
 	}
 	captureVideoCSS(t, ctx, "phone-card-progress")
-	if err := chromedp.Run(ctx,
-		chromedp.Click(`[data-testid="scan-progress-cancel"]`, chromedp.ByQuery),
-		chromedp.Poll(`(() => {const state=Alpine.$data(document.querySelector('.scanner-shell'));return !state.scanning && !state.scanPreviewURL && !!state.lastScanBlob})()`, nil),
+	if err := chromedp.Do(ctx,
+		chromedp.Click(`[data-testid="scan-progress-cancel"]`),
+		poll(`(() => {const state=Alpine.$data(document.querySelector('.scanner-shell'));return !state.scanning && !state.scanPreviewURL && !!state.lastScanBlob})()`),
 	); err != nil {
 		t.Fatal(err)
 	}

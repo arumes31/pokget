@@ -335,7 +335,7 @@ func (s *TCGPlayerScraper) initialize() error {
 			chromedp.DefaultExecAllocatorOptions[:]...,
 		)
 		browserCtx, browserCancel := chromedp.NewContext(allocatorCtx)
-		if err := chromedp.Run(browserCtx); err != nil {
+		if err := chromedp.Do(browserCtx); err != nil {
 			browserCancel()
 			allocatorCancel()
 			s.initErr = fmt.Errorf("starting TCGPlayer browser: %w", err)
@@ -400,11 +400,12 @@ func (s *TCGPlayerScraper) ScrapeContext(parent context.Context, card models.Car
 		url.QueryEscape(card.Name),
 	)
 
-	err = chromedp.Run(ctx,
+	if err = chromedp.Do(ctx,
 		chromedp.Navigate(targetURL),
-		chromedp.WaitVisible(`.search-result__market-price--value`, chromedp.ByQuery),
-		chromedp.Text(`.search-result__market-price--value`, &priceStr, chromedp.ByQuery),
-	)
+		chromedp.WaitVisible(chromedp.CSS(`.search-result__market-price--value`)),
+	); err == nil {
+		priceStr, err = chromedp.Run(ctx, chromedp.Text(chromedp.CSS(`.search-result__market-price--value`)))
+	}
 
 	if err != nil {
 		return 0, err

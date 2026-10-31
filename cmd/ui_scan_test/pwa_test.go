@@ -30,13 +30,12 @@ func TestServiceWorkerInstallUpdateAndOfflineNavigation(t *testing.T) {
 	defer cancel()
 
 	var initialCaches []string
-	if err := chromedp.Run(ctx,
+	if err := chromedp.Do(ctx,
 		chromedp.Navigate(server.URL),
-		chromedp.Poll(`navigator.serviceWorker.ready.then(() => Boolean(navigator.serviceWorker.controller))`, nil,
-			chromedp.WithPollingTimeout(20*time.Second)),
-		chromedp.Evaluate(`window.__pokgetCacheNames = []; caches.keys().then((names) => { window.__pokgetCacheNames = names; })`, nil),
-		chromedp.Poll(`window.__pokgetCacheNames.length > 0`, nil, chromedp.WithPollingTimeout(5*time.Second)),
-		chromedp.Evaluate(`window.__pokgetCacheNames`, &initialCaches),
+		poll(`navigator.serviceWorker.ready.then(() => Boolean(navigator.serviceWorker.controller))`, chromedp.WithPollingTimeout(20*time.Second)),
+		evaluate(`window.__pokgetCacheNames = []; caches.keys().then((names) => { window.__pokgetCacheNames = names; })`),
+		poll(`window.__pokgetCacheNames.length > 0`, chromedp.WithPollingTimeout(5*time.Second)),
+		evaluateInto(`window.__pokgetCacheNames`, &initialCaches),
 	); err != nil {
 		t.Fatalf("install tracked service worker: %v", err)
 	}
@@ -47,19 +46,18 @@ func TestServiceWorkerInstallUpdateAndOfflineNavigation(t *testing.T) {
 	updatedCache := strings.Replace(initialCache, "shell-v", "shell-test-v", 1)
 
 	workerVersion.Store(1)
-	if err := chromedp.Run(ctx,
-		chromedp.Evaluate(`navigator.serviceWorker.getRegistration().then((registration) => registration.update())`, nil),
-		chromedp.Poll(fmt.Sprintf(`caches.keys().then((names) => names.includes(%q) && !names.includes(%q))`, updatedCache, initialCache), nil,
-			chromedp.WithPollingTimeout(20*time.Second)),
+	if err := chromedp.Do(ctx,
+		evaluate(`navigator.serviceWorker.getRegistration().then((registration) => registration.update())`),
+		poll(fmt.Sprintf(`caches.keys().then((names) => names.includes(%q) && !names.includes(%q))`, updatedCache, initialCache), chromedp.WithPollingTimeout(20*time.Second)),
 	); err != nil {
 		t.Fatalf("activate service-worker update and remove stale cache: %v", err)
 	}
 
 	networkFailure.Store(true)
 	var offlineBody string
-	if err := chromedp.Run(ctx,
+	if err := chromedp.Do(ctx,
 		chromedp.Navigate(server.URL+"/offline-probe"),
-		chromedp.Text("body", &offlineBody, chromedp.ByQuery),
+		textInto("body", &offlineBody),
 	); err != nil {
 		t.Fatalf("navigate through service worker while offline: %v", err)
 	}
