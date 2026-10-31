@@ -52,15 +52,25 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 		t.Errorf("Expected X-Frame-Options: DENY, got %q", got)
 	}
 
-	// Validate Content-Security-Policy
+	// Validate Content-Security-Policy. Every script, stylesheet, font and
+	// worker is served by this application, so the policy must not delegate
+	// those directives to another host.
 	csp := rr.Header().Get("Content-Security-Policy")
 	for _, directive := range []string{
 		"default-src 'self'",
-		"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-		"font-src 'self' https://fonts.gstatic.com",
+		"script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+		"style-src 'self' 'unsafe-inline'",
+		"font-src 'self'",
+		"worker-src 'self'",
+		"connect-src 'self'",
 	} {
 		if !strings.Contains(csp, directive) {
 			t.Errorf("Content-Security-Policy does not contain %q: %q", directive, csp)
+		}
+	}
+	for _, external := range []string{"fonts.googleapis.com", "fonts.gstatic.com", "cdn.", "unpkg", "jsdelivr"} {
+		if strings.Contains(csp, external) {
+			t.Errorf("Content-Security-Policy allows external host %q: %q", external, csp)
 		}
 	}
 

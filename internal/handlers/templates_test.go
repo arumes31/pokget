@@ -494,3 +494,56 @@ func executeApplicationTemplate(t *testing.T, templates *template.Template, name
 	}
 	return output.String()
 }
+
+// TestTemplatesReferenceOnlyAppAssets guards the "everything is served by the
+// app" rule: no template may point a script, stylesheet, font or image at
+// another origin.
+func TestTemplatesReferenceOnlyAppAssets(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("..", "..", "templates", "*.html"))
+	if err != nil {
+		t.Fatalf("glob templates: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no templates found")
+	}
+
+	reference := regexp.MustCompile(`(?i)(?:[\w:-]*(?:src|href)|formaction)\s*=\s*"([^"]*)"`)
+	external := regexp.MustCompile(`(?i)^(?:https?:|//)`)
+
+	for _, file := range files {
+		payload, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		for _, match := range reference.FindAllStringSubmatch(string(payload), -1) {
+			asset := strings.TrimSpace(match[1])
+			if external.MatchString(asset) {
+				t.Errorf("%s references an external asset: %q", filepath.Base(file), asset)
+			}
+		}
+	}
+}
+
+// TestStylesheetsReferenceOnlyAppAssets applies the same rule to CSS url()
+// references, including the generated Tailwind output that ships to browsers.
+func TestStylesheetsReferenceOnlyAppAssets(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("..", "..", "static", "css", "*.css"))
+	if err != nil {
+		t.Fatalf("glob stylesheets: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no stylesheets found")
+	}
+
+	externalURL := regexp.MustCompile(`(?i)url\(\s*['"]?(?:https?:)?//`)
+
+	for _, file := range files {
+		payload, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		if match := externalURL.FindString(string(payload)); match != "" {
+			t.Errorf("%s references an external URL: %q", filepath.Base(file), match)
+		}
+	}
+}
