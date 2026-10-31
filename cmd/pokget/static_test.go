@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,51 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+func TestManifestHandlerVersionsIconURLs(t *testing.T) {
+	manifest := `{
+  "name": "Pokget",
+  "icons": [{"src": "/static/img/icon-192.png", "sizes": "192x192"}],
+  "shortcuts": [{"name": "Scan", "url": "/?view=scan", "icons": [{"src": "/static/img/icon-192.png", "sizes": "192x192"}]}]
+}`
+	path := filepath.Join(t.TempDir(), "manifest.json")
+	if err := os.WriteFile(path, []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	response := httptest.NewRecorder()
+	manifestHandler(path, "12345").ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/static/manifest.json", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if contentType := response.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/manifest+json") {
+		t.Fatalf("Content-Type = %q", contentType)
+	}
+	if cacheControl := response.Header().Get("Cache-Control"); cacheControl != "no-cache" {
+		t.Fatalf("Cache-Control = %q, want no-cache", cacheControl)
+	}
+	var body struct {
+		Icons []struct {
+			Src string `json:"src"`
+		} `json:"icons"`
+		Shortcuts []struct {
+			Icons []struct {
+				Src string `json:"src"`
+			} `json:"icons"`
+		} `json:"shortcuts"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	if len(body.Icons) != 1 || body.Icons[0].Src != "/static/img/icon-192.png?v=12345" {
+		t.Fatalf("icons = %+v, want versioned icon", body.Icons)
+	}
+	if len(body.Shortcuts) != 1 || len(body.Shortcuts[0].Icons) != 1 ||
+		body.Shortcuts[0].Icons[0].Src != "/static/img/icon-192.png?v=12345" {
+		t.Fatalf("shortcut icons = %+v, want versioned icon", body.Shortcuts)
+	}
+}
 
 func TestServiceWorkerHandlerUsesRootScopeHeaders(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sw.js")

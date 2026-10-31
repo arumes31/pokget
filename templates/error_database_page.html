@@ -8,10 +8,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title data-i18n>Pokget Misprint Encyclopedia</title>
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
-    <script src="/static/js/alpine.min.js?v=3" defer></script>
+    <script src="/static/js/alpine.min.js?v={{ .BuildVersion }}" defer></script>
     <script src="/static/js/dialogs.js?v={{ .BuildVersion }}" defer></script>
-    <script src="/static/js/htmx.min.js?v=3"></script>
-    <link rel="icon" type="image/png" href="/static/img/favicon-32.png">
+    <script src="/static/js/htmx.min.js?v={{ .BuildVersion }}"></script>
+    <link rel="icon" type="image/png" href="/static/img/favicon-32.png?v={{ .BuildVersion }}">
     <link rel="stylesheet" href="/static/css/styles.css?v={{ .BuildVersion }}">
     <meta name="theme-color" content="#050505">
     <meta name="csrf-token" content="{{ .CSRFToken }}">
@@ -23,7 +23,7 @@
         style="padding-top: env(safe-area-inset-top)">
         <div class="flex items-center justify-between px-4 h-16 w-full max-w-6xl mx-auto">
             <a href="/" class="flex items-center gap-2.5 min-h-11">
-                <img src="/static/img/logo-128.webp" alt="" class="w-8 h-8">
+                <img src="/static/img/logo-128.webp?v={{ .BuildVersion }}" alt="" class="w-8 h-8">
                 <span data-i18n class="text-lg font-extrabold tracking-tight text-zinc-900 dark:text-zinc-100">Pokget</span>
             </a>
             <a data-i18n href="/auth" class="btn-ghost -mr-2 text-sm">Sign in</a>

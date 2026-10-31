@@ -41,7 +41,10 @@ test('PWA uses one root-scoped worker and a non-sensitive offline fallback', () 
   const worker = read('static/js/sw.js');
   const offline = read('static/offline.html');
 
-  assert.match(index, /register\('\/sw\.js', \{ scope: '\/' \}\)/);
+  assert.match(index, /register\('\/sw\.js\?v=\{\{ \.BuildVersion \}\}', \{ scope: '\/' \}\)/);
+  assert.match(worker, /new URL\(self\.location\.href\)\.searchParams\.get\('v'\)/);
+  assert.match(worker, /CACHE_NAME = `\$\{CACHE_PREFIX\}shell-v\$\{BUILD_VERSION\}`/);
+  assert.match(worker, /cache: 'reload'/);
   assert.equal(fs.existsSync(path.join(projectRoot, 'static/sw.js')), false);
   assert.match(worker, /request\.mode === 'navigate'/);
   assert.match(worker, /fetch\(request\)\.catch/);

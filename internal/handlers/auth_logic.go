@@ -121,6 +121,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusCreated)
 	data := map[string]interface{}{
 		"Message":   "Registration successful! Please check your email to verify your account.",
@@ -310,6 +311,7 @@ func (h *Handler) ProcessConfirmEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Cache-Control", "no-cache")
 	if err := h.Templates.ExecuteTemplate(w, "confirm_success", nil); err != nil {
 		slog.Error("Failed to execute success template", "error", err)
 	}
