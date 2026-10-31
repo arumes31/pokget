@@ -43,9 +43,9 @@ type scannerWorkspaceLayout struct {
 	ViewportWidth  float64 `json:"viewportWidth"`
 	ViewportHeight float64 `json:"viewportHeight"`
 	ScrollWidth    float64 `json:"scrollWidth"`
-	ToolbarLeft    float64 `json:"toolbarLeft"`
-	ToolbarRight   float64 `json:"toolbarRight"`
-	ToolbarTop     float64 `json:"toolbarTop"`
+	ModesLeft      float64 `json:"modesLeft"`
+	ModesRight     float64 `json:"modesRight"`
+	ModesTop       float64 `json:"modesTop"`
 	FrameBottom    float64 `json:"frameBottom"`
 	ControlsTop    float64 `json:"controlsTop"`
 	ControlsBottom float64 `json:"controlsBottom"`
@@ -73,7 +73,7 @@ func TestMobileScannerSeparatesCameraAndControls(t *testing.T) {
 		chromedp.Navigate(server.URL),
 		chromedp.WaitVisible(chromedp.CSS(`[data-testid="scanner-controls"]`)),
 		evaluateInto(`(() => {
-			const toolbar = document.querySelector('[data-testid="scanner-toolbar"]').getBoundingClientRect();
+			const modes = document.querySelector('[data-testid="scanner-mode-scan"]').closest('.card-tools-modes').getBoundingClientRect();
 			const frame = document.querySelector('[data-testid="scanner-frame"]').getBoundingClientRect();
 			const controls = document.querySelector('[data-testid="scanner-controls"]').getBoundingClientRect();
 			const privacy = document.querySelector('[data-testid="scanner-privacy-note"]');
@@ -81,9 +81,9 @@ func TestMobileScannerSeparatesCameraAndControls(t *testing.T) {
 				viewportWidth: innerWidth,
 				viewportHeight: innerHeight,
 				scrollWidth: document.documentElement.scrollWidth,
-				toolbarLeft: toolbar.left,
-				toolbarRight: toolbar.right,
-				toolbarTop: toolbar.top,
+				modesLeft: modes.left,
+				modesRight: modes.right,
+				modesTop: modes.top,
 				frameBottom: frame.bottom,
 				controlsTop: controls.top,
 				controlsBottom: controls.bottom,
@@ -109,8 +109,8 @@ func TestMobileScannerSeparatesCameraAndControls(t *testing.T) {
 	if layout.ScrollWidth > layout.ViewportWidth+1 {
 		t.Errorf("scanner overflows horizontally: %+v", layout)
 	}
-	if layout.ToolbarLeft < 0 || layout.ToolbarRight > layout.ViewportWidth || layout.ToolbarTop < 0 {
-		t.Errorf("scanner toolbar is outside viewport: %+v", layout)
+	if layout.ModesLeft < 0 || layout.ModesRight > layout.ViewportWidth || layout.ModesTop < 0 {
+		t.Errorf("scanner mode switch is outside viewport: %+v", layout)
 	}
 	if difference(layout.FrameBottom, layout.ViewportHeight) > 1 {
 		t.Errorf("camera frame does not fill full-screen viewport: %+v", layout)
@@ -218,7 +218,7 @@ func TestMobileScanProgressOccupiesViewportAndCancels(t *testing.T) {
 			if layout.Elapsed != "0:16 elapsed" {
 				t.Errorf("elapsed label = %q", layout.Elapsed)
 			}
-			if layout.Detail == "" || layout.InertRegions < 3 || !layout.ScrollLocked {
+			if layout.Detail == "" || layout.InertRegions < 2 || !layout.ScrollLocked {
 				t.Errorf("progress safeguards = %+v", layout)
 			}
 			if !layout.FocusedCancel {

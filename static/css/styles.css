@@ -1,36 +1,145 @@
 /* Custom layer on top of the Tailwind build (input.css -> tailwind.css).
    Keep this file limited to what utility classes cannot express:
    scanner overlays, animations, and JS-driven states.
-   Theme: Matrix Cyberpunk HUD (Glassmorphism, #ef4444 Red accent, #050505 Black background, Monospace telemetry) */
+   Theme: Matrix Cyberpunk HUD (Glassmorphism, per-TCG accent colour, #050505 Black background, Monospace telemetry) */
+
+/* ---------------------------------------------------------------------------
+   Per-TCG accent palette. The scanner sets :data-game on .scanner-shell, so the
+   whole HUD (guides, reticle, shutter, pills, result sheet, progress overlay)
+   follows the selected trading card game. Only --tcg-accent is authored; the
+   derived tones are computed with color-mix so a new game needs one line.
+   --------------------------------------------------------------------------- */
+.scanner-shell {
+    --tcg-accent: #ef4444;
+    --tcg-accent-soft: color-mix(in srgb, var(--tcg-accent) 36%, transparent);
+    --tcg-accent-faint: color-mix(in srgb, var(--tcg-accent) 15%, transparent);
+    --tcg-accent-ink: color-mix(in srgb, var(--tcg-accent) 42%, #ffffff);
+    --tcg-accent-strong: color-mix(in srgb, var(--tcg-accent) 82%, #000000);
+}
+.scanner-shell[data-game="pokemon"] { --tcg-accent: #ef4444; }
+.scanner-shell[data-game="magic"] { --tcg-accent: #f59e0b; }
+.scanner-shell[data-game="one_piece"] { --tcg-accent: #f97316; }
+.scanner-shell[data-game="lorcana"] { --tcg-accent: #a855f7; }
+.scanner-shell[data-game="weiss_schwarz"] { --tcg-accent: #e2e8f0; }
+.scanner-shell[data-game="yugioh"] { --tcg-accent: #7c3aed; }
+.scanner-shell[data-game="star_wars_unlimited"] { --tcg-accent: #38bdf8; }
+.scanner-shell[data-game="flesh_and_blood"] { --tcg-accent: #b91c1c; }
+.scanner-shell[data-game="digimon"] { --tcg-accent: #22d3ee; }
+.scanner-shell[data-game="grand_archive"] { --tcg-accent: #2dd4bf; }
+.scanner-shell[data-game="altered"] { --tcg-accent: #0ea5e9; }
+.scanner-shell[data-game="sorcery"] { --tcg-accent: #84cc16; }
+.scanner-shell[data-game="dragon_ball_super"] { --tcg-accent: #fbbf24; }
+.scanner-shell[data-game="dbs_fusion_world"] { --tcg-accent: #facc15; }
+.scanner-shell[data-game="union_arena"] { --tcg-accent: #f472b6; }
+.scanner-shell[data-game="gundam"] { --tcg-accent: #60a5fa; }
+.scanner-shell[data-game="battlespirits_saga"] { --tcg-accent: #a3e635; }
+.scanner-shell[data-game="world_of_warcraft"] { --tcg-accent: #d97706; }
+.scanner-shell[data-game="fftcg"] { --tcg-accent: #94a3b8; }
+.scanner-shell[data-game="godzilla"] { --tcg-accent: #65a30d; }
+.scanner-shell[data-game="shadowverse_evolve"] { --tcg-accent: #818cf8; }
+.scanner-shell[data-game="universus"] { --tcg-accent: #f87171; }
+.scanner-shell[data-game="vanguard"] { --tcg-accent: #eab308; }
+.scanner-shell[data-game="hololive"] { --tcg-accent: #5eead4; }
+.scanner-shell[data-game="duel_masters"] { --tcg-accent: #fda4af; }
+.scanner-shell[data-game="cookie_run"] { --tcg-accent: #fb7185; }
+.scanner-shell[data-game="force_of_will"] { --tcg-accent: #fde047; }
+.scanner-shell[data-game="wixoss"] { --tcg-accent: #e879f9; }
+.scanner-shell[data-game="alpha_clash"] { --tcg-accent: #06b6d4; }
+.scanner-shell[data-game="riftbound"] { --tcg-accent: #93c5fd; }
+
+/* Accent utilities used by the scanner markup. */
+.scanner-accent-solid { color: var(--tcg-accent); }
+.scanner-accent-text { color: var(--tcg-accent-ink); }
+.scanner-accent-border { border-color: var(--tcg-accent-soft); }
+.scanner-accent-border-strong { border-color: var(--tcg-accent); }
+.scanner-accent-fill { background-color: var(--tcg-accent-faint); }
+.scanner-accent-cta { background-color: var(--tcg-accent-strong); }
+.scanner-accent-line { background-color: var(--tcg-accent); }
+.scanner-accent-ring { box-shadow: 0 0 0 1px var(--tcg-accent-soft); }
+.scanner-accent-glow { box-shadow: 0 0 18px var(--tcg-accent-faint); }
+.scanner-guide-glow { box-shadow: 0 0 8px var(--tcg-accent-soft); }
+
+/* Fixed menus: normal popovers were clipped by the scrolling control pane. */
+.scanner-menu {
+    position: fixed;
+    left: .75rem;
+    right: .75rem;
+    bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+    top: auto;
+    z-index: 80;
+    max-height: min(62dvh, 28rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: .5rem;
+    border-radius: .9rem;
+    border: 1px solid var(--tcg-accent-soft);
+    background: rgba(9, 9, 12, 0.97);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.8), 0 0 24px var(--tcg-accent-faint);
+    scrollbar-width: thin;
+}
+.scanner-menu > .scanner-menu-grid,
+.scanner-menu > div + div,
+.scanner-menu > div + .grid { margin-top: .35rem; }
+@media (min-width: 768px) {
+    .scanner-menu {
+        left: auto;
+        right: 2.5rem;
+        bottom: auto;
+        top: 5.5rem;
+        width: 22rem;
+    }
+}
+
+/* Floating glass buttons that replaced the scanner top bar. */
+.scanner-float-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(8, 8, 10, 0.55);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: var(--tcg-accent-ink);
+    transition: background-color .15s, color .15s, opacity .15s;
+    opacity: .85;
+}
+.scanner-float-btn:hover:not(:disabled) { background: rgba(8, 8, 10, 0.8); opacity: 1; }
+.scanner-float-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.scanner-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
+    cursor: pointer;
+    transition: background-color .15s, border-color .15s;
+}
+.scanner-icon-btn:hover { background: rgba(255, 255, 255, 0.12); border-color: var(--tcg-accent-soft); }
+.scanner-icon-btn:has(input:disabled) { opacity: .4; cursor: not-allowed; }
 
 .scanner-shell {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(180px, 42dvh) minmax(0, 1fr);
+    grid-template-rows: minmax(180px, 42dvh) minmax(0, 1fr);
     min-width: 0;
     width: 100%;
     height: 100dvh;
     overflow: hidden;
     color: #f6f5f8;
     color-scheme: dark;
-    scrollbar-color: #ef4444 #0a0a0a;
+    scrollbar-color: var(--tcg-accent) #0a0a0a;
     background: #050505;
 }
-
-.scanner-toolbar {
-    display: flex;
-    min-width: 0;
-    justify-content: space-between;
-    align-items: center;
-    gap: .5rem;
-    padding: max(.5rem, env(safe-area-inset-top)) .75rem .5rem;
-    background: rgba(10, 10, 10, 0.95);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-bottom: 1px solid rgba(239, 68, 68, 0.2);
-    z-index: 40;
-}
-.scanner-toolbar > :last-child, .scanner-toolbar button { flex-shrink: 0; }
 
 .scanner-frame {
     position: relative;
@@ -57,7 +166,23 @@
     overflow-wrap: anywhere;
     pointer-events: auto;
 }
-.scanner-privacy-compact { display: none; }
+.scanner-privacy-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .35rem;
+    min-width: 0;
+    padding: .35rem .6rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(8, 8, 10, 0.6);
+    font-size: .7rem;
+    line-height: 1.3;
+    color: rgba(255, 255, 255, 0.8);
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+.scanner-privacy-note > span:last-child { min-width: 0; }
 .scanner-frame-empty { display: flex; flex-direction: column; }
 .scanner-frame-empty .scanner-empty {
     position: relative;
@@ -69,7 +194,6 @@
     padding: .75rem;
 }
 .scanner-empty > * { flex-shrink: 0; max-width: 100%; }
-.scanner-frame-empty [data-testid="scanner-privacy-note"] { position: relative; inset: auto; flex: none; margin: .5rem; }
 
 /* Cybernetic Laser Scan Line */
 .scanner-laser {
@@ -77,8 +201,8 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, transparent, #ef4444 15%, #ff8888 50%, #ef4444 85%, transparent);
-    box-shadow: 0 0 14px 2px rgba(239, 68, 68, 0.75), 0 0 4px rgba(255, 255, 255, 0.9);
+    background: linear-gradient(90deg, transparent, var(--tcg-accent) 15%, var(--tcg-accent-ink) 50%, var(--tcg-accent) 85%, transparent);
+    box-shadow: 0 0 14px 2px var(--tcg-accent-soft), 0 0 4px rgba(255, 255, 255, 0.9);
     pointer-events: none;
     z-index: 15;
     animation: scanner-laser-sweep 2.6s ease-in-out infinite alternate;
@@ -95,10 +219,10 @@
     position: absolute;
     width: 22px;
     height: 22px;
-    border-color: #ef4444;
+    border-color: var(--tcg-accent);
     pointer-events: none;
     z-index: 12;
-    filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.6));
+    filter: drop-shadow(0 0 5px var(--tcg-accent-soft));
 }
 .scanner-reticle-tl { top: 0; left: 0; border-top-width: 2.5px; border-left-width: 2.5px; }
 .scanner-reticle-tr { top: 0; right: 0; border-top-width: 2.5px; border-right-width: 2.5px; }
@@ -120,7 +244,7 @@
 .scanner-crosshair::before, .scanner-crosshair::after {
     content: "";
     position: absolute;
-    background: #ef4444;
+    background: var(--tcg-accent);
 }
 .scanner-crosshair::before { top: 0; bottom: 0; left: 50%; width: 1.5px; transform: translateX(-50%); }
 .scanner-crosshair::after { left: 0; right: 0; top: 50%; height: 1.5px; transform: translateY(-50%); }
@@ -134,7 +258,7 @@
     padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
     overflow-y: auto;
     overscroll-behavior: contain;
-    border-top: 1px solid rgba(239, 68, 68, 0.2);
+    border-top: 1px solid var(--tcg-accent-faint);
     background: #08080a;
     scrollbar-width: thin;
 }
@@ -160,23 +284,23 @@
     height: 72px;
     border-radius: 50%;
     background: #0a0a0c;
-    border: 3px solid #ef4444;
+    border: 3px solid var(--tcg-accent);
     color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 24px rgba(239, 68, 68, 0.4), inset 0 0 12px rgba(239, 68, 68, 0.25);
+    box-shadow: 0 0 24px var(--tcg-accent-faint), inset 0 0 12px var(--tcg-accent-faint);
     transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     touch-action: manipulation;
     cursor: pointer;
 }
 .scanner-shutter-btn:hover:not(:disabled) {
     transform: scale(1.04);
-    box-shadow: 0 0 32px rgba(239, 68, 68, 0.65), inset 0 0 16px rgba(239, 68, 68, 0.4);
+    box-shadow: 0 0 32px var(--tcg-accent-soft), inset 0 0 16px var(--tcg-accent-faint);
 }
 .scanner-shutter-btn:active:not(:disabled) {
     transform: scale(0.95);
-    background: #ef4444;
+    background: var(--tcg-accent);
 }
 .scanner-shutter-btn:disabled {
     opacity: 0.35;
@@ -188,12 +312,12 @@
 /* Identified Card Result Sheet */
 .scan-result {
     padding: 1.15rem;
-    border: 1px solid rgba(239, 68, 68, 0.35);
+    border: 1px solid var(--tcg-accent-soft);
     background: rgba(14, 14, 18, 0.95);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-radius: .85rem;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 20px rgba(239, 68, 68, 0.1);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 20px var(--tcg-accent-faint);
 }
 .scan-result-image {
     flex: 0 0 auto;
@@ -202,7 +326,7 @@
     object-fit: contain;
     align-self: start;
     border-radius: .45rem;
-    border: 1px solid rgba(239, 68, 68, 0.25);
+    border: 1px solid var(--tcg-accent-faint);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 .scan-candidates { display: grid; gap: .5rem; }
@@ -221,32 +345,31 @@
     transition: all 0.15s ease;
 }
 .scan-candidate:hover {
-    background: rgba(239, 68, 68, 0.08);
-    border-color: rgba(239, 68, 68, 0.35);
+    background: var(--tcg-accent-faint);
+    border-color: var(--tcg-accent-soft);
 }
 .scan-candidate[aria-pressed=true] {
-    border-color: #ef4444;
-    background: rgba(239, 68, 68, 0.16);
-    box-shadow: 0 0 14px rgba(239, 68, 68, 0.25);
+    border-color: var(--tcg-accent);
+    background: var(--tcg-accent-faint);
+    box-shadow: 0 0 14px var(--tcg-accent-faint);
 }
 .scan-candidate img { width: 44px; height: 62px; flex-shrink: 0; object-fit: contain; border-radius: .25rem; }
 
 @media (min-width: 768px) {
     .scanner-shell {
         grid-template-columns: minmax(0, 1fr) minmax(340px, 460px);
-        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
         padding: 0 2rem 1.5rem;
         gap: 1.5rem;
     }
-    .scanner-toolbar { grid-column: 1 / -1; padding: 1rem 0; }
     .scanner-frame {
         width: 100%;
         height: 100%;
-        border: 1px solid rgba(239, 68, 68, 0.25);
+        border: 1px solid var(--tcg-accent-faint);
         border-radius: .85rem;
     }
     .scanner-controls {
-        border: 1px solid rgba(239, 68, 68, 0.25);
+        border: 1px solid var(--tcg-accent-faint);
         border-radius: .85rem;
     }
 }
@@ -272,19 +395,8 @@
         height: 100% !important;
     }
     .scanner-frame-empty .scanner-empty {
+        padding-top: 4.25rem;
         padding-bottom: calc(480px + env(safe-area-inset-bottom, 0px)) !important;
-    }
-    .scanner-toolbar {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 30;
-        background: linear-gradient(180deg, rgba(5, 5, 5, 0.92) 0%, rgba(5, 5, 5, 0.45) 80%, transparent 100%);
-        border-bottom: none;
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        padding: max(6px, env(safe-area-inset-top)) 0.75rem 6px;
     }
     .scanner-controls {
         position: absolute;
@@ -314,11 +426,11 @@
         overflow-y: auto;
         overscroll-behavior: contain;
         border-radius: 1.25rem;
-        border: 1px solid rgba(239, 68, 68, 0.5);
+        border: 1px solid var(--tcg-accent-soft);
         background: rgba(8, 8, 12, 0.98);
         backdrop-filter: blur(24px);
         -webkit-backdrop-filter: blur(24px);
-        box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.85), 0 0 30px rgba(239, 68, 68, 0.25);
+        box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.85), 0 0 30px var(--tcg-accent-faint);
         animation: slideUpDrawer 0.22s cubic-bezier(0.16, 1, 0.3, 1);
     }
     body:not(:has(.app-bottom-nav)) .scan-result {
@@ -331,16 +443,10 @@
     .scanner-shell {
         display: grid !important;
         grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr) !important;
-        grid-template-rows: auto minmax(0, 1fr) !important;
+        grid-template-rows: minmax(0, 1fr) !important;
         padding: 0;
         gap: 0;
     }
-    .scanner-toolbar {
-        position: relative !important;
-        grid-column: 1 / -1 !important;
-        padding: max(8px, env(safe-area-inset-top)) 12px 8px;
-    }
-    .scanner-toolbar button { min-width: 44px; min-height: 44px; }
     .scanner-frame {
         position: relative !important;
         inset: auto !important;
@@ -353,15 +459,14 @@
         inset: auto !important;
         border-radius: 0;
         border-top: 0;
-        border-left: 1px solid rgba(239, 68, 68, 0.2);
+        border-left: 1px solid var(--tcg-accent-faint);
         max-height: 100% !important;
         overflow-y: auto !important;
     }
     .scanner-frame-empty .scanner-empty {
         padding-bottom: 0.75rem !important;
     }
-    .scanner-frame [data-testid="scanner-privacy-note"], .scanner-metric-overlay { display: none; }
-    .scanner-privacy-compact { display: block; }
+    .scanner-metric-overlay, .scanner-privacy-note { display: none; }
     .app-bottom-nav { display: none !important; }
 }
 
@@ -390,7 +495,7 @@
 .skeleton {
     background: linear-gradient(90deg,
             rgba(255, 255, 255, 0.04) 25%,
-            rgba(239, 68, 68, 0.08) 50%,
+            var(--tcg-accent-faint) 50%,
             rgba(255, 255, 255, 0.04) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
@@ -398,7 +503,7 @@
 }
 
 html[data-theme="dark"] .skeleton {
-    background-image: linear-gradient(90deg, #ffffff0f 25%, #ef44441a 50%, #ffffff0f 75%);
+    background-image: linear-gradient(90deg, #ffffff0f 25%, var(--tcg-accent)1a 50%, #ffffff0f 75%);
 }
 
 @keyframes shimmer {
@@ -459,7 +564,7 @@ html.scan-progress-open body {
     width: 320px;
     height: 320px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(239, 68, 68, 0.18) 0%, transparent 70%);
+    background: radial-gradient(circle, var(--tcg-accent-faint) 0%, transparent 70%);
     pointer-events: none;
     animation: scan-progress-breathe 3s ease-in-out infinite;
 }
@@ -477,10 +582,10 @@ html.scan-progress-open body {
     scrollbar-width: thin;
     text-align: center;
     padding: clamp(1.25rem, 5vw, 2rem);
-    border: 1px solid rgba(239, 68, 68, 0.35);
+    border: 1px solid var(--tcg-accent-soft);
     border-radius: 1rem;
     background: rgba(10, 10, 12, 0.95);
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 35px rgba(239, 68, 68, 0.15);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 35px var(--tcg-accent-faint);
 }
 .scan-progress-card > * { flex-shrink: 0; }
 
@@ -494,9 +599,9 @@ html.scan-progress-open body {
     align-self: center;
     margin-bottom: 1.25rem;
     border-radius: 50%;
-    color: #ef4444;
+    color: var(--tcg-accent);
     background: #08080a;
-    border: 1px solid rgba(239, 68, 68, 0.2);
+    border: 1px solid var(--tcg-accent-faint);
 }
 
 .scan-progress-preview {
@@ -504,8 +609,8 @@ html.scan-progress-open body {
     height: 6.25rem;
     object-fit: contain;
     border-radius: .35rem;
-    border: 1px solid rgba(239, 68, 68, 0.4);
-    box-shadow: 0 0 16px rgba(239, 68, 68, 0.3);
+    border: 1px solid var(--tcg-accent-faint);
+    box-shadow: 0 0 16px var(--tcg-accent-soft);
 }
 
 .scan-progress-mark svg {
@@ -517,15 +622,15 @@ html.scan-progress-open body {
     position: absolute;
     inset: -3px;
     border-radius: 50%;
-    border: 2.5px solid rgba(239, 68, 68, 0.15);
-    border-top-color: #ef4444;
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+    border: 2.5px solid var(--tcg-accent-faint);
+    border-top-color: var(--tcg-accent);
+    box-shadow: 0 0 12px var(--tcg-accent-faint);
     animation: scan-progress-spin 1.2s linear infinite;
 }
 
 .scan-progress-kicker {
     margin-bottom: 0.45rem;
-    color: #ef4444;
+    color: var(--tcg-accent);
     font-family: 'Courier New', Courier, monospace;
     font-size: 0.72rem;
     font-weight: 800;
@@ -565,8 +670,8 @@ html.scan-progress-open body {
     height: 100%;
     min-width: 0.45rem;
     border-radius: inherit;
-    background: #ef4444;
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.7);
+    background: var(--tcg-accent);
+    box-shadow: 0 0 12px var(--tcg-accent-soft);
     transition: width 350ms ease;
 }
 
@@ -605,10 +710,10 @@ html.scan-progress-open body {
     width: 100%;
     min-height: 3rem;
     margin-top: 1.25rem;
-    border: 1px solid rgba(239, 68, 68, 0.4);
+    border: 1px solid var(--tcg-accent-faint);
     border-radius: 0.75rem;
     color: #ffffff;
-    background: rgba(239, 68, 68, 0.12);
+    background: var(--tcg-accent-faint);
     font-family: 'Courier New', Courier, monospace;
     font-size: .875rem;
     font-weight: 800;
@@ -619,13 +724,13 @@ html.scan-progress-open body {
 }
 
 .scan-progress-cancel:hover {
-    border-color: #ef4444;
-    background: rgba(239, 68, 68, 0.28);
-    box-shadow: 0 0 18px rgba(239, 68, 68, 0.35);
+    border-color: var(--tcg-accent);
+    background: var(--tcg-accent-soft);
+    box-shadow: 0 0 18px var(--tcg-accent-soft);
 }
 
 .scan-progress-cancel:focus-visible {
-    outline: 3px solid #ef4444;
+    outline: 3px solid var(--tcg-accent);
     outline-offset: 3px;
 }
 
@@ -682,12 +787,12 @@ dialog, [role="dialog"].card, [role="menu"].card, .modal-card, [role="dialog"] .
     background: rgba(10, 10, 14, 0.96) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
-    border: 1px solid rgba(239, 68, 68, 0.35) !important;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(239, 68, 68, 0.15) !important;
+    border: 1px solid var(--tcg-accent-soft) !important;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 30px var(--tcg-accent-faint) !important;
 }
 
 * {
-    scrollbar-color: #ef4444 #0a0a0a;
+    scrollbar-color: var(--tcg-accent) #0a0a0a;
 }
 
 @keyframes slideUpDrawer {

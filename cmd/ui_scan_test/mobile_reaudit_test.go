@@ -133,7 +133,7 @@ func TestMobileEnlargedLandscapePreviewControlsStayInsidePane(t *testing.T) {
 	if err := chromedp.Do(ctx,
 		chromedp.EmulateViewport(568, 320),
 		evaluate(`document.documentElement.style.setProperty('font-size','32px','important'); Alpine.$data(document.querySelector('.scanner-shell')).previewURL='/static/img/logo-128.webp'`),
-		poll(`document.querySelector('.scanner-frame button').getClientRects().length>0`),
+		poll(`document.querySelector('.scanner-preview-actions button').getClientRects().length>0`),
 		evaluateInto(`(() => {const frame=document.querySelector('.scanner-frame').getBoundingClientRect();const notes=[...document.querySelectorAll('.scanner-frame [data-testid="scanner-privacy-note"],.scanner-frame [x-text="metrics.lr"],.scanner-frame [x-text="metrics.tb"]')].filter(e=>e.getClientRects().length);return [...document.querySelectorAll('.scanner-frame button')].filter(e=>e.getClientRects().length&&e.getAttribute('role')!=='slider').map(e=>{const box=e.getBoundingClientRect();const collisions=notes.filter(e=>{const note=e.getBoundingClientRect();return Math.min(box.right,note.right)>Math.max(box.left,note.left)&&Math.min(box.bottom,note.bottom)>Math.max(box.top,note.top)}).map(e=>e.textContent.trim());return {Label:e.textContent.trim(),Left:box.left,Right:box.right,FrameLeft:frame.left,FrameRight:frame.right,Width:box.width,Height:box.height,Collisions:collisions}})})()`, &buttons),
 	); err != nil {
 		t.Fatal(err)

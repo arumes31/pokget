@@ -19,8 +19,14 @@ test('scanner template loads one external Alpine controller before Alpine', () =
     assert.match(scannerTemplate, new RegExp(`value="${game}"`));
   }
   assert.match(scannerTemplate, /availableLanguages/);
-  assert.match(scannerTemplate, /RETRY LAST CROP/);
-  assert.match(scannerTemplate, /Enter a catalog ID instead/);
+  assert.match(scannerTemplate, /data-testid="scanner-game-menu"/);
+  assert.match(scannerTemplate, /data-testid="scanner-language-menu"/);
+  assert.match(scannerTemplate, /class="scanner-menu"/);
+  assert.doesNotMatch(scannerTemplate, /class="card-tools-bar"/);
+  assert.doesNotMatch(scannerTemplate, /data-testid="scanner-toolbar"/);
+  assert.doesNotMatch(scannerTemplate, /RETRY LAST CROP/);
+  assert.doesNotMatch(scannerTemplate, /Enter a catalog ID instead/);
+  assert.match(scannerTemplate, /:data-game="game"/);
   assert.match(scannerTemplate, /Only\s*the area inside the guides is uploaded/);
   assert.match(scannerTemplate, /data-testid="scan-progress-overlay"/);
   assert.match(scannerTemplate, /role="dialog" aria-modal="true"/);

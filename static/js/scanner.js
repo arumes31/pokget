@@ -470,8 +470,6 @@
       previewRotation: 0,
       lastScanBlob: null,
       lastScanName: '',
-      manualCardID: '',
-      manualCardName: '',
       csrfToken: String(config.csrfToken || ''),
       showLangPopover: false,
       showGamePopover: false,
@@ -683,8 +681,6 @@
         this.clearPreview();
         this.lastScanBlob = null;
         this.lastScanName = '';
-        this.manualCardID = '';
-        this.manualCardName = '';
         this.scanStatus = '';
         this.scanStep = 0;
       },
@@ -992,12 +988,6 @@
         }
       },
 
-      async retryLastScan() {
-        if (!this.lastScanBlob || this.scanning) return;
-        this.resetResult();
-        await this.submitPreparedBlob(this.lastScanBlob, this.lastScanName || 'retry.jpg', false);
-      },
-
       async submitPreparedBlob(blob, filename, remember = true, serverOnly = false) {
         if (this.abortController) return;
         if (remember) {
@@ -1243,21 +1233,6 @@
         if (this.scanning || this.adding || this.added) return;
         this.needsReview = true;
         this.matchConfirmed = false;
-      },
-
-      useManualMatch() {
-        if (this.scanning) return;
-        const id = String(this.manualCardID || '').trim();
-        if (!/^[a-z0-9][a-z0-9._:/-]{0,127}$/i.test(id)) {
-          this.notify('Enter a valid catalog card ID.', 'error');
-          return;
-        }
-        this.resetResult();
-        this.detectedID = id;
-        this.detectedCard = String(this.manualCardName || '').trim() || id;
-        this.matchConfirmed = true;
-        this.result = 'Manual catalog ID';
-        this.notify('Manual card ID selected. Review it before adding.', 'info');
       },
 
       async addToCollection() {
