@@ -244,11 +244,11 @@ func run(cfg config) error {
 	if cfg.artifactDir != "" {
 		artifacts = newScanArtifactCapture(ctx)
 	}
-	if err := chromedp.Run(ctx, chromedp.EmulateViewport(390, 844)); err != nil {
+	if err := chromedp.Do(ctx, chromedp.EmulateViewport(390, 844)); err != nil {
 		return fmt.Errorf("setting mobile viewport: %w", err)
 	}
 	if artifacts != nil {
-		if err := chromedp.Run(ctx, network.Enable()); err != nil {
+		if _, err := chromedp.Call(ctx, network.Enable, network.EnableParams{}); err != nil {
 			return fmt.Errorf("observing scan response: %w", err)
 		}
 	}
@@ -267,11 +267,15 @@ func run(cfg config) error {
 	}
 	if cfg.screenshot != "" {
 		var screenshot []byte
-		if err := chromedp.Run(ctx,
-			chromedp.Evaluate(`document.querySelector('[x-ref="scanResult"]')?.scrollIntoView({block:'nearest'})`, nil),
-			chromedp.CaptureScreenshot(&screenshot),
+		if err := chromedp.Do(ctx,
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('[x-ref="scanResult"]')?.scrollIntoView({block:'nearest'})`),
 		); err != nil {
-			return fmt.Errorf("capturing rendered scan result: %w", err)
+			return fmt.Errorf("scrolling scan result into view: %w", err)
+		}
+		var captureErr error
+		screenshot, captureErr = chromedp.Run(ctx, chromedp.CaptureScreenshot())
+		if captureErr != nil {
+			return fmt.Errorf("capturing rendered scan result: %w", captureErr)
 		}
 		if err := os.MkdirAll(filepath.Dir(cfg.screenshot), 0750); err != nil {
 			return fmt.Errorf("creating screenshot directory: %w", err)
@@ -314,10 +318,10 @@ func authenticate(ctx context.Context, cfg config) error {
 }
 
 func navigateToLogin(ctx context.Context, baseURL string) error {
-	if err := chromedp.Run(
+	if err := chromedp.Do(
 		ctx,
 		chromedp.Navigate(pageURL(baseURL, "/auth")),
-		chromedp.WaitVisible(loginEmailSelector, chromedp.ByQuery),
+		chromedp.WaitVisible(chromedp.CSS(loginEmailSelector)),
 	); err != nil {
 		return fmt.Errorf("opening login page: %w", err)
 	}
@@ -325,11 +329,11 @@ func navigateToLogin(ctx context.Context, baseURL string) error {
 }
 
 func login(ctx context.Context, email, password string) (authState, error) {
-	if err := chromedp.Run(
+	if err := chromedp.Do(
 		ctx,
-		chromedp.SetValue(loginEmailSelector, email, chromedp.ByQuery),
-		chromedp.SetValue(loginPasswordSelector, password, chromedp.ByQuery),
-		chromedp.Click(loginSubmitSelector, chromedp.ByQuery),
+		chromedp.SetValue(chromedp.CSS(loginEmailSelector), email),
+		chromedp.SetValue(chromedp.CSS(loginPasswordSelector), password),
+		chromedp.Click(chromedp.CSS(loginSubmitSelector)),
 	); err != nil {
 		return authState{}, fmt.Errorf("submitting login form: %w", err)
 	}
@@ -343,14 +347,14 @@ func login(ctx context.Context, email, password string) (authState, error) {
 }
 
 func register(ctx context.Context, email, password string) error {
-	if err := chromedp.Run(
+	if err := chromedp.Do(
 		ctx,
-		chromedp.Click(`#register-tab`, chromedp.ByQuery),
-		chromedp.WaitVisible(registerEmailSelector, chromedp.ByQuery),
-		chromedp.SetValue(registerEmailSelector, email, chromedp.ByQuery),
-		chromedp.SetValue(registerPasswordSelector, password, chromedp.ByQuery),
-		chromedp.SetValue(registerConfirmSelector, password, chromedp.ByQuery),
-		chromedp.Click(registerSubmitSelector, chromedp.ByQuery),
+		chromedp.Click(chromedp.CSS(`#register-tab`)),
+		chromedp.WaitVisible(chromedp.CSS(registerEmailSelector)),
+		chromedp.SetValue(chromedp.CSS(registerEmailSelector), email),
+		chromedp.SetValue(chromedp.CSS(registerPasswordSelector), password),
+		chromedp.SetValue(chromedp.CSS(registerConfirmSelector), password),
+		chromedp.Click(chromedp.CSS(registerSubmitSelector)),
 	); err != nil {
 		return fmt.Errorf("submitting registration form: %w", err)
 	}
@@ -375,14 +379,13 @@ func register(ctx context.Context, email, password string) error {
 
 func verifyAccount(ctx context.Context, baseURL, token string) error {
 	confirmationURL := pageURL(baseURL, "/auth/confirm") + "?token=" + url.QueryEscape(token)
-	if err := chromedp.Run(
+	if err := chromedp.Do(
 		ctx,
 		chromedp.Navigate(confirmationURL),
-		chromedp.WaitVisible(`form[hx-post="/auth/confirm"] button[type="submit"]`, chromedp.ByQuery),
-		chromedp.Click(`form[hx-post="/auth/confirm"] button[type="submit"]`, chromedp.ByQuery),
-		chromedp.Poll(
+		chromedp.WaitVisible(chromedp.CSS(`form[hx-post="/auth/confirm"] button[type="submit"]`)),
+		chromedp.Click(chromedp.CSS(`form[hx-post="/auth/confirm"] button[type="submit"]`)),
+		chromedp.Poll[chromedp.Void](
 			`document.querySelector('#confirm-content')?.textContent.includes('Identity Verified') === true`,
-			nil,
 			chromedp.WithPollingTimeout(15*time.Second),
 		),
 	); err != nil {
@@ -400,10 +403,9 @@ func waitForAuthState(ctx context.Context, condition string) (authState, error) 
 
 	var lastError error
 	for {
-		var isReady bool
-		err := chromedp.Run(ctx, chromedp.Evaluate(condition, &isReady))
+		isReady, err := chromedp.Run(ctx, chromedp.Evaluate[bool](condition))
 		if err == nil && isReady {
-			err = chromedp.Run(ctx, chromedp.Evaluate(`
+			state, err = chromedp.Run(ctx, chromedp.Evaluate[authState](`
 (() => {
     const content = document.querySelector('#main-content')?.textContent || '';
     return {
@@ -413,7 +415,7 @@ func waitForAuthState(ctx context.Context, condition string) (authState, error) 
         isLoggedIn: document.querySelector('button[hx-get="/centering"]') !== null,
         isRegistered: content.includes('Registration successful')
     };
-		})()`, &state))
+		})()`))
 			if err == nil {
 				return state, nil
 			}
@@ -467,28 +469,26 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 	if resultTimeout < time.Second {
 		resultTimeout = time.Second
 	}
-	if err := chromedp.Run(
+	if err := chromedp.Do(
 		ctx,
-		chromedp.WaitVisible(scanNavigationSelector, chromedp.ByQuery),
-		chromedp.Evaluate(
+		chromedp.WaitVisible(chromedp.CSS(scanNavigationSelector)),
+		chromedp.Evaluate[chromedp.Void](
 			`localStorage.setItem('pokget_scan_lang', `+string(languageJSON)+`)`,
-			nil,
 		),
-		chromedp.Evaluate(
+		chromedp.Evaluate[chromedp.Void](
 			`localStorage.setItem('pokget_scan_game', `+string(gameJSON)+`)`,
-			nil,
 		),
-		chromedp.Click(scanNavigationSelector, chromedp.ByQuery),
-		chromedp.ActionFunc(func(ctx context.Context) error {
+		chromedp.Click(chromedp.CSS(scanNavigationSelector)),
+		chromedp.Func(func(ctx context.Context, t *chromedp.Target) error {
 			pageContext, cancel := context.WithTimeout(ctx, 15*time.Second)
 			defer cancel()
-			if err := chromedp.Run(pageContext, chromedp.WaitReady(fileInputSelector, chromedp.ByQuery)); err != nil {
+			if err := chromedp.Do(pageContext, chromedp.WaitReady(chromedp.CSS(fileInputSelector))); err != nil {
 				return fmt.Errorf("waiting for the scanner upload input: %w", err)
 			}
 			return nil
 		}),
-		chromedp.SetUploadFiles(fileInputSelector, []string{cfg.fixture}, chromedp.ByQuery),
-		chromedp.Poll(
+		chromedp.SetUploadFiles(chromedp.CSS(fileInputSelector), []string{cfg.fixture}),
+		chromedp.Poll[chromedp.Void](
 			`(() => {
 				const root = document.querySelector('#main-content .scanner-shell');
 				if (!root || !window.Alpine) return false;
@@ -496,42 +496,38 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 				const image = root.querySelector('.scanner-frame img');
 				return Boolean(state.previewURL) && !state.scanning && image?.complete && image.naturalWidth > 0;
 			})()`,
-			nil,
 			chromedp.WithPollingTimeout(15*time.Second),
 			chromedp.WithPollingInterval(100*time.Millisecond),
 		),
-		chromedp.ActionFunc(func(ctx context.Context) error {
+		chromedp.Func(func(ctx context.Context, t *chromedp.Target) error {
 			if !cfg.fullImage {
 				return nil
 			}
 			return includeFullImageWithGuides(ctx)
 		}),
-		chromedp.WaitVisible(scanUploadSelector, chromedp.ByQuery),
-		chromedp.Poll(
+		chromedp.WaitVisible(chromedp.CSS(scanUploadSelector)),
+		chromedp.Poll[chromedp.Void](
 			`(() => {
 				const button = document.querySelector('[data-testid="scan-selected-crop"]');
 				return Boolean(button) && !button.disabled && button.closest('[inert]') === null;
 			})()`,
-			nil,
 			chromedp.WithPollingTimeout(5*time.Second),
 			chromedp.WithPollingInterval(50*time.Millisecond),
 		),
-		chromedp.Evaluate(
+		chromedp.Evaluate[chromedp.Void](
 			`document.querySelector('[data-testid="scan-selected-crop"]').click()`,
-			nil,
 		),
-		chromedp.Poll(
+		chromedp.Poll[chromedp.Void](
 			`(() => {
 				const root = document.querySelector('#main-content .scanner-shell');
 				if (!root || !window.Alpine) return false;
 				const state = Alpine.$data(root);
 				return state.scanning || Boolean(state.scanError) || Boolean(state.detectedCard);
 			})()`,
-			nil,
 			chromedp.WithPollingTimeout(5*time.Second),
 			chromedp.WithPollingInterval(50*time.Millisecond),
 		),
-		chromedp.Poll(
+		chromedp.Poll[chromedp.Void](
 			`(() => {
                 const root = document.querySelector('#main-content .scanner-shell');
                 if (!root || !window.Alpine) return false;
@@ -544,13 +540,12 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 				return style.display !== 'none' && style.visibility !== 'hidden' &&
 					bounds.width > 0 && bounds.height > 0;
             })()`,
-			nil,
 			chromedp.WithPollingTimeout(resultTimeout),
 			chromedp.WithPollingInterval(100*time.Millisecond),
 		),
 	); err != nil {
 		var debugState string
-		_ = chromedp.Run(ctx, chromedp.Evaluate(`
+		debugState, _ = chromedp.Run(ctx, chromedp.Evaluate[string](`
 (() => {
     const root = document.querySelector('#main-content .scanner-shell');
     if (!root || !window.Alpine) return JSON.stringify({root: Boolean(root), alpine: Boolean(window.Alpine), path: location.pathname, navigationError: document.querySelector('[data-testid="navigation-error"]')?.textContent?.trim()});
@@ -569,12 +564,11 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
             ? getComputedStyle(root.querySelector('[x-show="detectedCard"]')).display
             : 'missing'
     });
-})()`, &debugState))
+})()`))
 		return scanResult{}, fmt.Errorf("uploading fixture and waiting for scan result: %w (state: %s)", err, debugState)
 	}
 
-	var result scanResult
-	if err := chromedp.Run(ctx, chromedp.Evaluate(`
+	result, err := chromedp.Run(ctx, chromedp.Evaluate[scanResult](`
 (() => {
     const root = document.querySelector('#main-content .scanner-shell');
     const panel = root?.querySelector('[x-show="detectedCard"]');
@@ -605,7 +599,8 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 		internalIDVisible: [state.detectedID, ...state.topMatches.map(match => match.id)].filter(Boolean).some(id => panel.innerText.includes(id)),
         visible: visible
     };
-})()`, &result)); err != nil {
+})()`))
+	if err != nil {
 		return scanResult{}, fmt.Errorf("reading rendered scan result: %w", err)
 	}
 	return result, nil
@@ -622,11 +617,11 @@ func includeFullImageWithGuides(ctx context.Context) error {
 		{"Bottom crop guide", kb.ArrowDown, 100},
 	} {
 		selector := `[role="slider"][aria-label="` + guide.label + `"]`
-		var current string
-		var exists bool
-		if err := chromedp.Run(ctx, chromedp.AttributeValue(selector, "aria-valuenow", &current, &exists, chromedp.ByQuery)); err != nil {
+		attrResult, err := chromedp.Run(ctx, chromedp.AttributeValue(chromedp.CSS(selector), "aria-valuenow"))
+		if err != nil {
 			return fmt.Errorf("reading %s: %w", guide.label, err)
 		}
+		current, exists := attrResult.Value, attrResult.Exists
 		value, err := strconv.Atoi(current)
 		if err != nil || !exists || value < 0 || value > 100 {
 			return fmt.Errorf("%s has invalid slider position %q", guide.label, current)
@@ -635,10 +630,10 @@ func includeFullImageWithGuides(ctx context.Context) error {
 		if steps < 0 {
 			steps = -steps
 		}
-		if err := chromedp.Run(ctx,
-			chromedp.Focus(selector, chromedp.ByQuery),
+		if err := chromedp.Do(ctx,
+			chromedp.Focus(chromedp.CSS(selector)),
 			chromedp.KeyEvent(strings.Repeat(guide.key, steps)),
-			chromedp.Poll(fmt.Sprintf(`document.querySelector(%q).getAttribute('aria-valuenow')===%q`, selector, strconv.Itoa(guide.target)), nil, chromedp.WithPollingTimeout(2*time.Second)),
+			chromedp.Poll[chromedp.Void](fmt.Sprintf(`document.querySelector(%q).getAttribute('aria-valuenow')===%q`, selector, strconv.Itoa(guide.target)), chromedp.WithPollingTimeout(2*time.Second)),
 		); err != nil {
 			return fmt.Errorf("adjusting %s through its keyboard control: %w", guide.label, err)
 		}

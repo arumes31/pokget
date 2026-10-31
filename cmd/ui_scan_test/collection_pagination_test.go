@@ -131,11 +131,11 @@ func TestMobileCollectionsPaginateWithoutLosingTotals(t *testing.T) {
 				if page == 3 {
 					wantCount = 2
 				}
-				if err := chromedp.Run(ctx, chromedp.Poll(fmt.Sprintf(`document.querySelectorAll('[data-collection-item]').length===%d && document.body.innerText.includes('Collection card %02d')`, wantCount, (page-1)*24+1), nil, chromedp.WithPollingTimeout(3*time.Second))); err != nil {
+				if err := chromedp.Do(ctx, poll(fmt.Sprintf(`document.querySelectorAll('[data-collection-item]').length===%d && document.body.innerText.includes('Collection card %02d')`, wantCount, (page-1)*24+1), chromedp.WithPollingTimeout(3*time.Second))); err != nil {
 					t.Fatalf("page%d does not render its bounded collection slice: %v", page, err)
 				}
 				var total string
-				if err := chromedp.Run(ctx, chromedp.Text(`[data-collection-total]`, &total, chromedp.ByQuery)); err != nil {
+				if err := chromedp.Do(ctx, textInto(`[data-collection-total]`, &total)); err != nil {
 					t.Fatal(err)
 				}
 				if fields := strings.Fields(total); len(fields) == 0 || fields[0] != "50" {
@@ -150,8 +150,8 @@ func TestMobileCollectionsPaginateWithoutLosingTotals(t *testing.T) {
 			if err := clickCollectionPage(ctx, collection.name == "public-vault", "prev"); err != nil {
 				t.Fatal(err)
 			}
-			if err := chromedp.Run(ctx,
-				chromedp.Poll(`document.querySelectorAll('[data-collection-item]').length===24 && document.body.innerText.includes('Collection card 25')`, nil, chromedp.WithPollingTimeout(3*time.Second)),
+			if err := chromedp.Do(ctx,
+				poll(`document.querySelectorAll('[data-collection-item]').length===24 && document.body.innerText.includes('Collection card 25')`, chromedp.WithPollingTimeout(3*time.Second)),
 			); err != nil {
 				t.Fatalf("previous page did not return to the second collection slice: %v", err)
 			}
@@ -161,29 +161,29 @@ func TestMobileCollectionsPaginateWithoutLosingTotals(t *testing.T) {
 
 func loadCollectionRoute(ctx context.Context, route string) error {
 	if !strings.HasPrefix(route, "/vault/") {
-		return chromedp.Run(ctx, loadReviewRoute(route))
+		return chromedp.Do(ctx, loadReviewRoute(route))
 	}
 	var current string
-	if err := chromedp.Run(ctx, chromedp.Location(&current)); err != nil {
+	if err := chromedp.Do(ctx, locationInto(&current)); err != nil {
 		return err
 	}
 	base, err := url.Parse(current)
 	if err != nil {
 		return err
 	}
-	return chromedp.Run(ctx, chromedp.Navigate(base.Scheme+"://"+base.Host+route), chromedp.WaitVisible("main", chromedp.ByQuery))
+	return chromedp.Do(ctx, chromedp.Navigate(base.Scheme+"://"+base.Host+route), chromedp.WaitVisible("main"))
 }
 
 func clickCollectionPage(ctx context.Context, standalone bool, relation string) error {
-	action := chromedp.Click(`nav[aria-label="Collection pages"] a[rel="`+relation+`"]`, chromedp.ByQuery)
+	action := chromedp.Click(`nav[aria-label="Collection pages"] a[rel="`+relation+`"]`)
 	if standalone {
 		_, err := chromedp.RunResponse(ctx, action)
 		return err
 	}
 	// The new cards appear before HTMX initializes the next page's links.
 	// Wait for settlement so the next click cannot fall through to a full load.
-	return chromedp.Run(ctx,
-		chromedp.Evaluate(`(() => {
+	return chromedp.Do(ctx,
+		evaluate(`(() => {
 			window.collectionPageSettled = false;
 			const settled = event => {
 				if (event.detail.target?.id !== 'main-content') return;
@@ -191,9 +191,9 @@ func clickCollectionPage(ctx context.Context, standalone bool, relation string) 
 				document.body.removeEventListener('htmx:afterSettle', settled);
 			};
 			document.body.addEventListener('htmx:afterSettle', settled);
-		})()`, nil),
+		})()`),
 		action,
-		chromedp.Poll(`window.collectionPageSettled`, nil, chromedp.WithPollingTimeout(3*time.Second)),
+		poll(`window.collectionPageSettled`, chromedp.WithPollingTimeout(3*time.Second)),
 	)
 }
 
@@ -211,9 +211,9 @@ func TestMobileCollectionNamesAndMissingPricesRemainClear(t *testing.T) {
 					Name, Text, WhiteSpace                 string
 					Width, ScrollWidth, Height, LineHeight float64
 				}
-				if err := chromedp.Run(ctx, chromedp.EmulateViewport(320, 844),
-					chromedp.Evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size','%dpx','important')`, font), nil),
-					chromedp.Evaluate(`(() => {return [...document.querySelectorAll('h3')].filter(e=>/^(Unpriced|Known zero|Custom zero) card/.test(e.textContent.trim())).map(e=>{const style=getComputedStyle(e); return {Name:e.textContent.trim(),Text:e.closest('[data-collection-item],article,.card').innerText,WhiteSpace:style.whiteSpace,Width:e.clientWidth,ScrollWidth:e.scrollWidth,Height:e.clientHeight,LineHeight:parseFloat(style.lineHeight)}})})()`, &cards),
+				if err := chromedp.Do(ctx, chromedp.EmulateViewport(320, 844),
+					evaluate(fmt.Sprintf(`document.documentElement.style.setProperty('font-size','%dpx','important')`, font)),
+					evaluateInto(`(() => {return [...document.querySelectorAll('h3')].filter(e=>/^(Unpriced|Known zero|Custom zero) card/.test(e.textContent.trim())).map(e=>{const style=getComputedStyle(e); return {Name:e.textContent.trim(),Text:e.closest('[data-collection-item],article,.card').innerText,WhiteSpace:style.whiteSpace,Width:e.clientWidth,ScrollWidth:e.scrollWidth,Height:e.clientHeight,LineHeight:parseFloat(style.lineHeight)}})})()`, &cards),
 				); err != nil {
 					t.Fatal(err)
 				}

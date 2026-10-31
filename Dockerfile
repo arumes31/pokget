@@ -1,5 +1,5 @@
 # Static asset stage
-FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS static-assets
+FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS static-assets
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY templates ./templates
 RUN npm run build:static && npm run check:static
 
 # Go build stage
-FROM golang:1.27.3-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS builder
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 
 # Install Tesseract OCR dependencies
 RUN apk add --no-cache \
