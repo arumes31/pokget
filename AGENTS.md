@@ -28,11 +28,14 @@ production host pulls that image (`dr-dnode01`).
    merge gate, but see the next point).
 3. **CodeRabbit review**: this repository gets no automatic CodeRabbit reviews
    (the OSS plan needs >= 10 stars). Request one explicitly with
-   `node scripts/coderabbit-review.mjs --pr <number>` while the hourly free
-   quota is free (currently 3 reviews/hour). The script skips drafts, closed
-   PRs, already reviewed heads, duplicate requests, and PRs whose newest
-   CodeRabbit comment reports an exhausted quota. After triggering, wait for
-   the CodeRabbit review and fix its blocking findings before merging.
+   `node scripts/coderabbit-review.mjs --pr <number> --wait` while the hourly
+   free quota is free (currently 3 reviews/hour). The script skips drafts,
+   closed PRs, already reviewed heads, duplicate requests, and PRs whose newest
+   CodeRabbit comment reports an exhausted quota; `--wait` blocks until
+   CodeRabbit answered for the current head commit (exit 3 on timeout, 1 on
+   requested changes). CodeRabbit refuses to review a closed PR, so the review
+   must be requested **before** merging, and its blocking findings must be fixed
+   before the merge.
 4. Merge with `gh pr merge <pr> --merge`, then let the `main` pipeline build
    and publish the image before deploying it.
 5. Verify the deploy: `/health/ready` returns 204, container is `healthy` with

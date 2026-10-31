@@ -6,6 +6,7 @@ import {
   quotaExhausted,
   requestMarker,
   reviewedHead,
+  waitForReview,
 } from './coderabbit-review.mjs';
 
 const HEAD = 'a'.repeat(40);
@@ -63,4 +64,60 @@ test('human comments never trigger the quota or review heuristics', () => {
   const comments = [comment('review limit reached', 'some-human')];
   assert.equal(quotaExhausted(comments), false);
   assert.equal(reviewedHead(HEAD, [review(HEAD, 'some-human')]), false);
+});
+
+function fakeClock() {
+  let ticks = 0;
+  return {
+    now: () => ticks * 1000,
+    sleep: async () => { ticks += 1; },
+  };
+}
+
+test('waitForReview resolves once CodeRabbit reviewed the head commit', async () => {
+  const clock = fakeClock();
+  const responses = [
+    { headRefOid: HEAD, reviews: [] },
+    { headRefOid: HEAD, reviews: [review(HEAD)] },
+  ];
+  const result = await waitForReview({
+    headSha: HEAD,
+    timeoutMs: 60000,
+    fetchPr: async () => responses.shift(),
+    ...clock,
+  });
+  assert.equal(result.status, 'reviewed');
+});
+
+test('waitForReview surfaces a requested change', async () => {
+  const clock = fakeClock();
+  const result = await waitForReview({
+    headSha: HEAD,
+    timeoutMs: 60000,
+    fetchPr: async () => ({ headRefOid: HEAD, reviews: [{ ...review(HEAD), state: 'CHANGES_REQUESTED' }] }),
+    ...clock,
+  });
+  assert.equal(result.status, 'changes-requested');
+});
+
+test('waitForReview stops when the head commit moved', async () => {
+  const clock = fakeClock();
+  const result = await waitForReview({
+    headSha: HEAD,
+    timeoutMs: 60000,
+    fetchPr: async () => ({ headRefOid: 'b'.repeat(40), reviews: [] }),
+    ...clock,
+  });
+  assert.equal(result.status, 'head-changed');
+});
+
+test('waitForReview times out when CodeRabbit never answers', async () => {
+  const clock = fakeClock();
+  const result = await waitForReview({
+    headSha: HEAD,
+    timeoutMs: 2500,
+    fetchPr: async () => ({ headRefOid: HEAD, reviews: [] }),
+    ...clock,
+  });
+  assert.equal(result.status, 'timeout');
 });

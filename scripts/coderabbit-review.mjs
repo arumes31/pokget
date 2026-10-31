@@ -18,7 +18,6 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-
 export const REQUEST_BODY = '@coderabbitai review';
 export const REQUEST_MARKER_PREFIX = '<!-- pokget-coderabbit-request:';
 
@@ -78,6 +77,38 @@ export function decideCodeRabbitAction({ state, isDraft, headSha, reviews, comme
   return 'request';
 }
 
+/**
+ * Polls the pull request until CodeRabbit reviewed `headSha`.
+ * Returns `reviewed`, `changes-requested`, `head-changed` or `timeout`.
+ */
+export async function waitForReview({
+  headSha,
+  fetchPr,
+  timeoutMs = 600000,
+  intervalMs = 15000,
+  now = () => Date.now(),
+  sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
+}) {
+  const deadline = now() + timeoutMs;
+  while (now() < deadline) {
+    const pr = await fetchPr();
+    if (pr?.headRefOid && pr.headRefOid !== headSha) return { status: 'head-changed' };
+    const review = (pr?.reviews || []).find((entry) => {
+      if (!isCodeRabbit(entry?.author?.login)) return false;
+      const commit = reviewCommit(entry);
+      return commit === '' || commit === headSha;
+    });
+    if (review) {
+      return {
+        status: String(review.state || '').toUpperCase() === 'CHANGES_REQUESTED' ? 'changes-requested' : 'reviewed',
+        review,
+      };
+    }
+    await sleep(intervalMs);
+  }
+  return { status: 'timeout' };
+}
+
 function gh(args, options = {}) {
   return execFileSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...options });
 }
@@ -89,8 +120,12 @@ function readFlag(argv, name) {
   return value && !value.startsWith('--') ? value : true;
 }
 
-function main(argv) {
+async function main(argv) {
   const dryRun = argv.includes('--dry-run');
+  const wait = argv.includes('--wait');
+  const timeoutFlag = readFlag(argv, '--timeout');
+  const timeoutSeconds = typeof timeoutFlag === 'string' ? Number(timeoutFlag) : 600;
+  const timeoutMs = Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds * 1000 : 600000;
   const prFlag = readFlag(argv, '--pr');
   const viewArgs = ['pr', 'view'];
   if (typeof prFlag === 'string') viewArgs.push(prFlag);
@@ -114,24 +149,34 @@ function main(argv) {
 
   if (action !== 'request') {
     console.log(`PR #${pr.number}: ${action}`);
-    return 0;
-  }
-  if (dryRun) {
+    if (!wait || action === 'skip:closed' || action === 'skip:draft') return 0;
+  } else if (dryRun) {
     console.log(`PR #${pr.number}: would request a CodeRabbit review for ${pr.headRefOid}`);
     return 0;
+  } else {
+    const body = `${REQUEST_BODY}\n\n${requestMarker(pr.headRefOid)}`;
+    try {
+      gh(['pr', 'comment', String(pr.number), '--body', body]);
+    } catch (error) {
+      console.error(`cannot post the review request: ${error.stderr || error.message}`);
+      return 2;
+    }
+    console.log(`PR #${pr.number}: requested a CodeRabbit review for ${pr.headRefOid}`);
   }
 
-  const body = `${REQUEST_BODY}\n\n${requestMarker(pr.headRefOid)}`;
-  try {
-    gh(['pr', 'comment', String(pr.number), '--body', body]);
-  } catch (error) {
-    console.error(`cannot post the review request: ${error.stderr || error.message}`);
-    return 2;
-  }
-  console.log(`PR #${pr.number}: requested a CodeRabbit review for ${pr.headRefOid}`);
+  if (!wait) return 0;
+
+  const result = await waitForReview({
+    headSha: pr.headRefOid,
+    timeoutMs,
+    fetchPr: () => JSON.parse(gh(viewArgs)),
+  });
+  console.log(`PR #${pr.number}: coderabbit=${result.status}`);
+  if (result.status === 'timeout') return 3;
+  if (result.status === 'changes-requested' || result.status === 'head-changed') return 1;
   return 0;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  process.exitCode = main(process.argv.slice(2));
+  process.exitCode = await main(process.argv.slice(2));
 }
