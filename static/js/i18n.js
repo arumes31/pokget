@@ -390,7 +390,6 @@
     "Create first binder": "Ersten Ordner erstellen",
     "Create your first binder": "Erstelle deinen ersten Ordner",
     "Creating account…": "Konto wird erstellt …",
-    "Crop proportions": "Zuschnittverhältnisse",
     "Crop to card edges": "Auf Kartenränder zuschneiden",
     "Currency": "Währung",
     "Current password": "Aktuelles Passwort",
@@ -481,7 +480,6 @@
     "Keep its name and collector number in frame.": "Achte darauf, dass Name und Sammlernummer im Bild sind.",
     "Keep the measurement": "Messung aufbewahren",
     "L/R": "L/R",
-    "L/R ratio": "L/R-Verhältnis",
     "LEGENDARY": "LEGENDÄR",
     "Label": "Bezeichnung",
     "Landscape · 88 × 63": "Querformat · 88 × 63",
@@ -645,7 +643,6 @@
     "Suggest borders": "Ränder vorschlagen",
     "System": "System",
     "T/B": "O/U",
-    "T/B ratio": "O/U-Verhältnis",
     "THE COLLECTOR’S ENTRANCE": "DER EINGANG FÜR SAMMLER",
     "Tags": "Schlagwörter",
     "Take photo": "Foto aufnehmen",
@@ -654,7 +651,6 @@
     "The image host must allow browser access. No proxy is used.": "Der Bildanbieter muss Browserzugriff erlauben. Es wird kein Proxy verwendet.",
     "The thrill of the find. The joy of a complete set.": "Die Spannung eines Fundes. Die Freude über ein vollständiges Set.",
     "Theme": "Design",
-    "These ratios describe the crop guides, not a professional centering grade.": "Diese Verhältnisse beschreiben die Zuschnittlinien, keine professionelle Zentrierungsbewertung.",
     "This binder is empty": "Dieser Ordner ist leer",
     "This is my printing": "Das ist meine Druckversion",
     "This report becomes public immediately.": "Diese Meldung wird sofort veröffentlicht.",
@@ -710,7 +706,6 @@
     "grade, trade, keep": "bewerten, tauschen, behalten",
     "measured": "gemessen",
     "or drop an image here": "oder lege hier ein Bild ab",
-    "· guide only": "· nur Orientierung",
     "← Collection": "← Sammlung"
   };
 
