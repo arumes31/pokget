@@ -8,13 +8,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title data-i18n>Pokget | Sign in</title>
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
-    <script src="/static/js/alpine.min.js?v=3" defer></script>
-    <script src="/static/js/htmx.min.js?v=3"></script>
-    <link rel="icon" type="image/png" href="/static/img/favicon-32.png">
-    <link rel="stylesheet" href="/static/css/styles.css?v=3">
+    <script src="/static/js/alpine.min.js?v={{ .BuildVersion }}" defer></script>
+    <script src="/static/js/htmx.min.js?v={{ .BuildVersion }}"></script>
+    <link rel="icon" type="image/png" href="/static/img/favicon-32.png?v={{ .BuildVersion }}">
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ .BuildVersion }}">
     <link rel="stylesheet" href="/static/css/auth.css?v={{ .BuildVersion }}">
     <meta name="theme-color" content="#050505">
-    <link rel="manifest" href="/static/manifest.json">
+    <link rel="manifest" href="/static/manifest.json?v={{ .BuildVersion }}">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -22,7 +22,7 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                navigator.serviceWorker.register('/sw.js?v={{ .BuildVersion }}', { scope: '/' })
                     .catch((error) => console.warn('Service worker registration failed', error));
             });
         }

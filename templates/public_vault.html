@@ -8,7 +8,7 @@
     <meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport"/>
     <title data-i18n>{{ .Username }}'s Public Vault - Pokget</title>
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
-    <link rel="icon" type="image/png" href="/static/img/favicon-32.png">
+    <link rel="icon" type="image/png" href="/static/img/favicon-32.png?v={{ .BuildVersion }}">
     <link rel="stylesheet" href="/static/css/styles.css?v={{ .BuildVersion }}">
     <meta name="theme-color" content="#050505">
 </head>
@@ -20,7 +20,7 @@
         style="padding-top: env(safe-area-inset-top)">
         <div class="flex justify-between items-center px-4 h-16 w-full max-w-6xl mx-auto">
             <a href="/" class="flex shrink-0 items-center gap-2.5 min-h-11">
-                <img data-i18n-attrs="alt" src="/static/img/logo-128.webp" alt="Pokget" class="w-8 h-8">
+                <img data-i18n-attrs="alt" src="/static/img/logo-128.webp?v={{ .BuildVersion }}" alt="Pokget" class="w-8 h-8">
                 <span data-i18n class="text-lg font-extrabold tracking-tight text-zinc-900 dark:text-zinc-100">Pokget</span>
             </a>
             <div class="flex items-center gap-2 min-w-0">

@@ -461,6 +461,33 @@ func verifiedComponentTouchTargets(t *testing.T) string {
 	return strings.Join(selectors, ", ")
 }
 
+// TestTemplatesVersionEveryStaticAsset keeps a deploy from pinning an old file:
+// every static asset reference must carry the build version so browsers and the
+// service worker request a fresh URL.
+func TestTemplatesVersionEveryStaticAsset(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("..", "..", "templates", "*.html"))
+	if err != nil {
+		t.Fatalf("glob templates: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no templates found")
+	}
+
+	reference := regexp.MustCompile(`(?i)(?:src|href)="(/static/[^"]*)"`)
+
+	for _, file := range files {
+		payload, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		for _, match := range reference.FindAllStringSubmatch(string(payload), -1) {
+			if !strings.Contains(match[1], "?v=") {
+				t.Errorf("%s references %q without a build version", filepath.Base(file), match[1])
+			}
+		}
+	}
+}
+
 func parseApplicationTemplates(t *testing.T) *template.Template {
 	t.Helper()
 

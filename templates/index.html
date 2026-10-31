@@ -12,14 +12,14 @@
     <link rel="stylesheet" href="/static/css/tailwind.css?v={{ .BuildVersion }}">
     <script src="/static/js/scanner.js?v={{ .BuildVersion }}" defer></script>
     <script src="/static/js/measure.js?v={{ .BuildVersion }}" defer></script>
-    <script src="/static/js/alpine.min.js?v=3" defer></script>
-    <script src="/static/js/htmx.min.js?v=3"></script>
+    <script src="/static/js/alpine.min.js?v={{ .BuildVersion }}" defer></script>
+    <script src="/static/js/htmx.min.js?v={{ .BuildVersion }}"></script>
     <script src="/static/js/vault.js?v={{ .BuildVersion }}" defer></script>
     <script src="/static/js/dialogs.js?v={{ .BuildVersion }}" defer></script>
-    <link rel="icon" type="image/png" href="/static/img/favicon-32.png">
+    <link rel="icon" type="image/png" href="/static/img/favicon-32.png?v={{ .BuildVersion }}">
     <link rel="stylesheet" href="/static/css/styles.css?v={{ .BuildVersion }}">
     <link rel="stylesheet" href="/static/css/measure.css?v={{ .BuildVersion }}">
-    <link rel="manifest" href="/static/manifest.json">
+    <link rel="manifest" href="/static/manifest.json?v={{ .BuildVersion }}">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -29,7 +29,7 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                navigator.serviceWorker.register('/sw.js?v={{ .BuildVersion }}', { scope: '/' })
                     .catch((error) => console.warn('Service worker registration failed', error));
             });
         }
@@ -103,7 +103,7 @@
         style="padding-top: env(safe-area-inset-top)">
         <div class="flex h-16 w-full max-w-6xl items-center justify-between px-4 mx-auto sm:px-6">
             <div class="flex min-w-0 items-center gap-2.5">
-                <img src="/static/img/logo-128.webp" alt="" class="size-8 object-contain" width="32" height="32">
+                <img src="/static/img/logo-128.webp?v={{ .BuildVersion }}" alt="" class="size-8 object-contain" width="32" height="32">
                 <h1 data-i18n class="font-display text-xl font-extrabold tracking-[-0.035em] text-zinc-100">Pokget</h1>
             </div>
             <div class="flex items-center gap-3">
@@ -354,7 +354,7 @@
             <div class="flex items-start gap-4">
                 <div
                     class="w-12 h-12 rounded-2xl bg-red-950/40 border border-red-500/30 text-red-400 flex items-center justify-center flex-shrink-0">
-                    <img data-i18n-attrs="alt" src="/static/img/logo-128.webp" alt="Pokget" class="w-8 h-8">
+                    <img data-i18n-attrs="alt" src="/static/img/logo-128.webp?v={{ .BuildVersion }}" alt="Pokget" class="w-8 h-8">
                 </div>
                 <div class="flex-1">
                     <h4 data-i18n class="text-base font-bold text-zinc-100 tracking-tight">Add to home screen</h4>

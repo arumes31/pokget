@@ -114,6 +114,9 @@ func (h *Handler) processCardScan(
 var scanDetectionSlots = make(chan struct{}, 3)
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
+	// Pages embed the build-versioned asset URLs, so they must be revalidated
+	// instead of being pinned by a browser or intermediary cache.
+	w.Header().Set("Cache-Control", "no-cache")
 	if data == nil {
 		data = make(map[string]interface{})
 	}

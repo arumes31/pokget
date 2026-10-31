@@ -1,7 +1,7 @@
 {{define "pack-print"}}
 <div class="pack-print">
     <span class="pack-seal pack-seal-top"></span>
-    <div data-i18n class="pack-wordmark"><img src="/static/img/logo-128.webp" alt="" width="22" height="22">Pokget</div>
+    <div data-i18n class="pack-wordmark"><img src="/static/img/logo-128.webp?v={{ .BuildVersion }}" alt="" width="22" height="22">Pokget</div>
     <div class="pack-illustration"></div>
     <div class="pack-lettering"><strong data-i18n>Your collection<br>awaits.</strong><span data-i18n>THE COLLECTOR’S ENTRANCE</span></div>
     <span class="pack-holo-strip"></span>
@@ -10,7 +10,7 @@
 </div>
 {{end}}
 {{define "pack-back"}}
-<div class="pack-card-back"><div class="pack-back-border"></div><img src="/static/img/logo-128.webp" alt="" width="64" height="64"><span data-i18n>Pokget</span></div>
+<div class="pack-card-back"><div class="pack-back-border"></div><img src="/static/img/logo-128.webp?v={{ .BuildVersion }}" alt="" width="64" height="64"><span data-i18n>Pokget</span></div>
 {{end}}
 {{define "auth_pack.html"}}
 <template id="auth-pack-template">

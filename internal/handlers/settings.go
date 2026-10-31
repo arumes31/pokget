@@ -71,6 +71,7 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("Cache-Control", "no-cache")
 		if err := h.Templates.ExecuteTemplate(w, "settings", data); err != nil {
 			slog.Error("Failed to execute settings template", "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)

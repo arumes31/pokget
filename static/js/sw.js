@@ -1,7 +1,11 @@
 'use strict';
 
 const CACHE_PREFIX = 'pokget-';
-const CACHE_NAME = `${CACHE_PREFIX}shell-v14`;
+// The registration URL carries the build version, so a deploy installs a fresh
+// worker whose cache name differs and whose precache bypasses the HTTP/CDN
+// cache. Without this the cache-first strategy kept serving old assets.
+const BUILD_VERSION = new URL(self.location.href).searchParams.get('v') || '1';
+const CACHE_NAME = `${CACHE_PREFIX}shell-v${BUILD_VERSION}`;
 const OFFLINE_URL = '/static/offline.html';
 const PRECACHE_URLS = [
   OFFLINE_URL,
@@ -25,10 +29,21 @@ const PRECACHE_URLS = [
   '/static/manifest.json',
 ];
 
+const versioned = (url) => `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(BUILD_VERSION)}`;
+
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(PRECACHE_URLS);
+    // Keep the plain path as cache key so runtime lookups match, but fetch the
+    // versioned URL with cache: 'reload' so no HTTP cache can answer with an
+    // older build.
+    await Promise.all(PRECACHE_URLS.map(async (path) => {
+      const response = await fetch(versioned(path), { cache: 'reload' });
+      if (!response.ok) {
+        throw new Error(`precache failed: ${path} (${response.status})`);
+      }
+      await cache.put(path, response);
+    }));
     await self.skipWaiting();
   })());
 });

@@ -708,6 +708,7 @@
   };
 
   const germanPatterns = {
+    "precache failed: {0} ({1})": "Vorab-Cache fehlgeschlagen: {0} ({1})",
     "Device OCR: {0}. Uploading the crop for server detection.": "Geräte-OCR: {0}. Der Ausschnitt wird zur Server-Erkennung hochgeladen.",
     "Starting the OCR engine on this device ({0}%).": "OCR-Engine wird auf diesem Gerät gestartet ({0} %).",
     "Loading the selected language on this device ({0}%).": "Ausgewählte Sprache wird auf diesem Gerät geladen ({0} %).",
