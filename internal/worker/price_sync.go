@@ -442,7 +442,8 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 	// third-party sites. Refresh only cards a user is actively tracking, oldest
 	// first, in a bounded batch.
 	rows, err := w.db.QueryContext(ctx, `
-		SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(game, '')
+		SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(game, ''),
+		       COALESCE(source_id, ''), COALESCE(source_card_id, '')
 		FROM cards
 		WHERE superseded_by_card_id IS NULL
 		  AND id IN (
@@ -475,7 +476,7 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 		}
 
 		var c models.Card
-		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.Game); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.Game, &c.SourceID, &c.SourceCardID); err != nil {
 			slog.Error("Sync: Failed to scan card", "error", err)
 			continue
 		}

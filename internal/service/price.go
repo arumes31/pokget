@@ -206,11 +206,7 @@ func (s *CardmarketScraper) ScrapeWithRetryContext(ctx context.Context, card mod
 		return 0, err
 	}
 
-	cmURL := fmt.Sprintf("%s/en/%s/Products/Singles/%s/%s",
-		s.BaseURL,
-		gameSegment,
-		url.PathEscape(strings.ReplaceAll(card.Set, " ", "-")),
-		url.PathEscape(strings.ReplaceAll(card.Name, " ", "-")))
+	cmURL := cardmarketProductURL(s.BaseURL, gameSegment, card)
 	if strings.EqualFold(parsedHost(s.BaseURL), "www.cardmarket.com") {
 		if err := waitForCardmarketRequest(ctx); err != nil {
 			return 0, err
@@ -282,6 +278,25 @@ func (s *CardmarketScraper) ScrapeWithRetryContext(ctx context.Context, card mod
 	}
 
 	return eur, scrapeErr
+}
+
+// cardmarketProductURL builds the Cardmarket product URL. Cards without a set
+// name have no product page, so they fall back to Cardmarket's search instead of
+// producing a broken "Singles//Name" path.
+func cardmarketProductURL(baseURL, gameSegment string, card models.Card) string {
+	base := strings.TrimRight(baseURL, "/")
+	name := strings.TrimSpace(card.Name)
+	set := strings.TrimSpace(card.Set)
+	if set == "" {
+		return fmt.Sprintf("%s/en/%s/Products/Search?searchString=%s", base, gameSegment, url.QueryEscape(name))
+	}
+	return fmt.Sprintf(
+		"%s/en/%s/Products/Singles/%s/%s",
+		base,
+		gameSegment,
+		url.PathEscape(strings.ReplaceAll(set, " ", "-")),
+		url.PathEscape(strings.ReplaceAll(name, " ", "-")),
+	)
 }
 
 func parsedHost(rawURL string) string {
@@ -390,29 +405,95 @@ func (s *TCGPlayerScraper) ScrapeContext(parent context.Context, card models.Car
 	ctx, cancel := chromedp.NewContext(s.rootCtx)
 	defer cancel()
 
-	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	var priceStr string
-	targetURL := fmt.Sprintf(
-		"https://www.tcgplayer.com/search/%s/product?q=%s",
-		product,
-		url.QueryEscape(card.Name),
-	)
-
-	if err = chromedp.Do(ctx,
-		chromedp.Navigate(targetURL),
-		chromedp.WaitVisible(chromedp.CSS(`.search-result__market-price--value`)),
-	); err == nil {
-		priceStr, err = chromedp.Run(ctx, chromedp.Text(chromedp.CSS(`.search-result__market-price--value`)))
-	}
-
+	priceStr, err := s.scrapeMarketPrice(ctx, product, card)
 	if err != nil {
 		return 0, err
 	}
+	price, err := ParsePrice(priceStr)
+	if err != nil {
+		return 0, fmt.Errorf("tcgplayer: %w", err)
+	}
+	if price <= 0 {
+		return 0, fmt.Errorf("tcgplayer: no market price for %q", card.Name)
+	}
+	return price, nil
+}
 
-	priceStr = strings.TrimPrefix(priceStr, "$")
-	return strconv.ParseFloat(priceStr, 64)
+// tcgPlayerPriceExpression returns the market price of the first search result.
+// TCGplayer renamed the class from "search-result__market-price--value" to
+// "product-card__market-price--value"; both are accepted so a frontend change
+// cannot silently zero every USD price.
+const tcgPlayerPriceExpression = `(() => {
+	const selectors = ['.product-card__market-price--value', '.search-result__market-price--value'];
+	for (const selector of selectors) {
+		const element = document.querySelector(selector);
+		if (element && element.textContent.trim()) return element.textContent.trim();
+	}
+	return '';
+})()`
+
+func (s *TCGPlayerScraper) scrapeMarketPrice(ctx context.Context, product string, card models.Card) (string, error) {
+	var lastErr error
+	for _, query := range tcgPlayerQueries(card) {
+		targetURL := fmt.Sprintf(
+			"https://www.tcgplayer.com/search/%s/product?q=%s",
+			product,
+			url.QueryEscape(query),
+		)
+		if err := chromedp.Do(ctx, chromedp.Navigate(targetURL)); err != nil {
+			return "", err
+		}
+		if _, err := chromedp.Run(ctx, chromedp.Poll[bool](
+			`(() => {
+				const selectors = ['.product-card__market-price--value', '.search-result__market-price--value'];
+				return selectors.some((selector) => {
+					const element = document.querySelector(selector);
+					return Boolean(element && element.textContent.trim());
+				});
+			})()`,
+			chromedp.WithPollingTimeout(12*time.Second),
+		)); err != nil {
+			lastErr = err
+			continue
+		}
+		price, err := chromedp.Run(ctx, chromedp.Evaluate[string](tcgPlayerPriceExpression))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if strings.TrimSpace(price) != "" {
+			return price, nil
+		}
+	}
+	if lastErr == nil {
+		lastErr = errors.New("no search query")
+	}
+	return "", fmt.Errorf("tcgplayer: no market price element for %q: %w", card.Name, lastErr)
+}
+
+// tcgPlayerQueries prefers a precise search (name + set code + collector
+// number) and falls back to broader queries, because the search page has no
+// exact-card endpoint.
+func tcgPlayerQueries(card models.Card) []string {
+	name := strings.TrimSpace(card.Name)
+	if name == "" {
+		return nil
+	}
+	code := strings.TrimSpace(card.SetCode)
+	number := strings.TrimSpace(card.CollectorNumber)
+
+	queries := make([]string, 0, 3)
+	if code != "" && number != "" {
+		queries = append(queries, name+" "+code+" "+number)
+	}
+	if code != "" {
+		queries = append(queries, name+" "+code)
+	}
+	queries = append(queries, name)
+	return queries
 }
 
 func cardmarketGameSegment(game string) (string, error) {
@@ -487,18 +568,6 @@ func (s *ScraperPriceClient) FetchPriceContext(ctx context.Context, card models.
 		return 0, 0, errors.New("no price scraper configured")
 	}
 
-	var eur float64
-	var scrapeErr error
-	if s.Cardmarket != nil {
-		eur, scrapeErr = s.Cardmarket.ScrapeContext(ctx, card)
-		if err := ctx.Err(); err != nil {
-			return 0, 0, err
-		}
-		if errors.Is(scrapeErr, ErrPriceSourceBlocked) {
-			return 0, 0, scrapeErr
-		}
-	}
-
 	var usd float64
 	if s.TCGPlayer != nil {
 		var err error
@@ -508,10 +577,37 @@ func (s *ScraperPriceClient) FetchPriceContext(ctx context.Context, card models.
 		}
 	}
 
+	var eur float64
+	var scrapeErr error
+	if s.Cardmarket != nil {
+		eur, scrapeErr = s.Cardmarket.ScrapeContext(ctx, card)
+		if err := ctx.Err(); err != nil {
+			if usd > 0 {
+				return usd, 0, nil
+			}
+			return 0, 0, err
+		}
+		if errors.Is(scrapeErr, ErrPriceSourceBlocked) {
+			// Cardmarket blocks data-centre traffic with Cloudflare. That must not
+			// prevent the independent TCGplayer source from returning its USD price,
+			// so the block is only reported when TCGplayer also failed.
+			slog.Warn("Scraper: Cardmarket blocked", "card", card.Name)
+		}
+	}
+
+	if usd > 0 && eur <= 0 {
+		// TCGplayer succeeded; a blocked EUR source is not a hard failure.
+		return usd, 0, nil
+	}
 	return usd, eur, scrapeErr
 }
 
 func (s *ScraperPriceClient) ApplyMultiplier(price float64, condition string, multipliers map[string]float64) float64 {
+	return applyConditionMultiplier(price, condition, multipliers)
+}
+
+// applyConditionMultiplier scales a near-mint price for a card condition.
+func applyConditionMultiplier(price float64, condition string, multipliers map[string]float64) float64 {
 	if multipliers == nil {
 		// Default multipliers
 		multipliers = map[string]float64{
