@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"pokget/internal/auth"
 	"pokget/internal/models"
@@ -136,5 +135,3 @@ func loadPricedCard(r *http.Request, db *sql.DB, cardID string) (models.Card, er
 	card.Language = strings.TrimSpace(card.Language)
 	return card, nil
 }
-
-var priceResponseDeadline = 30 * time.Second
