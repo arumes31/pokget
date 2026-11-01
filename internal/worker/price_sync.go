@@ -40,6 +40,7 @@ type DataSyncWorker struct {
 	db               *sql.DB
 	priceClient      service.PriceClient
 	priceClients     map[string][]service.PriceClient
+	bulkPriceSources []service.BulkPriceSource
 	metadataClient   service.MetadataClient
 	metadataService  *service.MetadataService
 	interval         time.Duration
@@ -97,6 +98,7 @@ func NewConfiguredDataSyncWorker(
 		db:               db,
 		priceClient:      pc,
 		priceClients:     priceClients,
+		bulkPriceSources: slices.Clone(config.BulkPriceSources),
 		metadataClient:   mc,
 		metadataService:  ms,
 		interval:         config.Interval,
@@ -123,11 +125,13 @@ func (w *DataSyncWorker) Start(ctx context.Context) {
 	}()
 	slog.Info("Data Sync Worker starting", "interval", w.interval)
 	priceTicker := time.NewTicker(w.interval)
-	metadataTicker := time.NewTicker(24 * time.Hour) // Sync metadata daily
-	repairTicker := time.NewTicker(1 * time.Hour)    // Check for missing fingerprints hourly
+	metadataTicker := time.NewTicker(24 * time.Hour)  // Sync metadata daily
+	repairTicker := time.NewTicker(1 * time.Hour)     // Check for missing fingerprints hourly
+	bulkPriceTicker := time.NewTicker(24 * time.Hour) // Refresh free bulk market prices daily
 	defer priceTicker.Stop()
 	defer metadataTicker.Stop()
 	defer repairTicker.Stop()
+	defer bulkPriceTicker.Stop()
 
 	// Initial sync
 	if w.metadataClient != nil {
@@ -142,6 +146,15 @@ func (w *DataSyncWorker) Start(ctx context.Context) {
 		go func() {
 			defer w.tasks.Done()
 			w.syncMissingFingerprints(ctx)
+		}()
+	}
+	// Free bulk exports fill the catalog with market prices without any
+	// per-card request, so they run once at startup and then daily.
+	if len(w.bulkPriceSources) > 0 {
+		w.tasks.Add(1)
+		go func() {
+			defer w.tasks.Done()
+			w.syncBulkPrices(ctx)
 		}()
 	}
 
@@ -163,6 +176,8 @@ func (w *DataSyncWorker) Start(ctx context.Context) {
 			if w.metadataService != nil {
 				w.syncMissingFingerprints(ctx)
 			}
+		case <-bulkPriceTicker.C:
+			w.syncBulkPrices(ctx)
 		}
 	}
 }

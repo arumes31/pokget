@@ -154,6 +154,7 @@ type DataSyncConfig struct {
 	Interval          time.Duration
 	MetadataTargets   []MetadataTarget
 	PriceClients      map[string][]service.PriceClient
+	BulkPriceSources  []service.BulkPriceSource
 	RequestsPerSecond float64
 	RequestBurst      int
 	RetryAttempts     int
@@ -206,6 +207,10 @@ func defaultDataSyncConfig(interval time.Duration) DataSyncConfig {
 		CircuitFailures: 3,
 		CircuitCooldown: 5 * time.Minute,
 		RequestBurst:    1,
+		BulkPriceSources: []service.BulkPriceSource{
+			service.NewScryfallBulkSource(),
+			service.NewYGOPRODeckBulkSource(),
+		},
 	}
 }
 
