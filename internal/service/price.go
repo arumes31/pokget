@@ -327,13 +327,14 @@ func waitForCardmarketRequest(ctx context.Context) error {
 // TCGPlayerScraper keeps one Chrome process alive and opens a bounded number of
 // isolated tabs. This avoids launching a new browser process for every card.
 type TCGPlayerScraper struct {
-	initOnce   sync.Once
-	slotOnce   sync.Once
-	closeOnce  sync.Once
-	rootCtx    context.Context
-	rootCancel context.CancelFunc
-	initErr    error
-	slots      chan struct{}
+	initMu      sync.Mutex
+	initialized bool
+	slotOnce    sync.Once
+	closeOnce   sync.Once
+	rootCtx     context.Context
+	rootCancel  context.CancelFunc
+	initErr     error
+	slots       chan struct{}
 }
 
 func NewTCGPlayerScraper(maxConcurrent int) *TCGPlayerScraper {
@@ -344,25 +345,57 @@ func NewTCGPlayerScraper(maxConcurrent int) *TCGPlayerScraper {
 }
 
 func (s *TCGPlayerScraper) initialize() error {
-	s.initOnce.Do(func() {
-		allocatorCtx, allocatorCancel := chromedp.NewExecAllocator(
-			context.Background(),
-			chromedp.DefaultExecAllocatorOptions[:]...,
-		)
-		browserCtx, browserCancel := chromedp.NewContext(allocatorCtx)
-		if err := chromedp.Do(browserCtx); err != nil {
-			browserCancel()
-			allocatorCancel()
-			s.initErr = fmt.Errorf("starting TCGPlayer browser: %w", err)
-			return
-		}
-		s.rootCtx = browserCtx
-		s.rootCancel = func() {
-			browserCancel()
-			allocatorCancel()
-		}
-	})
-	return s.initErr
+	s.initMu.Lock()
+	defer s.initMu.Unlock()
+	if s.initialized {
+		return s.initErr
+	}
+
+	allocatorCtx, allocatorCancel := chromedp.NewExecAllocator(
+		context.Background(),
+		chromedp.DefaultExecAllocatorOptions[:]...,
+	)
+	browserCtx, browserCancel := chromedp.NewContext(allocatorCtx)
+	if err := chromedp.Do(browserCtx); err != nil {
+		browserCancel()
+		allocatorCancel()
+		s.initErr = fmt.Errorf("starting TCGPlayer browser: %w", err)
+		return s.initErr
+	}
+	s.rootCtx = browserCtx
+	s.rootCancel = func() {
+		browserCancel()
+		allocatorCancel()
+	}
+	s.initialized = true
+	s.initErr = nil
+	return nil
+}
+
+// reset tears the shared browser down after a crash or target loss, so the next
+// scrape starts a fresh one instead of failing forever.
+func (s *TCGPlayerScraper) reset() {
+	s.initMu.Lock()
+	defer s.initMu.Unlock()
+	if s.rootCancel != nil {
+		s.rootCancel()
+	}
+	s.rootCtx = nil
+	s.rootCancel = nil
+	s.initialized = false
+	s.initErr = nil
+}
+
+// isBrowserContextLost reports whether the error means the browser target is
+// gone (-32000), which requires a browser restart.
+func isBrowserContextLost(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "-32000") ||
+		strings.Contains(message, "Cannot find context with specified id") ||
+		strings.Contains(message, "target closed")
 }
 
 func (s *TCGPlayerScraper) Close() error {
@@ -410,6 +443,11 @@ func (s *TCGPlayerScraper) ScrapeContext(parent context.Context, card models.Car
 
 	priceStr, err := s.scrapeMarketPrice(ctx, product, card)
 	if err != nil {
+		if isBrowserContextLost(err) {
+			// The shared browser died (crash, OOM, target loss). Drop it so the
+			// next scrape starts a fresh one instead of failing forever.
+			s.reset()
+		}
 		return 0, err
 	}
 	price, err := ParsePrice(priceStr)
@@ -569,11 +607,11 @@ func (s *ScraperPriceClient) FetchPriceContext(ctx context.Context, card models.
 	}
 
 	var usd float64
+	var tcgErr error
 	if s.TCGPlayer != nil {
-		var err error
-		usd, err = s.TCGPlayer.ScrapeContext(ctx, card)
-		if err != nil {
-			slog.Warn("Scraper: TCGPlayer scrape failed", "card", card.Name, "error", err)
+		usd, tcgErr = s.TCGPlayer.ScrapeContext(ctx, card)
+		if tcgErr != nil {
+			slog.Warn("Scraper: TCGPlayer scrape failed", "card", card.Name, "error", tcgErr)
 		}
 	}
 
@@ -590,7 +628,7 @@ func (s *ScraperPriceClient) FetchPriceContext(ctx context.Context, card models.
 		if errors.Is(scrapeErr, ErrPriceSourceBlocked) {
 			// Cardmarket blocks data-centre traffic with Cloudflare. That must not
 			// prevent the independent TCGplayer source from returning its USD price,
-			// so the block is only reported when TCGplayer also failed.
+			// so the block is only reported when TCGplayer also fails.
 			slog.Warn("Scraper: Cardmarket blocked", "card", card.Name)
 		}
 	}
@@ -598,6 +636,14 @@ func (s *ScraperPriceClient) FetchPriceContext(ctx context.Context, card models.
 	if usd > 0 && eur <= 0 {
 		// TCGplayer succeeded; a blocked EUR source is not a hard failure.
 		return usd, 0, nil
+	}
+	if usd <= 0 && eur <= 0 {
+		// No source produced a price. Returning a nil error here would look like a
+		// successful fetch with a zero price and skip the worker's failure tracking.
+		if err := errors.Join(scrapeErr, tcgErr); err != nil {
+			return 0, 0, err
+		}
+		return 0, 0, fmt.Errorf("no price for %q from any source", card.Name)
 	}
 	return usd, eur, scrapeErr
 }

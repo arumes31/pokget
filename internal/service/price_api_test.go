@@ -62,6 +62,34 @@ func TestTCGdexPriceClientReadsBothMarkets(t *testing.T) {
 	}
 }
 
+func TestTCGdexPriceClientResolvesLegacyCardBySearch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/en/cards":
+			if request.URL.Query().Get("name") != "Alakazam" {
+				http.NotFound(writer, request)
+				return
+			}
+			_, _ = writer.Write([]byte(`[{"id":"base5-1","localId":"1","name":"Dark Alakazam"},{"id":"base1-1","localId":"1","name":"Alakazam"}]`))
+		case "/en/cards/base1-1":
+			_, _ = writer.Write([]byte(`{"pricing":{"cardmarket":{"unit":"EUR","avg":48.3,"low":10},"tcgplayer":{"unit":"USD","holofoil":{"marketPrice":120.5}}}}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	client := &TCGdexPriceClient{BaseURL: server.URL, Language: "en", HTTP: server.Client()}
+	// Legacy row: no source id at all, resolved through the name search.
+	usd, eur, err := client.FetchPrice(models.Card{Name: "Alakazam", CollectorNumber: "1"})
+	if err != nil {
+		t.Fatalf("FetchPrice: %v", err)
+	}
+	if usd != 120.5 || eur != 48.3 {
+		t.Fatalf("usd/eur = %v/%v, want 120.5/48.3", usd, eur)
+	}
+}
+
 func TestScryfallPriceClientParsesEurAndUsd(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/cards/named" {

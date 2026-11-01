@@ -119,21 +119,10 @@ func (c *TCGdexPriceClient) FetchPriceContext(ctx context.Context, card models.C
 	if c == nil {
 		return 0, 0, fmt.Errorf("nil TCGdex price client")
 	}
-	id := strings.TrimSpace(card.SourceCardID)
-	if id == "" {
-		return 0, 0, fmt.Errorf("tcgdex: card %q has no source card id", card.Name)
-	}
-	if source := strings.TrimSpace(card.SourceID); source != "" && !strings.EqualFold(source, "tcgdex") {
-		return 0, 0, fmt.Errorf("tcgdex: card %q comes from source %q", card.Name, source)
-	}
-
-	base := strings.TrimRight(c.BaseURL, "/")
-	if base == "" {
-		base = "https://api.tcgdex.net/v2"
-	}
-	language := strings.TrimSpace(c.Language)
-	if language == "" {
-		language = "en"
+	base, language := c.endpoint()
+	id, err := c.resolveCardID(ctx, base, language, card)
+	if err != nil {
+		return 0, 0, err
 	}
 
 	var payload tcgdexPricePayload
@@ -146,17 +135,74 @@ func (c *TCGdexPriceClient) FetchPriceContext(ctx context.Context, card models.C
 	if eur <= 0 {
 		eur = payload.Pricing.Cardmarket.Low
 	}
-	var usd float64
-	if payload.Pricing.TCGplayer != nil {
-		usd = payload.Pricing.TCGplayer.Market
-		if usd <= 0 {
-			usd = payload.Pricing.TCGplayer.Avg
-		}
-	}
+	usd := payload.Pricing.TCGplayer.USD()
 	if eur <= 0 && usd <= 0 {
 		return 0, 0, fmt.Errorf("tcgdex: no price for %s", id)
 	}
 	return usd, eur, nil
+}
+
+func (c *TCGdexPriceClient) endpoint() (string, string) {
+	base := strings.TrimRight(c.BaseURL, "/")
+	if base == "" {
+		base = "https://api.tcgdex.net/v2"
+	}
+	language := strings.TrimSpace(c.Language)
+	if language == "" {
+		language = "en"
+	}
+	return base, language
+}
+
+// resolveCardID returns the TCGdex card id. Rows written by other catalog
+// sources (or legacy rows) have no usable source_card_id, so the id is resolved
+// through TCGdex's public name search, which keeps a scraper fallback
+// unnecessary.
+func (c *TCGdexPriceClient) resolveCardID(ctx context.Context, base, language string, card models.Card) (string, error) {
+	if id := strings.TrimSpace(card.SourceCardID); id != "" {
+		if source := strings.TrimSpace(card.SourceID); source == "" || strings.EqualFold(source, "tcgdex") {
+			return id, nil
+		}
+	}
+
+	name := strings.TrimSpace(card.Name)
+	if name == "" {
+		return "", fmt.Errorf("tcgdex: card %q has no name", card.Name)
+	}
+	var results []struct {
+		ID      string `json:"id"`
+		LocalID string `json:"localId"`
+		Name    string `json:"name"`
+	}
+	endpoint := fmt.Sprintf("%s/%s/cards?name=%s", base, url.PathEscape(language), url.QueryEscape(name))
+	if err := fetchPriceJSON(ctx, c.HTTP, endpoint, &results); err != nil {
+		return "", err
+	}
+
+	number := strings.TrimSpace(card.CollectorNumber)
+	// Prefer an exact name match (with the collector number when present); the
+	// number alone is ambiguous because many sets reuse it.
+	for _, result := range results {
+		if !strings.EqualFold(strings.TrimSpace(result.Name), name) {
+			continue
+		}
+		if number == "" || result.LocalID == number {
+			return result.ID, nil
+		}
+	}
+	for _, result := range results {
+		if strings.EqualFold(strings.TrimSpace(result.Name), name) {
+			return result.ID, nil
+		}
+	}
+	if number != "" {
+		for _, result := range results {
+			if result.LocalID == number {
+				return result.ID, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("tcgdex: no card id for %q", name)
 }
 
 type tcgdexPricePayload struct {
@@ -166,12 +212,45 @@ type tcgdexPricePayload struct {
 			Avg  float64 `json:"avg"`
 			Low  float64 `json:"low"`
 		} `json:"cardmarket"`
-		TCGplayer *struct {
-			Unit   string  `json:"unit"`
-			Avg    float64 `json:"avg"`
-			Market float64 `json:"market"`
-		} `json:"tcgplayer"`
+		TCGplayer *tcgdexTCGplayerPricing `json:"tcgplayer"`
 	} `json:"pricing"`
+}
+
+// tcgdexTCGplayerPricing accepts both payload shapes TCGdex has used: a flat
+// object with avg/market fields and an object with one price per variant
+// (normal, holofoil, ...). Only one of them is populated at a time.
+type tcgdexTCGplayerPricing struct {
+	Unit            string                  `json:"unit"`
+	Market          float64                 `json:"market"`
+	MarketPrice     float64                 `json:"marketPrice"`
+	Avg             float64                 `json:"avg"`
+	Normal          *tcgdexTCGplayerVariant `json:"normal"`
+	Holofoil        *tcgdexTCGplayerVariant `json:"holofoil"`
+	ReverseHolofoil *tcgdexTCGplayerVariant `json:"reverseHolofoil"`
+	FirstEdition    *tcgdexTCGplayerVariant `json:"firstEdition"`
+}
+
+type tcgdexTCGplayerVariant struct {
+	MarketPrice float64 `json:"marketPrice"`
+	LowPrice    float64 `json:"lowPrice"`
+}
+
+// USD returns the TCGplayer price in US dollars, or zero when TCGdex has none.
+func (t *tcgdexTCGplayerPricing) USD() float64 {
+	if t == nil {
+		return 0
+	}
+	for _, candidate := range []float64{t.Market, t.MarketPrice, t.Avg} {
+		if candidate > 0 {
+			return candidate
+		}
+	}
+	for _, variant := range []*tcgdexTCGplayerVariant{t.Normal, t.Holofoil, t.ReverseHolofoil, t.FirstEdition} {
+		if variant != nil && variant.MarketPrice > 0 {
+			return variant.MarketPrice
+		}
+	}
+	return 0
 }
 
 // ScryfallPriceClient reads Scryfall's Cardmarket (EUR) and TCGplayer (USD)
