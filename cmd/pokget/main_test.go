@@ -148,6 +148,57 @@ func TestRegisterScanRouteRequiresVersionedSession(t *testing.T) {
 	}
 }
 
+func TestRegisterPriceRouteRequiresSession(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	router := mux.NewRouter()
+	registerPriceRoute(
+		router,
+		database,
+		func(next http.Handler) http.Handler { return next },
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	)
+
+	unauthenticated := httptest.NewRecorder()
+	router.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/cards/price?id=card-1", nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want %d", unauthenticated.Code, http.StatusUnauthorized)
+	}
+
+	cookieRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	cookieResponse := httptest.NewRecorder()
+	session, err := auth.Store.Get(cookieRequest, "session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Values["user_id"] = "user-1"
+	session.Values["session_version"] = int64(3)
+	if err := session.Save(cookieRequest, cookieResponse); err != nil {
+		t.Fatal(err)
+	}
+
+	mock.ExpectQuery("SELECT COALESCE\\(session_version, 0\\)").
+		WithArgs("user-1").
+		WillReturnRows(sqlmock.NewRows([]string{"session_version"}).AddRow(3))
+	authenticatedRequest := httptest.NewRequest(http.MethodGet, "/api/cards/price?id=card-1", nil)
+	authenticatedRequest.Header.Set("Cookie", cookieResponse.Header().Get("Set-Cookie"))
+	authenticatedRequest.RemoteAddr = "203.0.113.211:9876"
+	authenticated := httptest.NewRecorder()
+	router.ServeHTTP(authenticated, authenticatedRequest)
+	if authenticated.Code != http.StatusNoContent {
+		t.Fatalf("authenticated status = %d, want %d; body=%q", authenticated.Code, http.StatusNoContent, authenticated.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCanonicalFragmentRedirectMiddleware(t *testing.T) {
 	tests := []struct {
 		name       string

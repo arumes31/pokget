@@ -52,6 +52,8 @@ type appServices struct {
 	catalogRepository  *catalog.PostgresRepository
 	catalogWorker      *worker.CatalogWorker
 	catalogImageWorker *worker.CatalogImageWorker
+	priceClients       map[string][]service.PriceClient
+	priceService       *service.PriceService
 }
 
 // initServices builds the services and workers that depend on the database
@@ -59,6 +61,10 @@ type appServices struct {
 // caller decides how to report and exit.
 func initServices(cfg *config.Config, database *sql.DB, fingerprintIndexDirty *atomic.Bool) (*appServices, error) {
 	services := &appServices{}
+	// The resolver is built before the database check so the handler always has
+	// one, even when the worker start is skipped.
+	services.priceClients = defaultPriceClients()
+	services.priceService = service.NewPriceService(services.priceClients)
 	if database == nil {
 		return services, nil
 	}
@@ -76,7 +82,7 @@ func initServices(cfg *config.Config, database *sql.DB, fingerprintIndexDirty *a
 		slog.Error("Database seeding failed", "error", err)
 	}
 
-	dataWorker, err := newDataSyncWorker(database, cfg, fingerprintSvc)
+	dataWorker, err := newDataSyncWorkerWithClients(database, cfg, fingerprintSvc, services.priceClients)
 	if err != nil {
 		return nil, fmt.Errorf("data sync worker initialization failed: %w", err)
 	}
@@ -203,6 +209,10 @@ func newHandler(
 	llmSvc *service.LLMService,
 	buildVersion string,
 ) *handlers.Handler {
+	prices := services.priceService
+	if prices == nil {
+		prices = service.NewPriceService(defaultPriceClients())
+	}
 	return &handlers.Handler{
 		Templates:     templates,
 		MockCards:     allCards,
@@ -213,6 +223,7 @@ func newHandler(
 		Game:          service.NewGamificationService(database),
 		LLM:           llmSvc,
 		PriceClient:   service.NewScraperPriceClient(),
+		Prices:        prices,
 		DB:            database,
 		BuildVersion:  buildVersion,
 		ScanTimeout:   time.Duration(cfg.Scan.TimeoutSeconds) * time.Second,

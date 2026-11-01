@@ -361,7 +361,7 @@
                     <p class="mt-1 text-xs text-zinc-300 font-mono" x-text="detectedSet"></p>
                     <p class="mt-1 text-xs text-zinc-400 font-mono" x-text="[detectedNumber ? '#' + detectedNumber : '', detectedLanguage.toUpperCase()].filter(Boolean).join(' · ')"></p>
                     <div class="mt-2.5 inline-block rounded scanner-accent-fill border scanner-accent-border px-2 py-1 text-xs font-mono font-bold scanner-accent-text">
-                        <span data-i18n x-text="!isNaN(parseFloat(detectedPrice)) ? '{{ .CurrencySymbol }}' + parseFloat(detectedPrice).toFixed(2) : 'Price unavailable'"></span>
+                        <span data-i18n x-text="priceLoading ? 'Fetching price…' : (parseFloat(detectedPrice) > 0 ? '{{ .CurrencySymbol }}' + parseFloat(detectedPrice).toFixed(2) : 'Price unavailable')"></span>
                     </div>
                 </div>
             </div>

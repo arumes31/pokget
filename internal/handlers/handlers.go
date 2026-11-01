@@ -82,6 +82,7 @@ type Handler struct {
 	Game           *service.GamificationService
 	LLM            *service.LLMService
 	PriceClient    *service.ScraperPriceClient
+	Prices         *service.PriceService
 	DB             *sql.DB
 	BuildVersion   string
 	ScanTimeout    time.Duration

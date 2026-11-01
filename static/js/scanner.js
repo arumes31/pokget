@@ -442,6 +442,9 @@
       detectedCard: '',
       detectedID: '',
       detectedPrice: '',
+      priceLoading: false,
+      priceUnavailable: false,
+      priceCache: {},
       detectedImage: '',
       confidence: 0,
       needsReview: false,
@@ -659,6 +662,8 @@
         this.detectedCard = '';
         this.detectedID = '';
         this.detectedPrice = '';
+        this.priceLoading = false;
+        this.priceUnavailable = false;
         this.detectedImage = '';
         this.confidence = 0;
         this.needsReview = false;
@@ -1176,6 +1181,9 @@
         this.detectedSet = String(payload.set || '');
         this.detectedNumber = String(payload.collector_number || '');
         this.detectedLanguage = String(payload.language || '');
+        this.priceLoading = false;
+        this.priceUnavailable = false;
+        if (this.detectedID && !(parseFloat(this.detectedPrice) > 0)) this.loadPrice(this.detectedID);
         this.confidence = clamp(Number(payload.confidence) || 0, 0, 100);
         this.needsReview = Boolean(payload.needs_review);
         this.matchConfirmed = !this.needsReview;
@@ -1209,6 +1217,44 @@
         }));
       },
 
+      async loadPrice(cardId) {
+        const id = String(cardId || this.detectedID || '');
+        if (!id) return;
+        if (!this.priceCache || typeof this.priceCache !== 'object') this.priceCache = {};
+        const cached = this.priceCache[id];
+        if (cached && Number(cached.value) > 0 && Date.now() - Number(cached.at) < 60000) {
+          if (this.detectedID === id) this.detectedPrice = cached.value;
+          return;
+        }
+        this.priceLoading = true;
+        this.priceUnavailable = false;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 12000);
+        try {
+          const response = await fetch('/api/cards/price?id=' + encodeURIComponent(id), {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error('price lookup failed with ' + response.status);
+          const data = await response.json();
+          if (this.detectedID !== id) return;
+          const value = Number(data && data.price);
+          if (Number.isFinite(value) && value > 0) {
+            this.priceCache[id] = { value, at: Date.now() };
+            this.detectedPrice = value;
+            this.priceUnavailable = false;
+          } else {
+            this.priceUnavailable = true;
+          }
+        } catch {
+          if (this.detectedID === id) this.priceUnavailable = true;
+        } finally {
+          clearTimeout(timer);
+          if (this.detectedID === id) this.priceLoading = false;
+        }
+      },
+
       selectMatch(match) {
         if (this.scanning) return;
         this.detectedCard = match.name;
@@ -1219,6 +1265,9 @@
         this.detectedSet = match.set || '';
         this.detectedNumber = match.collector_number || '';
         this.detectedLanguage = match.language || '';
+        this.priceLoading = false;
+        this.priceUnavailable = false;
+        if (this.detectedID && !(parseFloat(this.detectedPrice) > 0)) this.loadPrice(this.detectedID);
         this.needsReview = true;
         this.matchConfirmed = false;
         this.added = false;

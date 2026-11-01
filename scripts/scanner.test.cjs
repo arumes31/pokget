@@ -46,7 +46,9 @@ test('loading preview uses the submitted crop and ignores reads after cancellati
   const reads = [];
   const replies = [];
   global.FileReader = class { readAsDataURL(blob) { this.blob = blob; reads.push(this); } };
-  global.fetch = () => new Promise((resolve) => replies.push(resolve));
+  global.fetch = (url) => (String(url).startsWith('/api/cards/price')
+    ? Promise.resolve(new Response(JSON.stringify({ price: 0 }), { status: 200 }))
+    : new Promise((resolve) => replies.push(resolve)));
   t.after(() => { global.fetch = originalFetch; if (originalReader === undefined) delete global.FileReader; else global.FileReader = originalReader; });
   const component = scanner.createCardScanner();
   component.notify = () => {};
@@ -323,7 +325,14 @@ test('full-screen progress exposes stages, elapsed time, and long-running reassu
 test('one submission pipeline sends the selected TCG and language', async () => {
   const originalFetch = global.fetch;
   let request;
+  const priceRequests = [];
   global.fetch = async (url, options) => {
+    if (String(url).startsWith('/api/cards/price')) {
+      priceRequests.push(String(url));
+      return new Response(JSON.stringify({ price: 7.5, currency: 'EUR' }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    }
     request = { url, options };
     return new Response(JSON.stringify({
       detected: 'Nami',
@@ -341,6 +350,7 @@ test('one submission pipeline sends the selected TCG and language', async () => 
     const crop = new Blob(['jpeg'], { type: 'image/jpeg' });
 
     await component.submitPreparedBlob(crop, 'crop.jpg');
+    await new Promise((resolve) => setImmediate(resolve));
 
     assert.equal(request.url, '/api/scan');
     assert.equal(request.options.headers['X-CSRF-Token'], 'csrf');
@@ -350,6 +360,61 @@ test('one submission pipeline sends the selected TCG and language', async () => 
     assert.equal(component.detectedID, 'op01-016');
     assert.equal(component.lastScanBlob, crop);
     assert.equal(component.scanning, false);
+    assert.equal(priceRequests.length, 1);
+    assert.match(priceRequests[0], /id=op01-016/);
+    assert.equal(component.detectedPrice, 7.5);
+    assert.equal(component.priceLoading, false);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('a scan without a stored price loads it on demand and caches the result', async () => {
+  const originalFetch = global.fetch;
+  let priceCalls = 0;
+  global.fetch = async (url) => {
+    if (String(url).startsWith('/api/cards/price')) {
+      priceCalls += 1;
+      return new Response(JSON.stringify({ price: 12.25, currency: 'EUR' }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ detected: 'Card', id: 'card-9', price: 0 }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  try {
+    const component = scanner.createCardScanner({ csrfToken: 'csrf' });
+    component.notify = () => {};
+    component.applyScanResult({ detected: 'Card', id: 'card-9', price: 0 });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(component.detectedPrice, 12.25);
+    assert.equal(priceCalls, 1);
+
+    component.applyScanResult({ detected: 'Card', id: 'card-9', price: 0 });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(component.detectedPrice, 12.25);
+    assert.equal(priceCalls, 1, 'the client cache must absorb the repeat lookup');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('an unavailable price falls back to the marker without breaking the scan result', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => new Response(JSON.stringify({ price: 0, unavailable: true }), {
+    status: 200, headers: { 'Content-Type': 'application/json' },
+  });
+
+  try {
+    const component = scanner.createCardScanner({ csrfToken: 'csrf' });
+    component.notify = () => {};
+    component.applyScanResult({ detected: 'Card', id: 'card-missing', price: 0 });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(component.detectedPrice, 0);
+    assert.equal(component.priceUnavailable, true);
+    assert.equal(component.detectedID, 'card-missing');
   } finally {
     global.fetch = originalFetch;
   }
@@ -358,7 +423,9 @@ test('one submission pipeline sends the selected TCG and language', async () => 
 test('a late cancelled scan response cannot replace a newer printing selection', async () => {
   const originalFetch = global.fetch;
   let complete;
-  global.fetch = () => new Promise((resolve) => { complete = resolve; });
+  global.fetch = (url) => (String(url).startsWith('/api/cards/price')
+    ? Promise.resolve(new Response(JSON.stringify({ price: 0 }), { status: 200 }))
+    : new Promise((resolve) => { complete = resolve; }));
   try {
     const component = scanner.createCardScanner();
     component.notify = () => {};

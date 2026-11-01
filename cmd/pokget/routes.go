@@ -53,6 +53,12 @@ func buildRouter(cfg *config.Config, database *sql.DB, h *handlers.Handler) *mux
 		cfg.Scan.OCRPoolSize,
 		http.HandlerFunc(h.APIScan),
 	)
+	registerPriceRoute(
+		r,
+		database,
+		csrfMiddleware,
+		http.HandlerFunc(h.APICardPrice),
+	)
 
 	// Web Routes (Protected by CSRF + 1MB MaxBytes limit)
 	web := r.NewRoute().Subrouter()

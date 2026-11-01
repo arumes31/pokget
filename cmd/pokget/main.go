@@ -99,6 +99,21 @@ func registerScanRoute(
 	scanRouter.Handle("/scan", handler).Methods(http.MethodPost)
 }
 
+// registerPriceRoute keeps the lightweight price lookup out of the strict scan
+// limiter (burst 2), which would otherwise reject the follow-up request of the
+// same scan.
+func registerPriceRoute(
+	router *mux.Router,
+	database *sql.DB,
+	csrfMiddleware func(http.Handler) http.Handler,
+	handler http.Handler,
+) {
+	priceRouter := router.PathPrefix("/api/cards").Subrouter()
+	priceRouter.Use(auth.APIAuthMiddleware(database))
+	priceRouter.Use(csrfMiddleware)
+	priceRouter.Handle("/price", handler).Methods(http.MethodGet)
+}
+
 func canonicalFragmentRedirectMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.Header.Get("HX-Request") == "true" {
