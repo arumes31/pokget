@@ -36,6 +36,15 @@ func defaultPriceClients() map[string][]service.PriceClient {
 	}
 }
 
+// defaultBulkPriceSources lists the free daily bulk exports that fill the whole
+// catalogue with market prices (Scryfall for Magic, YGOPRODeck for Yu-Gi-Oh).
+func defaultBulkPriceSources() []service.BulkPriceSource {
+	return []service.BulkPriceSource{
+		service.NewScryfallBulkSource(),
+		service.NewYGOPRODeckBulkSource(),
+	}
+}
+
 func newDataSyncWorkerWithClients(
 	database *sql.DB,
 	cfg *config.Config,
@@ -66,6 +75,7 @@ func newDataSyncWorkerWithClients(
 			Interval:          time.Duration(cfg.Worker.PriceSyncMinutes) * time.Minute,
 			MetadataTargets:   parseMetadataTargets(cfg.Worker.MetadataTargets),
 			PriceClients:      priceClients,
+			BulkPriceSources:  defaultBulkPriceSources(),
 			RequestsPerSecond: cfg.Worker.RequestsPerSecond,
 			RequestBurst:      cfg.Worker.RequestBurst,
 			RetryAttempts:     cfg.Worker.RetryAttempts,

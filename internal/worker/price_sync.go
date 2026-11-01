@@ -154,6 +154,13 @@ func (w *DataSyncWorker) Start(ctx context.Context) {
 		w.tasks.Add(1)
 		go func() {
 			defer w.tasks.Done()
+			// Let the HTTP server and health checks come up before the bulk
+			// download starts touching the catalogue.
+			select {
+			case <-time.After(30 * time.Second):
+			case <-ctx.Done():
+				return
+			}
 			w.syncBulkPrices(ctx)
 		}()
 	}

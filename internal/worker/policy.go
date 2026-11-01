@@ -207,10 +207,6 @@ func defaultDataSyncConfig(interval time.Duration) DataSyncConfig {
 		CircuitFailures: 3,
 		CircuitCooldown: 5 * time.Minute,
 		RequestBurst:    1,
-		BulkPriceSources: []service.BulkPriceSource{
-			service.NewScryfallBulkSource(),
-			service.NewYGOPRODeckBulkSource(),
-		},
 	}
 }
 
