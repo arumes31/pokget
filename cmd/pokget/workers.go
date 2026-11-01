@@ -18,6 +18,15 @@ func newDataSyncWorker(
 	fingerprint *service.FingerprintService,
 ) (*worker.DataSyncWorker, error) {
 	priceClient := &service.DefaultPriceClient{Scraper: service.NewScraperPriceClient()}
+	// Cardmarket blocks server-side scraping with Cloudflare (HTTP 403), so the
+	// games with a public price API are served by that API first. TCGplayer still
+	// provides the USD side for every other game.
+	priceClients := map[string][]service.PriceClient{
+		"pokemon": {&service.TCGdexPriceClient{Language: "en"}},
+		"magic":   {&service.ScryfallPriceClient{}},
+		"yugioh":  {&service.YGOPRODeckPriceClient{}},
+		"*":       {priceClient},
+	}
 	var metadataClient service.MetadataClient
 	var metadataService *service.MetadataService
 	if !cfg.Catalog.Enabled && cfg.Catalog.LegacyMetadataSync {
@@ -37,7 +46,7 @@ func newDataSyncWorker(
 		worker.DataSyncConfig{
 			Interval:          time.Duration(cfg.Worker.PriceSyncMinutes) * time.Minute,
 			MetadataTargets:   parseMetadataTargets(cfg.Worker.MetadataTargets),
-			PriceClients:      map[string][]service.PriceClient{"*": {priceClient}},
+			PriceClients:      priceClients,
 			RequestsPerSecond: cfg.Worker.RequestsPerSecond,
 			RequestBurst:      cfg.Worker.RequestBurst,
 			RetryAttempts:     cfg.Worker.RetryAttempts,

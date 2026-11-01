@@ -40,8 +40,12 @@ type Card struct {
 	Language      string  `json:"language"` // en, jp, de, etc.
 	Game          string  `json:"game"`     // Pokemon, One Piece, etc.
 	Rarity        string  `json:"rarity"`   // R, SR, SEC, etc.
-	CatalogActive *bool   `json:"catalog_active,omitempty"`
-	Phash         *int64  `json:"phash"` // Perceptual hash for visual matching
+	// Catalog provenance, used by price clients that address a card by its
+	// upstream id (for example the TCGdex id "swsh1-1").
+	SourceID      string `json:"-"`
+	SourceCardID  string `json:"-"`
+	CatalogActive *bool  `json:"catalog_active,omitempty"`
+	Phash         *int64 `json:"phash"` // Perceptual hash for visual matching
 }
 
 // IsCatalogActive treats missing activity metadata as active for compatibility

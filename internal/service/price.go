@@ -206,11 +206,7 @@ func (s *CardmarketScraper) ScrapeWithRetryContext(ctx context.Context, card mod
 		return 0, err
 	}
 
-	cmURL := fmt.Sprintf("%s/en/%s/Products/Singles/%s/%s",
-		s.BaseURL,
-		gameSegment,
-		url.PathEscape(strings.ReplaceAll(card.Set, " ", "-")),
-		url.PathEscape(strings.ReplaceAll(card.Name, " ", "-")))
+	cmURL := cardmarketProductURL(s.BaseURL, gameSegment, card)
 	if strings.EqualFold(parsedHost(s.BaseURL), "www.cardmarket.com") {
 		if err := waitForCardmarketRequest(ctx); err != nil {
 			return 0, err
@@ -284,6 +280,25 @@ func (s *CardmarketScraper) ScrapeWithRetryContext(ctx context.Context, card mod
 	return eur, scrapeErr
 }
 
+// cardmarketProductURL builds the Cardmarket product URL. Cards without a set
+// name have no product page, so they fall back to Cardmarket's search instead of
+// producing a broken "Singles//Name" path.
+func cardmarketProductURL(baseURL, gameSegment string, card models.Card) string {
+	base := strings.TrimRight(baseURL, "/")
+	name := strings.TrimSpace(card.Name)
+	set := strings.TrimSpace(card.Set)
+	if set == "" {
+		return fmt.Sprintf("%s/en/%s/Products/Search?searchString=%s", base, gameSegment, url.QueryEscape(name))
+	}
+	return fmt.Sprintf(
+		"%s/en/%s/Products/Singles/%s/%s",
+		base,
+		gameSegment,
+		url.PathEscape(strings.ReplaceAll(set, " ", "-")),
+		url.PathEscape(strings.ReplaceAll(name, " ", "-")),
+	)
+}
+
 func parsedHost(rawURL string) string {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -312,13 +327,14 @@ func waitForCardmarketRequest(ctx context.Context) error {
 // TCGPlayerScraper keeps one Chrome process alive and opens a bounded number of
 // isolated tabs. This avoids launching a new browser process for every card.
 type TCGPlayerScraper struct {
-	initOnce   sync.Once
-	slotOnce   sync.Once
-	closeOnce  sync.Once
-	rootCtx    context.Context
-	rootCancel context.CancelFunc
-	initErr    error
-	slots      chan struct{}
+	initMu      sync.Mutex
+	initialized bool
+	slotOnce    sync.Once
+	closeOnce   sync.Once
+	rootCtx     context.Context
+	rootCancel  context.CancelFunc
+	initErr     error
+	slots       chan struct{}
 }
 
 func NewTCGPlayerScraper(maxConcurrent int) *TCGPlayerScraper {
@@ -329,25 +345,57 @@ func NewTCGPlayerScraper(maxConcurrent int) *TCGPlayerScraper {
 }
 
 func (s *TCGPlayerScraper) initialize() error {
-	s.initOnce.Do(func() {
-		allocatorCtx, allocatorCancel := chromedp.NewExecAllocator(
-			context.Background(),
-			chromedp.DefaultExecAllocatorOptions[:]...,
-		)
-		browserCtx, browserCancel := chromedp.NewContext(allocatorCtx)
-		if err := chromedp.Do(browserCtx); err != nil {
-			browserCancel()
-			allocatorCancel()
-			s.initErr = fmt.Errorf("starting TCGPlayer browser: %w", err)
-			return
-		}
-		s.rootCtx = browserCtx
-		s.rootCancel = func() {
-			browserCancel()
-			allocatorCancel()
-		}
-	})
-	return s.initErr
+	s.initMu.Lock()
+	defer s.initMu.Unlock()
+	if s.initialized {
+		return s.initErr
+	}
+
+	allocatorCtx, allocatorCancel := chromedp.NewExecAllocator(
+		context.Background(),
+		chromedp.DefaultExecAllocatorOptions[:]...,
+	)
+	browserCtx, browserCancel := chromedp.NewContext(allocatorCtx)
+	if err := chromedp.Do(browserCtx); err != nil {
+		browserCancel()
+		allocatorCancel()
+		s.initErr = fmt.Errorf("starting TCGPlayer browser: %w", err)
+		return s.initErr
+	}
+	s.rootCtx = browserCtx
+	s.rootCancel = func() {
+		browserCancel()
+		allocatorCancel()
+	}
+	s.initialized = true
+	s.initErr = nil
+	return nil
+}
+
+// reset tears the shared browser down after a crash or target loss, so the next
+// scrape starts a fresh one instead of failing forever.
+func (s *TCGPlayerScraper) reset() {
+	s.initMu.Lock()
+	defer s.initMu.Unlock()
+	if s.rootCancel != nil {
+		s.rootCancel()
+	}
+	s.rootCtx = nil
+	s.rootCancel = nil
+	s.initialized = false
+	s.initErr = nil
+}
+
+// isBrowserContextLost reports whether the error means the browser target is
+// gone (-32000), which requires a browser restart.
+func isBrowserContextLost(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "-32000") ||
+		strings.Contains(message, "Cannot find context with specified id") ||
+		strings.Contains(message, "target closed")
 }
 
 func (s *TCGPlayerScraper) Close() error {
@@ -390,29 +438,100 @@ func (s *TCGPlayerScraper) ScrapeContext(parent context.Context, card models.Car
 	ctx, cancel := chromedp.NewContext(s.rootCtx)
 	defer cancel()
 
-	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	var priceStr string
-	targetURL := fmt.Sprintf(
-		"https://www.tcgplayer.com/search/%s/product?q=%s",
-		product,
-		url.QueryEscape(card.Name),
-	)
-
-	if err = chromedp.Do(ctx,
-		chromedp.Navigate(targetURL),
-		chromedp.WaitVisible(chromedp.CSS(`.search-result__market-price--value`)),
-	); err == nil {
-		priceStr, err = chromedp.Run(ctx, chromedp.Text(chromedp.CSS(`.search-result__market-price--value`)))
-	}
-
+	priceStr, err := s.scrapeMarketPrice(ctx, product, card)
 	if err != nil {
+		if isBrowserContextLost(err) {
+			// The shared browser died (crash, OOM, target loss). Drop it so the
+			// next scrape starts a fresh one instead of failing forever.
+			s.reset()
+		}
 		return 0, err
 	}
+	price, err := ParsePrice(priceStr)
+	if err != nil {
+		return 0, fmt.Errorf("tcgplayer: %w", err)
+	}
+	if price <= 0 {
+		return 0, fmt.Errorf("tcgplayer: no market price for %q", card.Name)
+	}
+	return price, nil
+}
 
-	priceStr = strings.TrimPrefix(priceStr, "$")
-	return strconv.ParseFloat(priceStr, 64)
+// tcgPlayerPriceExpression returns the market price of the first search result.
+// TCGplayer renamed the class from "search-result__market-price--value" to
+// "product-card__market-price--value"; both are accepted so a frontend change
+// cannot silently zero every USD price.
+const tcgPlayerPriceExpression = `(() => {
+	const selectors = ['.product-card__market-price--value', '.search-result__market-price--value'];
+	for (const selector of selectors) {
+		const element = document.querySelector(selector);
+		if (element && element.textContent.trim()) return element.textContent.trim();
+	}
+	return '';
+})()`
+
+func (s *TCGPlayerScraper) scrapeMarketPrice(ctx context.Context, product string, card models.Card) (string, error) {
+	var lastErr error
+	for _, query := range tcgPlayerQueries(card) {
+		targetURL := fmt.Sprintf(
+			"https://www.tcgplayer.com/search/%s/product?q=%s",
+			product,
+			url.QueryEscape(query),
+		)
+		if err := chromedp.Do(ctx, chromedp.Navigate(targetURL)); err != nil {
+			return "", err
+		}
+		if _, err := chromedp.Run(ctx, chromedp.Poll[bool](
+			`(() => {
+				const selectors = ['.product-card__market-price--value', '.search-result__market-price--value'];
+				return selectors.some((selector) => {
+					const element = document.querySelector(selector);
+					return Boolean(element && element.textContent.trim());
+				});
+			})()`,
+			chromedp.WithPollingTimeout(12*time.Second),
+		)); err != nil {
+			lastErr = err
+			continue
+		}
+		price, err := chromedp.Run(ctx, chromedp.Evaluate[string](tcgPlayerPriceExpression))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if strings.TrimSpace(price) != "" {
+			return price, nil
+		}
+	}
+	if lastErr == nil {
+		lastErr = errors.New("no search query")
+	}
+	return "", fmt.Errorf("tcgplayer: no market price element for %q: %w", card.Name, lastErr)
+}
+
+// tcgPlayerQueries prefers a precise search (name + set code + collector
+// number) and falls back to broader queries, because the search page has no
+// exact-card endpoint.
+func tcgPlayerQueries(card models.Card) []string {
+	name := strings.TrimSpace(card.Name)
+	if name == "" {
+		return nil
+	}
+	code := strings.TrimSpace(card.SetCode)
+	number := strings.TrimSpace(card.CollectorNumber)
+
+	queries := make([]string, 0, 3)
+	if code != "" && number != "" {
+		queries = append(queries, name+" "+code+" "+number)
+	}
+	if code != "" {
+		queries = append(queries, name+" "+code)
+	}
+	queries = append(queries, name)
+	return queries
 }
 
 func cardmarketGameSegment(game string) (string, error) {
@@ -487,31 +606,54 @@ func (s *ScraperPriceClient) FetchPriceContext(ctx context.Context, card models.
 		return 0, 0, errors.New("no price scraper configured")
 	}
 
+	var usd float64
+	var tcgErr error
+	if s.TCGPlayer != nil {
+		usd, tcgErr = s.TCGPlayer.ScrapeContext(ctx, card)
+		if tcgErr != nil {
+			slog.Warn("Scraper: TCGPlayer scrape failed", "card", card.Name, "error", tcgErr)
+		}
+	}
+
 	var eur float64
 	var scrapeErr error
 	if s.Cardmarket != nil {
 		eur, scrapeErr = s.Cardmarket.ScrapeContext(ctx, card)
 		if err := ctx.Err(); err != nil {
+			if usd > 0 {
+				return usd, 0, nil
+			}
 			return 0, 0, err
 		}
 		if errors.Is(scrapeErr, ErrPriceSourceBlocked) {
-			return 0, 0, scrapeErr
+			// Cardmarket blocks data-centre traffic with Cloudflare. That must not
+			// prevent the independent TCGplayer source from returning its USD price,
+			// so the block is only reported when TCGplayer also fails.
+			slog.Warn("Scraper: Cardmarket blocked", "card", card.Name)
 		}
 	}
 
-	var usd float64
-	if s.TCGPlayer != nil {
-		var err error
-		usd, err = s.TCGPlayer.ScrapeContext(ctx, card)
-		if err != nil {
-			slog.Warn("Scraper: TCGPlayer scrape failed", "card", card.Name, "error", err)
-		}
+	if usd > 0 && eur <= 0 {
+		// TCGplayer succeeded; a blocked EUR source is not a hard failure.
+		return usd, 0, nil
 	}
-
+	if usd <= 0 && eur <= 0 {
+		// No source produced a price. Returning a nil error here would look like a
+		// successful fetch with a zero price and skip the worker's failure tracking.
+		if err := errors.Join(scrapeErr, tcgErr); err != nil {
+			return 0, 0, err
+		}
+		return 0, 0, fmt.Errorf("no price for %q from any source", card.Name)
+	}
 	return usd, eur, scrapeErr
 }
 
 func (s *ScraperPriceClient) ApplyMultiplier(price float64, condition string, multipliers map[string]float64) float64 {
+	return applyConditionMultiplier(price, condition, multipliers)
+}
+
+// applyConditionMultiplier scales a near-mint price for a card condition.
+func applyConditionMultiplier(price float64, condition string, multipliers map[string]float64) float64 {
 	if multipliers == nil {
 		// Default multipliers
 		multipliers = map[string]float64{
