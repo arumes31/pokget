@@ -212,7 +212,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		if err == sql.ErrNoRows {
 			// Spend the same bcrypt work as a real check so timing does not
 			// reveal whether the email is registered.
-			auth.EqualizePasswordCheck(password)
+			_, _ = auth.HashPassword(password)
 			auth.RecordLoginFailure(email)
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
