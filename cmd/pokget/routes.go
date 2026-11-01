@@ -52,6 +52,11 @@ func buildRouter(cfg *config.Config, database *sql.DB, h *handlers.Handler) *mux
 		csrfMiddleware,
 		cfg.Scan.OCRPoolSize,
 		http.HandlerFunc(h.APIScan),
+	)
+	registerPriceRoute(
+		r,
+		database,
+		csrfMiddleware,
 		http.HandlerFunc(h.APICardPrice),
 	)
 
