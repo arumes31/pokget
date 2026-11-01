@@ -17,16 +17,31 @@ func newDataSyncWorker(
 	cfg *config.Config,
 	fingerprint *service.FingerprintService,
 ) (*worker.DataSyncWorker, error) {
+	return newDataSyncWorkerWithClients(database, cfg, fingerprint, defaultPriceClients())
+}
+
+// defaultPriceClients builds the per-game price source chains. The same chains
+// back the sync worker and the on-demand lookups, so the TCGplayer browser is
+// shared instead of started twice.
+func defaultPriceClients() map[string][]service.PriceClient {
 	priceClient := &service.DefaultPriceClient{Scraper: service.NewScraperPriceClient()}
 	// Cardmarket blocks server-side scraping with Cloudflare (HTTP 403), so the
 	// games with a public price API are served by that API first. TCGplayer still
 	// provides the USD side for every other game.
-	priceClients := map[string][]service.PriceClient{
+	return map[string][]service.PriceClient{
 		"pokemon": {&service.TCGdexPriceClient{Language: "en"}},
 		"magic":   {&service.ScryfallPriceClient{}},
 		"yugioh":  {&service.YGOPRODeckPriceClient{}},
 		"*":       {priceClient},
 	}
+}
+
+func newDataSyncWorkerWithClients(
+	database *sql.DB,
+	cfg *config.Config,
+	fingerprint *service.FingerprintService,
+	priceClients map[string][]service.PriceClient,
+) (*worker.DataSyncWorker, error) {
 	var metadataClient service.MetadataClient
 	var metadataService *service.MetadataService
 	if !cfg.Catalog.Enabled && cfg.Catalog.LegacyMetadataSync {
@@ -38,9 +53,13 @@ func newDataSyncWorker(
 	if err != nil {
 		return nil, err
 	}
+	var fallback service.PriceClient
+	if chain := priceClients["*"]; len(chain) > 0 {
+		fallback = chain[0]
+	}
 	return worker.NewConfiguredDataSyncWorker(
 		database,
-		priceClient,
+		fallback,
 		metadataClient,
 		metadataService,
 		worker.DataSyncConfig{

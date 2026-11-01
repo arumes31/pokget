@@ -52,6 +52,7 @@ func buildRouter(cfg *config.Config, database *sql.DB, h *handlers.Handler) *mux
 		csrfMiddleware,
 		cfg.Scan.OCRPoolSize,
 		http.HandlerFunc(h.APIScan),
+		http.HandlerFunc(h.APICardPrice),
 	)
 
 	// Web Routes (Protected by CSRF + 1MB MaxBytes limit)

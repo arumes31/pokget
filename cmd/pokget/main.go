@@ -89,6 +89,7 @@ func registerScanRoute(
 	csrfMiddleware func(http.Handler) http.Handler,
 	maxConcurrent int,
 	handler http.Handler,
+	priceHandler http.Handler,
 ) {
 	scanRouter := router.PathPrefix("/api").Subrouter()
 	scanRouter.Use(auth.APIAuthMiddleware(database))
@@ -97,6 +98,8 @@ func registerScanRoute(
 	scanRouter.Use(middleware.MaxBytesMiddlewareWithLimit(20 << 20))
 	scanRouter.Use(csrfMiddleware)
 	scanRouter.Handle("/scan", handler).Methods(http.MethodPost)
+	// On-demand price lookups run after a scan; CSRF only applies to unsafe methods.
+	scanRouter.Handle("/cards/price", priceHandler).Methods(http.MethodGet)
 }
 
 func canonicalFragmentRedirectMiddleware(next http.Handler) http.Handler {

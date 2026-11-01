@@ -109,6 +109,9 @@ func TestRegisterScanRouteRequiresVersionedSession(t *testing.T) {
 			}
 			w.WriteHeader(http.StatusNoContent)
 		}),
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}),
 	)
 
 	unauthenticated := httptest.NewRecorder()
