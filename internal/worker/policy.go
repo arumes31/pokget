@@ -154,6 +154,7 @@ type DataSyncConfig struct {
 	Interval          time.Duration
 	MetadataTargets   []MetadataTarget
 	PriceClients      map[string][]service.PriceClient
+	BulkPriceSources  []service.BulkPriceSource
 	RequestsPerSecond float64
 	RequestBurst      int
 	RetryAttempts     int
