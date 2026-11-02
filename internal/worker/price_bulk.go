@@ -52,9 +52,24 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		return nil
 	}
 	batch := make([]service.BulkPriceUpdate, 0, bulkPriceBatchSize)
-	// Fallback matches per game: normalized set code + number -> USD price.
+	// Fallback matches per game: normalized set code + number -> USD price, and
+	// the same keyed by set name for games whose catalog codes differ from the
+	// marketplace abbreviations.
 	fuzzy := make(map[string]map[string]float64)
+	fuzzyByName := make(map[string]map[string]float64)
 	var rows, updated int64
+
+	rememberFuzzy := func(index map[string]map[string]float64, set, number string, usd float64) {
+		prices := index[set]
+		if prices == nil {
+			prices = make(map[string]float64)
+			index[set] = prices
+		}
+		key := priceMatchKey(set, number)
+		if _, exists := prices[key]; !exists {
+			prices[key] = usd
+		}
+	}
 
 	flush := func() error {
 		if len(batch) == 0 {
@@ -72,15 +87,12 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 
 	err := source.FetchPrices(ctx, func(update service.BulkPriceUpdate) error {
 		batch = append(batch, update)
-		if update.Game != "" && update.SetCode != "" && update.Number != "" && update.USD > 0 {
-			prices := fuzzy[update.Game]
-			if prices == nil {
-				prices = make(map[string]float64)
-				fuzzy[update.Game] = prices
+		if update.Game != "" && update.Number != "" && update.USD > 0 {
+			if update.SetCode != "" {
+				rememberFuzzy(fuzzy, update.Game, update.SetCode, update.USD)
 			}
-			key := priceMatchKey(update.SetCode, update.Number)
-			if _, exists := prices[key]; !exists {
-				prices[key] = update.USD
+			for _, alias := range setNameAliases(update.SetName) {
+				rememberFuzzy(fuzzyByName, update.Game, alias, update.USD)
 			}
 		}
 		if len(batch) >= bulkPriceBatchSize {
@@ -100,7 +112,7 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		changed, err := w.applyFuzzyPrices(ctx, game, prices)
+		changed, err := w.applyFuzzyPrices(ctx, game, prices, fuzzyByName[game])
 		if err != nil {
 			slog.Warn("Bulk prices: fallback match failed", "source", source.Name(), "game", game, "error", err)
 			continue
@@ -113,19 +125,19 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 }
 
 // applyFuzzyPrices fills prices for cards that have none yet by matching the
-// normalized set code and collector number. Existing prices are never replaced,
-// so dedicated sources (Scryfall, YGOPRODeck) keep their values.
-func (w *DataSyncWorker) applyFuzzyPrices(ctx context.Context, game string, prices map[string]float64) (int64, error) {
-	if len(prices) == 0 {
+// normalized set code and collector number, then the normalized set name and
+// number. Existing prices are never replaced, so dedicated sources (Scryfall,
+// YGOPRODeck) keep their values.
+func (w *DataSyncWorker) applyFuzzyPrices(ctx context.Context, game string, prices, namePrices map[string]float64) (int64, error) {
+	if len(prices) == 0 && len(namePrices) == 0 {
 		return 0, nil
 	}
 	rows, err := w.db.QueryContext(ctx, `
-		SELECT id, COALESCE(set_code, ''), COALESCE(collector_number, '')
+		SELECT id, COALESCE(set_code, ''), COALESCE(set_name, ''), COALESCE(collector_number, '')
 		FROM cards
 		WHERE game = $1
 		  AND superseded_by_card_id IS NULL
 		  AND (price_usd IS NULL OR price_usd <= 0)
-		  AND set_code IS NOT NULL AND set_code <> ''
 		  AND collector_number IS NOT NULL AND collector_number <> ''`, game)
 	if err != nil {
 		return 0, fmt.Errorf("fallback price query: %w", err)
@@ -134,12 +146,20 @@ func (w *DataSyncWorker) applyFuzzyPrices(ctx context.Context, game string, pric
 
 	updates := make(map[string]float64)
 	for rows.Next() {
-		var id, setCode, number string
-		if err := rows.Scan(&id, &setCode, &number); err != nil {
+		var id, setCode, setName, number string
+		if err := rows.Scan(&id, &setCode, &setName, &number); err != nil {
 			continue
 		}
-		if price, ok := prices[priceMatchKey(setCode, number)]; ok {
-			updates[id] = price
+		if setCode != "" {
+			if price, ok := prices[priceMatchKey(setCode, number)]; ok {
+				updates[id] = price
+				continue
+			}
+		}
+		if setName != "" && len(namePrices) > 0 {
+			if price, ok := namePrices[priceMatchKey(setName, number)]; ok {
+				updates[id] = price
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -209,6 +229,23 @@ WHERE c.id = v.id AND (c.price_usd IS NULL OR c.price_usd IS DISTINCT FROM v.usd
 		return 0, nil
 	}
 	return affected, nil
+}
+
+// setNameAliases returns a marketplace set name plus the bare name after the
+// set-code prefix. TCGplayer writes "ME01: Mega Evolution" where the catalog
+// (TCGdex) says "Mega Evolution", so both spellings must be indexed.
+func setNameAliases(name string) []string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return nil
+	}
+	aliases := []string{trimmed}
+	if _, after, found := strings.Cut(trimmed, ":"); found {
+		if bare := strings.TrimSpace(after); bare != "" {
+			aliases = append(aliases, bare)
+		}
+	}
+	return aliases
 }
 
 // priceMatchKey normalizes a set code and collector number so TCGplayer and

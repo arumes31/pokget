@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"pokget/internal/models"
 
@@ -57,4 +58,13 @@ func collectionPageLinks(page int, hasNext bool, path, fragment string, query ur
 func setCardMarketPrices(card *models.Card, usd, eur decimal.NullDecimal) {
 	card.PriceUSD, card.PriceUSDValid = usd.Decimal, usd.Valid
 	card.PriceEUR, card.PriceEURValid = eur.Decimal, eur.Valid
+}
+
+// portfolioPhotoURL returns the URL of the collector's own photo, or "" when the
+// item has none. Templates fall back to the catalog image in that case.
+func portfolioPhotoURL(itemID, photoPath string) string {
+	if strings.TrimSpace(photoPath) == "" || strings.TrimSpace(itemID) == "" {
+		return ""
+	}
+	return "/portfolio/" + itemID + "/photo"
 }

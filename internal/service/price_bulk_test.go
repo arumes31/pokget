@@ -84,6 +84,45 @@ func TestYGOPRODeckBulkSourceReadsPrices(t *testing.T) {
 	}
 }
 
+// Scryfall's "all_cards" export carries every printing in every language; the
+// English-only "default_cards" export left most Magic rows unpriced.
+func TestScryfallBulkSourcePrefersAllCards(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/bulk-data":
+			_, _ = writer.Write([]byte(`{"data":[{"type":"default_cards","jsonl_download_uri":"` + server.URL + `/default.jsonl.gz"},` +
+				`{"type":"all_cards","jsonl_download_uri":"` + server.URL + `/all.jsonl.gz"}]}`))
+		case "/all.jsonl.gz":
+			gz := gzip.NewWriter(writer)
+			_, _ = gz.Write([]byte(`{"id":"card-all","prices":{"usd":"3.00","eur":"2.50"}}` + "\n"))
+			_ = gz.Close()
+		case "/default.jsonl.gz":
+			gz := gzip.NewWriter(writer)
+			_, _ = gz.Write([]byte(`{"id":"card-default","prices":{"usd":"9.00","eur":"8.00"}}` + "\n"))
+			_ = gz.Close()
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	source := NewScryfallBulkSource().(*scryfallBulkSource)
+	source.BaseURL = server.URL
+	source.HTTP = server.Client()
+
+	var updates []BulkPriceUpdate
+	if err := source.FetchPrices(context.Background(), func(update BulkPriceUpdate) error {
+		updates = append(updates, update)
+		return nil
+	}); err != nil {
+		t.Fatalf("FetchPrices: %v", err)
+	}
+	if len(updates) != 1 || updates[0].SourceCardID != "card-all" {
+		t.Fatalf("updates = %+v, want the all_cards export only", updates)
+	}
+}
+
 func TestScryfallBulkSourceReportsMissingManifestEntry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		_, _ = writer.Write([]byte(`{"data":[{"type":"oracle_cards","jsonl_download_uri":"x"}]}`))

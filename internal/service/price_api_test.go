@@ -90,6 +90,79 @@ func TestTCGdexPriceClientResolvesLegacyCardBySearch(t *testing.T) {
 	}
 }
 
+// A Japanese printing only exists in TCGdex's "ja" catalog. Querying the
+// English catalog produced no card id, which surfaced as "Price unavailable" in
+// the app even though Cardmarket prices the card.
+func TestTCGdexPriceClientQueriesTheCardLanguage(t *testing.T) {
+	var requested []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requested = append(requested, request.URL.Path)
+		if request.URL.Path != "/ja/cards/S9a-001" {
+			http.NotFound(writer, request)
+			return
+		}
+		_, _ = writer.Write([]byte(`{"pricing":{"cardmarket":{"unit":"EUR","avg":0.09,"low":0.02,"trend":0.11},"tcgplayer":null}}`))
+	}))
+	defer server.Close()
+
+	client := &TCGdexPriceClient{BaseURL: server.URL, Language: "en", HTTP: server.Client()}
+	usd, eur, err := client.FetchPrice(models.Card{
+		Name:         "ナゾノクサ",
+		Language:     "ja",
+		SourceID:     "tcgdex",
+		SourceCardID: "S9a-001",
+	})
+	if err != nil {
+		t.Fatalf("FetchPrice: %v", err)
+	}
+	if usd != 0 || eur != 0.09 {
+		t.Fatalf("usd/eur = %v/%v, want 0/0.09", usd, eur)
+	}
+	if len(requested) != 1 || requested[0] != "/ja/cards/S9a-001" {
+		t.Fatalf("requested %v, want the ja catalog", requested)
+	}
+}
+
+func TestTCGdexPriceClientFallsBackToHoloCardmarketPrice(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write([]byte(`{"pricing":{"cardmarket":{"unit":"EUR","avg":null,"low":null,"avg-holo":4.5,"trend-holo":5}}}`))
+	}))
+	defer server.Close()
+
+	client := &TCGdexPriceClient{BaseURL: server.URL, Language: "en", HTTP: server.Client()}
+	_, eur, err := client.FetchPrice(models.Card{Name: "Charizard", SourceID: "tcgdex", SourceCardID: "base1-4"})
+	if err != nil {
+		t.Fatalf("FetchPrice: %v", err)
+	}
+	if eur != 4.5 {
+		t.Fatalf("eur = %v, want the holo average 4.5", eur)
+	}
+}
+
+func TestTCGdexLanguageForMapsCatalogCodes(t *testing.T) {
+	cases := map[string]string{
+		"":        "en",
+		"ja":      "ja",
+		"ja-JP":   "ja",
+		"JP":      "ja",
+		"jpn":     "ja",
+		"chi_tra": "zh-tw",
+		"spa":     "es",
+		"zh-tw":   "zh-tw",
+		"zh":      "zh-cn",
+		"de":      "de",
+		"klingon": "en",
+	}
+	for input, want := range cases {
+		if got := tcgdexLanguageFor(input, "en"); got != want {
+			t.Errorf("tcgdexLanguageFor(%q) = %q, want %q", input, got, want)
+		}
+	}
+	if got := tcgdexLanguageFor("", "de"); got != "de" {
+		t.Fatalf("unknown card language must keep the client default, got %q", got)
+	}
+}
+
 func TestScryfallPriceClientParsesEurAndUsd(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/cards/named" {

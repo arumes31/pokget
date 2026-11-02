@@ -25,15 +25,21 @@
         {{ range .Cards }}
         <div data-collection-item
             class="card p-2.5 flex min-w-0 flex-col gap-2">
-            <div class="aspect-[3/4] rounded-lg overflow-hidden relative bg-zinc-100 dark:bg-stone-100">
+            <a href="/portfolio/{{ .ID }}" hx-get="/portfolio/{{ .ID }}" hx-target="#main-content" hx-push-url="/portfolio/{{ .ID }}"
+                class="aspect-[3/4] rounded-lg overflow-hidden relative block bg-zinc-100 dark:bg-stone-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-500">
+                {{ if .PhotoURL }}
+                <img src="{{ .PhotoURL }}?v={{ .PhotoVersion }}" alt="{{ .Card.Name }}"
+                    class="w-full h-full object-contain" loading="lazy" decoding="async">
+                {{ else }}
                 <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}"
                     class="w-full h-full object-contain" loading="lazy" decoding="async">
-            </div>
+                {{ end }}
+            </a>
             <div class="px-1 pb-1">
                 <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{{
                     .Card.Game }}</p>
                 <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 break-words">{{ .Card.Set }}</p>
-                <h3 class="text-sm font-semibold text-zinc-100 break-words">{{ .Card.Name }}</h3>
+                <h3 class="text-sm font-semibold text-zinc-100 break-words"><a href="/portfolio/{{ .ID }}" hx-get="/portfolio/{{ .ID }}" hx-target="#main-content" hx-push-url="/portfolio/{{ .ID }}" class="hover:text-red-400">{{ .Card.Name }}</a></h3>
                 {{ $hasPrice := or (and (eq $.UserCurrency "EUR") .Card.PriceEURValid) (and (ne $.UserCurrency "EUR") .Card.PriceUSDValid) }}
                 <div class="flex flex-wrap justify-between items-center mt-1 gap-1">
                     <span class="font-bold text-sm text-zinc-100 font-mono">

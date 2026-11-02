@@ -141,6 +141,12 @@ func canonicalFragmentRedirectMiddleware(next http.Handler) http.Handler {
 				view = "binders"
 				values.Set("binder", binderID)
 			}
+			// A card detail URL opens the same fragment inside the app shell.
+			// The photo endpoint is a plain image and must not redirect.
+			if cardID := mux.Vars(r)["id"]; cardID != "" && strings.HasPrefix(r.URL.Path, "/portfolio/") && !strings.HasSuffix(r.URL.Path, "/photo") {
+				view = "card"
+				values.Set("card", cardID)
+			}
 		}
 		if view == "" {
 			next.ServeHTTP(w, r)

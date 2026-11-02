@@ -37,6 +37,13 @@ type PortfolioItem struct {
 	CreatedAt      time.Time `json:"created_at"`
 	BinderID       string    `json:"binder_id"`
 
+	// PhotoURL points at the photo the collector took of this copy. Empty when
+	// the item was added without a scan.
+	PhotoURL string `json:"photo_url,omitempty"`
+	// PhotoVersion changes whenever the photo is replaced, so the browser can
+	// cache the image without showing a stale one.
+	PhotoVersion int64 `json:"-"`
+
 	// Join fields
 	Card Card `json:"card"`
 }

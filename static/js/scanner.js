@@ -441,6 +441,9 @@
       result: '',
       detectedCard: '',
       detectedID: '',
+      // Token of the photo the scan endpoint staged; the server attaches that
+      // photo to the collection card when the collector saves it.
+      scanID: '',
       detectedPrice: '',
       priceLoading: false,
       priceUnavailable: false,
@@ -665,6 +668,7 @@
         this.priceLoading = false;
         this.priceUnavailable = false;
         this.detectedImage = '';
+        this.scanID = '';
         this.confidence = 0;
         this.needsReview = false;
         this.matchConfirmed = false;
@@ -1174,6 +1178,7 @@
       applyScanResult(data) {
         const payload = data && typeof data === 'object' ? data : {};
         this.result = String(payload.text || '');
+        this.scanID = String(payload.scan_id || '');
         this.detectedCard = String(payload.detected || '');
         this.detectedID = String(payload.id || '');
         this.detectedPrice = payload.price ?? '';
@@ -1295,6 +1300,7 @@
         try {
           const formData = new FormData();
           formData.append('card_id', this.detectedID || '');
+          if (this.scanID) formData.append('scan_id', this.scanID);
           if (this.detectedCard) formData.append('card_name', this.detectedCard);
           if (this.detectedSet) formData.append('set_name', this.detectedSet);
           if (this.detectedNumber) formData.append('collector_number', this.detectedNumber);

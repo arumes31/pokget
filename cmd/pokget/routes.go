@@ -95,6 +95,8 @@ func buildRouter(cfg *config.Config, database *sql.DB, h *handlers.Handler) *mux
 	protected.HandleFunc("/settings/change-password", h.ChangePassword).Methods("POST") // BUG-M11: Route for password change with session invalidation
 	protected.HandleFunc("/settings/public-profile", h.UpdatePublicProfile).Methods("POST")
 	protected.HandleFunc("/portfolio/add", h.AddCardToPortfolio).Methods("POST")
+	protected.HandleFunc("/portfolio/{id}", h.PortfolioCard).Methods("GET")
+	protected.HandleFunc("/portfolio/{id}/photo", h.PortfolioPhoto).Methods("GET")
 	protected.HandleFunc("/portfolio/edit", h.EditPortfolioItem).Methods("POST")
 	protected.HandleFunc("/portfolio/delete", h.DeletePortfolioItem).Methods("POST", "DELETE") // BUG-H02: Delete with ownership check
 	protected.HandleFunc("/portfolio/binder", h.UpdatePortfolioBinder).Methods("POST")

@@ -48,6 +48,11 @@ func TestTCGCSVBulkSourceEmitsCategoryPrices(t *testing.T) {
 	if update.SetCode != "OP-01" || update.Number != "016" || update.USD != 2.5 {
 		t.Fatalf("update = %+v", update)
 	}
+	// The group name backs the fallback match for games whose catalog set codes
+	// differ from the TCGplayer abbreviations.
+	if update.SetName != "One Piece OP-01" {
+		t.Fatalf("SetName = %q, want the TCGCSV group name", update.SetName)
+	}
 }
 
 func TestTCGCSVBulkSourceReportsGroupErrors(t *testing.T) {

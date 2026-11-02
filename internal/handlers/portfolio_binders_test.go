@@ -230,8 +230,8 @@ func TestBinderDetail(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 		// price_usd is not numeric, so scanning into the decimal fails
 		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("b1", "test-user", 25, 0).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "price", "cid", "name", "set", "url", "usd", "eur", "game"}).
-				AddRow("p1", "NM", nil, "c1", "Mew", "151", "url", "not-a-price", 9.0, "Pokemon"))
+			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "price", "photo", "photo_version", "cid", "name", "set", "url", "usd", "eur", "game"}).
+				AddRow("p1", "NM", nil, "", 0, "c1", "Mew", "151", "url", "not-a-price", 9.0, "Pokemon"))
 
 		h.BinderDetail(rr, req)
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -255,8 +255,8 @@ func TestBinderDetail(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "desc"}).AddRow("b1", "Binder", "Desc"))
 		mock.ExpectQuery("SELECT COUNT").WithArgs("b1", "test-user").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-		rows := sqlmock.NewRows([]string{"id", "cond", "price", "cid", "name", "set", "url", "usd", "eur", "game"}).
-			AddRow("p1", "NM", nil, "c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon").
+		rows := sqlmock.NewRows([]string{"id", "cond", "price", "photo", "photo_version", "cid", "name", "set", "url", "usd", "eur", "game"}).
+			AddRow("p1", "NM", nil, "", 0, "c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon").
 			RowError(0, errors.New("row stream failed"))
 		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("b1", "test-user", 25, 0).WillReturnRows(rows)
 
@@ -283,8 +283,8 @@ func TestBinderDetail(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT").WithArgs("b1", "test-user").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 		mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("b1", "test-user", 25, 0).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "price", "cid", "name", "set", "url", "usd", "eur", "game"}).
-				AddRow("p1", "NM", nil, "c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon"))
+			WillReturnRows(sqlmock.NewRows([]string{"id", "cond", "price", "photo", "photo_version", "cid", "name", "set", "url", "usd", "eur", "game"}).
+				AddRow("p1", "NM", nil, "", 0, "c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon"))
 		renderUserDataExpectation(mock, "test-user")
 
 		h.BinderDetail(rr, req)

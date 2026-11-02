@@ -25,9 +25,13 @@ type BulkPriceUpdate struct {
 	SourceCardID string
 	Game         string
 	SetCode      string
-	Number       string
-	USD          float64
-	EUR          float64
+	// SetName is the source's set name. Catalog set codes and marketplace
+	// abbreviations disagree for several games (Pokémon, Digimon, UniVersus), so
+	// the worker also matches on the normalized set name when the code misses.
+	SetName string
+	Number  string
+	USD     float64
+	EUR     float64
 }
 
 // BulkPriceSource streams current market prices for its whole catalog. An
@@ -74,15 +78,23 @@ func (s *scryfallBulkSource) FetchPrices(ctx context.Context, emit func(BulkPric
 	if err := fetchPriceJSON(ctx, s.HTTP, base+"/bulk-data", &manifest); err != nil {
 		return fmt.Errorf("scryfall bulk manifest: %w", err)
 	}
+	// "all_cards" contains every printing in every language, "default_cards"
+	// only the English ones. Prefer the complete export and keep the English one
+	// as a fallback for the days Scryfall renames the export.
 	downloadURL := ""
-	for _, entry := range manifest.Data {
-		if entry.Type == "default_cards" && entry.JSONLDownloadURI != "" {
-			downloadURL = entry.JSONLDownloadURI
+	for _, wanted := range []string{"all_cards", "default_cards"} {
+		for _, entry := range manifest.Data {
+			if entry.Type == wanted && entry.JSONLDownloadURI != "" {
+				downloadURL = entry.JSONLDownloadURI
+				break
+			}
+		}
+		if downloadURL != "" {
 			break
 		}
 	}
 	if downloadURL == "" {
-		return fmt.Errorf("scryfall bulk manifest: no default_cards download")
+		return fmt.Errorf("scryfall bulk manifest: no all_cards or default_cards download")
 	}
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
@@ -228,6 +240,7 @@ func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceU
 			Results []struct {
 				GroupID      int    `json:"groupId"`
 				Abbreviation string `json:"abbreviation"`
+				Name         string `json:"name"`
 			} `json:"results"`
 		}
 		if err := fetchPriceJSON(ctx, s.HTTP, endpoint+"/groups", &groups); err != nil {
@@ -242,10 +255,10 @@ func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceU
 		for _, group := range groups.Results {
 			wg.Add(1)
 			sem <- struct{}{}
-			go func(groupID int, abbreviation string) {
+			go func(groupID int, abbreviation, name string) {
 				defer wg.Done()
 				defer func() { <-sem }()
-				if err := s.emitGroup(ctx, base, category, game, groupID, abbreviation, emitSafe); err != nil {
+				if err := s.emitGroup(ctx, base, category, game, groupID, abbreviation, name, emitSafe); err != nil {
 					errMu.Lock()
 					if lastErr == nil {
 						lastErr = err
@@ -255,7 +268,7 @@ func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceU
 						slog.Warn("tcgcsv: skipping group", "game", game, "group", groupID, "error", err)
 					}
 				}
-			}(group.GroupID, group.Abbreviation)
+			}(group.GroupID, group.Abbreviation, group.Name)
 		}
 		wg.Wait()
 		if err := ctx.Err(); err != nil {
@@ -277,6 +290,7 @@ func (s *tcgcsvBulkSource) emitGroup(
 	game string,
 	groupID int,
 	abbreviation string,
+	setName string,
 	emit func(BulkPriceUpdate) error,
 ) error {
 	var products struct {
@@ -335,6 +349,7 @@ func (s *tcgcsvBulkSource) emitGroup(
 			SourceCardID: strconv.Itoa(product.ProductID),
 			Game:         game,
 			SetCode:      abbreviation,
+			SetName:      setName,
 			Number:       number,
 			USD:          market,
 		}

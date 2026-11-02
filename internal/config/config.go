@@ -94,6 +94,11 @@ type Config struct {
 		ImageConcurrency    int    `env:"CATALOG_IMAGE_CONCURRENCY" env-default:"4"`
 		ImagePollIntervalMS int    `env:"CATALOG_IMAGE_POLL_INTERVAL_MS" env-default:"5000"`
 	} `yaml:"catalog"`
+	Portfolio struct {
+		// PhotoStore keeps the photos collectors take of their own cards. An
+		// empty value disables photo storage.
+		PhotoStore string `env:"PORTFOLIO_PHOTO_STORE" env-default:"data/card-photos"`
+	} `yaml:"portfolio"`
 	Worker struct {
 		PriceSyncMinutes     int     `env:"PRICE_SYNC_INTERVAL_MINUTES" env-default:"60"`
 		MetadataTargets      string  `env:"METADATA_TARGETS" env-default:"pokemon:en"`

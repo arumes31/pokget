@@ -63,7 +63,7 @@ func TestBinderCollectionPagesAndPriceAvailability(t *testing.T) {
 			h.Templates = parseApplicationTemplates(t)
 			mock.ExpectQuery("SELECT id, name, COALESCE").WithArgs("b1", "test-user").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description"}).AddRow("b1", "Main", ""))
 			mock.ExpectQuery(`SELECT COUNT\(\*\).*WHERE p.binder_id = \$1 AND p.user_id = \$2`).WithArgs("b1", "test-user").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(27))
-			rows := sqlmock.NewRows([]string{"id", "condition", "custom", "cid", "name", "set", "image", "usd", "eur", "game"})
+			rows := sqlmock.NewRows([]string{"id", "condition", "custom", "photo", "photo_version", "cid", "name", "set", "image", "usd", "eur", "game"})
 			count := tc.shown
 			if tc.next {
 				count++
@@ -73,7 +73,7 @@ func TestBinderCollectionPagesAndPriceAvailability(t *testing.T) {
 				if i == 1 {
 					custom = 0.0
 				}
-				rows.AddRow(fmt.Sprintf("p%d", i), "NM", custom, fmt.Sprintf("c%d", i), fmt.Sprintf("Complete card name %d", i), "Set", "image.png", nil, nil, "Pokemon")
+				rows.AddRow(fmt.Sprintf("p%d", i), "NM", custom, "", 0, fmt.Sprintf("c%d", i), fmt.Sprintf("Complete card name %d", i), "Set", "image.png", nil, nil, "Pokemon")
 			}
 			mock.ExpectQuery(`SELECT p.id, p.condition.*c.price_usd, c.price_eur.*WHERE p.binder_id = \$1 AND p.user_id = \$2.*ORDER BY p.added_at DESC, p.id DESC LIMIT \$3 OFFSET \$4`).WithArgs("b1", "test-user", 25, tc.offset).WillReturnRows(rows)
 			renderUserDataExpectation(mock, "test-user")
@@ -150,9 +150,9 @@ func TestDashboardUsesOverallAggregateAndBoundedCards(t *testing.T) {
 	mock.ExpectQuery("SELECT c.set_name").WithArgs("test-user").WillReturnRows(sqlmock.NewRows([]string{"set", "owned", "total"}))
 	mock.ExpectQuery("SELECT condition_multipliers").WithArgs("test-user").WillReturnRows(sqlmock.NewRows([]string{"multipliers", "currency"}).AddRow(`{"LP":0.75}`, "EUR"))
 	mock.ExpectQuery(`SELECT COUNT\(\*\).*COUNT\(COALESCE\(p.custom_price.*SUM\(CASE WHEN p.custom_price IS NOT NULL.*WHERE p.user_id = \$1`).WithArgs("test-user", `{"LP":0.75}`, "EUR").WillReturnRows(sqlmock.NewRows([]string{"total", "priced", "value"}).AddRow(1000, 999, 14567.89))
-	rows := sqlmock.NewRows([]string{"id", "condition", "custom", "notes", "grade", "public", "binder", "cid", "name", "set", "image", "usd", "eur", "game"})
+	rows := sqlmock.NewRows([]string{"id", "condition", "custom", "notes", "grade", "public", "binder", "photo", "photo_version", "cid", "name", "set", "image", "usd", "eur", "game"})
 	for i := 0; i < 25; i++ {
-		rows.AddRow(fmt.Sprintf("p%d", i), "LP", nil, "", "", false, "b1", fmt.Sprintf("c%d", i), "Full readable card name", "Set", "", nil, nil, "Pokemon")
+		rows.AddRow(fmt.Sprintf("p%d", i), "LP", nil, "", "", false, "b1", "", 0, fmt.Sprintf("c%d", i), "Full readable card name", "Set", "", nil, nil, "Pokemon")
 	}
 	mock.ExpectQuery(`SELECT p.id.*c.price_usd, c.price_eur.*WHERE p.user_id = \$1.*ORDER BY p.added_at DESC, p.id DESC LIMIT \$2 OFFSET \$3`).WithArgs("test-user", 25, 24).WillReturnRows(rows)
 	mock.ExpectQuery("SELECT COUNT").WithArgs("test-user").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))

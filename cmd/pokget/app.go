@@ -224,6 +224,7 @@ func newHandler(
 		LLM:           llmSvc,
 		PriceClient:   service.NewScraperPriceClient(),
 		Prices:        prices,
+		Photos:        service.NewPhotoStore(cfg.Portfolio.PhotoStore),
 		DB:            database,
 		BuildVersion:  buildVersion,
 		ScanTimeout:   time.Duration(cfg.Scan.TimeoutSeconds) * time.Second,
