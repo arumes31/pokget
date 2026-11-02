@@ -71,7 +71,21 @@ func TestApplyBulkSourcePropagatesErrors(t *testing.T) {
 	}
 }
 
-func TestSyncBulkPricesSkipsWithoutSources(t *testing.T) {
+func TestPriceMatchKeyNormalizesSetCodeAndNumber(t *testing.T) {
+	cases := [][3]string{
+		{"OP-01", "016/118", "op01|016"},
+		{"OP01", "16", "op01|16"},
+		{"SWSH1", "1", "swsh1|1"},
+		{"Sword & Shield", "4", "swordshield|4"},
+	}
+	for _, tc := range cases {
+		if got := priceMatchKey(tc[0], tc[1]); got != tc[2] {
+			t.Fatalf("priceMatchKey(%q, %q) = %q, want %q", tc[0], tc[1], got, tc[2])
+		}
+	}
+}
+
+func TestApplyBulkSourceSkipsWithoutSources(t *testing.T) {
 	worker := &DataSyncWorker{}
 	worker.syncBulkPrices(context.Background())
 }

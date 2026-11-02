@@ -10,15 +10,20 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 // BulkPriceUpdate is one card price row delivered by a bulk source. SourceID
 // and SourceCardID match the catalog columns of the same name, so the worker can
-// join without extra lookups.
+// join without extra lookups. Sources that cannot address our card ids directly
+// also fill Game/SetCode/Number for the fallback match.
 type BulkPriceUpdate struct {
 	SourceID     string
 	SourceCardID string
+	Game         string
+	SetCode      string
+	Number       string
 	USD          float64
 	EUR          float64
 }
@@ -134,6 +139,197 @@ func (s *scryfallBulkSource) FetchPrices(ctx context.Context, emit func(BulkPric
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("scryfall bulk read: %w", err)
+	}
+	return nil
+}
+
+// tcgPlayerPriceCategories maps our game ids to TCGplayer categories that
+// TCGCSV mirrors with daily market prices.
+var tcgPlayerPriceCategories = map[string]int{
+	"magic":               1,
+	"yugioh":              2,
+	"pokemon":             3,
+	"vanguard":            16,
+	"force_of_will":       17,
+	"weiss_schwarz":       20,
+	"fftcg":               24,
+	"universus":           25,
+	"dragon_ball_super":   27,
+	"flesh_and_blood":     62,
+	"digimon":             63,
+	"wixoss":              67,
+	"one_piece":           68,
+	"lorcana":             71,
+	"battlespirits_saga":  72,
+	"shadowverse_evolve":  73,
+	"sorcery":             77,
+	"alpha_clash":         78,
+	"star_wars_unlimited": 79,
+	"dbs_fusion_world":    80,
+	"union_arena":         81,
+	"gundam":              86,
+	"hololive":            87,
+	"godzilla":            88,
+	"riftbound":           89,
+	"cookie_run":          90,
+}
+
+// tcgcsvBulkSource downloads the daily TCGplayer price dump from TCGCSV. It
+// covers every TCGplayer category, so games without their own price API still
+// get a USD market price.
+type tcgcsvBulkSource struct {
+	BaseURL     string
+	HTTP        *http.Client
+	Categories  map[string]int
+	Concurrency int
+}
+
+// NewTCGCSVBulkSource returns the daily TCGCSV price source.
+func NewTCGCSVBulkSource() BulkPriceSource {
+	return &tcgcsvBulkSource{
+		BaseURL:     "https://tcgcsv.com/tcgplayer",
+		HTTP:        &http.Client{Timeout: 60 * time.Second},
+		Categories:  tcgPlayerPriceCategories,
+		Concurrency: 8,
+	}
+}
+
+func (s *tcgcsvBulkSource) Name() string { return "tcgcsv-bulk" }
+
+func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceUpdate) error) error {
+	base := strings.TrimRight(s.BaseURL, "/")
+	if base == "" {
+		base = "https://tcgcsv.com/tcgplayer"
+	}
+	categories := s.Categories
+	if len(categories) == 0 {
+		categories = tcgPlayerPriceCategories
+	}
+	concurrency := s.Concurrency
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
+	var emitMu sync.Mutex
+	emitSafe := func(update BulkPriceUpdate) error {
+		emitMu.Lock()
+		defer emitMu.Unlock()
+		return emit(update)
+	}
+
+	for game, category := range categories {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		endpoint := fmt.Sprintf("%s/%d", base, category)
+		var groups struct {
+			Results []struct {
+				GroupID      int    `json:"groupId"`
+				Abbreviation string `json:"abbreviation"`
+			} `json:"results"`
+		}
+		if err := fetchPriceJSON(ctx, s.HTTP, endpoint+"/groups", &groups); err != nil {
+			return fmt.Errorf("tcgcsv groups %s: %w", game, err)
+		}
+
+		sem := make(chan struct{}, concurrency)
+		var wg sync.WaitGroup
+		var firstErr error
+		var errMu sync.Mutex
+		for _, group := range groups.Results {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(groupID int, abbreviation string) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				if err := s.emitGroup(ctx, base, category, game, groupID, abbreviation, emitSafe); err != nil {
+					errMu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					errMu.Unlock()
+				}
+			}(group.GroupID, group.Abbreviation)
+		}
+		wg.Wait()
+		if firstErr != nil {
+			return firstErr
+		}
+	}
+	return nil
+}
+
+func (s *tcgcsvBulkSource) emitGroup(
+	ctx context.Context,
+	base string,
+	category int,
+	game string,
+	groupID int,
+	abbreviation string,
+	emit func(BulkPriceUpdate) error,
+) error {
+	var products struct {
+		Results []struct {
+			ProductID    int `json:"productId"`
+			ExtendedData []struct {
+				Name  string `json:"name"`
+				Value string `json:"value"`
+			} `json:"extendedData"`
+		} `json:"results"`
+	}
+	var prices struct {
+		Results []struct {
+			ProductID   int     `json:"productId"`
+			MarketPrice float64 `json:"marketPrice"`
+			SubTypeName string  `json:"subTypeName"`
+		} `json:"results"`
+	}
+	groupURL := fmt.Sprintf("%s/%d/%d", base, category, groupID)
+	if err := fetchPriceJSON(ctx, s.HTTP, groupURL+"/products", &products); err != nil {
+		return fmt.Errorf("tcgcsv products %d: %w", groupID, err)
+	}
+	if err := fetchPriceJSON(ctx, s.HTTP, groupURL+"/prices", &prices); err != nil {
+		return fmt.Errorf("tcgcsv prices %d: %w", groupID, err)
+	}
+
+	priceByID := make(map[int]float64, len(prices.Results))
+	subTypeByID := make(map[int]string, len(prices.Results))
+	for _, price := range prices.Results {
+		if price.MarketPrice <= 0 {
+			continue
+		}
+		// Prefer the non-foil market price when a product has several printings.
+		if _, ok := priceByID[price.ProductID]; ok {
+			if strings.EqualFold(subTypeByID[price.ProductID], "normal") || !strings.EqualFold(price.SubTypeName, "normal") {
+				continue
+			}
+		}
+		priceByID[price.ProductID] = price.MarketPrice
+		subTypeByID[price.ProductID] = price.SubTypeName
+	}
+	for _, product := range products.Results {
+		market, ok := priceByID[product.ProductID]
+		if !ok {
+			continue
+		}
+		number := ""
+		for _, ext := range product.ExtendedData {
+			if ext.Name == "Number" {
+				number = strings.TrimSpace(ext.Value)
+				break
+			}
+		}
+		update := BulkPriceUpdate{
+			SourceID:     "tcgcsv",
+			SourceCardID: strconv.Itoa(product.ProductID),
+			Game:         game,
+			SetCode:      abbreviation,
+			Number:       number,
+			USD:          market,
+		}
+		if err := emit(update); err != nil {
+			return err
+		}
 	}
 	return nil
 }
