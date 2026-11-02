@@ -190,7 +190,7 @@ func NewTCGCSVBulkSource() BulkPriceSource {
 		BaseURL:     "https://tcgcsv.com/tcgplayer",
 		HTTP:        &http.Client{Timeout: 60 * time.Second},
 		Categories:  tcgPlayerPriceCategories,
-		Concurrency: 8,
+		Concurrency: 4,
 	}
 }
 
@@ -285,10 +285,10 @@ func (s *tcgcsvBulkSource) emitGroup(
 		} `json:"results"`
 	}
 	groupURL := fmt.Sprintf("%s/%d/%d", base, category, groupID)
-	if err := fetchPriceJSON(ctx, s.HTTP, groupURL+"/products", &products); err != nil {
+	if err := s.getGroupJSON(ctx, groupURL+"/products", &products); err != nil {
 		return fmt.Errorf("tcgcsv products %d: %w", groupID, err)
 	}
-	if err := fetchPriceJSON(ctx, s.HTTP, groupURL+"/prices", &prices); err != nil {
+	if err := s.getGroupJSON(ctx, groupURL+"/prices", &prices); err != nil {
 		return fmt.Errorf("tcgcsv prices %d: %w", groupID, err)
 	}
 
@@ -409,4 +409,23 @@ func (s *ygoprodeckBulkSource) FetchPrices(ctx context.Context, emit func(BulkPr
 		}
 	}
 	return nil
+}
+
+// getGroupJSON retries a truncated or failed group download. TCGCSV sometimes
+// closes a response early when several groups are fetched at once.
+func (s *tcgcsvBulkSource) getGroupJSON(ctx context.Context, url string, target any) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := fetchPriceJSON(ctx, s.HTTP, url, target); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-time.After(time.Duration(attempt+1) * time.Second):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return lastErr
 }
