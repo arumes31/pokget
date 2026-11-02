@@ -42,6 +42,7 @@ func defaultBulkPriceSources() []service.BulkPriceSource {
 	return []service.BulkPriceSource{
 		service.NewScryfallBulkSource(),
 		service.NewYGOPRODeckBulkSource(),
+		service.NewTCGCSVBulkSource(),
 	}
 }
 
