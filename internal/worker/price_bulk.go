@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"pokget/internal/service"
 )
@@ -36,7 +37,11 @@ func (w *DataSyncWorker) syncBulkPrices(ctx context.Context) {
 			slog.Info("Bulk prices: stopping due to context cancellation", "error", err)
 			return
 		}
-		if err := w.applyBulkSource(ctx, source); err != nil {
+		// A stalled download must not block the daily cycle forever.
+		sourceCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+		err := w.applyBulkSource(sourceCtx, source)
+		cancel()
+		if err != nil {
 			slog.Error("Bulk prices: source failed", "source", source.Name(), "error", err)
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // BulkPriceUpdate is one card price row delivered by a bulk source. SourceID
@@ -41,7 +42,12 @@ type scryfallBulkSource struct {
 
 // NewScryfallBulkSource returns the daily Scryfall bulk price source.
 func NewScryfallBulkSource() BulkPriceSource {
-	return &scryfallBulkSource{BaseURL: "https://api.scryfall.com", HTTP: priceAPIHTTPClient}
+	return &scryfallBulkSource{
+		BaseURL: "https://api.scryfall.com",
+		// The daily export is ~80 MB gzipped; the shared 20 s API timeout would
+		// abort the download halfway through.
+		HTTP: &http.Client{Timeout: 30 * time.Minute},
+	}
 }
 
 func (s *scryfallBulkSource) Name() string { return "scryfall-bulk" }
@@ -142,7 +148,11 @@ type ygoprodeckBulkSource struct {
 
 // NewYGOPRODeckBulkSource returns the Yu-Gi-Oh bulk price source.
 func NewYGOPRODeckBulkSource() BulkPriceSource {
-	return &ygoprodeckBulkSource{BaseURL: "https://db.ygoprodeck.com/api/v7", HTTP: priceAPIHTTPClient}
+	return &ygoprodeckBulkSource{
+		BaseURL: "https://db.ygoprodeck.com/api/v7",
+		// The full card dump is a few megabytes; keep a generous but finite budget.
+		HTTP: &http.Client{Timeout: 10 * time.Minute},
+	}
 }
 
 func (s *ygoprodeckBulkSource) Name() string { return "ygoprodeck-bulk" }
