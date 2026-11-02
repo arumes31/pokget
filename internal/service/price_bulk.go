@@ -236,7 +236,7 @@ func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceU
 
 		sem := make(chan struct{}, concurrency)
 		var wg sync.WaitGroup
-		var failed int32
+		var failed int64
 		var errMu sync.Mutex
 		var lastErr error
 		for _, group := range groups.Results {
@@ -251,7 +251,7 @@ func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceU
 						lastErr = err
 					}
 					errMu.Unlock()
-					if n := atomic.AddInt32(&failed, 1); n <= 3 {
+					if n := atomic.AddInt64(&failed, 1); n <= 3 {
 						slog.Warn("tcgcsv: skipping group", "game", game, "group", groupID, "error", err)
 					}
 				}
@@ -261,7 +261,7 @@ func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceU
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if failed == int32(len(groups.Results)) && lastErr != nil {
+		if failed == int64(len(groups.Results)) && lastErr != nil {
 			// Every group of this category failed: surface the reason so the
 			// operator sees it, but keep the other categories running.
 			return fmt.Errorf("tcgcsv category %s: %w", game, lastErr)
