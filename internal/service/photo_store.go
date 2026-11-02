@@ -85,7 +85,8 @@ func (s *PhotoStore) Stage(userID, token string, data []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, data, 0600); err != nil { // #nosec G306 - private user photos
+	// Validated identifiers only, so the target stays inside the staging tree.
+	if err := os.WriteFile(path, data, 0600); err != nil { // #nosec G306,G703 - path validated above
 		return "", err
 	}
 	s.cleanupStaging(directory)
@@ -155,7 +156,9 @@ func (s *PhotoStore) Promote(userID, token, itemID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, data, 0600); err != nil { // #nosec G306 - private user photos
+	// The destination is built from validated identifiers and checked by Path
+	// (no separators, no ".."), so it cannot leave the photo directory.
+	if err := os.WriteFile(path, data, 0600); err != nil { // #nosec G306,G703 - path validated above
 		return "", err
 	}
 	// The staged copy is only a cache; a failure to delete it is not fatal.
