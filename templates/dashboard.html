@@ -76,14 +76,19 @@
         <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
             {{ range .Portfolio }}
             <article data-collection-item data-portfolio-item data-id="{{ .ID }}" data-binder-id="{{ .BinderID }}" data-card-name="{{ .Card.Name }}" data-card-set="{{ .Card.Set }}" data-condition="{{ .Condition }}" x-show="matches($el)" class="card portfolio-card group min-w-0 overflow-hidden p-2.5 transition hover:border-red-500/50 hover:shadow-[0_0_16px_rgba(239,68,68,0.2)]">
-                <div class="relative aspect-[3/4] overflow-hidden rounded-xl bg-[#0a0a0c] border border-red-500/20">
+                <a href="/portfolio/{{ .ID }}" hx-get="/portfolio/{{ .ID }}" hx-target="#main-content" hx-push-url="/portfolio/{{ .ID }}"
+                    class="relative block aspect-[3/4] overflow-hidden rounded-xl bg-[#0a0a0c] border border-red-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-500">
+                    {{ if .PhotoURL }}
+                    <img src="{{ .PhotoURL }}?v={{ .PhotoVersion }}" alt="{{ .Card.Name }}" class="h-full w-full object-contain" loading="lazy" decoding="async">
+                    {{ else }}
                     <img src="{{ .Card.ImageURL }}" alt="{{ .Card.Name }}" class="h-full w-full object-contain" loading="lazy" decoding="async">
+                    {{ end }}
                     <span class="status-badge absolute right-2 top-2 border-red-500/30 bg-black/80 text-zinc-100 backdrop-blur font-mono">{{ .Condition }}</span>
-                </div>
+                </a>
                 <div class="px-1 pb-1 pt-3">
                     <p class="truncate text-xs font-bold uppercase tracking-[0.12em] text-red-400 font-mono">{{ .Card.Set }}</p>
                     <div class="mt-0.5 flex min-w-0 items-start justify-between gap-1">
-                        <h3 class="min-w-0 break-words text-sm font-bold text-zinc-100">{{ .Card.Name }}</h3>
+                        <h3 class="min-w-0 break-words text-sm font-bold text-zinc-100"><a href="/portfolio/{{ .ID }}" hx-get="/portfolio/{{ .ID }}" hx-target="#main-content" hx-push-url="/portfolio/{{ .ID }}" class="hover:text-red-400">{{ .Card.Name }}</a></h3>
                         <button data-i18n-attrs="aria-label" type="button" class="material-symbols-outlined -mr-2 -mt-2 flex min-h-11 min-w-11 items-center justify-center rounded-xl text-xl text-zinc-500 dark:text-zinc-400 hover:bg-red-950/50 hover:text-red-400"
                             aria-label="Edit {{ .Card.Name }}" data-id="{{ .ID }}" data-notes="{{ .Notes }}"
                             data-price="{{ if .CustomPrice }}{{ printf "%.2f" .GetCustomPrice }}{{ end }}" data-grade="{{ .Grade }}"

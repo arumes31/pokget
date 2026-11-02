@@ -467,6 +467,39 @@ test('an uncertain printing must be inspected and explicitly confirmed before sa
   assert.equal(component.detectedLanguage, '');
 });
 
+test('the scanned photo token is sent along when the card is saved', async () => {
+  const originalFetch = global.fetch;
+  let request;
+  global.fetch = async (url, options) => {
+    request = { url, options };
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    const component = scanner.createCardScanner({ csrfToken: 'test-csrf' });
+    component.notify = () => {};
+    component.applyScanResult({
+      detected: 'Celebi V',
+      id: 'swsh1-1',
+      price: 2.55,
+      scan_id: 'a1b2c3d4e5f6',
+      set: 'Sword & Shield',
+      collector_number: '1',
+      language: 'en',
+    });
+    assert.equal(component.scanID, 'a1b2c3d4e5f6');
+    component.confirmMatch();
+    await component.addToCollection();
+    assert.equal(request.options.body.get('scan_id'), 'a1b2c3d4e5f6');
+    assert.equal(request.options.body.get('card_id'), 'swsh1-1');
+
+    // A new scan must not reuse the previous photo token.
+    component.resetResult();
+    assert.equal(component.scanID, '');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test('an uncataloged printing can be confirmed and added with synthetic card details', async () => {
   const originalFetch = global.fetch;
   let request;

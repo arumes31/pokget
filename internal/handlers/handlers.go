@@ -83,6 +83,7 @@ type Handler struct {
 	LLM            *service.LLMService
 	PriceClient    *service.ScraperPriceClient
 	Prices         *service.PriceService
+	Photos         *service.PhotoStore
 	DB             *sql.DB
 	BuildVersion   string
 	ScanTimeout    time.Duration
@@ -194,12 +195,21 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 	viewPaths := map[string]string{
 		"home": "/dashboard", "wantlist": "/wantlist", "binders": "/binders",
 		"scan": "/centering", "errors": "/errors", "trade": "/trade",
-		"settings": "/settings",
+		"settings": "/settings", "card": "/portfolio",
 	}
 	initialPath, ok := viewPaths[initialView]
 	if !ok {
 		initialView = "home"
 		initialPath = viewPaths[initialView]
+	}
+	if initialView == "card" {
+		// Without a card id the detail view has nothing to show.
+		if cardID := strings.TrimSpace(r.URL.Query().Get("card")); cardID != "" {
+			initialPath = "/portfolio/" + url.PathEscape(cardID)
+		} else {
+			initialView = "home"
+			initialPath = viewPaths[initialView]
+		}
 	}
 	if initialView == "binders" {
 		if binderID := strings.TrimSpace(r.URL.Query().Get("binder")); binderID != "" {
@@ -291,7 +301,8 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	page := boundedCollectionPage(r, totalCards)
 	rowsPortfolio, err := h.DB.QueryContext(r.Context(), `
 		SELECT p.id, p.condition, p.custom_price, COALESCE(p.notes, ''), COALESCE(p.grade, ''), p.is_public,
-		       COALESCE(p.binder_id::text, ''),
+		       COALESCE(p.binder_id::text, ''), COALESCE(p.photo_path, ''),
+		       COALESCE(EXTRACT(EPOCH FROM p.photo_updated_at)::bigint, 0),
 		       c.id, c.name, c.set_name, COALESCE(c.image_url, ''), c.price_usd, c.price_eur, COALESCE(c.game, '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
@@ -310,13 +321,16 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	for rowsPortfolio.Next() {
 		var p models.PortfolioItem
 		var usd, eur decimal.NullDecimal
+		var photoPath string
 		if err := rowsPortfolio.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Notes, &p.Grade, &p.IsPublic, &p.BinderID,
+			&photoPath, &p.PhotoVersion,
 			&p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &usd, &eur, &p.Card.Game); err != nil {
 			slog.Error("Failed to scan dashboard card", "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		setCardMarketPrices(&p.Card, usd, eur)
+		p.PhotoURL = portfolioPhotoURL(p.ID, photoPath)
 		portfolio = append(portfolio, p)
 	}
 	if err := rowsPortfolio.Err(); err != nil {
@@ -695,16 +709,22 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_, err = h.DB.ExecContext(r.Context(), `
+	var itemID string
+	err = h.DB.QueryRowContext(r.Context(), `
 		INSERT INTO portfolio (user_id, card_id, binder_id, notes, custom_price, condition, format)
-		VALUES ($1, $2, NULLIF($3, '')::UUID, $4, $5, $6, $7)`,
-		userID, cardID, binderID, notes, customPrice, "Near Mint", "Raw")
+		VALUES ($1, $2, NULLIF($3, '')::UUID, $4, $5, $6, $7)
+		RETURNING id`,
+		userID, cardID, binderID, notes, customPrice, "Near Mint", "Raw").Scan(&itemID)
 
 	if err != nil {
 		slog.Error("Failed to add card to portfolio", "error", err)
 		http.Error(w, "Failed to add card", http.StatusInternalServerError)
 		return
 	}
+
+	// The scanner stages the photo it already uploaded for detection; attaching
+	// it here is what puts the collector's own picture into the collection.
+	h.attachScanPhoto(r.Context(), userID, itemID, strings.TrimSpace(r.FormValue("scan_id")))
 
 	// Portfolio changes are the badge trigger. Heartbeats and badge rewards only
 	// update XP, avoiding recursive or unbounded background badge checks.
@@ -834,6 +854,10 @@ func (h *Handler) DeletePortfolioItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Remember the stored photo so deleting the card also removes the file.
+	var storedPhoto string
+	_ = h.DB.QueryRowContext(r.Context(), "SELECT COALESCE(photo_path, '') FROM portfolio WHERE id = $1 AND user_id = $2", itemID, userID).Scan(&storedPhoto)
+
 	result, err := h.DB.ExecContext(r.Context(), "DELETE FROM portfolio WHERE id = $1 AND user_id = $2", itemID, userID)
 	if err != nil {
 		slog.Error("Failed to delete portfolio item", "error", err)
@@ -843,6 +867,11 @@ func (h *Handler) DeletePortfolioItem(w http.ResponseWriter, r *http.Request) {
 	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
 		http.Error(w, "Portfolio item not found", http.StatusNotFound)
 		return
+	}
+	if storedPhoto != "" && h.Photos != nil {
+		if err := h.Photos.Remove(storedPhoto); err != nil {
+			slog.Warn("Failed to remove the card photo", "item_id", itemID, "error", err)
+		}
 	}
 
 	h.Audit.Log(userID, "delete_portfolio_item", map[string]interface{}{"item_id": itemID})
@@ -1150,7 +1179,9 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 	page := boundedCollectionPage(r, totalCards)
 	// Fetch cards in binder
 	rows, err := h.DB.QueryContext(r.Context(), `
-		SELECT p.id, p.condition, p.custom_price, c.id, c.name, c.set_name,
+		SELECT p.id, p.condition, p.custom_price, COALESCE(p.photo_path, ''),
+		       COALESCE(EXTRACT(EPOCH FROM p.photo_updated_at)::bigint, 0),
+		       c.id, c.name, c.set_name,
 		       COALESCE(c.image_url, ''), c.price_usd, c.price_eur, COALESCE(c.game, '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
@@ -1168,12 +1199,14 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var p models.PortfolioItem
 		var usd, eur decimal.NullDecimal
-		if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &usd, &eur, &p.Card.Game); err != nil {
+		var photoPath string
+		if err := rows.Scan(&p.ID, &p.Condition, &p.CustomPrice, &photoPath, &p.PhotoVersion, &p.Card.ID, &p.Card.Name, &p.Card.Set, &p.Card.ImageURL, &usd, &eur, &p.Card.Game); err != nil {
 			slog.Error("Failed to scan binder card", "error", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
 		setCardMarketPrices(&p.Card, usd, eur)
+		p.PhotoURL = portfolioPhotoURL(p.ID, photoPath)
 		cards = append(cards, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -1378,6 +1411,11 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Keep the uploaded image briefly: when the collector saves the card we attach
+	// exactly this photo to their collection entry, so the scanner never has to
+	// upload it twice.
+	scanPhotoToken := h.stageScanPhoto(r, imgBytes)
+
 	// Get user currency preference
 	var userCurrency string
 	if userID, ok := r.Context().Value(auth.UserContextKey{}).(string); ok {
@@ -1546,6 +1584,9 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		if diagnostics && processedImg != nil {
 			resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
 		}
+		if scanPhotoToken != "" {
+			resp["scan_id"] = scanPhotoToken
+		}
 		if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
 			slog.Warn("Failed to set write deadline for scan response", "error", err)
 		}
@@ -1626,6 +1667,9 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	}
 	if diagnostics && processedImg != nil {
 		resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
+	}
+	if scanPhotoToken != "" {
+		resp["scan_id"] = scanPhotoToken
 	}
 	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		slog.Warn("Failed to set write deadline for scan response", "error", err)

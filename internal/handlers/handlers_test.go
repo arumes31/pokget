@@ -227,10 +227,10 @@ func TestHandlers(t *testing.T) {
 
 		// 4. Fetch the current portfolio page
 		rowsPortfolio := sqlmock.NewRows([]string{
-			"id", "condition", "custom_price", "notes", "grade", "is_public", "binder_id",
+			"id", "condition", "custom_price", "notes", "grade", "is_public", "binder_id", "photo", "photo_version",
 			"card_id", "name", "set", "url", "price_usd", "price_eur", "game",
 		}).AddRow(
-			"p1", "NM", 0.0, "", "", false, "binder-1",
+			"p1", "NM", 0.0, "", "", false, "binder-1", "", 0,
 			"c1", "Mew", "151", "url", 10.0, 9.0, "Pokemon",
 		)
 		mock.ExpectQuery("SELECT").WithArgs("test-user", 25, 0).WillReturnRows(rowsPortfolio)
@@ -286,7 +286,7 @@ func TestHandlers(t *testing.T) {
 		mock.ExpectQuery("SELECT EXISTS").WithArgs("test-id").WillReturnRows(
 			sqlmock.NewRows([]string{"exists"}).AddRow(true))
 		mock.ExpectQuery("SELECT id FROM binders").WithArgs("test-user").WillReturnError(sql.ErrNoRows)
-		mock.ExpectExec("INSERT INTO portfolio").WillReturnError(sql.ErrConnDone)
+		mock.ExpectQuery("INSERT INTO portfolio").WillReturnError(sql.ErrConnDone)
 
 		h.AddCardToPortfolio(rr, req)
 

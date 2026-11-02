@@ -100,9 +100,9 @@ func TestAddCardToPortfolio_Branches(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 		// No binder_id supplied and no default binder exists -> NULL binder.
 		mock.ExpectQuery("SELECT id FROM binders").WithArgs("test-user").WillReturnError(sql.ErrNoRows)
-		mock.ExpectExec("INSERT INTO portfolio").
+		mock.ExpectQuery("INSERT INTO portfolio").
 			WithArgs("test-user", "c1", "", "note", 25.5, "Near Mint", "Raw").
-			WillReturnResult(sqlmock.NewResult(1, 1))
+			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("item-1"))
 		// Gamification: AddXP transaction, then badge checks that find nothing.
 		mock.ExpectBegin()
 		mock.ExpectQuery("UPDATE users SET xp").WithArgs(100, "test-user").

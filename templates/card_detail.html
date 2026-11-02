@@ -1,0 +1,73 @@
+<div class="app-page">
+    <div class="flex items-center gap-2">
+        <button data-i18n-attrs="aria-label" type="button" hx-get="/dashboard" hx-target="#main-content" hx-push-url="/?view=home"
+            aria-label="Back to collection" class="btn-ghost min-h-11 px-2.5 -ml-2"
+            hx-on::before-request="window.dispatchEvent(new CustomEvent('pokget-view-change', { detail: { view: 'home' } }))">
+            <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+        </button>
+        <div class="min-w-0">
+            <h1 class="page-title min-w-0 break-words">{{ .Item.Card.Name }}</h1>
+            <p class="page-description break-words">{{ .Item.Card.Set }}{{ if .Item.Card.CollectorNumber }} &middot; {{ .Item.Card.CollectorNumber }}{{ end }}</p>
+        </div>
+    </div>
+
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+        <figure class="card overflow-hidden p-2.5">
+            <div class="relative aspect-[3/4] overflow-hidden rounded-xl border border-red-500/20 bg-[#0a0a0c]">
+                {{ if .HasPhoto }}
+                <img src="{{ .PhotoURL }}" alt="{{ .Item.Card.Name }}" class="h-full w-full object-contain" decoding="async">
+                {{ else }}
+                <img src="{{ .Item.Card.ImageURL }}" alt="{{ .Item.Card.Name }}" class="h-full w-full object-contain" loading="lazy" decoding="async">
+                {{ end }}
+            </div>
+            <figcaption data-i18n class="px-1 pt-2 text-xs font-mono text-zinc-500">{{ if .HasPhoto }}Your photo{{ else }}Catalog image{{ end }}</figcaption>
+        </figure>
+
+        <div class="flex flex-col gap-4">
+            <section class="card p-4">
+                <h2 data-i18n class="section-title mb-3">Details</h2>
+                <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                    <div><dt data-i18n class="text-xs font-bold uppercase tracking-wide text-zinc-500">Condition</dt><dd class="font-semibold text-zinc-100">{{ .Item.Condition }}</dd></div>
+                    <div><dt data-i18n class="text-xs font-bold uppercase tracking-wide text-zinc-500">Language</dt><dd class="font-semibold text-zinc-100">{{ if .Item.Card.Language }}{{ .Item.Card.Language }}{{ else }}&mdash;{{ end }}</dd></div>
+                    <div><dt data-i18n class="text-xs font-bold uppercase tracking-wide text-zinc-500">Card number</dt><dd class="font-semibold text-zinc-100">{{ if .Item.Card.CollectorNumber }}{{ .Item.Card.CollectorNumber }}{{ else }}&mdash;{{ end }}</dd></div>
+                    <div><dt data-i18n class="text-xs font-bold uppercase tracking-wide text-zinc-500">Set</dt><dd class="font-semibold text-zinc-100 break-words">{{ .Item.Card.Set }}</dd></div>
+                    {{ if .Item.Grade }}<div><dt data-i18n class="text-xs font-bold uppercase tracking-wide text-zinc-500">Grade</dt><dd class="font-semibold text-zinc-100">{{ .Item.Grade }}</dd></div>{{ end }}
+                </dl>
+                {{ if .Item.Notes }}
+                <div class="mt-4 border-t border-red-500/25 pt-3">
+                    <h3 data-i18n class="text-xs font-bold uppercase tracking-wide text-zinc-500">Notes</h3>
+                    <p class="mt-1 whitespace-pre-line break-words text-sm text-zinc-200">{{ .Item.Notes }}</p>
+                </div>
+                {{ end }}
+            </section>
+
+            <section class="card p-4">
+                <h2 data-i18n class="section-title mb-3">Market</h2>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="rounded-xl border border-red-500/20 bg-black/40 p-3">
+                        <p class="text-xs font-bold uppercase tracking-wide text-zinc-500">EUR</p>
+                        <p class="font-display text-lg font-extrabold text-zinc-100">
+                            {{ if .MarketEUR }}&#8364;{{ .Item.Card.PriceEUR.StringFixed 2 }}{{ else }}<span data-i18n class="text-sm font-medium text-zinc-500">Price unavailable</span>{{ end }}
+                        </p>
+                    </div>
+                    <div class="rounded-xl border border-red-500/20 bg-black/40 p-3">
+                        <p class="text-xs font-bold uppercase tracking-wide text-zinc-500">USD</p>
+                        <p class="font-display text-lg font-extrabold text-zinc-100">
+                            {{ if .MarketUSD }}${{ .Item.Card.PriceUSD.StringFixed 2 }}{{ else }}<span data-i18n class="text-sm font-medium text-zinc-500">Price unavailable</span>{{ end }}
+                        </p>
+                    </div>
+                </div>
+                {{ if .Item.CustomPrice }}
+                <p data-i18n class="mt-3 text-sm text-zinc-300">Custom value: {{ $.CurrencySymbol }}{{ printf "%.2f" .Item.GetCustomPrice }}</p>
+                {{ end }}
+            </section>
+
+            <div class="flex flex-wrap gap-2">
+                {{ if .Item.BinderID }}
+                <a data-i18n href="/binders/{{ .Item.BinderID }}" hx-get="/binders/{{ .Item.BinderID }}" hx-target="#main-content" hx-push-url="/binders/{{ .Item.BinderID }}" class="btn-secondary">Open binder</a>
+                {{ end }}
+                <a data-i18n href="/?view=home" hx-get="/dashboard" hx-target="#main-content" hx-push-url="/?view=home" class="btn-secondary">Back to collection</a>
+            </div>
+        </div>
+    </div>
+</div>

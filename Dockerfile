@@ -61,7 +61,7 @@ RUN apk add --no-cache \
 
 RUN addgroup -S -g 10001 pokget \
     && adduser -S -D -H -u 10001 -G pokget pokget \
-    && mkdir -p /app/data/cache /app/data/catalog-images /tmp/pokget \
+    && mkdir -p /app/data/cache /app/data/catalog-images /app/data/card-photos /tmp/pokget \
     && chown -R pokget:pokget /app /tmp/pokget
 
 ENV TESSDATA_PREFIX=/usr/share/tessdata \

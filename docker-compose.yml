@@ -55,6 +55,7 @@ services:
       - CATALOG_WEISS_MAX_PAGES=${CATALOG_WEISS_MAX_PAGES:-0}
       - CATALOG_IMAGES_ENABLED=${CATALOG_IMAGES_ENABLED:-true}
       - CATALOG_IMAGE_STORE=/app/data/catalog-images
+      - PORTFOLIO_PHOTO_STORE=/app/data/card-photos
       - CATALOG_IMAGE_BATCH_SIZE=${CATALOG_IMAGE_BATCH_SIZE:-8}
       - CATALOG_IMAGE_CONCURRENCY=${CATALOG_IMAGE_CONCURRENCY:-4}
       - CATALOG_IMAGE_POLL_INTERVAL_MS=${CATALOG_IMAGE_POLL_INTERVAL_MS:-5000}
@@ -75,6 +76,7 @@ services:
     volumes:
       - ./data/cache:/app/data/cache
       - ./data/catalog-images:/app/data/catalog-images
+      - ./data/card-photos:/app/data/card-photos
     read_only: true
     cap_drop: ["ALL"]
     security_opt:
