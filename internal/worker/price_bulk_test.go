@@ -85,6 +85,78 @@ func TestPriceMatchKeyNormalizesSetCodeAndNumber(t *testing.T) {
 	}
 }
 
+// Catalog Pokémon rows carry TCGdex set codes ("me1") while TCGCSV groups use
+// TCGplayer abbreviations ("MEG"); matching the normalized set name bridges that
+// gap without a hand-maintained alias table.
+func TestApplyFuzzyPricesMatchesSetNameWhenCodeMisses(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number"}).
+		AddRow("card-1", "me1", "Mega Evolution", "001")
+	mock.ExpectQuery("SELECT id, COALESCE\\(set_code").WillReturnRows(rows)
+	mock.ExpectExec("UPDATE cards AS c").
+		WithArgs("card-1", 7.5).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	worker := &DataSyncWorker{db: db}
+	byName := make(map[string]float64)
+	for _, alias := range setNameAliases("ME01: Mega Evolution") {
+		byName[priceMatchKey(alias, "001")] = 7.5
+	}
+	changed, err := worker.applyFuzzyPrices(context.Background(), "pokemon", nil, byName)
+	if err != nil {
+		t.Fatalf("applyFuzzyPrices: %v", err)
+	}
+	if changed != 1 {
+		t.Fatalf("changed = %d, want 1", changed)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestSetNameAliasesDropsTheSetCodePrefix(t *testing.T) {
+	aliases := setNameAliases("SV01: Scarlet & Violet Base Set")
+	if len(aliases) != 2 || aliases[0] != "SV01: Scarlet & Violet Base Set" || aliases[1] != "Scarlet & Violet Base Set" {
+		t.Fatalf("aliases = %v", aliases)
+	}
+	if got := setNameAliases("  "); got != nil {
+		t.Fatalf("blank name must produce no aliases, got %v", got)
+	}
+	if got := setNameAliases("Promos"); len(got) != 1 || got[0] != "Promos" {
+		t.Fatalf("aliases = %v, want the name alone", got)
+	}
+}
+
+func TestApplyFuzzyPricesPrefersTheSetCodeMatch(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number"}).
+		AddRow("card-1", "OP-01", "Romance Dawn", "016")
+	mock.ExpectQuery("SELECT id, COALESCE\\(set_code").WillReturnRows(rows)
+	mock.ExpectExec("UPDATE cards AS c").
+		WithArgs("card-1", 11.0).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	worker := &DataSyncWorker{db: db}
+	byCode := map[string]float64{priceMatchKey("OP01", "016"): 11.0}
+	byName := map[string]float64{priceMatchKey("Romance Dawn", "016"): 99.0}
+	if _, err := worker.applyFuzzyPrices(context.Background(), "one_piece", byCode, byName); err != nil {
+		t.Fatalf("applyFuzzyPrices: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("the set-code match must win: %v", err)
+	}
+}
+
 func TestApplyBulkSourceSkipsWithoutSources(t *testing.T) {
 	worker := &DataSyncWorker{}
 	worker.syncBulkPrices(context.Background())

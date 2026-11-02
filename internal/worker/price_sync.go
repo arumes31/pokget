@@ -465,7 +465,7 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 	// first, in a bounded batch.
 	rows, err := w.db.QueryContext(ctx, `
 		SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(game, ''),
-		       COALESCE(source_id, ''), COALESCE(source_card_id, '')
+		       COALESCE(source_id, ''), COALESCE(source_card_id, ''), COALESCE(language, '')
 		FROM cards
 		WHERE superseded_by_card_id IS NULL
 		  AND id IN (
@@ -480,7 +480,10 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 		           WHEN id IN (SELECT card_id FROM portfolio) THEN 1
 		           ELSE 2
 		         END,
-		         GREATEST(COALESCE(price_usd, 0), COALESCE(price_eur, 0)) DESC,
+		         -- Cards the collector owns but that have no price at all come
+		         -- first: a priced card can wait a cycle, an unpriced one is the
+		         -- "Price unavailable" label the user is looking at.
+		         CASE WHEN COALESCE(price_usd, 0) > 0 OR COALESCE(price_eur, 0) > 0 THEN 1 ELSE 0 END,
 		         last_updated ASC NULLS FIRST,
 		         id
 		LIMIT 100`)
@@ -498,7 +501,7 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 		}
 
 		var c models.Card
-		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.Game, &c.SourceID, &c.SourceCardID); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.Game, &c.SourceID, &c.SourceCardID, &c.Language); err != nil {
 			slog.Error("Sync: Failed to scan card", "error", err)
 			continue
 		}

@@ -119,8 +119,20 @@ func (c *TCGdexPriceClient) FetchPriceContext(ctx context.Context, card models.C
 	if c == nil {
 		return 0, 0, fmt.Errorf("nil TCGdex price client")
 	}
-	base, language := c.endpoint()
+	base, fallbackLanguage := c.endpoint()
+	// Japanese (and other non-English) printings only exist in their own TCGdex
+	// catalog. Querying the English catalog returned "no card id" and the UI
+	// showed "Price unavailable" for a card that Cardmarket prices just fine.
+	language := tcgdexLanguageFor(card.Language, fallbackLanguage)
 	id, err := c.resolveCardID(ctx, base, language, card)
+	if err != nil && language != fallbackLanguage {
+		// A card catalogued in another language may still be listed in the
+		// fallback catalog; try it before reporting a missing price.
+		if fallbackID, fallbackErr := c.resolveCardID(ctx, base, fallbackLanguage, card); fallbackErr == nil {
+			id, err = fallbackID, nil
+			language = fallbackLanguage
+		}
+	}
 	if err != nil {
 		return 0, 0, err
 	}
@@ -131,15 +143,42 @@ func (c *TCGdexPriceClient) FetchPriceContext(ctx context.Context, card models.C
 		return 0, 0, err
 	}
 
-	eur := payload.Pricing.Cardmarket.Avg
-	if eur <= 0 {
-		eur = payload.Pricing.Cardmarket.Low
-	}
+	eur := payload.Pricing.Cardmarket.EUR()
 	usd := payload.Pricing.TCGplayer.USD()
 	if eur <= 0 && usd <= 0 {
 		return 0, 0, fmt.Errorf("tcgdex: no price for %s", id)
 	}
 	return usd, eur, nil
+}
+
+// tcgdexLanguages maps the catalog language codes onto the TCGdex language
+// path segments. Unknown codes fall back to the client language.
+var tcgdexLanguages = map[string]string{
+	"en": "en", "de": "de", "fr": "fr", "es": "es", "it": "it", "pt": "pt",
+	"nl": "nl", "pl": "pl", "ru": "ru",
+	"ja": "ja", "jp": "ja", "ko": "ko",
+	"zh": "zh-cn", "cn": "zh-cn", "zh-cn": "zh-cn",
+	"tw": "zh-tw", "zh-tw": "zh-tw",
+	"id": "id", "th": "th",
+}
+
+// tcgdexLanguageFor returns the TCGdex language segment for a card, falling back
+// to the client default when the card language is unknown.
+func tcgdexLanguageFor(cardLanguage, fallback string) string {
+	code := strings.ToLower(strings.TrimSpace(cardLanguage))
+	if mapped, ok := tcgdexLanguages[code]; ok {
+		return mapped
+	}
+	// Accept region-tagged codes such as "ja-JP" or "en-US".
+	if base, _, found := strings.Cut(code, "-"); found {
+		if mapped, ok := tcgdexLanguages[base]; ok {
+			return mapped
+		}
+	}
+	if strings.TrimSpace(fallback) == "" {
+		return "en"
+	}
+	return fallback
 }
 
 func (c *TCGdexPriceClient) endpoint() (string, string) {
@@ -207,13 +246,38 @@ func (c *TCGdexPriceClient) resolveCardID(ctx context.Context, base, language st
 
 type tcgdexPricePayload struct {
 	Pricing struct {
-		Cardmarket struct {
-			Unit string  `json:"unit"`
-			Avg  float64 `json:"avg"`
-			Low  float64 `json:"low"`
-		} `json:"cardmarket"`
-		TCGplayer *tcgdexTCGplayerPricing `json:"tcgplayer"`
+		Cardmarket tcgdexCardmarketPricing `json:"cardmarket"`
+		TCGplayer  *tcgdexTCGplayerPricing `json:"tcgplayer"`
 	} `json:"pricing"`
+}
+
+// tcgdexCardmarketPricing carries Cardmarket's average, trend and holo prices.
+// Japanese sets frequently publish only the holo columns, so a lookup that
+// reads just "avg" reported the card as unpriced.
+type tcgdexCardmarketPricing struct {
+	Unit      string   `json:"unit"`
+	Avg       float64  `json:"avg"`
+	Low       float64  `json:"low"`
+	Trend     float64  `json:"trend"`
+	AvgHolo   *float64 `json:"avg-holo"`
+	LowHolo   *float64 `json:"low-holo"`
+	TrendHolo *float64 `json:"trend-holo"`
+}
+
+// EUR returns the best available Cardmarket price in euro, or zero.
+func (c tcgdexCardmarketPricing) EUR() float64 {
+	candidates := []float64{c.Avg, c.Low, c.Trend}
+	for _, holo := range []*float64{c.AvgHolo, c.TrendHolo, c.LowHolo} {
+		if holo != nil {
+			candidates = append(candidates, *holo)
+		}
+	}
+	for _, candidate := range candidates {
+		if candidate > 0 {
+			return candidate
+		}
+	}
+	return 0
 }
 
 // tcgdexTCGplayerPricing accepts both payload shapes TCGdex has used: a flat
