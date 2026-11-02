@@ -154,11 +154,17 @@ func (c *TCGdexPriceClient) FetchPriceContext(ctx context.Context, card models.C
 // tcgdexLanguages maps the catalog language codes onto the TCGdex language
 // path segments. Unknown codes fall back to the client language.
 var tcgdexLanguages = map[string]string{
-	"en": "en", "de": "de", "fr": "fr", "es": "es", "it": "it", "pt": "pt",
+	"en": "en", "eng": "en", "english": "en",
+	"de": "de", "deu": "de", "ger": "de", "german": "de",
+	"fr": "fr", "fra": "fr", "fre": "fr", "french": "fr",
+	"es": "es", "spa": "es", "spanish": "es",
+	"it": "it", "ita": "it", "italian": "it",
+	"pt": "pt", "por": "pt", "portuguese": "pt",
 	"nl": "nl", "pl": "pl", "ru": "ru",
-	"ja": "ja", "jp": "ja", "ko": "ko",
-	"zh": "zh-cn", "cn": "zh-cn", "zh-cn": "zh-cn",
-	"tw": "zh-tw", "zh-tw": "zh-tw",
+	"ja": "ja", "jp": "ja", "jpn": "ja", "japanese": "ja",
+	"ko": "ko", "kor": "ko", "korean": "ko",
+	"zh": "zh-cn", "cn": "zh-cn", "zh-cn": "zh-cn", "chi_sim": "zh-cn",
+	"tw": "zh-tw", "zh-tw": "zh-tw", "chi_tra": "zh-tw",
 	"id": "id", "th": "th",
 }
 

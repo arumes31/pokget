@@ -141,13 +141,16 @@ func TestTCGdexPriceClientFallsBackToHoloCardmarketPrice(t *testing.T) {
 
 func TestTCGdexLanguageForMapsCatalogCodes(t *testing.T) {
 	cases := map[string]string{
-		"":       "en",
-		"ja":     "ja",
-		"ja-JP":  "ja",
-		"JP":     "ja",
-		"zh-tw":  "zh-tw",
-		"zh":     "zh-cn",
-		"de":     "de",
+		"":        "en",
+		"ja":      "ja",
+		"ja-JP":   "ja",
+		"JP":      "ja",
+		"jpn":     "ja",
+		"chi_tra": "zh-tw",
+		"spa":     "es",
+		"zh-tw":   "zh-tw",
+		"zh":      "zh-cn",
+		"de":      "de",
 		"klingon": "en",
 	}
 	for input, want := range cases {
