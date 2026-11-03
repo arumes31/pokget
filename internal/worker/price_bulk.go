@@ -847,14 +847,16 @@ WHERE c.source_id = v.source_id
 		changed = 0
 	}
 
-	// The second statement stamps every other matched card, including the ones whose
-	// price did not move. Two statements keep both counters exact: RETURNING only
-	// sees the already updated row.
+	// The second statement stamps every matched card, including the ones whose price
+	// the first statement just changed, so `verified` is the matched count on its own.
+	// Two statements keep both counters exact: RETURNING only sees the already
+	// updated row.
 	verified, err := w.touchBulkChecks(ctx, batch)
 	if err != nil {
-		return bulkBatchResult{matched: changed, changed: changed}, err
+		// The stamps are unknown after the failure; a retry adds its own attempt.
+		return bulkBatchResult{changed: changed}, err
 	}
-	return bulkBatchResult{matched: changed + verified, changed: changed}, nil
+	return bulkBatchResult{matched: verified, changed: changed}, nil
 }
 
 // retryBulkBatch reruns a batch that lost a lock race with the catalog sync.
