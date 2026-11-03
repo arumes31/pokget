@@ -24,7 +24,12 @@ type BulkPriceUpdate struct {
 	SourceID     string
 	SourceCardID string
 	Game         string
-	SetCode      string
+	// Language restricts the fallback match to cards in this language. Empty
+	// means "any language". Marketplaces that split a game by language (TCGplayer
+	// keeps Japanese Pokémon in its own category) set it so a Japanese price never
+	// lands on an English printing.
+	Language string
+	SetCode  string
 	// SetName is the source's set name. Catalog set codes and marketplace
 	// abbreviations disagree for several games (Pokémon, Digimon, UniVersus), so
 	// the worker also matches on the normalized set name when the code misses.
@@ -169,8 +174,10 @@ var tcgPlayerPriceCategories = map[string]int{
 	"fftcg":               24,
 	"universus":           25,
 	"dragon_ball_super":   27,
+	"world_of_warcraft":   13,
 	"flesh_and_blood":     62,
 	"digimon":             63,
+	"grand_archive":       74,
 	"wixoss":              67,
 	"one_piece":           68,
 	"lorcana":             71,
@@ -188,6 +195,21 @@ var tcgPlayerPriceCategories = map[string]int{
 	"cookie_run":          90,
 }
 
+// tcgcsvLanguageCategory is a TCGplayer category that only carries cards of one
+// language. TCGplayer sells Japanese Pokémon under its own category ("Pokemon
+// Japan", 85), so those rows must never be written onto English printings.
+type tcgcsvLanguageCategory struct {
+	Game     string
+	Language string
+	Category int
+}
+
+// tcgPlayerLanguageCategories lists the marketplace categories that are bound to
+// a single language.
+var tcgPlayerLanguageCategories = []tcgcsvLanguageCategory{
+	{Game: "pokemon", Language: "ja", Category: 85},
+}
+
 // tcgcsvBulkSource downloads the daily TCGplayer price dump from TCGCSV. It
 // covers every TCGplayer category, so games without their own price API still
 // get a USD market price.
@@ -195,16 +217,20 @@ type tcgcsvBulkSource struct {
 	BaseURL     string
 	HTTP        *http.Client
 	Categories  map[string]int
-	Concurrency int
+	// LanguageCategories are the extra, language-bound categories. They are
+	// matched against cards of that language only.
+	LanguageCategories []tcgcsvLanguageCategory
+	Concurrency        int
 }
 
 // NewTCGCSVBulkSource returns the daily TCGCSV price source.
 func NewTCGCSVBulkSource() BulkPriceSource {
 	return &tcgcsvBulkSource{
-		BaseURL:     "https://tcgcsv.com/tcgplayer",
-		HTTP:        &http.Client{Timeout: 60 * time.Second},
-		Categories:  tcgPlayerPriceCategories,
-		Concurrency: 4,
+		BaseURL:            "https://tcgcsv.com/tcgplayer",
+		HTTP:               &http.Client{Timeout: 60 * time.Second},
+		Categories:         tcgPlayerPriceCategories,
+		LanguageCategories: tcgPlayerLanguageCategories,
+		Concurrency:        4,
 	}
 }
 
@@ -215,8 +241,10 @@ func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceU
 	if base == "" {
 		base = "https://tcgcsv.com/tcgplayer"
 	}
+	// A nil map means "not configured" and falls back to the default categories;
+	// an empty map deliberately disables them.
 	categories := s.Categories
-	if len(categories) == 0 {
+	if categories == nil {
 		categories = tcgPlayerPriceCategories
 	}
 	concurrency := s.Concurrency
@@ -235,50 +263,77 @@ func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceU
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		endpoint := fmt.Sprintf("%s/%d", base, category)
-		var groups struct {
-			Results []struct {
-				GroupID      int    `json:"groupId"`
-				Abbreviation string `json:"abbreviation"`
-				Name         string `json:"name"`
-			} `json:"results"`
+		if err := s.fetchCategory(ctx, base, game, "", category, concurrency, emitSafe); err != nil {
+			return err
 		}
-		if err := fetchPriceJSON(ctx, s.HTTP, endpoint+"/groups", &groups); err != nil {
-			return fmt.Errorf("tcgcsv groups %s: %w", game, err)
-		}
+	}
 
-		sem := make(chan struct{}, concurrency)
-		var wg sync.WaitGroup
-		var failed int64
-		var errMu sync.Mutex
-		var lastErr error
-		for _, group := range groups.Results {
-			wg.Add(1)
-			sem <- struct{}{}
-			go func(groupID int, abbreviation, name string) {
-				defer wg.Done()
-				defer func() { <-sem }()
-				if err := s.emitGroup(ctx, base, category, game, groupID, abbreviation, name, emitSafe); err != nil {
-					errMu.Lock()
-					if lastErr == nil {
-						lastErr = err
-					}
-					errMu.Unlock()
-					if n := atomic.AddInt64(&failed, 1); n <= 3 {
-						slog.Warn("tcgcsv: skipping group", "game", game, "group", groupID, "error", err)
-					}
-				}
-			}(group.GroupID, group.Abbreviation, group.Name)
-		}
-		wg.Wait()
+	for _, extra := range s.LanguageCategories {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if failed == int64(len(groups.Results)) && lastErr != nil {
-			// Every group of this category failed: surface the reason so the
-			// operator sees it, but keep the other categories running.
-			return fmt.Errorf("tcgcsv category %s: %w", game, lastErr)
+		if err := s.fetchCategory(ctx, base, extra.Game, extra.Language, extra.Category, concurrency, emitSafe); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// fetchCategory streams every group of one TCGplayer category. Failing groups are
+// logged and skipped so a single broken set cannot stall the daily cycle; a
+// category whose groups all failed is reported so the operator notices.
+func (s *tcgcsvBulkSource) fetchCategory(
+	ctx context.Context,
+	base string,
+	game string,
+	language string,
+	category int,
+	concurrency int,
+	emit func(BulkPriceUpdate) error,
+) error {
+	endpoint := fmt.Sprintf("%s/%d", base, category)
+	var groups struct {
+		Results []struct {
+			GroupID      int    `json:"groupId"`
+			Abbreviation string `json:"abbreviation"`
+			Name         string `json:"name"`
+		} `json:"results"`
+	}
+	if err := fetchPriceJSON(ctx, s.HTTP, endpoint+"/groups", &groups); err != nil {
+		return fmt.Errorf("tcgcsv groups %s: %w", game, err)
+	}
+
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	var failed int64
+	var errMu sync.Mutex
+	var lastErr error
+	for _, group := range groups.Results {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(groupID int, abbreviation, name string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if err := s.emitGroup(ctx, base, category, game, language, groupID, abbreviation, name, emit); err != nil {
+				errMu.Lock()
+				if lastErr == nil {
+					lastErr = err
+				}
+				errMu.Unlock()
+				if n := atomic.AddInt64(&failed, 1); n <= 3 {
+					slog.Warn("tcgcsv: skipping group", "game", game, "language", language, "group", groupID, "error", err)
+				}
+			}
+		}(group.GroupID, group.Abbreviation, group.Name)
+	}
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if failed == int64(len(groups.Results)) && lastErr != nil {
+		// Every group of this category failed: surface the reason so the
+		// operator sees it, but keep the other categories running.
+		return fmt.Errorf("tcgcsv category %s: %w", game, lastErr)
 	}
 	return nil
 }
@@ -288,6 +343,7 @@ func (s *tcgcsvBulkSource) emitGroup(
 	base string,
 	category int,
 	game string,
+	language string,
 	groupID int,
 	abbreviation string,
 	setName string,
@@ -348,6 +404,7 @@ func (s *tcgcsvBulkSource) emitGroup(
 			SourceID:     "tcgcsv",
 			SourceCardID: strconv.Itoa(product.ProductID),
 			Game:         game,
+			Language:     language,
 			SetCode:      abbreviation,
 			SetName:      setName,
 			Number:       number,

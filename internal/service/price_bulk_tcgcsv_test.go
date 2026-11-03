@@ -29,6 +29,7 @@ func TestTCGCSVBulkSourceEmitsCategoryPrices(t *testing.T) {
 	source.BaseURL = server.URL
 	source.HTTP = server.Client()
 	source.Categories = map[string]int{"one_piece": 1}
+	source.LanguageCategories = nil
 	source.Concurrency = 1
 
 	var updates []BulkPriceUpdate
@@ -69,8 +70,51 @@ func TestTCGCSVBulkSourceReportsGroupErrors(t *testing.T) {
 	source.BaseURL = server.URL
 	source.HTTP = server.Client()
 	source.Categories = map[string]int{"one_piece": 1}
+	source.LanguageCategories = nil
 	source.Concurrency = 1
 	if err := source.FetchPrices(context.Background(), func(BulkPriceUpdate) error { return nil }); err == nil {
 		t.Fatal("expected an error for a broken group endpoint")
+	}
+}
+
+// TCGplayer keeps Japanese Pokémon in its own category, so those rows must carry
+// the language to keep them off the English printings.
+func TestTCGCSVBulkSourceTagsLanguageCategories(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/85/groups":
+			_, _ = writer.Write([]byte(`{"results":[{"groupId":23609,"abbreviation":"SV3","name":"SV3: Ruler of the Black Flame"}]}`))
+		case "/85/23609/products":
+			_, _ = writer.Write([]byte(`{"results":[{"productId":566955,"extendedData":[{"name":"Number","value":"001/108"}]}]}`))
+		case "/85/23609/prices":
+			_, _ = writer.Write([]byte(`{"results":[{"productId":566955,"marketPrice":0.42,"subTypeName":"Normal"}]}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	source := NewTCGCSVBulkSource().(*tcgcsvBulkSource)
+	source.BaseURL = server.URL
+	source.HTTP = server.Client()
+	source.Categories = map[string]int{}
+	source.Concurrency = 1
+
+	var updates []BulkPriceUpdate
+	if err := source.FetchPrices(context.Background(), func(update BulkPriceUpdate) error {
+		updates = append(updates, update)
+		return nil
+	}); err != nil {
+		t.Fatalf("FetchPrices: %v", err)
+	}
+	if len(updates) != 1 {
+		t.Fatalf("updates = %d, want 1", len(updates))
+	}
+	update := updates[0]
+	if update.Game != "pokemon" || update.Language != "ja" {
+		t.Fatalf("update = %+v, want a Japanese Pokémon row", update)
+	}
+	if update.SetCode != "SV3" || update.Number != "001/108" || update.USD != 0.42 {
+		t.Fatalf("update = %+v", update)
 	}
 }

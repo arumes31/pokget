@@ -155,6 +155,9 @@ type DataSyncConfig struct {
 	MetadataTargets   []MetadataTarget
 	PriceClients      map[string][]service.PriceClient
 	BulkPriceSources  []service.BulkPriceSource
+	// EURRate fills the EUR column for marketplaces that only publish USD. Nil
+	// disables the conversion, which keeps the previous behaviour.
+	EURRate           service.EURRateProvider
 	RequestsPerSecond float64
 	RequestBurst      int
 	RetryAttempts     int
