@@ -104,7 +104,7 @@ func NewConfiguredDataSyncWorker(
 		bulkPriceSources: slices.Clone(config.BulkPriceSources),
 		eurRate:          config.EURRate,
 		backfillBatch:    config.PriceBackfillBatch,
-		backfillLimiter:  newRequestLimiter(config.PriceBackfillRate, 1),
+		backfillLimiter:  newRequestLimiter(backfillRate(config.PriceBackfillRate), 1),
 		metadataClient:   mc,
 		metadataService:  ms,
 		interval:         config.Interval,

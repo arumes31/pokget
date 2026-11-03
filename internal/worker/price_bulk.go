@@ -720,10 +720,11 @@ func (w *DataSyncWorker) applyBulkBatch(ctx context.Context, batch []service.Bul
 	}
 
 	var query strings.Builder
-	// A source without an EUR quote must not wipe the EUR price another source
-	// (or the FX fallback) already produced.
+	// A source without a quote for one currency must not wipe the price another
+	// source (or the FX fallback) already produced: Scryfall emits foil-only and
+	// EUR-only printings with USD 0.
 	query.WriteString(`UPDATE cards AS c
-SET price_usd = v.usd,
+SET price_usd = CASE WHEN v.usd > 0 THEN v.usd ELSE c.price_usd END,
     price_eur = CASE WHEN v.eur > 0 THEN v.eur ELSE c.price_eur END,
     price_eur_estimated = CASE WHEN v.eur > 0 THEN FALSE ELSE c.price_eur_estimated END,
     last_updated = NOW()
@@ -740,7 +741,7 @@ FROM (VALUES `)
 	query.WriteString(`) AS v(source_id, source_card_id, usd, eur)
 WHERE c.source_id = v.source_id
   AND c.source_card_id = v.source_card_id
-  AND (c.price_usd IS DISTINCT FROM v.usd
+  AND ((v.usd > 0 AND c.price_usd IS DISTINCT FROM v.usd)
        OR (v.eur > 0 AND c.price_eur IS DISTINCT FROM v.eur))`)
 
 	result, err := w.db.ExecContext(ctx, query.String(), args...)

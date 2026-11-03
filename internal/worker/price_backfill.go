@@ -12,6 +12,17 @@ import (
 // errNoBackfillPrice reports that no configured provider knew the card.
 var errNoBackfillPrice = errors.New("price backfill: no provider returned a price")
 
+// defaultBackfillRate is the request rate used when none is configured. Without it
+// a zero rate would mean "unlimited" and hammer the provider.
+const defaultBackfillRate = 2.0
+
+func backfillRate(configured float64) float64 {
+	if configured <= 0 {
+		return defaultBackfillRate
+	}
+	return configured
+}
+
 // backfillPrices fills prices for catalog cards that nobody owns yet. The bulk
 // sources cover most games, but the Pokémon catalog (TCGdex) only knows prices per
 // card, so the long tail of a language the marketplace does not list (German,
