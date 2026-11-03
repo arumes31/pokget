@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -16,6 +17,16 @@ import (
 // bulkPriceBatchSize keeps the VALUES list of one price update within a
 // comfortable statement size (4 parameters per row).
 const bulkPriceBatchSize = 500
+
+const (
+	// fxBatchSize bounds one converted-EUR statement so it cannot hold locks on
+	// the whole catalog while the per-card sync runs.
+	fxBatchSize = 20000
+	// fxBatchLimit stops a runaway loop when the batches never drain.
+	fxBatchLimit = 200
+	// fxRetryLimit is how often a conflicting transaction is retried per batch.
+	fxRetryLimit = 3
+)
 
 // syncBulkPrices refreshes catalog prices from the free daily bulk exports
 // (Scryfall for Magic, YGOPRODeck for Yu-Gi-Oh). It runs once per day and is
@@ -176,23 +187,89 @@ func (w *DataSyncWorker) applyEURFallback(ctx context.Context) {
 		slog.Warn("Price FX: provider returned no usable rate", "rate", rate)
 		return
 	}
+	// Convert in id-ordered slices. A single statement would lock hundreds of
+	// thousands of rows for seconds and deadlock with the per-card price sync,
+	// which updates single rows in its own transaction.
+	var total int64
+	for batch := 0; batch < fxBatchLimit; batch++ {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		changed, err := w.applyEURBatchWithRetry(ctx, rate)
+		if err != nil {
+			slog.Warn("Price FX: conversion failed", "error", err, "converted", total)
+			break
+		}
+		total += changed
+		// Rows the sync already priced are skipped by the row recheck, so a short
+		// batch does not mean the catalog is done; only an empty batch does.
+		if changed == 0 {
+			break
+		}
+	}
+	if total > 0 {
+		slog.Info("Price FX: derived EUR prices from USD", "rate", rate, "rows", total)
+	}
+}
+
+// applyEURBatchWithRetry retries a batch that lost a lock race against the
+// per-card price sync instead of giving up on the whole conversion.
+func (w *DataSyncWorker) applyEURBatchWithRetry(ctx context.Context, rate float64) (int64, error) {
+	var lastErr error
+	for attempt := 0; attempt <= fxRetryLimit; attempt++ {
+		changed, err := w.applyEURBatch(ctx, rate, fxBatchSize)
+		if err == nil {
+			return changed, nil
+		}
+		if !retryablePostgresError(err) {
+			return 0, err
+		}
+		lastErr = err
+		if !waitForContext(ctx, time.Second) {
+			return 0, ctx.Err()
+		}
+	}
+	return 0, lastErr
+}
+
+// applyEURBatch converts one id-ordered slice of unpriced EUR values.
+func (w *DataSyncWorker) applyEURBatch(ctx context.Context, rate float64, size int) (int64, error) {
+	// The eligibility check is repeated on the target row: the per-card sync can
+	// write a native EUR quote between the subquery and the row lock, and that
+	// fresh quote must survive. PostgreSQL re-evaluates the outer predicates on the
+	// locked row version, the subquery alone would overwrite it.
 	result, err := w.db.ExecContext(ctx, `
 		UPDATE cards
 		SET price_eur = ROUND(price_usd * $1, 2), price_eur_estimated = TRUE
-		WHERE superseded_by_card_id IS NULL
+		WHERE id IN (
+			SELECT id FROM cards
+			WHERE superseded_by_card_id IS NULL
+			  AND price_usd > 0
+			  AND (price_eur IS NULL OR price_eur <= 0)
+			ORDER BY id
+			LIMIT $2
+		)
+		  AND superseded_by_card_id IS NULL
 		  AND price_usd > 0
-		  AND (price_eur IS NULL OR price_eur <= 0)`, rate)
+		  AND (price_eur IS NULL OR price_eur <= 0)`, rate, size)
 	if err != nil {
-		slog.Warn("Price FX: conversion failed", "error", err)
-		return
+		return 0, err
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {
-		changed = 0
+		return 0, nil
 	}
-	if changed > 0 {
-		slog.Info("Price FX: derived EUR prices from USD", "rate", rate, "rows", changed)
+	return changed, nil
+}
+
+// retryablePostgresError reports the transaction conflicts a retry can resolve.
+func retryablePostgresError(err error) bool {
+	var pgErr *pq.Error
+	if !errors.As(err, &pgErr) {
+		return false
 	}
+	// 40P01 deadlock_detected, 40001 serialization_failure, 55P03 lock_not_available
+	return pgErr.Code == "40P01" || pgErr.Code == "40001" || pgErr.Code == "55P03"
 }
 
 // fuzzyScope limits a fallback match to one game and, for marketplaces that
@@ -303,9 +380,16 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(ctx context.Context, game, la
 		pending = pending[:0]
 		return nil
 	}
-	for id, price := range updates {
+	// Sorted ids give every batch the same lock order as the next one, which keeps
+	// the fallback from deadlocking with the per-card price sync.
+	ids := make([]string, 0, len(updates))
+	for id := range updates {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
 		pending = append(pending, id)
-		values[id] = price
+		values[id] = updates[id]
 		if len(pending) >= bulkPriceBatchSize {
 			if err := flushIDs(); err != nil {
 				return total, err
