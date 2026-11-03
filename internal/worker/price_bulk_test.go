@@ -11,6 +11,37 @@ import (
 	"pokget/internal/service"
 )
 
+// The check-stamp statement writes four values per row, so the placeholder indices
+// must advance by four. A wrong stride leaves a gap in the parameter list and
+// PostgreSQL rejects the statement with 42P18 - which no unit test caught before
+// because sqlmock only compared the argument count.
+func TestBulkCheckStampKeepsPlaceholdersContiguous(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec(`\(VALUES \(\$1, \$2, \$3::numeric, \$4\), \(\$5, \$6, \$7::numeric, \$8\)\)`).
+		WithArgs("scryfall", "card-a", 1.25, "foil", "ygoprodeck", "1234", 0.33, "normal").
+		WillReturnResult(sqlmock.NewResult(0, 2))
+
+	worker := &DataSyncWorker{db: db}
+	verified, err := worker.touchBulkChecks(context.Background(), []service.BulkPriceUpdate{
+		{SourceID: "scryfall", SourceCardID: "card-a", USD: 1.25, Variant: "foil"},
+		{SourceID: "ygoprodeck", SourceCardID: "1234", USD: 0.33, Variant: "normal"},
+	})
+	if err != nil {
+		t.Fatalf("touchBulkChecks: %v", err)
+	}
+	if verified != 2 {
+		t.Fatalf("verified = %d, want 2", verified)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func TestApplyBulkBatchUpdatesChangedPrices(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

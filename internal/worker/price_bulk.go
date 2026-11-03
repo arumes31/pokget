@@ -891,12 +891,14 @@ func (w *DataSyncWorker) touchBulkChecks(ctx context.Context, batch []service.Bu
 SET price_checked_at = NOW(),
     price_variant = CASE WHEN v.usd > 0 AND v.variant <> '' THEN v.variant ELSE c.price_variant END
 FROM (VALUES `)
-	args := make([]any, 0, len(batch)*5)
+	// Four placeholders per row: the offset must match, otherwise PostgreSQL sees a
+	// gap in the parameter list and rejects the statement with 42P18.
+	args := make([]any, 0, len(batch)*4)
 	for index, update := range batch {
 		if index > 0 {
 			query.WriteString(", ")
 		}
-		base := index * 5
+		base := index * 4
 		fmt.Fprintf(&query, "($%d, $%d, $%d::numeric, $%d)", base+1, base+2, base+3, base+4)
 		args = append(args, update.SourceID, update.SourceCardID, update.USD, update.Variant)
 	}
