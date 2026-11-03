@@ -80,7 +80,7 @@ func (stubScanDetector) Detect(context.Context, []byte, string, string) (*claude
 }
 
 func (d stubScanDetector) DetectImages(context.Context, [][]byte, string, string) (*claudedetect.DetectedCardInfo, error) {
-	return d.Detect(nil, nil, "", "")
+	return d.Detect(context.Background(), nil, "", "")
 }
 
 func (stubScanDetector) Model() string             { return "claude-sonnet-5-5" }

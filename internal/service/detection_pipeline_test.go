@@ -128,7 +128,7 @@ func (d *stubClaudeDetector) Detect(context.Context, []byte, string, string) (*c
 }
 
 func (d *stubClaudeDetector) DetectImages(context.Context, [][]byte, string, string) (*claudedetect.DetectedCardInfo, error) {
-	return d.Detect(nil, nil, "", "")
+	return d.Detect(context.Background(), nil, "", "")
 }
 
 func (d *stubClaudeDetector) Model() string             { return "claude-sonnet-5-5" }

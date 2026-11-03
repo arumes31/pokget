@@ -62,6 +62,7 @@ type resultRow struct {
 	Status          string   `json:"status"`
 	Confidence      float64  `json:"confidence"`
 	Exact           bool     `json:"exact"`
+	SamePrinting    bool     `json:"same_printing"`
 	ReviewCandidate bool     `json:"review_candidate"`
 	DurationMS      int64    `json:"duration_ms"`
 	Error           string   `json:"error,omitempty"`
@@ -70,13 +71,14 @@ type resultRow struct {
 }
 
 type summary struct {
-	Game     string `json:"game"`
-	Language string `json:"language"`
-	Sampled  int    `json:"sampled"`
-	Exact    int    `json:"exact"`
-	Review   int    `json:"review"`
-	Wrong    int    `json:"wrong"`
-	Errors   int    `json:"errors"`
+	Game         string `json:"game"`
+	Language     string `json:"language"`
+	Sampled      int    `json:"sampled"`
+	Exact        int    `json:"exact"`
+	SamePrinting int    `json:"same_printing"`
+	Review       int    `json:"review"`
+	Wrong        int    `json:"wrong"`
+	Errors       int    `json:"errors"`
 }
 
 func main() {
@@ -147,6 +149,8 @@ func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Durati
 				combinationSummary.Errors++
 			case row.Exact:
 				combinationSummary.Exact++
+			case row.SamePrinting:
+				combinationSummary.SamePrinting++
 			case row.ReviewCandidate:
 				combinationSummary.Review++
 			default:
@@ -340,6 +344,9 @@ func scanOne(ctx context.Context, client *http.Client, pipeline *service.Detecti
 		}
 	}
 	row.Exact = row.ActualID != "" && row.ActualID == sample.Card.ID
+	row.SamePrinting = !row.Exact && strings.EqualFold(strings.TrimSpace(row.ActualName), strings.TrimSpace(sample.Card.Name)) &&
+		strings.EqualFold(strings.TrimSpace(row.ActualNumber), strings.TrimSpace(sample.Card.CollectorNumber)) &&
+		row.ActualName != ""
 	for _, match := range result.TopMatches {
 		if match.Card != nil && match.Card.ID == sample.Card.ID {
 			row.ReviewCandidate = true
@@ -367,7 +374,48 @@ func fetchImage(ctx context.Context, client *http.Client, url string) ([]byte, e
 	if strings.TrimSpace(url) == "" {
 		return nil, errors.New("card has no image URL")
 	}
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		payload, err := fetchImageOnce(ctx, client, url)
+		if err == nil {
+			return payload, nil
+		}
+		lastErr = err
+		if attempt < 3 && retryableImageError(err) {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * time.Second):
+			}
+			continue
+		}
+		break
+	}
+	return nil, lastErr
+}
+
+func retryableImageError(err error) bool {
+	var statusErr *imageStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.status == http.StatusTooManyRequests || statusErr.status >= 500
+	}
+	return true
+}
+
+type imageStatusError struct {
+	status int
+	url    string
+}
+
+func (e *imageStatusError) Error() string {
+	return fmt.Sprintf("image status %d for %s", e.status, e.url)
+}
+
+func fetchImageOnce(ctx context.Context, client *http.Client, url string) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err == nil {
+		request.Header.Set("User-Agent", "pokget-scan-matrix/1.0")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +425,7 @@ func fetchImage(ctx context.Context, client *http.Client, url string) ([]byte, e
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("image status %d for %s", response.StatusCode, url)
+		return nil, &imageStatusError{status: response.StatusCode, url: url}
 	}
 	payload, err := io.ReadAll(io.LimitReader(response.Body, maxSampleImageBytes))
 	if err != nil {
@@ -417,8 +465,8 @@ func printRow(row resultRow) {
 }
 
 func printSummary(summaries []summary) {
-	fmt.Println("game                 language  sampled  exact  review  wrong  errors  exact%")
-	var totalSampled, totalExact int
+	fmt.Println("game                 language  sampled  exact  same#  review  wrong  errors  exact%")
+	var totalSampled, totalExact, totalSame int
 	for _, item := range summaries {
 		percent := 0.0
 		if item.Sampled > 0 {
@@ -426,16 +474,18 @@ func printSummary(summaries []summary) {
 		}
 		totalSampled += item.Sampled
 		totalExact += item.Exact
-		fmt.Printf("%-20s %-9s %7d %6d %7d %6d %7d %6.0f%%\n",
-			item.Game, item.Language, item.Sampled, item.Exact, item.Review, item.Wrong, item.Errors, percent)
+		totalSame += item.SamePrinting
+		fmt.Printf("%-20s %-9s %7d %6d %6d %7d %6d %7d %6.0f%%\n",
+			item.Game, item.Language, item.Sampled, item.Exact, item.SamePrinting, item.Review, item.Wrong, item.Errors, percent)
 	}
 	if len(summaries) > 0 {
 		percent := 0.0
 		if totalSampled > 0 {
 			percent = 100 * float64(totalExact) / float64(totalSampled)
 		}
-		fmt.Printf("%-20s %-9s %7d %6d\n", "TOTAL", "", totalSampled, totalExact)
-		fmt.Printf("exact match rate: %.1f%%\n", percent)
+		fmt.Printf("%-20s %-9s %7d %6d %6d\n", "TOTAL", "", totalSampled, totalExact, totalSame)
+		fmt.Printf("exact match rate: %.1f%% (name+number rate: %.1f%%)\n", percent,
+			100*float64(totalExact+totalSame)/float64(totalSampled))
 	}
 }
 
