@@ -184,9 +184,11 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 
 	var candidates []scoredMatch
 	normClaudeName := normalizeMatchText(info.Name)
+	compactClaudeName := compactMatchText(normClaudeName)
 	foldedClaudeName := foldVoicing(normClaudeName)
 	claudeCollector := normalizeCollectorNum(info.CollectorNumber)
 	claudeCollectorBase := collectorBaseKey(claudeCollector)
+	claudeCollectorCanonical := collectorCanonicalKey(info.CollectorNumber)
 	claudeSet := normalizeMatchText(info.Set)
 	claudeSetCode := normalizeMatchText(info.SetCode)
 
@@ -198,14 +200,20 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		cardNormName := normalizeMatchText(card.Name)
 		cardCollector := normalizeCollectorNum(card.CollectorNumber)
 		cardCollectorBase := collectorBaseKey(cardCollector)
+		cardCollectorCanonical := collectorCanonicalKey(card.CollectorNumber)
 		cardSet := normalizeMatchText(card.Set)
 		cardSetCode := normalizeMatchText(card.SetCode)
 
-		// Name matching (check primary and localized names)
-		nameMatched := cardNormName == normClaudeName
+		// Name matching (check primary and localized names). Whitespace is not
+		// meaning: Japanese card names are printed without the spaces the
+		// catalog uses ("かがやくヒスイオオニューラ" vs "かがやくヒスイ オオニューラ").
+		nameMatched := cardNormName == normClaudeName ||
+			(compactClaudeName != "" && compactMatchText(cardNormName) == compactClaudeName)
 		if !nameMatched {
 			for _, loc := range card.LocalizedNames {
-				if normalizeMatchText(loc) == normClaudeName {
+				normalizedLocalized := normalizeMatchText(loc)
+				if normalizedLocalized == normClaudeName ||
+					(compactClaudeName != "" && compactMatchText(normalizedLocalized) == compactClaudeName) {
 					nameMatched = true
 					break
 				}
@@ -231,9 +239,12 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 
 		// Partial / substring name matching
 		partialName := false
-		if !nameMatched && normClaudeName != "" && cardNormName != "" {
-			if strings.Contains(cardNormName, normClaudeName) || strings.Contains(normClaudeName, cardNormName) {
-				partialName = true
+		if !nameMatched && compactClaudeName != "" {
+			compactCardName := compactMatchText(cardNormName)
+			if compactCardName != "" {
+				if strings.Contains(compactCardName, compactClaudeName) || strings.Contains(compactClaudeName, compactCardName) {
+					partialName = true
+				}
 			}
 		}
 
@@ -271,6 +282,8 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			} else {
 				// Neither has fraction: compare keys (strips leading zeroes)
 				if (k1 != "" && k1 == k2) || claudeCollector == cardCollector {
+					collectorMatched = true
+				} else if claudeCollectorCanonical != "" && claudeCollectorCanonical == cardCollectorCanonical {
 					collectorMatched = true
 				} else if claudeCollectorBase != "" && claudeCollectorBase == cardCollectorBase {
 					// Magic prints the same number with a variant suffix
@@ -478,7 +491,37 @@ func extractNumerator(s string) string {
 var (
 	collectorVariantSuffixPattern = regexp.MustCompile(`^([a-z]{0,3})([0-9]{1,4})[a-z]$`)
 	altArtSourceIDPattern         = regexp.MustCompile(`(?i)_[pr][0-9]+$`)
+	collectorSeparatorPattern     = regexp.MustCompile(`[^a-z0-9]+`)
 )
+
+// collectorCanonicalKey makes the printed number comparable across the shapes
+// the model and the catalog use: `TAEV-EN027`, `TAEV EN27`, `taev_en027` and
+// `TAEV-EN27` all reduce to the same key. Yu-Gi-Oh and One Piece numbers carry
+// a set prefix, so the old `[a-z]{0,3}[0-9]+` parser returned no key at all for
+// them and only an exact byte match counted.
+func collectorCanonicalKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimPrefix(value, "#")
+	value = strings.ReplaceAll(value, "no.", "")
+	value = collectorSeparatorPattern.ReplaceAllString(value, "-")
+	value = strings.Trim(value, "-")
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(value, "-")
+	last := parts[len(parts)-1]
+	digitStart := len(last)
+	for digitStart > 0 && last[digitStart-1] >= '0' && last[digitStart-1] <= '9' {
+		digitStart--
+	}
+	if digitStart < len(last) {
+		number, err := strconv.Atoi(last[digitStart:])
+		if err == nil {
+			parts[len(parts)-1] = last[:digitStart] + strconv.Itoa(number)
+		}
+	}
+	return strings.Join(parts, "-")
+}
 
 // collectorBaseKey is the collector number without the single-letter variant
 // suffix Magic uses for alternate printings (`254p`, `254s`). It still keeps the
@@ -508,4 +551,9 @@ func isBasePrinting(card models.Card) bool {
 // and collector number but differ in artwork, price and catalog row.
 func logicalCardKey(card models.Card) string {
 	return normalizeMatchText(card.Name) + "\x00" + normalizeCollectorNum(card.CollectorNumber)
+}
+
+// compactMatchText removes the spaces normalizeMatchText leaves behind.
+func compactMatchText(value string) string {
+	return strings.ReplaceAll(value, " ", "")
 }

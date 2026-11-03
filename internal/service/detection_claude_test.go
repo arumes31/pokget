@@ -356,6 +356,75 @@ func TestClaudeDetection_DuplicatePrintingsDoNotForceReview(t *testing.T) {
 	}
 }
 
+func TestClaudeDetection_NormalizesSetPrefixedCollectorNumbers(t *testing.T) {
+	cases := []struct {
+		detected string
+		catalog  string
+	}{
+		{"TAEV EN027", "TAEV-EN027"},
+		{"TAEV_EN27", "TAEV-EN027"},
+		{"LON 78", "LON-078"},
+		{"OP01 001", "OP01-001"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.detected, func(t *testing.T) {
+			info := &claudedetect.DetectedCardInfo{
+				Game:            "yugioh",
+				Name:            "Crystal Beast Ruby Carbuncle",
+				CollectorNumber: tc.detected,
+				Set:             "Force of the Breaker",
+				Language:        "en",
+				Confidence:      0.95,
+			}
+			cards := []models.Card{{
+				ID:              "card-1",
+				Name:            "Crystal Beast Ruby Carbuncle",
+				CollectorNumber: tc.catalog,
+				Set:             "Force of the Breaker",
+				SetCode:         "TAEV",
+				Language:        "en",
+				Game:            "yugioh",
+			}}
+
+			matches := matchCardsWithClaude(info, cards)
+			if len(matches) != 1 {
+				t.Fatalf("expected one candidate, got %d", len(matches))
+			}
+			if matches[0].Confidence != 99.0 {
+				t.Errorf("expected name+number+set 99, got %f", matches[0].Confidence)
+			}
+		})
+	}
+}
+
+func TestClaudeDetection_IgnoresWhitespaceInPrintedName(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "pokemon",
+		Name:            "かがやくヒスイオオニューラ",
+		CollectorNumber: "046/071",
+		Set:             "S10a",
+		Language:        "ja",
+		Confidence:      0.93,
+	}
+	cards := []models.Card{{
+		ID:              "s10a-046",
+		Name:            "かがやくヒスイ オオニューラ",
+		CollectorNumber: "046/071",
+		Set:             "S10a",
+		SetCode:         "S10a",
+		Language:        "ja",
+		Game:            "pokemon",
+	}}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if matches[0].Confidence != 99.0 {
+		t.Errorf("expected whitespace-insensitive name match at 99, got %f", matches[0].Confidence)
+	}
+}
+
 func TestClaudeDetection_GenericSetSubstringDoesNotConfirmUnknownName(t *testing.T) {
 	info := &claudedetect.DetectedCardInfo{
 		Game:            "magic",
