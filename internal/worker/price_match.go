@@ -65,8 +65,17 @@ func trimLocaleSuffix(canonical string) (string, bool) {
 
 // priceNameKey identifies a card by set and name. It is the fallback for
 // marketplaces that list old cards without a collector number.
+//
+// A name that canonicalizes to fewer than three characters is rejected: names in
+// Japanese, Chinese or Korean script keep no ASCII letter at all, and an empty or
+// one-letter token would match every other such card in the set.
 func priceNameKey(setCode, name string) string {
-	return canonicalPriceToken(setCode) + "|" + canonicalPriceToken(name)
+	set := canonicalPriceToken(setCode)
+	card := canonicalPriceToken(name)
+	if set == "" || len(card) < 3 {
+		return ""
+	}
+	return set + "|" + card
 }
 
 // nonNil returns an empty slice for a nil list. pq.Array(nil) would encode SQL

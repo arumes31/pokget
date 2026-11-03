@@ -35,10 +35,12 @@ func TestBackfillPricesStoresMissingPokemonPrices(t *testing.T) {
 	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
 		AddRow("card-1", "Bulbasaur", "151", "pokemon", "de", "tcgdex", "sv03.5-001", "sv03.5", "001")
 	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
-	mock.ExpectExec("UPDATE cards\\s+SET price_usd").
+	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE cards[\\s\\S]*COALESCE\\(price_eur, 0\\) <= 0").
 		WithArgs(0.12, 0.17, "card-1").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
 
 	client := &stubPriceClient{usd: 0.12, eur: 0.17}
 	worker := &DataSyncWorker{

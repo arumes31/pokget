@@ -50,7 +50,17 @@ func TestPriceNameKeyIgnoresFormatting(t *testing.T) {
 	if got := priceNameKey("Dungeon Treasure", "Lieutenant Horatio Laine"); got != priceNameKey("dungeon-treasure", "Lieutenant  Horatio Laine") {
 		t.Fatalf("name keys differ: %q", got)
 	}
-	if priceNameKey("Dungeon Treasure", "A") == priceNameKey("Dungeon Treasure", "B") {
+	if priceNameKey("Dungeon Treasure", "Hogger") == priceNameKey("Dungeon Treasure", "Vancleef") {
 		t.Fatal("different names must not collide")
+	}
+}
+
+// Names in Japanese or Chinese script keep no ASCII letter after canonicalization;
+// they must not collapse into a single key that matches every such card.
+func TestPriceNameKeyRejectsUnusableNames(t *testing.T) {
+	for _, name := range []string{"", "  ", "ナゾノクサ", "妙蛙種子", "A"} {
+		if key := priceNameKey("Dungeon Treasure", name); key != "" {
+			t.Fatalf("priceNameKey(%q) = %q, want an empty key", name, key)
+		}
 	}
 }

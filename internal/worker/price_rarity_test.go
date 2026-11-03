@@ -20,7 +20,7 @@ func TestApplyFuzzyRarityFillsMissingRarities(t *testing.T) {
 		AddRow("card-jp", "SV3", "Ruler of the Black Flame", "001").
 		AddRow("card-en", "sv3", "Obsidian Flames", "002")
 	mock.ExpectQuery("SELECT id, COALESCE\\(set_code[\\s\\S]*rarity IS NULL[\\s\\S]*ANY\\(\\$2::text\\[\\]\\)").
-		WithArgs("pokemon", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs("pokemon", textArray{"{\"ja\"}"}, emptyTextArray{}).
 		WillReturnRows(rows)
 	// The batch is written in id order so consecutive batches lock rows alike.
 	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*SET rarity = v.rarity").

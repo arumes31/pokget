@@ -163,6 +163,9 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 			}
 			for _, alias := range setNameAliases(update.SetName) {
 				key := priceNameKey(alias, update.ProductName)
+				if key == "" {
+					continue
+				}
 				if _, exists := fuzzyByNameNumberless[scope][key]; !exists {
 					fuzzyByNameNumberless[scope][key] = update.USD
 				}
@@ -190,9 +193,18 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	}
 
 	var fuzzyUpdated int64
+	// A category whose products all lack a collector number (World of Warcraft)
+	// only fills the name index, so the loop walks the union of both indexes.
+	scopes := make(map[fuzzyScope]struct{}, len(fuzzy)+len(fuzzyByNameNumberless))
+	for scope := range fuzzy {
+		scopes[scope] = struct{}{}
+	}
+	for scope := range fuzzyByNameNumberless {
+		scopes[scope] = struct{}{}
+	}
 	// Language-bound scopes run first: the Japanese Pokémon prices must win over
 	// the language-agnostic pass that would otherwise settle for an English one.
-	for _, scope := range orderedFuzzyScopes(fuzzy) {
+	for _, scope := range orderedFuzzyScopes(scopes) {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -506,7 +518,7 @@ func (s fuzzyScope) languageList() []string {
 
 // orderedFuzzyScopes returns the scopes of an index in a deterministic order with
 // the language-bound scopes first.
-func orderedFuzzyScopes[V any](index map[fuzzyScope]map[string]V) []fuzzyScope {
+func orderedFuzzyScopes[V any](index map[fuzzyScope]V) []fuzzyScope {
 	scopes := make([]fuzzyScope, 0, len(index))
 	for scope := range index {
 		scopes = append(scopes, scope)
@@ -597,8 +609,10 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(
 		}
 		// Products without a collector number can only be matched by name.
 		if len(nameOnlyPrices) > 0 && name != "" && setName != "" {
-			if price, ok := nameOnlyPrices[priceNameKey(setName, name)]; ok {
-				updates[id] = price
+			if key := priceNameKey(setName, name); key != "" {
+				if price, ok := nameOnlyPrices[key]; ok {
+					updates[id] = price
+				}
 			}
 		}
 	}

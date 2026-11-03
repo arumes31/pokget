@@ -97,7 +97,7 @@ func TestPriceMatchKeysCoversMarketplaceSpellings(t *testing.T) {
 		{"AOT1", "001", "AOT1", "AOT1 1/246"},
 		// Weiss Schwarz abbreviations end with a slash
 		{"KNK", "001", "KNK/", "001"},
-		// Japanese PokÃƒÆ’Ã‚Â©mon numbers keep the print run
+		// Japanese PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon numbers keep the print run
 		{"SV3", "089", "SV3", "089/108"},
 	}
 	for _, pair := range pairs {
@@ -155,7 +155,7 @@ func TestPriceMatchKeysKeepsAlphaNumericNumbers(t *testing.T) {
 	}
 }
 
-// Catalog PokÃƒÆ’Ã‚Â©mon rows carry TCGdex set codes ("me1") while TCGCSV groups use
+// Catalog PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon rows carry TCGdex set codes ("me1") while TCGCSV groups use
 // TCGplayer abbreviations ("MEG"); matching the normalized set name bridges that
 // gap without a hand-maintained alias table.
 func TestApplyFuzzyPricesMatchesSetNameWhenCodeMisses(t *testing.T) {
@@ -229,7 +229,7 @@ func TestApplyFuzzyPricesPrefersTheSetCodeMatch(t *testing.T) {
 	}
 }
 
-// The Japanese PokÃƒÆ’Ã‚Â©mon category prices only Japanese cards and runs before the
+// The Japanese PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon category prices only Japanese cards and runs before the
 // language-agnostic pass, so a Japanese collector keeps the Japanese quote.
 func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -241,7 +241,7 @@ func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
 	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}).
 		AddRow("card-jp", "SV3", "Ruler of the Black Flame", "089", "Nazonokusa")
 	mock.ExpectQuery("SELECT id, COALESCE\\(set_code[\\s\\S]*ANY\\(\\$2::text\\[\\]\\)").
-		WithArgs("pokemon", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs("pokemon", textArray{"{\"ja\"}"}, textArray{"{}"}).
 		WillReturnRows(rows)
 	mock.ExpectExec("UPDATE cards AS c").
 		WithArgs("card-jp", 12.5).
@@ -261,7 +261,7 @@ func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
 	}
 }
 
-// The English PokÃƒÆ’Ã‚Â©mon category must not price Japanese cards: Japanese sets reuse
+// The English PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon category must not price Japanese cards: Japanese sets reuse
 // English set codes for different cards. The Japanese category fills them instead.
 func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -272,8 +272,9 @@ func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 
 	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}).
 		AddRow("card-en", "sv3", "Obsidian Flames", "089", "Nazonokusa")
+	// No language restriction, but Japanese is excluded.
 	mock.ExpectQuery("SELECT id, COALESCE\\(set_code[\\s\\S]*<> ALL\\(\\$3::text\\[\\]\\)").
-		WithArgs("pokemon", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs("pokemon", emptyTextArray{}, textArray{"{\"ja\"}"}).
 		WillReturnRows(rows)
 	mock.ExpectExec("UPDATE cards AS c").
 		WithArgs("card-en", 3.0).
@@ -299,13 +300,25 @@ func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 type emptyTextArray struct{}
 
 func (emptyTextArray) Match(value driver.Value) bool {
+	return textArrayValue(value) == "{}"
+}
+
+// textArray matches the encoded Postgres array exactly, so a test cannot pass
+// with the wrong languages.
+type textArray struct{ want string }
+
+func (a textArray) Match(value driver.Value) bool {
+	return textArrayValue(value) == a.want
+}
+
+func textArrayValue(value driver.Value) string {
 	switch typed := value.(type) {
 	case []byte:
-		return string(typed) == "{}"
+		return string(typed)
 	case string:
-		return typed == "{}"
+		return typed
 	}
-	return false
+	return ""
 }
 
 func TestApplyFuzzyPricesSendsAnEmptyLanguageExclusion(t *testing.T) {

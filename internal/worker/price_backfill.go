@@ -112,17 +112,44 @@ func (w *DataSyncWorker) markBackfillMiss(ctx context.Context, cardID string) {
 }
 
 // storeBackfillPrice writes a market price the same way the per-card sync does.
+//
+// The walk is slow, so the bulk or tracked-card sync may have priced the card in
+// the meantime: the statement rechecks that the card is still unpriced, keeps a
+// currency the provider did not return and only records history for the row it
+// actually changed. Card and history are written in one transaction.
 func (w *DataSyncWorker) storeBackfillPrice(ctx context.Context, cardID string, usd, eur float64) error {
-	_, err := w.db.ExecContext(ctx, `
-		UPDATE cards
-		SET price_usd = $1, price_eur = $2, price_eur_estimated = FALSE, last_updated = NOW()
-		WHERE id = $3`, usd, eur, cardID)
+	tx, err := w.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	_, err = w.db.ExecContext(ctx,
-		`INSERT INTO price_history (card_id, price_usd, price_eur) VALUES ($1, $2, $3)`, cardID, usd, eur)
-	return err
+	result, err := tx.ExecContext(ctx, `
+		UPDATE cards
+		SET price_usd = CASE WHEN $1 > 0 THEN $1 ELSE price_usd END,
+		    price_eur = CASE WHEN $2 > 0 THEN $2 ELSE price_eur END,
+		    price_eur_estimated = CASE WHEN $2 > 0 THEN FALSE ELSE price_eur_estimated END,
+		    last_updated = NOW()
+		WHERE id = $3
+		  AND COALESCE(price_usd, 0) <= 0
+		  AND COALESCE(price_eur, 0) <= 0`, usd, eur, cardID)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if changed == 0 {
+		_ = tx.Rollback()
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO price_history (card_id, price_usd, price_eur) VALUES ($1, $2, $3)`, cardID, usd, eur); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 // fetchCardPriceFrom walks a provider chain until one of them knows the card.
