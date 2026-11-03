@@ -33,21 +33,6 @@ jobs:
         with:
           ref: ${{ github.event.inputs.target_branch || github.ref }}
           persist-credentials: false
-      - name: Install Tesseract runtime, development files, and test languages
-        run: |
-          bash scripts/ci-apt-install.sh \
-            tesseract-ocr \
-            tesseract-ocr-chi-sim \
-            tesseract-ocr-chi-tra \
-            tesseract-ocr-deu \
-            tesseract-ocr-eng \
-            tesseract-ocr-fra \
-            tesseract-ocr-jpn \
-            tesseract-ocr-kor \
-            tesseract-ocr-spa \
-            libtesseract-dev \
-            libleptonica-dev \
-            pkg-config
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -57,7 +42,7 @@ jobs:
         shell: bash
         run: |
           # The required browser job runs the complete UI smoke-test package.
-          # Keep Chromium out of the parallel service/OCR coverage workload.
+          # Keep Chromium out of the parallel service coverage workload.
           package_list="$(go list ./...)"
           mapfile -t packages < <(printf '%s\n' "$package_list" | grep -v '^pokget/cmd/ui_scan_test$')
           go test -timeout=10m -count=1 -covermode=atomic -coverprofile=coverage.out "${packages[@]}"
@@ -84,21 +69,6 @@ jobs:
         with:
           ref: ${{ github.event.inputs.target_branch || github.ref }}
           persist-credentials: false
-      - name: Install Tesseract runtime, development files, and test languages
-        run: |
-          bash scripts/ci-apt-install.sh \
-            tesseract-ocr \
-            tesseract-ocr-chi-sim \
-            tesseract-ocr-chi-tra \
-            tesseract-ocr-deu \
-            tesseract-ocr-eng \
-            tesseract-ocr-fra \
-            tesseract-ocr-jpn \
-            tesseract-ocr-kor \
-            tesseract-ocr-spa \
-            libtesseract-dev \
-            libleptonica-dev \
-            pkg-config
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -106,28 +76,6 @@ jobs:
           cache: true
       - name: Run bounded race shard
         run: go test -race -timeout=8m -count=1 ${{ matrix.packages }}
-
-  ocr-integration:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.event.inputs.target_branch || github.ref }}
-          persist-credentials: false
-      - name: Install Tesseract runtime and development data
-        run: |
-          bash scripts/ci-apt-install.sh tesseract-ocr tesseract-ocr-eng libtesseract-dev libleptonica-dev pkg-config
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: "1.27.3"
-          cache: true
-      - name: Exercise real Tesseract OCR
-        env:
-          CGO_ENABLED: "1"
-        run: go test -tags=ocrintegration -run '^TestTesseractRecognizesSyntheticCardName$' -timeout=2m -count=1 -v ./internal/service
 
   browser:
     runs-on: ubuntu-latest
@@ -164,9 +112,6 @@ jobs:
         with:
           ref: ${{ github.event.inputs.target_branch || github.ref }}
           persist-credentials: false
-      - name: Install Tesseract dependencies
-        run: |
-          bash scripts/ci-apt-install.sh libtesseract-dev libleptonica-dev pkg-config
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -188,9 +133,6 @@ jobs:
         with:
           ref: ${{ github.event.inputs.target_branch || github.ref }}
           persist-credentials: false
-      - name: Install Tesseract dependencies
-        run: |
-          bash scripts/ci-apt-install.sh libtesseract-dev libleptonica-dev pkg-config
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -256,7 +198,7 @@ jobs:
         run: bash scripts/container-smoke.sh pokget:verification
 
   docker:
-    needs: [test, race, ocr-integration, browser, lint, security, js-assets, container-smoke]
+    needs: [test, race, browser, lint, security, js-assets, container-smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}

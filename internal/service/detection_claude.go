@@ -37,6 +37,13 @@ type ClaudeDetector interface {
 	PromptCachingEnabled() bool
 }
 
+// MultiImageClaudeDetector is optionally implemented by detectors that can
+// analyze magnified crops of the same card in one request. When a detector does
+// not implement it the pipeline falls back to the single full-card image.
+type MultiImageClaudeDetector interface {
+	DetectImages(ctx context.Context, images [][]byte, gameHint, langHint string) (*claudedetect.DetectedCardInfo, error)
+}
+
 // detectClaude runs Claude vision card detection, replacing legacy detections.
 func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionRequest, scoped bool, totalStart time.Time) (*DetectionResult, error) {
 	result := &DetectionResult{Status: DetectionStatusUnknown}
@@ -47,10 +54,32 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 	langHint := ""
 	if scoped {
 		gameHint = string(request.Scope.TCG)
-		langHint = string(request.Scope.Language)
+		langHint = claudeLanguageHint(request.Scope.Language)
 	}
 
-	info, err := p.Claude.Detect(ctx, request.Image, gameHint, langHint)
+	// The full card plus magnified title and bottom-information strips. The strips
+	// are what make kana (ピ vs ビ) and collector numbers reliable.
+	images, err := claudeImageVariants(ctx, request.Image)
+	if err != nil {
+		finish(err)
+		result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{
+			Name: "image_preparation", Error: err,
+		})
+		return nil, err
+	}
+	full := images[0]
+	var info *claudedetect.DetectedCardInfo
+	if multi, ok := p.Claude.(MultiImageClaudeDetector); ok && len(images) > 1 {
+		info, err = multi.DetectImages(ctx, images, gameHint, langHint)
+		if err != nil && ctx.Err() == nil {
+			// The crops are an enhancement: never let an oversized or rejected
+			// enhancement payload turn a readable card into a failed scan.
+			ScanLogger(ctx).Warn("Claude magnified crops rejected; retrying the full card only")
+			info, err = p.Claude.Detect(ctx, full, gameHint, langHint)
+		}
+	} else {
+		info, err = p.Claude.Detect(ctx, full, gameHint, langHint)
+	}
 	finish(err)
 
 	result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{
@@ -87,12 +116,39 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 	ScanLogger(ctx).Info("Claude detection complete",
 		"status", result.Status,
 		"model", info.ModelUsed,
+		"images", len(images),
+		"game_hint", gameHint,
+		"language_hint", langHint,
 		"cache_read_tokens", info.CacheReadTokens,
 		"cache_created_tokens", info.CacheCreationTokens,
 		"top_match", result.BestMatchName(),
 		"confidence", result.BestMatchConfidence())
 
 	return result, nil
+}
+
+// claudeLanguageHint names the selected language instead of passing a bare ISO
+// code, so the model cannot mistake "ja" for a set code or ignore it.
+func claudeLanguageHint(language models.Language) string {
+	if language == models.LanguageAny || !language.Valid() {
+		return ""
+	}
+	names := map[models.Language]string{
+		models.LanguageEnglish:            "English",
+		models.LanguageJapanese:           "Japanese",
+		models.LanguageGerman:             "German",
+		models.LanguageFrench:             "French",
+		models.LanguageSpanish:            "Spanish",
+		models.LanguageItalian:            "Italian",
+		models.LanguageChineseSimplified:  "Simplified Chinese",
+		models.LanguageChineseTraditional: "Traditional Chinese",
+		models.LanguageKorean:             "Korean",
+	}
+	name := names[language]
+	if name == "" {
+		return string(language)
+	}
+	return name + " (" + string(language) + ", " + language.ISO639Code() + ")"
 }
 
 func formatClaudeText(info *claudedetect.DetectedCardInfo) string {
@@ -126,6 +182,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 
 	var candidates []scoredMatch
 	normClaudeName := normalizeMatchText(info.Name)
+	foldedClaudeName := foldVoicing(normClaudeName)
 	claudeCollector := normalizeCollectorNum(info.CollectorNumber)
 	claudeSet := normalizeMatchText(info.Set)
 	claudeSetCode := normalizeMatchText(info.SetCode)
@@ -146,6 +203,23 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			for _, loc := range card.LocalizedNames {
 				if normalizeMatchText(loc) == normClaudeName {
 					nameMatched = true
+					break
+				}
+			}
+		}
+
+		// Voicing-folded name matching. A single dakuten/handakuten is the most
+		// common vision error in Japanese names (ピジョット read as ビジョット),
+		// so the folded form still finds the card family. It is evidence for
+		// review, never proof, because two real cards can differ by that mark.
+		foldedNameMatched := false
+		if !nameMatched && foldedClaudeName != "" && foldVoicing(cardNormName) == foldedClaudeName {
+			foldedNameMatched = true
+		}
+		if !nameMatched && !foldedNameMatched {
+			for _, loc := range card.LocalizedNames {
+				if foldedClaudeName != "" && foldVoicing(normalizeMatchText(loc)) == foldedClaudeName {
+					foldedNameMatched = true
 					break
 				}
 			}
@@ -230,17 +304,31 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		} else if nameMatched && setMatched {
 			score = 92.0
 			needsReview = false
+		} else if foldedNameMatched && collectorMatched && setMatched {
+			// The catalogue confirms the print run, but the name differs by a
+			// voicing mark: offer it as the leading candidate for review.
+			score = 90.0
+			needsReview = true
 		} else if collectorMatched && setMatched {
 			score = 88.0
 			needsReview = true
+		} else if foldedNameMatched && collectorMatched {
+			score = 84.0
+			needsReview = true
 		} else if nameMatched {
 			score = 75.0
+			needsReview = true
+		} else if foldedNameMatched && setMatched {
+			score = 82.0
 			needsReview = true
 		} else if partialName && collectorMatched {
 			score = 85.0
 			needsReview = true
 		} else if partialName && setMatched {
 			score = 70.0
+			needsReview = true
+		} else if foldedNameMatched {
+			score = 74.0
 			needsReview = true
 		} else if collectorMatched {
 			score = 65.0

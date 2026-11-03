@@ -1,4 +1,4 @@
-// Copyright (c) 2026 arumes31
+﻿// Copyright (c) 2026 arumes31
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -30,10 +30,6 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"image"
-	_ "image/gif"  // Register GIF decoder
-	_ "image/jpeg" // Register JPEG decoder
-	_ "image/png"  // Register PNG decoder
 	"io"
 	"log/slog"
 	"net/http"
@@ -89,7 +85,6 @@ type Handler struct {
 	ScanTimeout    time.Duration
 	SecureCookies  bool // BUG-C03: Configurable Secure flag for session cookies
 	passwordHasher func(string) (string, error)
-	scanProcessor  func(context.Context, []byte, []models.Card, string, *service.LLMService) (string, string, []byte, error)
 }
 
 func (h *Handler) hashPassword(password string) (string, error) {
@@ -99,20 +94,8 @@ func (h *Handler) hashPassword(password string) (string, error) {
 	return auth.HashPassword(password)
 }
 
-func (h *Handler) processCardScan(
-	ctx context.Context,
-	image []byte,
-	cards []models.Card,
-	language string,
-) (string, string, []byte, error) {
-	if h.scanProcessor != nil {
-		return h.scanProcessor(ctx, image, cards, language, h.LLM)
-	}
-	return service.ProcessCardScanContext(ctx, image, cards, language, h.LLM)
-}
-
-// scanDetectionSlots bounds native OCR work that cannot be interrupted while a
-// Tesseract call is in progress. Context-aware LLM and pool waits stop promptly.
+// scanDetectionSlots bounds concurrent detector work so a slow provider cannot
+// exhaust the server.
 var scanDetectionSlots = make(chan struct{}, 3)
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
@@ -154,7 +137,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 		data["UserXPPercent"] = xpPercent
 		data["UserRankIcon"] = rank.IconURL
 		data["UserCurrency"] = currency
-		data["CurrencySymbol"] = "€"
+		data["CurrencySymbol"] = "â‚¬"
 		if currency == "USD" {
 			data["CurrencySymbol"] = "$"
 		}
@@ -1425,6 +1408,11 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Empty image received", http.StatusBadRequest)
 		return
 	}
+	if err := service.ValidateScanImage(imgBytes); err != nil {
+		logger.Warn("APIScan: Rejected unreadable image", "error", err)
+		http.Error(w, "Invalid scan request", http.StatusBadRequest)
+		return
+	}
 
 	// Keep the uploaded image briefly: when the collector saves the card we attach
 	// exactly this photo to their collection entry, so the scanner never has to
@@ -1459,10 +1447,8 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cancel()
 	if game != "" {
-		ctx = service.WithOCRScanConfig(ctx, service.OCRScanConfig{
-			Game:          game,
+		ctx = service.WithImagePrepareConfig(ctx, service.ImagePrepareConfig{
 			MaxInputBytes: int(maxScanRequestBytes),
-			UseLayoutROIs: true,
 		})
 	}
 
@@ -1611,87 +1597,10 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fallback: Legacy sequential pipeline (backward-compatible)
-	// 1. Visual Fingerprint Matching (FAST & Language Independent)
-	if h.Fingerprint != nil {
-		img, _, err := image.Decode(bytes.NewReader(imgBytes))
-		if err != nil {
-			slog.Warn("Fingerprint: Failed to decode image", "error", err)
-		} else {
-			hash, err := h.Fingerprint.CalculateHash(img)
-			if err != nil {
-				slog.Warn("Fingerprint: Failed to calculate hash", "error", err)
-			} else {
-				match, distance, _ := h.Fingerprint.MatchFingerprint(hash, cards)
-				if match != nil {
-					slog.Info("Fingerprint: Found match", "name", match.Name, "distance", distance)
-					detectedCard = match.Name
-					detectedID = match.ID
-
-					if userCurrency == "EUR" {
-						detectedPrice, _ = match.PriceEUR.Float64()
-					} else {
-						detectedPrice, _ = match.PriceUSD.Float64()
-					}
-					detectedImage = match.ImageURL
-				} else {
-					slog.Info("Fingerprint: No match found")
-				}
-			}
-		}
-	}
-
-	// 2. OCR Fallback (if visual matching fails)
-	if detectedCard == "" {
-		slog.Info("APIScan: Fingerprint missed, falling back to OCR")
-		var ocrMatch string
-		text, ocrMatch, processedImg, err = h.processCardScan(ctx, imgBytes, cards, lang)
-		if err != nil {
-			slog.Error("OCR: Failed to process scan", "error", err)
-			writeDetectionError(w, err)
-			return
-		}
-		if ocrMatch != "Unknown Card" {
-			slog.Info("OCR Fallback: Found match", "name", ocrMatch)
-			detectedCard = ocrMatch
-			for _, c := range cards {
-				if c.ID == ocrMatch || c.Name == ocrMatch {
-					detectedID = c.ID
-					if userCurrency == "EUR" {
-						detectedPrice, _ = c.PriceEUR.Float64()
-					} else {
-						detectedPrice, _ = c.PriceUSD.Float64()
-					}
-					detectedImage = c.ImageURL
-					detectedCard = c.Name // Ensure detectedCard is the name
-					break
-				}
-			}
-		} else {
-			slog.Info("OCR Fallback: No match found")
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	resp := map[string]interface{}{
-		"text":      strings.ReplaceAll(text, "\n", " "),
-		"detected":  detectedCard,
-		"id":        detectedID,
-		"price":     detectedPrice,
-		"image_url": detectedImage,
-	}
-	if diagnostics && processedImg != nil {
-		resp["processed_image"] = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(processedImg)
-	}
-	if scanPhotoToken != "" {
-		resp["scan_id"] = scanPhotoToken
-	}
-	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
-		slog.Warn("Failed to set write deadline for scan response", "error", err)
-	}
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		slog.Error("Failed to encode JSON response", "error", err)
-	}
+	// Recognition is server-side only; without the detection pipeline there is
+	// no fallback that could answer honestly.
+	logger.Error("APIScan: detection pipeline is not configured")
+	http.Error(w, "Card recognition is not configured on this server", http.StatusServiceUnavailable)
 }
 
 func filterCardsByGame(cards []models.Card, game string) ([]models.Card, bool) {

@@ -1,18 +1,12 @@
-package service
+﻿package service
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"image"
-	"image/color"
-	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -30,90 +24,6 @@ func configurePrimaryLLMTest(t *testing.T, primary, fallback *httptest.Server) *
 	return NewLLMService()
 }
 
-func TestDetectScopedPrimaryVisionResolvesReviewablePrinting(t *testing.T) {
-	var primaryCalls, fallbackCalls atomic.Int32
-	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		primaryCalls.Add(1)
-		var request struct {
-			Messages []struct {
-				Content []struct {
-					Type, Text string
-					ImageURL   struct{ URL string } `json:"image_url"`
-				}
-			}
-			ResponseFormat struct{ Type string } `json:"response_format"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Error(err)
-		}
-		if len(request.Messages) != 1 || len(request.Messages[0].Content) != 2 {
-			t.Error("vision request must contain the prompt and cropped image")
-			writePrimaryLLMResponse(w, `{"card_id":"printing-b"}`)
-			return
-		}
-		if request.ResponseFormat.Type != "json_schema" {
-			t.Error("strict response schema missing")
-		}
-		prompt := request.Messages[0].Content[0].Text
-		if !strings.Contains(prompt, "printing-a") || !strings.Contains(prompt, "printing-b") || strings.Contains(prompt, "german-printing") {
-			t.Error("vision shortlist did not preserve scope")
-		}
-		imageURL := request.Messages[0].Content[1].ImageURL.URL
-		encoded := strings.TrimPrefix(imageURL, "data:image/jpeg;base64,")
-		data, err := base64.StdEncoding.DecodeString(encoded)
-		if err != nil {
-			t.Error("vision crop is not a JPEG data URI")
-		} else {
-			img, _, err := image.Decode(bytes.NewReader(data))
-			if err != nil {
-				t.Error(err)
-			} else {
-				red, green, _, _ := img.At(img.Bounds().Dx()/2, img.Bounds().Dy()/2).RGBA()
-				if img.Bounds().Dx() != 100 || img.Bounds().Dy() != 300 || red <= green {
-					t.Errorf("vision must use the color guide crop; bounds=%v red=%d green=%d", img.Bounds(), red, green)
-				}
-			}
-		}
-		writePrimaryLLMResponse(w, `{"card_id":"printing-b"}`)
-	}))
-	defer primary.Close()
-	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fallbackCalls.Add(1)
-		_ = json.NewEncoder(w).Encode(map[string]string{"response": `{"card_id":"printing-a"}`})
-	}))
-	defer fallback.Close()
-	service := configurePrimaryLLMTest(t, primary, fallback)
-	pipeline := NewDetectionPipeline(nil, service)
-	cards := []models.Card{
-		{ID: "printing-a", Name: "Pikachu", Set: "Older set", Game: "pokemon", Language: "en"},
-		{ID: "printing-b", Name: "Pikachu", Set: "Newer set", Game: "pokemon", Language: "en"},
-		{ID: "german-printing", Name: "Pikachu", Game: "pokemon", Language: "de"},
-	}
-	pipeline.fingerprintRunner = func(_ context.Context, _ []byte, eligible []models.Card, _ *ScanScope) (*MatchResult, error) {
-		return &MatchResult{Potential: []FingerprintMatch{{Card: &eligible[0], Distance: 2}, {Card: &eligible[1], Distance: 3}}}, nil
-	}
-	pipeline.ocrRunner = func(context.Context, []byte, []models.Card, string) (string, string, []byte, error) {
-		return "Pikachu", "printing-a", []byte("gray preview should not be sent"), nil
-	}
-	img := image.NewRGBA(image.Rect(0, 0, 200, 300))
-	for y := 0; y < 300; y++ {
-		for x := 0; x < 200; x++ {
-			img.SetRGBA(x, y, color.RGBA{R: 210, G: 30, B: 30, A: 255})
-		}
-	}
-	var encoded bytes.Buffer
-	if err := png.Encode(&encoded, img); err != nil {
-		t.Fatal(err)
-	}
-	ctx := WithOCRScanConfig(context.Background(), OCRScanConfig{GuideCrop: &OCRNormalizedRect{MinX: 0.25, MinY: 0, MaxX: 0.75, MaxY: 1}})
-	result, err := pipeline.DetectScoped(ctx, DetectionRequest{Image: encoded.Bytes(), Cards: cards, Scope: ScanScope{TCG: models.TCGPokemon, Language: models.LanguageEnglish}})
-	if err != nil || result == nil {
-		t.Fatalf("result=%+v error=%v", result, err)
-	}
-	if primaryCalls.Load() != 1 || fallbackCalls.Load() != 0 || result.BestMatchID() != "printing-b" || !result.BestMatchNeedsReview() {
-		t.Fatalf("vision result ID=%s review=%t calls=%d/%d", result.BestMatchID(), result.BestMatchNeedsReview(), primaryCalls.Load(), fallbackCalls.Load())
-	}
-}
 
 func TestLLMPrimaryCancellationDoesNotInvokeFallback(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})

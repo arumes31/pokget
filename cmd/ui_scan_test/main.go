@@ -105,7 +105,7 @@ func parseFlags(args []string, output io.Writer) (config, error) {
 	flags.StringVar(&cfg.expectedID, "expected-id", "", "exact expected card ID")
 	flags.StringVar(&cfg.expectedName, "expected-name", "", "exact expected card name")
 	flags.StringVar(&cfg.game, "game", "pokemon", "TCG selected in the scanner UI")
-	flags.StringVar(&cfg.language, "lang", "eng", "Tesseract language code used by the scanner UI")
+	flags.StringVar(&cfg.language, "lang", "eng", "scanner language code selected before the scan")
 	flags.StringVar(
 		&cfg.verificationToken,
 		"verification-token",

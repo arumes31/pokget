@@ -696,6 +696,9 @@ func TestHandlers(t *testing.T) {
 	t.Run("APIScan_InvalidImage", func(t *testing.T) {
 		h, _, cleanup := setupTestHandler(t)
 		defer cleanup()
+		pipeline := service.NewDetectionPipeline(nil, nil)
+		pipeline.Claude = stubScanDetector{}
+		h.Detection = pipeline
 
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)

@@ -12,6 +12,9 @@ import (
 var (
 	ErrInvalidDetectionRequest = errors.New("detection: invalid scoped request")
 	ErrNoEligibleCards         = errors.New("detection: no active cards match the selected TCG and language")
+	// ErrDetectionUnavailable means the server has no vision detector
+	// configured. Scans fail instead of guessing a card locally.
+	ErrDetectionUnavailable = errors.New("detection: vision detector is not configured")
 )
 
 // DetectionStatus is the machine-readable outcome of a pipeline run. Errors

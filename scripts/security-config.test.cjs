@@ -54,14 +54,14 @@ test('example.env documents every Compose interpolation without real credentials
   assert.match(example, /^SESSION_KEY=$/m);
   assert.match(example, /^DB_PASSWORD=$/m);
   assert.match(example, /^LLM_API=$/m);
-  assert.match(example, /^SCAN_VISION_OCR_ENABLED=false$/m);
+  assert.doesNotMatch(example, /SCAN_OCR_POOL_SIZE|SCAN_VISION_OCR_/);
 });
 
 test('both Compose variants expose the same application configuration', () => {
   const appEnvironment = file => read(file).split('    environment:')[1].split('    depends_on:')[0];
   const source = appEnvironment('docker-compose.yml');
   assert.equal(appEnvironment('docker-compose.ghcr.yml'), source);
-  for (const key of ['SECURE_COOKIES', 'WRITE_TIMEOUT', 'SCAN_OCR_POOL_SIZE', 'SCAN_PHASH_HIGH_CONF', 'SCAN_PHASH_POTENTIAL', 'CATALOG_WEISS_MAX_PAGES']) {
+  for (const key of ['SECURE_COOKIES', 'WRITE_TIMEOUT', 'SCAN_MAX_CONCURRENT', 'SCAN_PHASH_HIGH_CONF', 'SCAN_PHASH_POTENTIAL', 'CATALOG_WEISS_MAX_PAGES']) {
     assert.ok(source.includes(`${key}=\${${key}:-`), `${key} is not configurable through Compose`);
   }
 });

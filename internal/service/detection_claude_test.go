@@ -1,4 +1,4 @@
-// Copyright (c) 2026 arumes31
+﻿// Copyright (c) 2026 arumes31
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -89,7 +89,7 @@ func TestClaudeDetection_ExactMatch(t *testing.T) {
 	}
 
 	req := DetectionRequest{
-		Image: []byte{1, 2, 3, 4},
+		Image: testCardImage(t),
 		Cards: cards,
 		Scope: ScanScope{
 			TCG:      models.TCGPokemon,
@@ -136,7 +136,7 @@ func TestClaudeDetection_UncatalogedSyntheticCard(t *testing.T) {
 	cards := []models.Card{}
 
 	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
-		Image: []byte{1, 2, 3},
+		Image: testCardImage(t),
 		Cards: cards,
 	}, false, time.Now())
 
@@ -169,27 +169,18 @@ func TestClaudeDetection_Synthetic_NoSecondaryFallback(t *testing.T) {
 
 	pipeline := NewDetectionPipeline(nil, nil)
 	pipeline.Claude = mock
-	// Local OCR should not be called
-	ocrCalled := false
-	pipeline.ocrRunner = func(ctx context.Context, img []byte, cards []models.Card, lang string) (string, string, []byte, error) {
-		ocrCalled = true
-		return "Pikachu 25", "card-pika", nil, nil
-	}
 
 	cards := []models.Card{
 		{ID: "card-pika", Name: "Pikachu", CollectorNumber: "25"},
 	}
 
 	result, err := pipeline.detect(context.Background(), DetectionRequest{
-		Image: []byte{1, 2, 3},
+		Image: testCardImage(t),
 		Cards: cards,
-	}, "eng", false)
+	}, false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if ocrCalled {
-		t.Error("secondary OCR runner was invoked but secondary detection should be disabled")
 	}
 	// Synthetic match from Claude is used directly without secondary fallback
 	if result.BestMatchID() != "" {
@@ -210,29 +201,20 @@ func TestClaudeDetection_Error_NoSecondaryFallback(t *testing.T) {
 
 	pipeline := NewDetectionPipeline(nil, nil)
 	pipeline.Claude = mock
-	// Local OCR should not be called
-	ocrCalled := false
-	pipeline.ocrRunner = func(ctx context.Context, img []byte, cards []models.Card, lang string) (string, string, []byte, error) {
-		ocrCalled = true
-		return "Pikachu 25", "card-pika", nil, nil
-	}
 
 	cards := []models.Card{
 		{ID: "card-pika", Name: "Pikachu", CollectorNumber: "25"},
 	}
 
 	result, err := pipeline.detect(context.Background(), DetectionRequest{
-		Image: []byte{1, 2, 3},
+		Image: testCardImage(t),
 		Cards: cards,
-	}, "eng", false)
+	}, false)
 
 	if err == nil {
 		t.Fatal("expected error from Claude detection failure without secondary fallback")
 	}
-	if ocrCalled {
-		t.Error("secondary OCR runner was invoked on Claude failure, but secondary detection should be removed")
-	}
-	if result.Status != DetectionStatusFailed {
-		t.Errorf("expected DetectionStatusFailed, got %s", result.Status)
+	if result == nil || result.Status != DetectionStatusFailed {
+		t.Errorf("expected DetectionStatusFailed, got %+v", result)
 	}
 }

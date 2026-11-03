@@ -292,9 +292,6 @@ func TestInitServicesCatalogDisabled(t *testing.T) {
 	if got := services.fingerprintSvc.PhashPotential; got != cfg.Scan.PhashPotential {
 		t.Errorf("PhashPotential = %d, want %d", got, cfg.Scan.PhashPotential)
 	}
-	if service.OCRPoolSize != cfg.Scan.OCRPoolSize {
-		t.Errorf("OCRPoolSize = %d, want %d", service.OCRPoolSize, cfg.Scan.OCRPoolSize)
-	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}

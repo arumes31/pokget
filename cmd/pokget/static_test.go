@@ -76,26 +76,13 @@ func TestServiceWorkerHandlerUsesRootScopeHeaders(t *testing.T) {
 	}
 }
 
-func TestRegisterStaticServesNativeAndContainerOCRAssets(t *testing.T) {
-	for _, directory := range []string{"static/vendor/ocr", "dist/static/vendor/ocr"} {
-		t.Run(directory, func(t *testing.T) {
-			t.Chdir(t.TempDir())
-			if err := os.MkdirAll(filepath.Join(directory, "7.0.0"), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(directory, "7.0.0", "fixture.js"), []byte("ocr asset"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			router := mux.NewRouter()
-			registerStaticRoutes(router)
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/static/vendor/ocr/7.0.0/fixture.js", nil))
-			if response.Code != http.StatusOK || response.Body.String() != "ocr asset" {
-				t.Fatalf("response = %d %s", response.Code, response.Body)
-			}
-			if got := response.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
-				t.Fatalf("OCR Cache-Control = %q", got)
-			}
-		})
+func TestRegisterStaticRoutesServeServiceWorker(t *testing.T) {
+	t.Chdir(filepath.Join("..", ".."))
+	router := mux.NewRouter()
+	registerStaticRoutes(router)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/sw.js", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
 	}
 }

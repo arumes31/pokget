@@ -50,7 +50,7 @@ func buildRouter(cfg *config.Config, database *sql.DB, h *handlers.Handler) *mux
 		r,
 		database,
 		csrfMiddleware,
-		cfg.Scan.OCRPoolSize,
+		cfg.Scan.MaxConcurrent,
 		http.HandlerFunc(h.APIScan),
 	)
 	registerPriceRoute(

@@ -107,7 +107,7 @@ test('dynamic translations preserve user names, numbers, and literal dollar sign
   assert.equal(app.window.PokgetI18n.t('Stage 3 of 5'), 'Schritt 3 von 5');
   assert.equal(app.window.PokgetI18n.t('Retry in 1:05'), 'Erneut versuchen in 1:05');
   assert.equal(app.window.PokgetI18n.t('Unknown card title'), 'Unknown card title');
-  assert.equal(app.window.PokgetI18n.t('Reading the bottom edge on this device (40%).'), 'Unterer Kartenrand wird auf diesem Gerät gelesen (40 %).');
-  assert.match(app.window.PokgetI18n.t('Device OCR: timeout. Uploading the crop for server detection.'), /Zeitlimit erreicht/);
+  assert.equal(app.window.PokgetI18n.t('Stage 3 of 5'), 'Schritt 3 von 5');
+  assert.match(app.window.PokgetI18n.t('Use server image scan'), /Server erkennen/);
   app.mutate([{ type: 'characterData', target: { parentElement: null } }]);
 });

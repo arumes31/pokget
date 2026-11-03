@@ -20,9 +20,8 @@ not expose an unauthenticated Ollama endpoint to the public internet. Enable pro
 trust flags only when that topology is trusted, and list your proxy addresses in
 `TRUSTED_PROXIES` if they are not on loopback or a private network.
 
-Successful device OCR sends text rather than the photo, but fallback can upload
-the prepared image. Server-side OCR/LLM requests may send text, images, or approved
-catalog references to the configured provider. Use trusted endpoints, keep keys
-on the server, and review uncertain printing selections. Browser OCR workers and
-language data are self-hosted; device OCR is not a guarantee of offline operation
-or of photos never leaving the browser. See [CONFIGURATION.md](CONFIGURATION.md).
+Server-side OCR/LLM requests may send text, images, or approved catalog
+references to the configured provider. Use trusted endpoints, keep keys on the
+server, and review uncertain printing selections. The scanner always uploads the
+cropped photo because the phone no longer runs OCR; nothing is recognized on the
+device. See [CONFIGURATION.md](CONFIGURATION.md).

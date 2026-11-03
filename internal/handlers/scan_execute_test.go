@@ -10,14 +10,12 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"pokget/internal/auth"
-	"pokget/internal/models"
-	"pokget/internal/service"
 	"strings"
 	"testing"
 
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/shopspring/decimal"
+	"pokget/internal/claudedetect"
+	"pokget/internal/models"
+	"pokget/internal/service"
 )
 
 // testCardPNG renders a small synthetic card image for scan tests.
@@ -35,22 +33,6 @@ func testCardPNG(t *testing.T) []byte {
 		t.Fatalf("encode test PNG: %v", err)
 	}
 	return buf.Bytes()
-}
-
-// phashForImage computes the perceptual hash a FingerprintService would assign
-// to the given image bytes, so tests can plant a matching card record.
-func phashForImage(t *testing.T, fp *service.FingerprintService, imgBytes []byte) int64 {
-	t.Helper()
-
-	img, err := png.Decode(bytes.NewReader(imgBytes))
-	if err != nil {
-		t.Fatalf("decode test PNG: %v", err)
-	}
-	hash, err := fp.CalculateHash(img)
-	if err != nil {
-		t.Fatalf("calculate phash: %v", err)
-	}
-	return hash
 }
 
 // scanRequest builds a multipart scan request carrying the given image bytes
@@ -83,190 +65,83 @@ func scanRequest(t *testing.T, imgBytes []byte, fields map[string]string) *http.
 	return req
 }
 
-func TestExecuteScan_FingerprintMatch(t *testing.T) {
-	imgBytes := testCardPNG(t)
-	fp := service.NewFingerprintService(nil)
-	hash := phashForImage(t, fp, imgBytes)
+// stubScanDetector answers every scan with the same catalog card and supports
+// the magnified crops the pipeline sends.
+type stubScanDetector struct{}
 
-	card := models.Card{
-		ID: "card-1", Name: "Pikachu", Phash: &hash,
-		PriceUSD: decimal.NewFromInt(14), PriceEUR: decimal.NewFromInt(12),
-		ImageURL: "/img/pikachu.png",
-	}
-
-	t.Run("DefaultEUR", func(t *testing.T) {
-		h := &Handler{MockCards: []models.Card{card}, Fingerprint: fp}
-		req := scanRequest(t, imgBytes, nil)
-		rr := httptest.NewRecorder()
-
-		h.executeScan(rr, req)
-
-		if rr.Code != http.StatusOK {
-			t.Fatalf("status = %d, want %d; body=%q", rr.Code, http.StatusOK, rr.Body.String())
-		}
-		var resp map[string]interface{}
-		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("decode scan response: %v", err)
-		}
-		if resp["detected"] != "Pikachu" || resp["id"] != "card-1" {
-			t.Errorf("unexpected detection payload: %v", resp)
-		}
-		if resp["price"] != 12.0 {
-			t.Errorf("expected EUR price 12, got %v", resp["price"])
-		}
-		if resp["image_url"] != "/img/pikachu.png" {
-			t.Errorf("expected image URL, got %v", resp["image_url"])
-		}
-	})
-
-	t.Run("UserCurrencyUSD", func(t *testing.T) {
-		dbMock, mock, err := sqlmock.New()
-		if err != nil {
-			t.Fatalf("create SQL mock: %v", err)
-		}
-		defer func() { _ = dbMock.Close() }()
-
-		h := &Handler{MockCards: []models.Card{card}, Fingerprint: fp, DB: dbMock}
-		req := scanRequest(t, imgBytes, nil)
-		req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey{}, "test-user"))
-		rr := httptest.NewRecorder()
-
-		mock.ExpectQuery("SELECT currency").WithArgs("test-user").
-			WillReturnRows(sqlmock.NewRows([]string{"currency"}).AddRow("USD"))
-
-		h.executeScan(rr, req)
-
-		if rr.Code != http.StatusOK {
-			t.Fatalf("status = %d, want %d; body=%q", rr.Code, http.StatusOK, rr.Body.String())
-		}
-		var resp map[string]interface{}
-		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("decode scan response: %v", err)
-		}
-		if resp["price"] != 14.0 {
-			t.Errorf("expected USD price 14, got %v", resp["price"])
-		}
-	})
+func (stubScanDetector) Detect(context.Context, []byte, string, string) (*claudedetect.DetectedCardInfo, error) {
+	return &claudedetect.DetectedCardInfo{
+		Name:            "Pikachu",
+		CollectorNumber: "025",
+		SetCode:         "SV1",
+		Language:        "en",
+		Confidence:      0.97,
+	}, nil
 }
 
-func TestExecuteScan_OCRUnavailable(t *testing.T) {
-	// No fingerprint match (card carries no phash) forces the OCR fallback.
-	// Inject the failure so the contract is deterministic in both CGO/Tesseract
-	// builds and the portable stub build.
-	imgBytes := testCardPNG(t)
-	card := models.Card{ID: "card-1", Name: "Pikachu"}
+func (d stubScanDetector) DetectImages(context.Context, [][]byte, string, string) (*claudedetect.DetectedCardInfo, error) {
+	return d.Detect(nil, nil, "", "")
+}
 
-	h := &Handler{
-		MockCards:   []models.Card{card},
-		Fingerprint: service.NewFingerprintService(nil),
-		scanProcessor: func(
-			context.Context,
-			[]byte,
-			[]models.Card,
-			string,
-			*service.LLMService,
-		) (string, string, []byte, error) {
-			return "", "", nil, &service.OCRUnavailableError{Reason: "test"}
-		},
-	}
-	req := scanRequest(t, imgBytes, nil)
+func (stubScanDetector) Model() string             { return "claude-sonnet-5-5" }
+func (stubScanDetector) PromptCachingEnabled() bool { return true }
+
+func TestExecuteScanWithoutDetectionPipelineFailsClearly(t *testing.T) {
+	// Recognition is server-side only. A deployment without the pipeline must
+	// refuse the scan instead of returning a guessed card.
+	h := &Handler{MockCards: []models.Card{{ID: "card-1", Name: "Pikachu", Game: "pokemon", Language: "en"}}}
 	rr := httptest.NewRecorder()
 
-	h.executeScan(rr, req)
+	h.executeScan(rr, scanRequest(t, testCardPNG(t), nil))
 
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d; body=%q", rr.Code, http.StatusServiceUnavailable, rr.Body.String())
 	}
+	if !strings.Contains(rr.Body.String(), "not configured") {
+		t.Errorf("expected a configuration error, got %q", rr.Body.String())
+	}
 }
 
-func TestExecuteScan_DetectionPipeline(t *testing.T) {
-	imgBytes := testCardPNG(t)
-	fp := service.NewFingerprintService(nil)
-	hash := phashForImage(t, fp, imgBytes)
+func TestExecuteScanReturnsScopedMatchWithDiagnostics(t *testing.T) {
+	card := models.Card{
+		ID: "card-1", Name: "Pikachu", Game: "pokemon", Language: "en",
+		SetCode: "SV1", Set: "Scarlet & Violet", CollectorNumber: "025",
+		ImageURL: "/img/pikachu.png",
+	}
+	pipeline := service.NewDetectionPipeline(nil, nil)
+	pipeline.Claude = stubScanDetector{}
+	h := &Handler{MockCards: []models.Card{card}, Detection: pipeline}
 
-	t.Run("LegacyMatch", func(t *testing.T) {
-		card := models.Card{
-			ID: "card-1", Name: "Pikachu", Phash: &hash,
-			PriceEUR: decimal.NewFromInt(12), ImageURL: "/img/pikachu.png",
-		}
-		h := &Handler{
-			MockCards: []models.Card{card},
-			Detection: service.NewDetectionPipeline(fp, nil),
-		}
-		req := scanRequest(t, imgBytes, nil)
-		rr := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
+	h.executeScan(rr, scanRequest(t, testCardPNG(t), map[string]string{
+		"game":        "pokemon",
+		"lang":        "en",
+		"diagnostics": "true",
+	}))
 
-		h.executeScan(rr, req)
-
-		if rr.Code != http.StatusOK {
-			t.Fatalf("status = %d, want %d; body=%q", rr.Code, http.StatusOK, rr.Body.String())
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%q", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode scan response: %v", err)
+	}
+	if resp["detected"] != "Pikachu" || resp["id"] != "card-1" {
+		t.Errorf("unexpected detection payload: %v", resp)
+	}
+	matches, ok := resp["top_matches"].([]interface{})
+	if !ok || len(matches) == 0 {
+		t.Fatalf("expected top matches, got %v", resp["top_matches"])
+	}
+	first := matches[0].(map[string]interface{})
+	for _, entry := range []map[string]interface{}{resp, first} {
+		if entry["set"] != card.Set || entry["collector_number"] != card.CollectorNumber || entry["language"] != card.Language {
+			t.Errorf("scan response omitted printing identity: %v", entry)
 		}
-		var resp map[string]interface{}
-		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("decode scan response: %v", err)
-		}
-		if resp["detected"] != "Pikachu" || resp["id"] != "card-1" {
-			t.Errorf("unexpected detection payload: %v", resp)
-		}
-		if resp["confidence"] != 100.0 {
-			t.Errorf("expected exact-match confidence 100, got %v", resp["confidence"])
-		}
-		if resp["needs_review"] != false {
-			t.Errorf("expected needs_review false, got %v", resp["needs_review"])
-		}
-		matches, ok := resp["top_matches"].([]interface{})
-		if !ok || len(matches) != 1 {
-			t.Fatalf("expected one top match, got %v", resp["top_matches"])
-		}
-		first := matches[0].(map[string]interface{})
-		if first["name"] != "Pikachu" || first["price"] != 12.0 {
-			t.Errorf("unexpected top match entry: %v", first)
-		}
-	})
-
-	t.Run("ScopedMatchWithDiagnostics", func(t *testing.T) {
-		card := models.Card{
-			ID: "card-1", Name: "Pikachu", Phash: &hash,
-			Game: "pokemon", Language: "en",
-			Set: "Scarlet & Violet", CollectorNumber: "025",
-			PriceEUR: decimal.NewFromInt(12), ImageURL: "/img/pikachu.png",
-		}
-		h := &Handler{
-			MockCards: []models.Card{card},
-			Detection: service.NewDetectionPipeline(fp, nil),
-		}
-		req := scanRequest(t, imgBytes, map[string]string{
-			"game":        "pokemon",
-			"lang":        "en",
-			"diagnostics": "true",
-		})
-		rr := httptest.NewRecorder()
-
-		h.executeScan(rr, req)
-
-		if rr.Code != http.StatusOK {
-			t.Fatalf("status = %d, want %d; body=%q", rr.Code, http.StatusOK, rr.Body.String())
-		}
-		var resp map[string]interface{}
-		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("decode scan response: %v", err)
-		}
-		if resp["detected"] != "Pikachu" {
-			t.Errorf("unexpected detection payload: %v", resp)
-		}
-		matches, ok := resp["top_matches"].([]interface{})
-		if !ok || len(matches) != 1 {
-			t.Fatalf("expected one top match, got %v", resp["top_matches"])
-		}
-		for _, entry := range []map[string]interface{}{resp, matches[0].(map[string]interface{})} {
-			if entry["set"] != card.Set || entry["collector_number"] != card.CollectorNumber || entry["language"] != card.Language {
-				t.Errorf("scan response omitted printing identity: %v", entry)
-			}
-		}
-		if _, ok := resp["pipeline_metrics"]; !ok {
-			t.Errorf("expected pipeline metrics in diagnostics response, got %v", resp)
-		}
-	})
+	}
+	if _, ok := resp["pipeline_metrics"]; !ok {
+		t.Errorf("expected pipeline metrics in diagnostics response, got %v", resp)
+	}
 }
 
 func TestExecuteScan_RequestValidation(t *testing.T) {

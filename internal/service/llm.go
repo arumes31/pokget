@@ -1,4 +1,4 @@
-// Copyright (c) 2026 arumes31
+﻿// Copyright (c) 2026 arumes31
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -85,7 +85,6 @@ type LLMConfig struct {
 // Existing exported fields remain for compatibility with callers that build a
 // service literal; zero values for the matching options use secure defaults.
 type LLMService struct {
-	compactSelectionIDs bool // Request-local aliases for device OCR; never exposed as catalog IDs.
 	PrimaryBaseURL      string
 	PrimaryModel        string
 	PrimaryAPIKey       string
@@ -364,7 +363,7 @@ func (s *LLMService) queryLLMContext(ctx context.Context, prompt string) (string
 }
 
 func (s *LLMService) queryLLMRequest(ctx context.Context, prompt string, responseFormat any) (string, error) {
-	return s.queryLLMWithFallback(ctx, prompt, responseFormat, nil, nil, nil)
+	return s.queryLLMWithFallback(ctx, prompt, responseFormat, nil)
 }
 
 func (s *LLMService) queryOllamaRequest(ctx context.Context, prompt string, responseFormat any) (string, error) {
@@ -479,11 +478,10 @@ func (s *LLMService) effectiveMinConfidence() float64 {
 
 // LLMCardResponse is a validated printing-level card identification.
 type LLMCardResponse struct {
-	CardName       string  `json:"card_name,omitempty"`
-	CardID         string  `json:"card_id"`
-	Confidence     float64 `json:"confidence"`
-	Abstained      bool    `json:"abstain,omitempty"`
-	visionSelected bool
+	CardName   string  `json:"card_name,omitempty"`
+	CardID     string  `json:"card_id"`
+	Confidence float64 `json:"confidence"`
+	Abstained  bool    `json:"abstain,omitempty"`
 }
 
 func abstainedLLMResponse() *LLMCardResponse {
@@ -530,16 +528,6 @@ func (s *LLMService) FuzzyMatchCardWithValidation(ocrText string, knownCards []m
 // FuzzyMatchCardScopedContext enforces the selected catalog scope before any
 // candidate metadata is serialized for the model.
 func (s *LLMService) FuzzyMatchCardScopedContext(ctx context.Context, ocrText string, knownCards []models.Card, scope ScanScope) (*LLMCardResponse, error) {
-	return s.FuzzyMatchCardScopedWithImageContext(ctx, ocrText, nil, knownCards, scope)
-}
-
-// FuzzyMatchCardScopedWithImageContext optionally supplies the card photo while
-// enforcing the same catalog scope and evidence-backed shortlist.
-func (s *LLMService) FuzzyMatchCardScopedWithImageContext(ctx context.Context, ocrText string, imageData []byte, knownCards []models.Card, scope ScanScope) (*LLMCardResponse, error) {
-	return s.fuzzyMatchCardScopedWithArtworkContext(ctx, ocrText, imageData, knownCards, knownCards, scope)
-}
-
-func (s *LLMService) fuzzyMatchCardScopedWithArtworkContext(ctx context.Context, ocrText string, imageData []byte, knownCards, referenceCatalog []models.Card, scope ScanScope) (*LLMCardResponse, error) {
 	if !scope.TCG.Valid() || !scope.Language.Valid() {
 		return nil, fmt.Errorf("%w: invalid LLM card scope", ErrInvalidDetectionRequest)
 	}
@@ -547,24 +535,18 @@ func (s *LLMService) fuzzyMatchCardScopedWithArtworkContext(ctx context.Context,
 	if len(eligible) == 0 {
 		return abstainedLLMResponse(), nil
 	}
-	return s.fuzzyMatchCardWithArtworkContext(ctx, ocrText, imageData, eligible, referenceCatalog)
+	return s.fuzzyMatchCardShortlist(ctx, ocrText, eligible)
 }
 
 // FuzzyMatchCardWithValidationContext sends only deterministic, evidence-backed
 // printing IDs to the model and accepts exactly one supplied ID or abstention.
 func (s *LLMService) FuzzyMatchCardWithValidationContext(ctx context.Context, ocrText string, knownCards []models.Card) (*LLMCardResponse, error) {
-	return s.FuzzyMatchCardWithImageContext(ctx, ocrText, nil, knownCards)
+	return s.fuzzyMatchCardShortlist(ctx, ocrText, knownCards)
 }
 
-// FuzzyMatchCardWithImageContext keeps model selections inside the deterministic
-// shortlist; the primary receives the optional image and Ollama remains text-only.
-func (s *LLMService) FuzzyMatchCardWithImageContext(ctx context.Context, ocrText string, imageData []byte, knownCards []models.Card) (*LLMCardResponse, error) {
-	return s.fuzzyMatchCardWithArtworkContext(ctx, ocrText, imageData, knownCards, knownCards)
-}
-
-// referenceCatalog checks artwork-group completeness before earlier pipeline
-// limits. It never expands the candidates or metadata sent to the provider.
-func (s *LLMService) fuzzyMatchCardWithArtworkContext(ctx context.Context, ocrText string, imageData []byte, knownCards, referenceCatalog []models.Card) (*LLMCardResponse, error) {
+// fuzzyMatchCardShortlist ranks the catalog text evidence and lets the model
+// pick one supplied printing ID or abstain. The model never sees a photo.
+func (s *LLMService) fuzzyMatchCardShortlist(ctx context.Context, ocrText string, knownCards []models.Card) (*LLMCardResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -607,9 +589,6 @@ func (s *LLMService) fuzzyMatchCardWithArtworkContext(ctx context.Context, ocrTe
 	for _, candidate := range shortlist {
 		card := candidate.Card
 		selectionID := card.ID
-		if s.compactSelectionIDs && s.PrimaryBaseURL == "" {
-			selectionID = fmt.Sprintf("c%d", len(input.Candidates)+1)
-		}
 		shortlistByID[selectionID] = card
 		shortlistScoreByID[selectionID] = candidate.Score
 		input.Candidates = append(input.Candidates, promptCandidate{
@@ -627,16 +606,9 @@ func (s *LLMService) fuzzyMatchCardWithArtworkContext(ctx context.Context, ocrTe
 		`Return exactly {"card_id":"<supplied ID>"}; otherwise return {"card_id":""}. Input: ` + string(inputJSON)
 
 	var selection *LLMCardResponse
-	var references []llmArtworkReference
-	if s.PrimaryBaseURL != "" && len(imageData) > 0 {
-		references = shortlistArtworkReferences(shortlist, referenceCatalog)
-	}
-	_, err = s.queryLLMWithFallback(ctx, prompt, llmCardResponseSchema(shortlistByID), imageData, references, func(response string, primary bool) error {
+	_, err = s.queryLLMWithFallback(ctx, prompt, llmCardResponseSchema(shortlistByID), func(response string, _ bool) error {
 		var validationErr error
 		selection, validationErr = s.validateLLMCardResponse(response, shortlistByID, shortlistScoreByID)
-		if selection != nil {
-			selection.visionSelected = primary && len(imageData) > 0 && !selection.Abstained
-		}
 		return validationErr
 	})
 	if err != nil {

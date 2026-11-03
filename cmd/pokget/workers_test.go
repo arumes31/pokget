@@ -120,7 +120,7 @@ func newTestConfig(t *testing.T) *config.Config {
 	cfg.App.WriteTimeout = 120
 	cfg.Auth.SessionKey = "0123456789abcdef0123456789abcdef"
 	cfg.Scan.TimeoutSeconds = 75
-	cfg.Scan.OCRPoolSize = 3
+	cfg.Scan.MaxConcurrent = 3
 	cfg.Scan.PhashHighConf = 5
 	cfg.Scan.PhashPotential = 10
 	cfg.Catalog.Enabled = false

@@ -93,7 +93,7 @@ func (l Language) Valid() bool {
 	}
 }
 
-// ParseLanguage normalizes catalog and Tesseract language labels.
+// ParseLanguage normalizes catalog language labels.
 func ParseLanguage(value string) (Language, error) {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	normalized = strings.ReplaceAll(normalized, "_", "-")
@@ -127,11 +127,11 @@ func ParseLanguage(value string) (Language, error) {
 	return language, nil
 }
 
-// TesseractCode returns the language data code used by the OCR implementation.
-func (l Language) TesseractCode() string {
+// ISO639Code returns the three-letter ISO 639-2/3 code for the card language.
+// It names the printed language in detector prompts; the empty value means
+// "detect automatically".
+func (l Language) ISO639Code() string {
 	switch l {
-	case LanguageAny:
-		return "eng+jpn+deu+fra+chi_sim+chi_tra+kor+spa"
 	case LanguageEnglish:
 		return "eng"
 	case LanguageJapanese:
@@ -141,9 +141,9 @@ func (l Language) TesseractCode() string {
 	case LanguageFrench:
 		return "fra"
 	case LanguageChineseSimplified:
-		return "chi_sim"
+		return "zho"
 	case LanguageChineseTraditional:
-		return "chi_tra"
+		return "zho"
 	case LanguageKorean:
 		return "kor"
 	case LanguageSpanish:

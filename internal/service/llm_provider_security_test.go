@@ -36,7 +36,7 @@ func primarySecurityService(t *testing.T, primaryURL, fallbackURL string, client
 	return service
 }
 
-func TestLLMPrimaryRedirectNeverForwardsCredentialsOrImage(t *testing.T) {
+func TestLLMPrimaryRedirectNeverForwardsCredentialsOrPrompt(t *testing.T) {
 	var redirectedCalls, fallbackCalls atomic.Int32
 	redirected := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		redirectedCalls.Add(1)
@@ -44,8 +44,8 @@ func TestLLMPrimaryRedirectNeverForwardsCredentialsOrImage(t *testing.T) {
 	defer redirected.Close()
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		if r.Header.Get("Authorization") != "Bearer primary-secret-marker" || !strings.Contains(string(body), "data:image/png;base64,") {
-			t.Error("initial primary request must carry the configured key and image")
+		if r.Header.Get("Authorization") != "Bearer primary-secret-marker" || !strings.Contains(string(body), "Pikachu") {
+			t.Error("initial primary request must carry the configured key and the text prompt")
 		}
 		http.Redirect(w, r, redirected.URL, http.StatusTemporaryRedirect)
 	}))
@@ -53,15 +53,14 @@ func TestLLMPrimaryRedirectNeverForwardsCredentialsOrImage(t *testing.T) {
 	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fallbackCalls.Add(1)
 		body, _ := io.ReadAll(r.Body)
-		if r.Header.Get("Authorization") != "" || strings.Contains(string(body), "data:image/") || strings.Contains(string(body), "primary-secret-marker") {
-			t.Error("primary credentials or image were forwarded to fallback")
+		if r.Header.Get("Authorization") != "" || strings.Contains(string(body), "primary-secret-marker") {
+			t.Error("primary credentials were forwarded to fallback")
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"response": `{"card_id":"pikachu"}`})
 	}))
 	defer fallback.Close()
 	service := primarySecurityService(t, primary.URL, fallback.URL, nil)
-	imageData := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
-	result, err := service.FuzzyMatchCardWithImageContext(context.Background(), "Pikachu", imageData, []models.Card{{ID: "pikachu", Name: "Pikachu"}})
+	result, err := service.FuzzyMatchCardWithValidationContext(context.Background(), "Pikachu", []models.Card{{ID: "pikachu", Name: "Pikachu"}})
 	if err != nil || result == nil || result.CardID != "pikachu" || redirectedCalls.Load() != 0 || fallbackCalls.Load() != 1 {
 		t.Fatalf("result=%+v error=%v redirected=%d fallback=%d", result, err, redirectedCalls.Load(), fallbackCalls.Load())
 	}

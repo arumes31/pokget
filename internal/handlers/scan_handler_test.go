@@ -30,9 +30,8 @@ func TestWriteDetectionErrorMapsTypedFailures(t *testing.T) {
 		{name: "timeout", err: context.DeadlineExceeded, want: http.StatusRequestTimeout},
 		{name: "no eligible cards", err: service.ErrNoEligibleCards, want: http.StatusUnprocessableEntity},
 		{name: "invalid request", err: service.ErrInvalidDetectionRequest, want: http.StatusBadRequest},
-		{name: "invalid image", err: &service.OCRInputError{Reason: "bad format"}, want: http.StatusBadRequest},
-		{name: "unavailable", err: &service.OCRUnavailableError{}, want: http.StatusServiceUnavailable},
-		{name: "all passes", err: &service.OCRAllPassesFailedError{Failures: []error{errors.New("failed")}}, want: http.StatusUnprocessableEntity},
+		{name: "invalid image", err: &service.ImageInputError{Reason: "bad format"}, want: http.StatusBadRequest},
+		{name: "detector missing", err: service.ErrDetectionUnavailable, want: http.StatusServiceUnavailable},
 		{name: "internal", err: errors.New("database failed"), want: http.StatusInternalServerError},
 	}
 	for _, test := range tests {

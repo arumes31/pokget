@@ -5,23 +5,12 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
-	"strconv"
 	"time"
 
 	"pokget/internal/service"
 )
 
 var scanIDPattern = regexp.MustCompile(`^[a-zA-Z0-9-]{16,64}$`)
-
-// Client diagnostics are untrusted observations, never detection inputs.
-func scanDiagnostic(value string) string {
-	switch value {
-	case "usable", "weak_text", "timeout", "error", "paused", "cancelled", "disabled", "unsupported", "server_only", "none", "no_match", "unsupported_server":
-		return value
-	default:
-		return "unknown"
-	}
-}
 
 type scanResponseWriter struct {
 	http.ResponseWriter
@@ -51,11 +40,7 @@ func beginScanLog(w http.ResponseWriter, r *http.Request, input string) (*scanRe
 		id = rand.Text()
 	}
 	logger := slog.Default().With("scan_id", id, "input", input)
-	fields := []any{"client_device_ocr", scanDiagnostic(r.Header.Get("X-Device-OCR")), "client_fallback", scanDiagnostic(r.Header.Get("X-Scan-Fallback"))}
-	if elapsed, err := strconv.Atoi(r.Header.Get("X-Device-OCR-MS")); err == nil && elapsed >= 0 && elapsed <= 60000 {
-		fields = append(fields, "client_device_ocr_ms", elapsed)
-	}
-	logger.Info("Scan request received", fields...)
+	logger.Info("Scan request received")
 	w.Header().Set("X-Scan-ID", id)
 	response := &scanResponseWriter{ResponseWriter: w}
 	started := time.Now()

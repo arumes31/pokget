@@ -53,6 +53,30 @@ func normalizeMatchText(value string) string {
 	return norm.NFC.String(builder.String())
 }
 
+// foldVoicing drops the Japanese dakuten (゛) and handakuten (゜) marks, so an
+// OCR or vision error that misses a single mark (ピジョット vs ビジョット) still
+// finds the card family. Call it on normalized text; the result is only ever
+// review evidence, because two real cards can differ by exactly that mark.
+func foldVoicing(normalized string) string {
+	if normalized == "" {
+		return ""
+	}
+	var builder strings.Builder
+	builder.Grow(len(normalized))
+	changed := false
+	for _, r := range norm.NFD.String(normalized) {
+		if unicode.Is(unicode.Mn, r) {
+			changed = true
+			continue
+		}
+		builder.WriteRune(r)
+	}
+	if !changed {
+		return normalized
+	}
+	return norm.NFC.String(builder.String())
+}
+
 func containsNormalizedValue(text, value string) bool {
 	if text == "" || value == "" {
 		return false

@@ -21,14 +21,12 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"image"
 	"image/color"
 	"image/draw"
-	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"net/smtp"
@@ -279,25 +277,6 @@ func TestLLMService(t *testing.T) {
 		_, err := s.FuzzyMatchCard("Chrizard", []models.Card{{ID: "charizard", Name: "Charizard"}})
 		if err == nil {
 			t.Error("Expected error for malformed JSON")
-		}
-	})
-}
-
-func TestProcessCardScan_Full(t *testing.T) {
-	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
-	draw.Draw(img, img.Bounds(), &image.Uniform{color.RGBA{255, 0, 0, 255}}, image.Point{}, draw.Src)
-	var buf bytes.Buffer
-	_ = png.Encode(&buf, img)
-
-	t.Run("Match", func(t *testing.T) {
-		cards := []models.Card{{ID: "1", Name: "Charizard"}}
-		_, card, processedImage, err := ProcessCardScan(buf.Bytes(), cards, "eng", nil)
-		requireOCRSuccessOrUnavailable(t, err)
-		if card == "" {
-			t.Error("Expected a card detection result")
-		}
-		if len(processedImage) == 0 {
-			t.Error("Expected a processed OCR image")
 		}
 	})
 }

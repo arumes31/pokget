@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -211,6 +212,83 @@ func TestDetectValidation(t *testing.T) {
 	_, err = client.Detect(ctx, []byte{1, 2, 3}, "", "")
 	if err != context.Canceled {
 		t.Errorf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestDetectImagesSendsDeterministicScopedRequest(t *testing.T) {
+	var payload struct {
+		Temperature float64 `json:"temperature"`
+		Messages    []struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decode payload: %v", err)
+		}
+		resp := map[string]any{
+			"model": "claude-sonnet-5-5",
+			"content": []map[string]any{{
+				"type": "text",
+				"text": `{"game":"pokemon","name":"ピジョットex","collector_number":"136/165","set":"SV3","set_code":"SV3","language":"jpn","confidence":0.95}`,
+			}},
+			"usage": map[string]any{"input_tokens": 10, "output_tokens": 20},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client, err := New(Config{APIKey: "test-key", BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+	fakeJPEG := []byte{0xFF, 0xD8, 0xFF, 0x00, 0x11, 0x22}
+	info, err := client.DetectImages(context.Background(), [][]byte{fakeJPEG, fakeJPEG, fakeJPEG}, "pokemon", "Japanese (ja, jpn)")
+	if err != nil {
+		t.Fatalf("detect failed: %v", err)
+	}
+	if info.Name != "ピジョットex" {
+		t.Errorf("expected the printed Japanese name, got %q", info.Name)
+	}
+	if payload.Temperature != 0 {
+		t.Errorf("expected deterministic temperature 0, got %v", payload.Temperature)
+	}
+	if len(payload.Messages) != 1 {
+		t.Fatalf("expected one user message, got %d", len(payload.Messages))
+	}
+	images, texts := 0, ""
+	for _, block := range payload.Messages[0].Content {
+		if block.Type == "image" {
+			images++
+			continue
+		}
+		texts += block.Text + "\n"
+	}
+	if images != 3 {
+		t.Errorf("expected three images in one request, got %d", images)
+	}
+	for _, want := range []string{"game: pokemon", "Japanese (ja, jpn)", "Image 2:", "Image 3:"} {
+		if !strings.Contains(texts, want) {
+			t.Errorf("request prompt is missing %q: %s", want, texts)
+		}
+	}
+}
+
+func TestDetectImagesRejectsTooManyImages(t *testing.T) {
+	client, _ := New(Config{APIKey: "key"})
+	images := make([][]byte, MaxImages+1)
+	for index := range images {
+		images[index] = []byte{1, 2, 3}
+	}
+	if _, err := client.DetectImages(context.Background(), images, "", ""); err != ErrTooManyImages {
+		t.Errorf("expected ErrTooManyImages, got %v", err)
+	}
+	if _, err := client.DetectImages(context.Background(), nil, "", ""); err != ErrEmptyImage {
+		t.Errorf("expected ErrEmptyImage, got %v", err)
 	}
 }
 

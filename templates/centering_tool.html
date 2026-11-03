@@ -9,7 +9,6 @@
 <div x-data="cardScanner({ csrfToken: '{{ .CSRFToken }}' })"
     @pointermove="handleMove($event)" @pointerup="finishGuideDrag()" @pointercancel="finishGuideDrag()"
     @keydown.escape.window="scanning ? cancelScan() : (showGamePopover = false, showLangPopover = false)"
-    @visibilitychange.document="document.hidden && pauseDeviceOCR()"
     :data-game="game"
     class="scanner-shell" :class="{ 'scanner-has-error': scanError }">
 
@@ -335,7 +334,7 @@
 
         <!-- Full-width fallback button for direct image upload -->
         <button data-i18n type="button" x-show="lastScanBlob && (needsReview || scanError)" :disabled="scanning"
-            @click="submitPreparedBlob(lastScanBlob, lastScanName || 'retry.jpg', false, true)"
+            @click="submitPreparedBlob(lastScanBlob, lastScanName || 'retry.jpg', false)"
             data-testid="scanner-server-scan"
             class="scanner-accent-fill w-full min-h-11 rounded-xl border scanner-accent-border px-3 text-xs font-mono scanner-accent-text transition-colors">Use server image scan</button>
 

@@ -16,17 +16,7 @@ func registerStaticRoutes(router *mux.Router) {
 	// build version; an installed app must not keep stale artwork.
 	router.Handle("/static/manifest.json", manifestHandler("static/manifest.json", detectBuildVersion())).
 		Methods(http.MethodGet, http.MethodHead)
-	// Containers contain built assets in static/. Native development generates
-	// large OCR assets in dist/ while continuing to serve authored JS in static/.
-	ocrAssets := "static/vendor/ocr"
-	if info, err := os.Stat(ocrAssets); err != nil || !info.IsDir() {
-		ocrAssets = "dist/static/vendor/ocr"
-	}
-	ocrHandler := http.StripPrefix("/static/vendor/ocr/", http.FileServer(http.Dir(ocrAssets)))
-	router.PathPrefix("/static/vendor/ocr/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		ocrHandler.ServeHTTP(w, r)
-	})
+	// Containers contain built assets in static/.
 	router.PathPrefix("/static/").Handler(
 		http.StripPrefix("/static/", http.FileServer(http.Dir("static"))),
 	)
