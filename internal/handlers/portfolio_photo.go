@@ -141,10 +141,11 @@ func (h *Handler) PortfolioCard(w http.ResponseWriter, r *http.Request) {
 	itemID := mux.Vars(r)["id"]
 
 	var (
-		item       models.PortfolioItem
-		photo      string
-		usd, eur   decimal.NullDecimal
-		eurViaRate bool
+		item           models.PortfolioItem
+		photo          string
+		usd, eur       decimal.NullDecimal
+		eurViaRate     bool
+		priceCheckedAt string
 	)
 	err := h.DB.QueryRowContext(r.Context(), `
 		SELECT p.id, p.condition, COALESCE(p.grade, ''), COALESCE(p.notes, ''),
@@ -152,14 +153,15 @@ func (h *Handler) PortfolioCard(w http.ResponseWriter, r *http.Request) {
 		       c.id, c.name, c.set_name, COALESCE(c.set_code, ''), COALESCE(c.collector_number, ''),
 		       COALESCE(c.language, ''), COALESCE(c.game, ''), COALESCE(c.rarity, ''),
 		       COALESCE(c.image_url, ''), c.price_usd, c.price_eur, COALESCE(c.price_eur_estimated, FALSE),
-		       COALESCE(c.price_variant, '')
+		       COALESCE(c.price_variant, ''),
+		       COALESCE(to_char(c.price_checked_at, 'YYYY-MM-DD HH24:MI') || ' UTC', '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.id = $1 AND p.user_id = $2`, itemID, userID).
 		Scan(&item.ID, &item.Condition, &item.Grade, &item.Notes, &item.CustomPrice, &item.IsPublic,
 			&photo, &item.BinderID, &item.Card.ID, &item.Card.Name, &item.Card.Set, &item.Card.SetCode,
 			&item.Card.CollectorNumber, &item.Card.Language, &item.Card.Game, &item.Card.Rarity,
-			&item.Card.ImageURL, &usd, &eur, &eurViaRate, &item.Card.PriceVariant)
+			&item.Card.ImageURL, &usd, &eur, &eurViaRate, &item.Card.PriceVariant, &priceCheckedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Card not found", http.StatusNotFound)
@@ -186,6 +188,9 @@ func (h *Handler) PortfolioCard(w http.ResponseWriter, r *http.Request) {
 		// NoMarketSource tells a game without any price source (Altered, Duel
 		// Masters) apart from a card a source simply has no price for.
 		"NoMarketSource": !service.HasMarketPriceSource(item.Card.Game),
+		// PriceCheckedAt is when a source last verified the price, whether or not it
+		// moved. Without it a card whose price never changes looks stale.
+		"PriceCheckedAt": priceCheckedAt,
 		"UpdatedAt":      time.Now().UTC(),
 	})
 }

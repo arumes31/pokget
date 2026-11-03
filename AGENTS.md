@@ -71,6 +71,14 @@ Bulk rules: a source never wipes a currency it does not know, the fallback only
 fills cards without a price, and an upsert batch retries after `40P01`/`40001`/
 `55P03` because the price worker writes the same rows.
 
+Refresh cadence (`internal/worker/price_sync.go`): the bulk exports run at startup
+and every `PRICE_BULK_INTERVAL_HOURS` (default 24 h), the tracked-card sync runs
+every `PRICE_SYNC_INTERVAL_MINUTES` (default 60 min) with `PRICE_TRACKED_LIMIT`
+cards per cycle split across the collectors that track cards, and the per-card
+backfill runs with the price cycle. `cards.last_updated` means "the price changed
+at"; `cards.price_checked_at` means "a source verified it at" — show the second one
+to users, otherwise a stable price looks stale.
+
 ## Conventions
 
 - Static assets referenced from templates carry `?v={{ .BuildVersion }}`;

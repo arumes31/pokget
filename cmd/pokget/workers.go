@@ -90,6 +90,8 @@ func newDataSyncWorkerWithClients(
 			EURRate:            eurRateProvider(cfg),
 			PriceBackfillBatch: cfg.Worker.BackfillBatch,
 			PriceBackfillRate:  cfg.Worker.BackfillRPS,
+			PriceTrackedLimit:  cfg.Worker.TrackedLimit,
+			BulkPriceInterval:  time.Duration(cfg.Worker.BulkIntervalHours) * time.Hour,
 		},
 	)
 }
@@ -135,6 +137,13 @@ func validateRuntimeConfig(cfg *config.Config) error {
 	}
 	if cfg.Worker.BackfillRPS < 0 {
 		return fmt.Errorf("PRICE_BACKFILL_REQUESTS_PER_SECOND must not be negative")
+	}
+	// Zero keeps the documented default; only a negative value is a mistake.
+	if cfg.Worker.TrackedLimit < 0 {
+		return fmt.Errorf("PRICE_TRACKED_LIMIT must not be negative")
+	}
+	if cfg.Worker.BulkIntervalHours < 0 {
+		return fmt.Errorf("PRICE_BULK_INTERVAL_HOURS must not be negative")
 	}
 	return nil
 }

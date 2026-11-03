@@ -70,7 +70,8 @@ func TestBackfillPricesRecordsMisses(t *testing.T) {
 	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
 		AddRow("card-2", "Unpriced", "Set", "pokemon", "ja", "tcgdex", "SV3-999", "SV3", "999")
 	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
-	mock.ExpectExec("UPDATE cards SET last_updated = NOW\\(\\)").WithArgs("card-2").
+	// The miss is recorded as a check, not as a price change.
+	mock.ExpectExec("UPDATE cards SET price_checked_at = NOW\\(\\)").WithArgs("card-2").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	worker := &DataSyncWorker{

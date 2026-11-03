@@ -85,7 +85,9 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	// Composite numbers carry the set code themselves; Weiss Schwarz abbreviates the
 	// set as "NIK/" while the number says "NIK/S135-E063".
 	fuzzyByNumber := make(map[fuzzyScope]map[string]float64)
-	var rows, updated int64
+	// rows counts what the source delivered, matched what the catalog knows of it and
+	// updated how many prices actually changed.
+	var rows, matched, updated int64
 	// Languages that come with their own marketplace category. The generic
 	// category of the same game must skip them: TCGplayer's Japanese Pokémon sets
 	// reuse English set codes for entirely different cards ("SV3" is "Ruler of the
@@ -130,14 +132,13 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		if len(batch) == 0 {
 			return nil
 		}
-		changed, err := retryOnConflict(ctx, fxRetryLimit, func() (int64, error) {
-			return w.applyBulkBatch(ctx, batch)
-		})
+		result, err := retryBulkBatch(ctx, w, batch)
 		if err != nil {
 			return err
 		}
 		rows += int64(len(batch))
-		updated += changed
+		updated += result.changed
+		matched += result.matched
 		batch = batch[:0]
 		return nil
 	}
@@ -261,14 +262,16 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		rarityUpdated += changed
 	}
 
-	slog.Info("Bulk prices applied", "source", source.Name(), "rows", rows, "updated", updated, "fallback_updated", fuzzyUpdated, "rarity_updated", rarityUpdated)
-	// The counters above count changed rows, not matched ones: a feed whose prices
-	// already match the database reports zero every run. Say that instead of
-	// blaming the mapping.
-	if rows > 0 && updated+fuzzyUpdated+rarityUpdated == 0 {
-		slog.Info("Bulk prices: source changed nothing",
+	// The fallback only writes cards that had no price, so every fallback row was a
+	// match as well.
+	slog.Info("Bulk prices applied", "source", source.Name(), "rows", rows, "matched", matched+fuzzyUpdated,
+		"updated", updated, "fallback_updated", fuzzyUpdated, "rarity_updated", rarityUpdated)
+	// A source that delivers rows but matches none of them is either listing a
+	// catalog we cannot map or is broken; both deserve an operator's attention.
+	if rows > 0 && matched+fuzzyUpdated+rarityUpdated == 0 {
+		slog.Warn("Bulk prices: source matched nothing",
 			"source", source.Name(), "rows", rows,
-			"hint", "every price was already stored; if that is unexpected, check the set abbreviations of this source")
+			"hint", "check the set abbreviations and collector numbers of this source")
 	}
 	return nil
 }
@@ -747,7 +750,7 @@ func (w *DataSyncWorker) applyPriceByCardID(ctx context.Context, batch []service
 	}
 	var query strings.Builder
 	query.WriteString(`UPDATE cards AS c
-SET price_usd = v.usd, last_updated = NOW()
+SET price_usd = v.usd, last_updated = NOW(), price_checked_at = NOW()
 FROM (VALUES `)
 	args := make([]any, 0, len(batch)*2)
 	for index, update := range batch {
@@ -788,12 +791,19 @@ func setNameAliases(name string) []string {
 	return aliases
 }
 
-// applyBulkBatch writes one batch with a single statement. Only cards whose
-// price actually changed are touched, so last_updated keeps meaning "price
-// changed at".
-func (w *DataSyncWorker) applyBulkBatch(ctx context.Context, batch []service.BulkPriceUpdate) (int64, error) {
+// bulkBatchResult separates "the card was matched and verified" from "the price
+// changed". A feed whose prices already match the database still proves that the
+// prices are current, and that is what price_checked_at records.
+type bulkBatchResult struct {
+	matched int64
+	changed int64
+}
+
+// applyBulkBatch writes one batch with a single statement. Every matched card gets
+// a fresh price_checked_at, while last_updated keeps meaning "price changed at".
+func (w *DataSyncWorker) applyBulkBatch(ctx context.Context, batch []service.BulkPriceUpdate) (bulkBatchResult, error) {
 	if len(batch) == 0 {
-		return 0, nil
+		return bulkBatchResult{}, nil
 	}
 
 	var query strings.Builder
@@ -805,7 +815,8 @@ SET price_usd = CASE WHEN v.usd > 0 THEN v.usd ELSE c.price_usd END,
     price_eur = CASE WHEN v.eur > 0 THEN v.eur ELSE c.price_eur END,
     price_eur_estimated = CASE WHEN v.eur > 0 THEN FALSE ELSE c.price_eur_estimated END,
     price_variant = CASE WHEN v.usd > 0 AND v.variant <> '' THEN v.variant ELSE c.price_variant END,
-    -- A variant-only update must not claim the price changed.
+    price_checked_at = NOW(),
+    -- A variant-only or unchanged quote must not claim the price changed.
     last_updated = CASE WHEN (v.usd > 0 AND c.price_usd IS DISTINCT FROM v.usd)
                           OR (v.eur > 0 AND c.price_eur IS DISTINCT FROM v.eur)
                         THEN NOW() ELSE c.last_updated END
@@ -828,11 +839,70 @@ WHERE c.source_id = v.source_id
 
 	result, err := w.db.ExecContext(ctx, query.String(), args...)
 	if err != nil {
-		return 0, fmt.Errorf("bulk price update: %w", err)
+		return bulkBatchResult{}, fmt.Errorf("bulk price update: %w", err)
 	}
-	affected, err := result.RowsAffected()
+	changed, err := result.RowsAffected()
+	if err != nil {
+		changed = 0
+	}
+
+	// The second statement stamps the cards whose quote did not move. Two statements
+	// keep both counters exact: RETURNING would only see the already updated row.
+	verified, err := w.touchBulkChecks(ctx, batch)
+	if err != nil {
+		return bulkBatchResult{matched: changed, changed: changed}, err
+	}
+	return bulkBatchResult{matched: changed + verified, changed: changed}, nil
+}
+
+// retryBulkBatch reruns a batch that lost a lock race with the catalog sync.
+func retryBulkBatch(ctx context.Context, w *DataSyncWorker, batch []service.BulkPriceUpdate) (bulkBatchResult, error) {
+	var result bulkBatchResult
+	var lastErr error
+	for attempt := 0; attempt <= fxRetryLimit; attempt++ {
+		result, lastErr = w.applyBulkBatch(ctx, batch)
+		if lastErr == nil {
+			return result, nil
+		}
+		if !retryablePostgresError(lastErr) {
+			return bulkBatchResult{}, lastErr
+		}
+		if !waitForContext(ctx, time.Duration(attempt+1)*time.Second) {
+			return bulkBatchResult{}, ctx.Err()
+		}
+	}
+	return bulkBatchResult{}, lastErr
+}
+
+// touchBulkChecks records that the matched cards were verified even when their
+// price did not change. It only touches rows whose stamp is older than an hour, so
+// a normal daily run writes each card once.
+func (w *DataSyncWorker) touchBulkChecks(ctx context.Context, batch []service.BulkPriceUpdate) (int64, error) {
+	var query strings.Builder
+	query.WriteString(`UPDATE cards AS c
+SET price_checked_at = NOW()
+FROM (VALUES `)
+	args := make([]any, 0, len(batch)*2)
+	for index, update := range batch {
+		if index > 0 {
+			query.WriteString(", ")
+		}
+		base := index * 2
+		fmt.Fprintf(&query, "($%d, $%d)", base+1, base+2)
+		args = append(args, update.SourceID, update.SourceCardID)
+	}
+	query.WriteString(`) AS v(source_id, source_card_id)
+WHERE c.source_id = v.source_id
+  AND c.source_card_id = v.source_card_id
+  AND (c.price_checked_at IS NULL OR c.price_checked_at < NOW() - INTERVAL '1 hour')`)
+
+	result, err := w.db.ExecContext(ctx, query.String(), args...)
+	if err != nil {
+		return 0, fmt.Errorf("bulk check stamp: %w", err)
+	}
+	verified, err := result.RowsAffected()
 	if err != nil {
 		return 0, nil
 	}
-	return affected, nil
+	return verified, nil
 }

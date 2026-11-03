@@ -134,7 +134,7 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 // without touching its (empty) prices.
 func (w *DataSyncWorker) markBackfillMiss(ctx context.Context, cardID string) {
 	if _, err := w.db.ExecContext(ctx,
-		`UPDATE cards SET last_updated = NOW() WHERE id = $1`, cardID); err != nil {
+		`UPDATE cards SET price_checked_at = NOW() WHERE id = $1`, cardID); err != nil {
 		slog.Debug("Price backfill: could not record the miss", "card_id", cardID, "error", err)
 	}
 }
@@ -157,7 +157,7 @@ func (w *DataSyncWorker) storeBackfillPrice(ctx context.Context, cardID string, 
 		SET price_usd = CASE WHEN $1::numeric > 0 THEN $1::numeric ELSE price_usd END,
 		    price_eur = CASE WHEN $2::numeric > 0 THEN $2::numeric ELSE price_eur END,
 		    price_eur_estimated = CASE WHEN $2::numeric > 0 THEN FALSE ELSE price_eur_estimated END,
-		    last_updated = NOW()
+		    last_updated = NOW(), price_checked_at = NOW()
 		WHERE id = $3
 		  AND COALESCE(price_usd, 0) <= 0
 		  AND COALESCE(price_eur, 0) <= 0`, usd, eur, cardID)

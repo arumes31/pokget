@@ -46,6 +46,11 @@ type DataSyncWorker struct {
 	backfillBatch    int
 	backfillLimiter  interface{ Wait(context.Context) error }
 	backfillRunning  atomic.Bool
+	// trackedLimit caps the hourly per-card refresh; Config.PriceTrackedLimit
+	// overrides defaultTrackedLimit.
+	trackedLimit int
+	// bulkPriceEvery is the bulk refresh cadence; zero means daily.
+	bulkPriceEvery time.Duration
 	metadataClient   service.MetadataClient
 	metadataService  *service.MetadataService
 	interval         time.Duration
@@ -106,6 +111,8 @@ func NewConfiguredDataSyncWorker(
 		bulkPriceSources: slices.Clone(config.BulkPriceSources),
 		eurRate:          config.EURRate,
 		backfillBatch:    config.PriceBackfillBatch,
+		trackedLimit:     config.PriceTrackedLimit,
+		bulkPriceEvery:   config.BulkPriceInterval,
 		backfillLimiter:  newRequestLimiter(backfillRate(config.PriceBackfillRate), 1),
 		metadataClient:   mc,
 		metadataService:  ms,
@@ -133,9 +140,11 @@ func (w *DataSyncWorker) Start(ctx context.Context) {
 	}()
 	slog.Info("Data Sync Worker starting", "interval", w.interval)
 	priceTicker := time.NewTicker(w.interval)
-	metadataTicker := time.NewTicker(24 * time.Hour)  // Sync metadata daily
-	repairTicker := time.NewTicker(1 * time.Hour)     // Check for missing fingerprints hourly
-	bulkPriceTicker := time.NewTicker(24 * time.Hour) // Refresh free bulk market prices daily
+	metadataTicker := time.NewTicker(24 * time.Hour) // Sync metadata daily
+	repairTicker := time.NewTicker(1 * time.Hour)    // Check for missing fingerprints hourly
+	// The free bulk exports are daily market data; the interval stays configurable so
+	// an operator can shorten it without touching the code.
+	bulkPriceTicker := time.NewTicker(w.bulkPriceInterval())
 	defer priceTicker.Stop()
 	defer metadataTicker.Stop()
 	defer repairTicker.Stop()
@@ -218,6 +227,50 @@ func (w *DataSyncWorker) Start(ctx context.Context) {
 			w.syncBulkPrices(ctx)
 		}
 	}
+}
+
+// defaultTrackedLimit is the hourly per-card refresh budget when none is set.
+const defaultTrackedLimit = 100
+
+// bulkPriceInterval returns the bulk refresh cadence, defaulting to a day.
+func (w *DataSyncWorker) bulkPriceInterval() time.Duration {
+	if w.bulkPriceEvery > 0 {
+		return w.bulkPriceEvery
+	}
+	return 24 * time.Hour
+}
+
+// trackedBudget is the per-hour refresh budget of the tracked-card sync.
+type trackedBudget struct {
+	// perUser limits how many cards one collector's collection contributes.
+	perUser int
+	// total caps the whole cycle so the scrapers stay under their rate limit.
+	total int
+}
+
+// trackedBatchLimit splits the tracked-card budget across the collectors that have
+// tracked cards. One user with a huge collection must not delay everybody else.
+func (w *DataSyncWorker) trackedBatchLimit() trackedBudget {
+	total := w.trackedLimit
+	if total <= 0 {
+		total = defaultTrackedLimit
+	}
+	users := 1
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := w.db.QueryRowContext(ctx, `
+		SELECT count(DISTINCT user_id) FROM (
+			SELECT user_id::text AS user_id FROM portfolio
+			UNION ALL SELECT user_id::text FROM wantlist
+			UNION ALL SELECT user_id::text FROM price_alerts WHERE is_active = TRUE
+		) AS tracked`).Scan(&users); err != nil || users < 1 {
+		users = 1
+	}
+	perUser := total / users
+	if perUser < 1 {
+		perUser = 1
+	}
+	return trackedBudget{perUser: perUser, total: total}
 }
 
 func (w *DataSyncWorker) syncMissingFingerprints(ctx context.Context) {
@@ -493,31 +546,40 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 	// A full catalog can contain tens of thousands of printings. Scraping every
 	// catalog row would take longer than the sync interval and unnecessarily hit
 	// third-party sites. Refresh only cards a user is actively tracking, oldest
-	// first, in a bounded batch.
+	// check first, in a bounded batch - and split the budget per user: with a single
+	// global limit one collector with 2,000 cards would starve everybody else.
+	budget := w.trackedBatchLimit()
 	rows, err := w.db.QueryContext(ctx, `
-		SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(game, ''),
-		       COALESCE(source_id, ''), COALESCE(source_card_id, ''), COALESCE(language, '')
-		FROM cards
-		WHERE superseded_by_card_id IS NULL
-		  AND id IN (
-			SELECT card_id FROM portfolio
-			UNION
-			SELECT card_id FROM wantlist
-			UNION
-			SELECT card_id FROM price_alerts WHERE is_active = TRUE
-		  )
-		ORDER BY CASE
-		           WHEN id IN (SELECT card_id FROM price_alerts WHERE is_active = TRUE) THEN 0
-		           WHEN id IN (SELECT card_id FROM portfolio) THEN 1
-		           ELSE 2
-		         END,
-		         -- Cards the collector owns but that have no price at all come
-		         -- first: a priced card can wait a cycle, an unpriced one is the
-		         -- "Price unavailable" label the user is looking at.
-		         CASE WHEN COALESCE(price_usd, 0) > 0 OR COALESCE(price_eur, 0) > 0 THEN 1 ELSE 0 END,
-		         last_updated ASC NULLS FIRST,
-		         id
-		LIMIT 100`)
+		-- price_alerts.user_id is text while portfolio and wantlist use uuid, so the
+		-- union needs one common type.
+		WITH tracked AS (
+			SELECT card_id, user_id::text AS user_id, 1 AS priority FROM portfolio
+			UNION ALL
+			SELECT card_id, user_id::text, 0 FROM price_alerts WHERE is_active = TRUE
+			UNION ALL
+			SELECT card_id, user_id::text, 2 FROM wantlist
+		), ranked AS (
+			SELECT tracked.card_id,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY tracked.user_id
+			           ORDER BY tracked.priority,
+			                    -- An unpriced card is the "Price unavailable" label the
+			                    -- user is looking at; it goes before a priced one.
+			                    CASE WHEN COALESCE(c.price_usd, 0) > 0 OR COALESCE(c.price_eur, 0) > 0
+			                         THEN 1 ELSE 0 END,
+			                    c.price_checked_at ASC NULLS FIRST,
+			                    tracked.card_id
+			       ) AS position
+			FROM tracked
+			JOIN cards c ON c.id = tracked.card_id
+			WHERE c.superseded_by_card_id IS NULL
+		)
+		SELECT c.id, c.name, c.set_name, COALESCE(c.price_usd, 0), COALESCE(c.price_eur, 0), COALESCE(c.game, ''),
+		       COALESCE(c.source_id, ''), COALESCE(c.source_card_id, ''), COALESCE(c.language, '')
+		FROM cards c
+		JOIN (SELECT DISTINCT card_id FROM ranked WHERE position <= $1) AS chosen ON chosen.card_id = c.id
+		ORDER BY c.price_checked_at ASC NULLS FIRST, c.id
+		LIMIT $2`, budget.perUser, budget.total)
 	if err != nil {
 		slog.Error("Sync: Failed to query cards", "error", err)
 		return
@@ -577,7 +639,7 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 		}
 		// A native EUR quote clears the "converted from USD" marker.
 		_, err = tx.ExecContext(ctx, `UPDATE cards
-			SET price_usd = $1, price_eur = $2, last_updated = NOW(),
+			SET price_usd = $1, price_eur = $2, last_updated = NOW(), price_checked_at = NOW(),
 			    price_eur_estimated = CASE WHEN $3 THEN FALSE ELSE price_eur_estimated END
 			WHERE id = $4`,
 			nextUSD, nextEUR, validEUR, c.ID)

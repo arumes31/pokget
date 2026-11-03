@@ -94,6 +94,9 @@ func TestApplyBulkSourceKeepsTheMissingCurrency(t *testing.T) {
 	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*CASE WHEN v.usd > 0").
 		WithArgs("scryfall", "abc", 0.0, 4.5, "").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_checked_at").
+		WithArgs("scryfall", "abc").
+		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	worker := &DataSyncWorker{db: db}
 	if _, err := worker.applyBulkBatch(context.Background(), []service.BulkPriceUpdate{

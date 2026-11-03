@@ -348,6 +348,20 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	var binderCount int
 	_ = h.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM binders WHERE user_id = $1", userID).Scan(&binderCount)
 
+	// Record today's valuation for the 24h comparison. Nothing wrote this table
+	// before, so the change indicator could never appear. One row per user per hour
+	// keeps it small; the insert is skipped while a recent row exists.
+	if _, snapshotErr := h.DB.ExecContext(r.Context(), `
+		INSERT INTO portfolio_history (user_id, valuation)
+		SELECT $1, $2
+		WHERE NOT EXISTS (
+			SELECT 1 FROM portfolio_history
+			WHERE user_id = $1 AND recorded_at > NOW() - INTERVAL '1 hour'
+		)`, userID, totalValuation); snapshotErr != nil {
+		// The snapshot is a convenience; a failure must not break the dashboard.
+		slog.Warn("Failed to record portfolio valuation snapshot", "user_id", userID, "error", snapshotErr)
+	}
+
 	// Fetch 24h Change
 	var change24h float64
 	var oldValuation float64

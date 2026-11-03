@@ -163,6 +163,13 @@ type DataSyncConfig struct {
 	// bulk sources cover the rest of the catalog.
 	PriceBackfillBatch int
 	PriceBackfillRate  float64
+	// PriceTrackedLimit caps how many tracked cards (portfolio, wantlist, alerts) the
+	// hourly sync refreshes. The budget is split across the collectors that track
+	// cards, so one large collection cannot delay the others.
+	PriceTrackedLimit int
+	// BulkPriceInterval is the refresh cadence of the free bulk exports. Zero keeps
+	// the daily default.
+	BulkPriceInterval time.Duration
 	RequestsPerSecond float64
 	RequestBurst      int
 	RetryAttempts     int
