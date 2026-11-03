@@ -21,8 +21,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image"
 	"testing"
 	"time"
 
@@ -309,7 +311,7 @@ func TestClaudeDetection_VariantSuffixCollectorIsPartialEvidence(t *testing.T) {
 	}
 }
 
-func TestClaudeDetection_DuplicatePrintingsDoNotForceReview(t *testing.T) {
+func TestClaudeDetection_DuplicatePrintingsRequireReview(t *testing.T) {
 	info := &claudedetect.DetectedCardInfo{
 		Game:            "one_piece",
 		Name:            "Boa Hancock",
@@ -348,11 +350,11 @@ func TestClaudeDetection_DuplicatePrintingsDoNotForceReview(t *testing.T) {
 	if matches[0].Card.ID != "card-base" {
 		t.Errorf("expected base printing first, got %q", matches[0].Card.ID)
 	}
-	if matches[0].NeedsReview {
-		t.Errorf("same card, different art must not require review")
+	if !matches[0].NeedsReview {
+		t.Errorf("indistinguishable printings must require review")
 	}
-	if matches[1].NeedsReview {
-		t.Errorf("same card, different art must not require review")
+	if !matches[1].NeedsReview {
+		t.Errorf("indistinguishable printings must require review")
 	}
 }
 
@@ -593,5 +595,60 @@ func TestClaudeDetection_GenericSetSubstringDoesNotConfirmUnknownName(t *testing
 	}
 	if !matches[0].NeedsReview {
 		t.Errorf("number-only candidate must require review")
+	}
+}
+
+func TestClaudeDetection_FingerprintResolvesIdenticalPrintings(t *testing.T) {
+	imageBytes := testCardImage(t)
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		t.Fatalf("decode test image: %v", err)
+	}
+	fingerprint := NewFingerprintService(nil)
+	hash, err := fingerprint.CalculateHash(decoded)
+	if err != nil {
+		t.Fatalf("hash test image: %v", err)
+	}
+	otherHash := hash ^ 0xFF
+
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "one_piece",
+		Name:            "Boa Hancock",
+		CollectorNumber: "ST17-004",
+		Set:             "ST-17",
+		Language:        "en",
+		Confidence:      0.96,
+	}
+	cards := []models.Card{
+		{
+			ID: "card-base", Name: "Boa Hancock", CollectorNumber: "ST17-004",
+			Set: "ST-17", SetCode: "ST-17", Language: "en", Game: "one_piece",
+			SourceCardID: "ST17-004", Phash: &otherHash,
+		},
+		{
+			ID: "card-alt", Name: "Boa Hancock", CollectorNumber: "ST17-004",
+			Set: "ST-17", SetCode: "ST-17", Language: "en", Game: "one_piece",
+			SourceCardID: "ST17-004_p1", Phash: &hash,
+		},
+	}
+
+	pipeline := NewDetectionPipeline(fingerprint, nil)
+	pipeline.Claude = &mockClaudeDetector{info: info}
+	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
+		Image: imageBytes,
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGOnePiece, Language: models.LanguageEnglish},
+	}, false, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BestMatchID() != "card-alt" {
+		t.Fatalf("expected the photographed printing, got %q", result.BestMatchID())
+	}
+	if result.BestMatchNeedsReview() {
+		t.Errorf("a decisive fingerprint must clear the review flag")
+	}
+	if result.Status != DetectionStatusMatched {
+		t.Errorf("expected matched, got %s", result.Status)
 	}
 }

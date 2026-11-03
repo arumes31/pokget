@@ -21,7 +21,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"image"
 	"regexp"
 	"sort"
 	"strconv"
@@ -101,6 +103,7 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 	// Match extracted card details against candidate catalog
 	matches := matchCardsWithClaude(info, request.Cards)
 	result.TopMatches = matches
+	p.applyFingerprintTieBreak(result, request.Cards, request.Image)
 	result.Metrics.TotalTime = time.Since(totalStart)
 
 	// A hint can be wrong. Do not silently answer in the selected language/game:
@@ -115,8 +118,8 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 		for index := range result.TopMatches {
 			result.TopMatches[index].NeedsReview = true
 		}
-	} else if len(matches) > 0 {
-		top := matches[0]
+	} else if len(result.TopMatches) > 0 {
+		top := result.TopMatches[0]
 		// A synthetic card (ID == "") does not represent a resolved catalog match and requires review.
 		if top.Card != nil && top.Card.ID != "" && top.Confidence >= 70 && !top.NeedsReview {
 			result.Status = DetectionStatusMatched
@@ -139,6 +142,57 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 		"confidence", result.BestMatchConfidence())
 
 	return result, nil
+}
+
+// applyFingerprintTieBreak resolves catalog rows whose readable text is
+// identical (alt art, foil) with the stored perceptual hash. It only fires when
+// the photographed printing is close to the hash and clearly ahead of the
+// runner-up; otherwise the review choice stays.
+func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, cards []models.Card, imageBytes []byte) {
+	if p == nil || p.Fingerprint == nil || result == nil || len(result.TopMatches) == 0 {
+		return
+	}
+	top := result.TopMatches[0]
+	if top.Card == nil || !top.NeedsReview || top.Card.ID == "" {
+		return
+	}
+	key := logicalCardKey(*top.Card)
+	group := make([]models.Card, 0, 8)
+	for _, card := range cards {
+		if card.Phash != nil && logicalCardKey(card) == key {
+			group = append(group, card)
+		}
+	}
+	if len(group) < 2 {
+		return
+	}
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		return
+	}
+	hash, err := p.Fingerprint.CalculateHash(decoded)
+	if err != nil {
+		return
+	}
+	type rankedCard struct {
+		card     models.Card
+		distance int
+	}
+	ranked := make([]rankedCard, 0, len(group))
+	for _, card := range group {
+		ranked = append(ranked, rankedCard{card: card, distance: hammingDistance(uint64(hash), uint64(*card.Phash))})
+	}
+	sort.Slice(ranked, func(i, j int) bool { return ranked[i].distance < ranked[j].distance })
+	if ranked[0].distance > p.Fingerprint.PhashHighConf {
+		return
+	}
+	if len(ranked) > 1 && ranked[1].distance-ranked[0].distance < 3 {
+		return
+	}
+	winner := ranked[0].card
+	result.TopMatches[0].Card = &winner
+	result.TopMatches[0].Confidence = 99
+	result.TopMatches[0].NeedsReview = false
 }
 
 // detectionScopeConflict compares the printed language/game reported by the
@@ -493,7 +547,12 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				candidates[i].needsReview = true
 				break
 			}
-			if normalizeMatchText(candidates[i].card.Variant) != topVariant {
+			// Same name+number+set+language: two catalog rows can still be
+			// different printings (alt art, foil) whose readable text is
+			// identical. Without variant metadata the scan cannot tell them
+			// apart, so it must ask instead of preferring one silently.
+			if normalizeMatchText(candidates[i].card.Variant) != topVariant ||
+				candidates[i].card.SourceCardID != top.card.SourceCardID {
 				top.needsReview = true
 				candidates[i].needsReview = true
 				break
