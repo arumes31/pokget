@@ -97,7 +97,7 @@ func TestPriceMatchKeysCoversMarketplaceSpellings(t *testing.T) {
 		{"AOT1", "001", "AOT1", "AOT1 1/246"},
 		// Weiss Schwarz abbreviations end with a slash
 		{"KNK", "001", "KNK/", "001"},
-		// Japanese PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon numbers keep the print run
+		// Japanese PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon numbers keep the print run
 		{"SV3", "089", "SV3", "089/108"},
 	}
 	for _, pair := range pairs {
@@ -155,7 +155,7 @@ func TestPriceMatchKeysKeepsAlphaNumericNumbers(t *testing.T) {
 	}
 }
 
-// Catalog PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon rows carry TCGdex set codes ("me1") while TCGCSV groups use
+// Catalog PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon rows carry TCGdex set codes ("me1") while TCGCSV groups use
 // TCGplayer abbreviations ("MEG"); matching the normalized set name bridges that
 // gap without a hand-maintained alias table.
 func TestApplyFuzzyPricesMatchesSetNameWhenCodeMisses(t *testing.T) {
@@ -229,7 +229,7 @@ func TestApplyFuzzyPricesPrefersTheSetCodeMatch(t *testing.T) {
 	}
 }
 
-// The Japanese PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon category prices only Japanese cards and runs before the
+// The Japanese PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon category prices only Japanese cards and runs before the
 // language-agnostic pass, so a Japanese collector keeps the Japanese quote.
 func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -261,7 +261,7 @@ func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
 	}
 }
 
-// The English PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon category must not price Japanese cards: Japanese sets reuse
+// The English PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon category must not price Japanese cards: Japanese sets reuse
 // English set codes for different cards. The Japanese category fills them instead.
 func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -282,7 +282,7 @@ func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 
 	worker := &DataSyncWorker{db: db}
 	byCode := fuzzyIndex("SV3", "089/108", 3.0)
-	changed, err := worker.applyFuzzyPricesExcluding(context.Background(), "pokemon", nil, []string{"ja"}, byCode, nil, nil)
+	changed, err := worker.applyFuzzyPricesExcluding(context.Background(), "pokemon", nil, []string{"ja"}, byCode, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("applyFuzzyPricesExcluding: %v", err)
 	}

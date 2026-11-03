@@ -82,6 +82,9 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	// Old TCGs (World of Warcraft, Sorcery) list their products without a collector
 	// number, so those can only be matched by the card name inside the set.
 	fuzzyByNameNumberless := make(map[fuzzyScope]map[string]float64)
+	// Composite numbers carry the set code themselves; Weiss Schwarz abbreviates the
+	// set as "NIK/" while the number says "NIK/S135-E063".
+	fuzzyByNumber := make(map[fuzzyScope]map[string]float64)
 	var rows, updated int64
 	// Languages that come with their own marketplace category. The generic
 	// category of the same game must skip them: TCGplayer's Japanese Pokémon sets
@@ -155,6 +158,14 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 			for _, alias := range setNameAliases(update.SetName) {
 				rememberKeys(fuzzyByName, scope, alias, update.Number, update.USD)
 			}
+			if key := priceNumberOnlyKey(update.Number); key != "" {
+				if fuzzyByNumber[scope] == nil {
+					fuzzyByNumber[scope] = make(map[string]float64)
+				}
+				if _, exists := fuzzyByNumber[scope][key]; !exists {
+					fuzzyByNumber[scope][key] = update.USD
+				}
+			}
 		}
 		if update.Game != "" && update.Number == "" && update.ProductName != "" && update.SetName != "" && update.USD > 0 {
 			scope := newFuzzyScope(update.Game, update.Languages)
@@ -195,11 +206,14 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	var fuzzyUpdated int64
 	// A category whose products all lack a collector number (World of Warcraft)
 	// only fills the name index, so the loop walks the union of both indexes.
-	scopes := make(map[fuzzyScope]struct{}, len(fuzzy)+len(fuzzyByNameNumberless))
+	scopes := make(map[fuzzyScope]struct{}, len(fuzzy)+len(fuzzyByNameNumberless)+len(fuzzyByNumber))
 	for scope := range fuzzy {
 		scopes[scope] = struct{}{}
 	}
 	for scope := range fuzzyByNameNumberless {
+		scopes[scope] = struct{}{}
+	}
+	for scope := range fuzzyByNumber {
 		scopes[scope] = struct{}{}
 	}
 	// Language-bound scopes run first: the Japanese Pokémon prices must win over
@@ -215,7 +229,8 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 			}
 			sort.Strings(exclude)
 		}
-		changed, err := w.applyFuzzyPricesExcluding(ctx, scope.game, scope.languageList(), exclude, fuzzy[scope], fuzzyByName[scope], fuzzyByNameNumberless[scope])
+		changed, err := w.applyFuzzyPricesExcluding(ctx, scope.game, scope.languageList(), exclude,
+			fuzzy[scope], fuzzyByName[scope], fuzzyByNameNumberless[scope], fuzzyByNumber[scope])
 		if err != nil {
 			slog.Warn("Bulk prices: fallback match failed", "source", source.Name(), "game", scope.game, "languages", scope.languages, "error", err)
 			continue
@@ -540,7 +555,7 @@ func orderedFuzzyScopes[V any](index map[fuzzyScope]V) []fuzzyScope {
 // number. Existing prices are never replaced, so dedicated sources (Scryfall,
 // YGOPRODeck) keep their values.
 func (w *DataSyncWorker) applyFuzzyPrices(ctx context.Context, game string, languages []string, prices, namePrices map[string]float64) (int64, error) {
-	return w.applyFuzzyPricesExcluding(ctx, game, languages, nil, prices, namePrices, nil)
+	return w.applyFuzzyPricesExcluding(ctx, game, languages, nil, prices, namePrices, nil, nil)
 }
 
 // applyFuzzyPricesExcluding is applyFuzzyPrices with a list of languages the
@@ -555,9 +570,9 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(
 	languages []string,
 	excludeLanguages []string,
 	prices, namePrices map[string]float64,
-	nameOnlyPrices map[string]float64,
+	nameOnlyPrices, numberOnlyPrices map[string]float64,
 ) (int64, error) {
-	if len(prices) == 0 && len(namePrices) == 0 && len(nameOnlyPrices) == 0 {
+	if len(prices) == 0 && len(namePrices) == 0 && len(nameOnlyPrices) == 0 && len(numberOnlyPrices) == 0 {
 		return 0, nil
 	}
 	// One static statement keeps every value a bound parameter: $2 restricts the
@@ -602,6 +617,16 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(
 			}
 			if setName != "" && len(namePrices) > 0 {
 				if price, ok := lookup(namePrices, setName, number); ok {
+					updates[id] = price
+					continue
+				}
+			}
+		}
+		// A composite number that carries the set code matches even when the
+		// marketplace abbreviates the set differently.
+		if len(numberOnlyPrices) > 0 && number != "" {
+			if key := priceNumberOnlyKey(number); key != "" {
+				if price, ok := numberOnlyPrices[key]; ok {
 					updates[id] = price
 					continue
 				}

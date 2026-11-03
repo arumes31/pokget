@@ -73,6 +73,21 @@ func TestPriceMatchKeysHandlesWeissNumbers(t *testing.T) {
 	}
 }
 
+// TCGplayer abbreviates the Weiss set as "NIK/" while both sides spell the number
+// with the full set code, so the number alone identifies the card.
+func TestPriceNumberOnlyKeyMatchesAcrossSetAbbreviations(t *testing.T) {
+	catalog := priceNumberOnlyKey("NIK/S135-E063S")
+	market := priceNumberOnlyKey("NIK/S135-E063")
+	if catalog == "" || catalog != market {
+		t.Fatalf("catalog %q vs market %q", catalog, market)
+	}
+	for _, plain := range []string{"", "089", "1", "OP01"} {
+		if key := priceNumberOnlyKey(plain); key != "" {
+			t.Fatalf("priceNumberOnlyKey(%q) = %q, want no key for a plain number", plain, key)
+		}
+	}
+}
+
 func TestTrimVariantLetters(t *testing.T) {
 	// canonicalPriceToken drops the leading zero of each digit run, so "E063"
 	// becomes "e63" on both sides and still matches.

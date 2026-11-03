@@ -63,6 +63,33 @@ func trimLocaleSuffix(canonical string) (string, bool) {
 	return canonical[:len(canonical)-1], true
 }
 
+// priceNumberOnlyKey identifies a card by its collector number alone, for numbers
+// that carry the set code themselves ("NIK/S135-E063"). Marketplaces shorten the
+// set abbreviation of such a game ("NIK/" for "NIK/S135"), so the set key never
+// matches even though the number is unique.
+//
+// The key is only produced for composite numbers (at least six characters, letters
+// and digits): a plain "089" would match every set that counts the same way.
+func priceNumberOnlyKey(number string) string {
+	token := trimVariantLetters(number)
+	if len(token) < 6 {
+		return ""
+	}
+	var letters, digits int
+	for _, r := range token {
+		switch {
+		case r >= 'a' && r <= 'z':
+			letters++
+		case r >= '0' && r <= '9':
+			digits++
+		}
+	}
+	if letters == 0 || digits < 3 {
+		return ""
+	}
+	return token
+}
+
 // priceNameKey identifies a card by set and name. It is the fallback for
 // marketplaces that list old cards without a collector number.
 //
