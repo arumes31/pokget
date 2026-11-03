@@ -26,10 +26,12 @@ func backfillRate(configured float64) float64 {
 	return configured
 }
 
-// backfillPrices fills prices for catalog cards that nobody owns yet. The bulk
+// backfillPrices fills prices for Pokémon catalog cards without a price. The bulk
 // sources cover most games, but the Pokémon catalog (TCGdex) only knows prices per
 // card, so the long tail of a language the marketplace does not list (German,
 // French, Spanish, Chinese, Korean printings) stays unpriced without this pass.
+// Owned cards are included: the tracked-card sync only prices what it reaches
+// within its budget, and the backfill is the second chance.
 //
 // The pass is deliberately bounded: it walks `PRICE_BACKFILL_BATCH` cards per cycle
 // and orders by last_updated, so a card the source has no price for moves to the

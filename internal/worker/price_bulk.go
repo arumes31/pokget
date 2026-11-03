@@ -262,12 +262,13 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	}
 
 	slog.Info("Bulk prices applied", "source", source.Name(), "rows", rows, "updated", updated, "fallback_updated", fuzzyUpdated, "rarity_updated", rarityUpdated)
-	// A source that delivered rows but matched nothing is either listing a catalog
-	// we cannot map or is broken; both deserve an operator's attention.
+	// The counters above count changed rows, not matched ones: a feed whose prices
+	// already match the database reports zero every run. Say that instead of
+	// blaming the mapping.
 	if rows > 0 && updated+fuzzyUpdated+rarityUpdated == 0 {
-		slog.Warn("Bulk prices: source matched nothing",
+		slog.Info("Bulk prices: source changed nothing",
 			"source", source.Name(), "rows", rows,
-			"hint", "check the set abbreviations and collector numbers of this source")
+			"hint", "every price was already stored; if that is unexpected, check the set abbreviations of this source")
 	}
 	return nil
 }
@@ -300,13 +301,16 @@ func (w *DataSyncWorker) applyFuzzyRarity(ctx context.Context, game string, lang
 	}
 	defer func() { _ = rows.Close() }()
 
-	lookup := func(index map[string]string, set, number string) (string, bool) {
-		for _, key := range priceMatchKeys(set, number) {
+	lookupKeys := func(index map[string]string, keys []string) (string, bool) {
+		for _, key := range keys {
 			if rarity, ok := index[key]; ok {
 				return rarity, true
 			}
 		}
 		return "", false
+	}
+	lookup := func(index map[string]string, set, number string) (string, bool) {
+		return lookupKeys(index, priceMatchKeys(set, number))
 	}
 
 	updates := make(map[string]string)
@@ -323,6 +327,18 @@ func (w *DataSyncWorker) applyFuzzyRarity(ctx context.Context, game string, lang
 		}
 		if setName != "" {
 			if rarity, ok := lookup(rarities, setName, number); ok {
+				updates[id] = rarity
+				continue
+			}
+		}
+		// The rarity rides along with the price payload, so a set the marketplace
+		// only knows under an alias must resolve here as well.
+		if codeKeys, nameKeys := setAliasKeys(game, setCode, number); len(codeKeys)+len(nameKeys) > 0 {
+			if rarity, ok := lookupKeys(rarities, codeKeys); ok {
+				updates[id] = rarity
+				continue
+			}
+			if rarity, ok := lookupKeys(rarities, nameKeys); ok {
 				updates[id] = rarity
 			}
 		}
@@ -789,7 +805,10 @@ SET price_usd = CASE WHEN v.usd > 0 THEN v.usd ELSE c.price_usd END,
     price_eur = CASE WHEN v.eur > 0 THEN v.eur ELSE c.price_eur END,
     price_eur_estimated = CASE WHEN v.eur > 0 THEN FALSE ELSE c.price_eur_estimated END,
     price_variant = CASE WHEN v.usd > 0 AND v.variant <> '' THEN v.variant ELSE c.price_variant END,
-    last_updated = NOW()
+    -- A variant-only update must not claim the price changed.
+    last_updated = CASE WHEN (v.usd > 0 AND c.price_usd IS DISTINCT FROM v.usd)
+                          OR (v.eur > 0 AND c.price_eur IS DISTINCT FROM v.eur)
+                        THEN NOW() ELSE c.last_updated END
 FROM (VALUES `)
 	args := make([]any, 0, len(batch)*5)
 	for index, update := range batch {
@@ -804,7 +823,8 @@ FROM (VALUES `)
 WHERE c.source_id = v.source_id
   AND c.source_card_id = v.source_card_id
   AND ((v.usd > 0 AND c.price_usd IS DISTINCT FROM v.usd)
-       OR (v.eur > 0 AND c.price_eur IS DISTINCT FROM v.eur))`)
+       OR (v.eur > 0 AND c.price_eur IS DISTINCT FROM v.eur)
+       OR (v.usd > 0 AND v.variant <> '' AND c.price_variant IS DISTINCT FROM v.variant))`)
 
 	result, err := w.db.ExecContext(ctx, query.String(), args...)
 	if err != nil {

@@ -134,7 +134,9 @@ func (r *PostgresRepository) UpsertBatch(
 		if lastErr == nil {
 			return counts, nil
 		}
-		if !retryableCatalogError(lastErr) {
+		if !retryableCatalogError(lastErr) || attempt == catalogUpsertAttempts {
+			// No wait after the final attempt: the database error is the useful one,
+			// and a cancelled context must not replace it.
 			return counts, lastErr
 		}
 		slog.Warn("Catalog: retrying batch after a lock conflict",

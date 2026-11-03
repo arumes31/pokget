@@ -34,8 +34,10 @@ func main() {
 	minCards := flag.Int("min", 50, "only report groups with at least this many cards")
 	table := flag.String("table", "all", "which dimension to report: all, game, language or rarity")
 	probe := flag.Bool("sources", false, "probe every marketplace category for reachability")
-	// The gate turns the report into an unattended check: a source outage or a
-	// mapping regression drops the coverage below the threshold and the job fails.
+	// The gate turns the report into an unattended check: a mapping regression, a
+	// new catalog source without prices or a wiped price column drops the stored
+	// coverage below the threshold and the job fails. A marketplace outage does not
+	// lower stored prices; use -sources to probe reachability.
 	minUSD := flag.Float64("fail-under-usd", 0, "exit 2 when overall USD coverage is below this percentage (0 disables)")
 	minEUR := flag.Float64("fail-under-eur", 0, "exit 2 when overall EUR coverage is below this percentage (0 disables)")
 	// The unmatched report feeds the set-alias table in internal/worker: every line
@@ -99,11 +101,13 @@ func checkCoverageGate(minUSD, minEUR float64) error {
 	percentEUR := float64(eur) * 100 / float64(cards)
 	fmt.Printf("\noverall coverage: %.2f%% USD (%.2f%% EUR) over %d cards\n", percentUSD, percentEUR, cards)
 	var failures []string
+	// Three decimals: with two, 85.399% and a threshold of 85.40% both print as
+	// "85.40%" and the message reads "85.40% is below 85.40%".
 	if minUSD > 0 && percentUSD < minUSD {
-		failures = append(failures, fmt.Sprintf("USD coverage %.2f%% is below %.2f%%", percentUSD, minUSD))
+		failures = append(failures, fmt.Sprintf("USD coverage %.3f%% is below %.3f%%", percentUSD, minUSD))
 	}
 	if minEUR > 0 && percentEUR < minEUR {
-		failures = append(failures, fmt.Sprintf("EUR coverage %.2f%% is below %.2f%%", percentEUR, minEUR))
+		failures = append(failures, fmt.Sprintf("EUR coverage %.3f%% is below %.3f%%", percentEUR, minEUR))
 	}
 	if len(failures) > 0 {
 		return fmt.Errorf("coverage gate failed: %s", strings.Join(failures, "; "))
@@ -218,6 +222,8 @@ func reportUnmatchedSets(limit int) error {
 	}
 	defer func() { _ = connection.Close() }()
 
+	// The set is listed only when none of its cards has a price: a set that is
+	// priced except for a couple of printings is not a missing mapping.
 	rows, err := connection.Query(`
 		SELECT COALESCE(NULLIF(game, ''), '(none)'),
 		       COALESCE(NULLIF(set_code, ''), '(none)'),
@@ -225,8 +231,8 @@ func reportUnmatchedSets(limit int) error {
 		       count(*)
 		FROM cards
 		WHERE superseded_by_card_id IS NULL
-		  AND COALESCE(price_usd, 0) = 0 AND COALESCE(price_eur, 0) = 0
 		GROUP BY 1, 2, 3
+		HAVING count(*) FILTER (WHERE COALESCE(price_usd, 0) > 0 OR COALESCE(price_eur, 0) > 0) = 0
 		ORDER BY 4 DESC, 1, 2
 		LIMIT $1`, limit)
 	if err != nil {
@@ -242,8 +248,10 @@ func reportUnmatchedSets(limit int) error {
 		if err := rows.Scan(&game, &setCode, &setName, &cards); err != nil {
 			return fmt.Errorf("unmatched sets scan: %w", err)
 		}
-		if len(setName) > 34 {
-			setName = setName[:31] + "..."
+		// Truncate by rune: set names carry Japanese, Chinese and mojibake bytes,
+		// and a byte slice would cut a character in half.
+		if runes := []rune(setName); len(runes) > 34 {
+			setName = string(runes[:31]) + "..."
 		}
 		fmt.Printf("%-22s %-18s %-34s %9d\n", game, setCode, setName, cards)
 	}
