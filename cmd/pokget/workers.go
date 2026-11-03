@@ -87,8 +87,18 @@ func newDataSyncWorkerWithClients(
 			HistoryRetention:  time.Duration(cfg.Worker.HistoryRetentionDays) * 24 * time.Hour,
 			FailureSink:       failureSink,
 			Lease:             worker.NewPostgresAdvisoryLease(database),
+			EURRate:           eurRateProvider(cfg),
 		},
 	)
+}
+
+// eurRateProvider returns the USD -> EUR converter used to fill EUR prices for
+// marketplaces that only publish USD. It is nil when the fallback is disabled.
+func eurRateProvider(cfg *config.Config) service.EURRateProvider {
+	if cfg == nil || !cfg.Worker.EURFallback {
+		return nil
+	}
+	return service.NewFrankfurterEURRate()
 }
 
 func parseMetadataTargets(value string) []worker.MetadataTarget {

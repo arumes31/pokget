@@ -263,7 +263,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
 		mock.ExpectBegin()
 		mock.ExpectExec("UPDATE cards").
-			WithArgs(decimal.NewFromInt(150), decimal.NewFromInt(110), card.ID).
+			WithArgs(decimal.NewFromInt(150), decimal.NewFromInt(110), true, card.ID).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").
 			WithArgs(card.ID, decimal.NewFromInt(150), decimal.NewFromInt(110)).

@@ -556,6 +556,7 @@
     "Press Esc to skip": "Esc zum Überspringen drücken",
     "Preview": "Vorschau",
     "Previous": "Zurück",
+    "Converted from the USD market price": "Aus dem USD-Marktpreis umgerechnet",
     "Price unavailable": "Preis nicht verfügbar",
     "Price lookup failed": "Preisabfrage fehlgeschlagen",
     "price lookup failed with {0}": "Preisabfrage mit Status {0} fehlgeschlagen",

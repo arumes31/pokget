@@ -140,23 +140,24 @@ func (h *Handler) PortfolioCard(w http.ResponseWriter, r *http.Request) {
 	itemID := mux.Vars(r)["id"]
 
 	var (
-		item     models.PortfolioItem
-		photo    string
-		usd, eur decimal.NullDecimal
+		item       models.PortfolioItem
+		photo      string
+		usd, eur   decimal.NullDecimal
+		eurViaRate bool
 	)
 	err := h.DB.QueryRowContext(r.Context(), `
 		SELECT p.id, p.condition, COALESCE(p.grade, ''), COALESCE(p.notes, ''),
 		       p.custom_price, p.is_public, COALESCE(p.photo_path, ''), COALESCE(p.binder_id::text, ''),
 		       c.id, c.name, c.set_name, COALESCE(c.set_code, ''), COALESCE(c.collector_number, ''),
 		       COALESCE(c.language, ''), COALESCE(c.game, ''), COALESCE(c.rarity, ''),
-		       COALESCE(c.image_url, ''), c.price_usd, c.price_eur
+		       COALESCE(c.image_url, ''), c.price_usd, c.price_eur, COALESCE(c.price_eur_estimated, FALSE)
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.id = $1 AND p.user_id = $2`, itemID, userID).
 		Scan(&item.ID, &item.Condition, &item.Grade, &item.Notes, &item.CustomPrice, &item.IsPublic,
 			&photo, &item.BinderID, &item.Card.ID, &item.Card.Name, &item.Card.Set, &item.Card.SetCode,
 			&item.Card.CollectorNumber, &item.Card.Language, &item.Card.Game, &item.Card.Rarity,
-			&item.Card.ImageURL, &usd, &eur)
+			&item.Card.ImageURL, &usd, &eur, &eurViaRate)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Card not found", http.StatusNotFound)
@@ -178,6 +179,8 @@ func (h *Handler) PortfolioCard(w http.ResponseWriter, r *http.Request) {
 		"HasPhoto":  photoURL != "",
 		"MarketUSD": item.Card.PriceUSDValid,
 		"MarketEUR": item.Card.PriceEURValid,
-		"UpdatedAt": time.Now().UTC(),
+		// EUREstimated marks a price converted from USD with the daily ECB rate.
+		"EUREstimated": eurViaRate,
+		"UpdatedAt":    time.Now().UTC(),
 	})
 }

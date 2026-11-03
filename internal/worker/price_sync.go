@@ -41,6 +41,7 @@ type DataSyncWorker struct {
 	priceClient      service.PriceClient
 	priceClients     map[string][]service.PriceClient
 	bulkPriceSources []service.BulkPriceSource
+	eurRate          service.EURRateProvider
 	metadataClient   service.MetadataClient
 	metadataService  *service.MetadataService
 	interval         time.Duration
@@ -99,6 +100,7 @@ func NewConfiguredDataSyncWorker(
 		priceClient:      pc,
 		priceClients:     priceClients,
 		bulkPriceSources: slices.Clone(config.BulkPriceSources),
+		eurRate:          config.EURRate,
 		metadataClient:   mc,
 		metadataService:  ms,
 		interval:         config.Interval,
@@ -544,8 +546,12 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 			slog.Error("Failed to begin transaction for price update", "card", c.Name, "error", err)
 			continue
 		}
-		_, err = tx.ExecContext(ctx, "UPDATE cards SET price_usd = $1, price_eur = $2, last_updated = NOW() WHERE id = $3",
-			nextUSD, nextEUR, c.ID)
+		// A native EUR quote clears the "converted from USD" marker.
+		_, err = tx.ExecContext(ctx, `UPDATE cards
+			SET price_usd = $1, price_eur = $2, last_updated = NOW(),
+			    price_eur_estimated = CASE WHEN $3 THEN FALSE ELSE price_eur_estimated END
+			WHERE id = $4`,
+			nextUSD, nextEUR, validEUR, c.ID)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				slog.Warn("Failed to roll back card price update", "card", c.Name, "error", rollbackErr)
@@ -578,6 +584,9 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 		slog.Error("Sync: Failed while reading cards", "error", err)
 	}
 	w.cleanupPriceHistory(ctx)
+	// A card that only got a USD price keeps showing "Price unavailable" for EUR
+	// collectors, so the converted value is refreshed right after the cycle.
+	w.applyEURFallback(ctx)
 	slog.Info("Price synchronization cycle completed")
 	if updated && w.OnSyncComplete != nil {
 		w.OnSyncComplete()

@@ -71,17 +71,86 @@ func TestApplyBulkSourcePropagatesErrors(t *testing.T) {
 	}
 }
 
-func TestPriceMatchKeyNormalizesSetCodeAndNumber(t *testing.T) {
-	cases := [][3]string{
-		{"OP-01", "016/118", "op01|016"},
-		{"OP01", "16", "op01|16"},
-		{"SWSH1", "1", "swsh1|1"},
-		{"Sword & Shield", "4", "swordshield|4"},
+// fuzzyIndex mirrors the index the bulk worker builds for one marketplace row.
+func fuzzyIndex(set, number string, price float64) map[string]float64 {
+	index := make(map[string]float64)
+	for _, key := range priceMatchKeys(set, number) {
+		index[key] = price
 	}
-	for _, tc := range cases {
-		if got := priceMatchKey(tc[0], tc[1]); got != tc[2] {
-			t.Fatalf("priceMatchKey(%q, %q) = %q, want %q", tc[0], tc[1], got, tc[2])
+	return index
+}
+
+func TestPriceMatchKeysCoversMarketplaceSpellings(t *testing.T) {
+	// Each pair is (set code, number) as the catalog and the marketplace spell
+	// it. Both sides must produce at least one common key.
+	pairs := [][4]string{
+		// leading zeros: catalog "sv02"/"001" vs TCGplayer "SV2"/"001/198"
+		{"sv02", "001", "SV2", "001/198"},
+		// UniVersus writes the set code with padding, TCGplayer without
+		{"AOT01", "001", "AOT1", "1/246"},
+		// Digimon appends the rarity to the number
+		{"BT4", "BT4-001", "BT-04", "BT4-001 C"},
+		// the set code is repeated inside the number
+		{"hBP01", "hBP01-001", "HBP01", "001"},
+		// UniVersus keeps the set code inside the number
+		{"AOT1", "001", "AOT1", "AOT1 1/246"},
+		// Weiss Schwarz abbreviations end with a slash
+		{"KNK", "001", "KNK/", "001"},
+		// Japanese Pokémon numbers keep the print run
+		{"SV3", "089", "SV3", "089/108"},
+	}
+	for _, pair := range pairs {
+		catalog := priceMatchKeys(pair[0], pair[1])
+		market := priceMatchKeys(pair[2], pair[3])
+		matched := false
+		for _, key := range catalog {
+			for _, other := range market {
+				if key == other {
+					matched = true
+				}
+			}
 		}
+		if !matched {
+			t.Fatalf("no shared key for catalog (%q,%q)=%v vs marketplace (%q,%q)=%v",
+				pair[0], pair[1], catalog, pair[2], pair[3], market)
+		}
+	}
+}
+
+// Final Fantasy's catalog set codes ("Opus 1") cannot match TCGplayer's
+// abbreviations ("OP1"), so those cards rely on the set-name index.
+func TestPriceMatchKeysMatchOnSetNameWhenCodesDisagree(t *testing.T) {
+	catalog := priceMatchKeys("Opus I", "1-001H")
+	market := priceMatchKeys("Opus I", "1-001H")
+	if len(catalog) == 0 || catalog[0] != market[0] {
+		t.Fatalf("catalog %v vs marketplace %v", catalog, market)
+	}
+	if catalog[0] != "opusi|11h" {
+		t.Fatalf("key = %q, want opusi|11h", catalog[0])
+	}
+}
+
+func TestPriceMatchKeysDropsRarityAndPrintRun(t *testing.T) {
+	keys := priceMatchKeys("BT27", "BT27-084 SR")
+	want := map[string]bool{"bt27|bt2784": true, "bt27|84": true}
+	for _, key := range keys {
+		if !want[key] {
+			t.Fatalf("unexpected key %q (all keys: %v)", key, keys)
+		}
+		delete(want, key)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing keys %v (got %v)", want, keys)
+	}
+}
+
+func TestPriceMatchKeysKeepsAlphaNumericNumbers(t *testing.T) {
+	// A number that is only letters is not a rarity suffix; it must survive.
+	if keys := priceMatchKeys("DM", "P"); len(keys) != 1 || keys[0] != "dm|p" {
+		t.Fatalf("keys = %v, want [dm|p]", keys)
+	}
+	if keys := priceMatchKeys("", "0001"); len(keys) != 1 || keys[0] != "|1" {
+		t.Fatalf("zero padding must be dropped, got %v", keys)
 	}
 }
 
@@ -105,9 +174,11 @@ func TestApplyFuzzyPricesMatchesSetNameWhenCodeMisses(t *testing.T) {
 	worker := &DataSyncWorker{db: db}
 	byName := make(map[string]float64)
 	for _, alias := range setNameAliases("ME01: Mega Evolution") {
-		byName[priceMatchKey(alias, "001")] = 7.5
+		for key, price := range fuzzyIndex(alias, "001", 7.5) {
+			byName[key] = price
+		}
 	}
-	changed, err := worker.applyFuzzyPrices(context.Background(), "pokemon", nil, byName)
+	changed, err := worker.applyFuzzyPrices(context.Background(), "pokemon", "", nil, byName)
 	if err != nil {
 		t.Fatalf("applyFuzzyPrices: %v", err)
 	}
@@ -147,13 +218,92 @@ func TestApplyFuzzyPricesPrefersTheSetCodeMatch(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	worker := &DataSyncWorker{db: db}
-	byCode := map[string]float64{priceMatchKey("OP01", "016"): 11.0}
-	byName := map[string]float64{priceMatchKey("Romance Dawn", "016"): 99.0}
-	if _, err := worker.applyFuzzyPrices(context.Background(), "one_piece", byCode, byName); err != nil {
+	byCode := fuzzyIndex("OP01", "016", 11.0)
+	byName := fuzzyIndex("Romance Dawn", "016", 99.0)
+	if _, err := worker.applyFuzzyPrices(context.Background(), "one_piece", "", byCode, byName); err != nil {
 		t.Fatalf("applyFuzzyPrices: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("the set-code match must win: %v", err)
+	}
+}
+
+// The Japanese Pokémon category prices only Japanese cards and runs before the
+// language-agnostic pass, so a Japanese collector keeps the Japanese quote.
+func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number"}).
+		AddRow("card-jp", "SV3", "Ruler of the Black Flame", "089")
+	mock.ExpectQuery("SELECT id, COALESCE\\(set_code[\\s\\S]*\\$2 = ''").
+		WithArgs("pokemon", "ja", sqlmock.AnyArg()).
+		WillReturnRows(rows)
+	mock.ExpectExec("UPDATE cards AS c").
+		WithArgs("card-jp", 12.5).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	worker := &DataSyncWorker{db: db}
+	byCode := fuzzyIndex("SV3", "089/108", 12.5)
+	changed, err := worker.applyFuzzyPrices(context.Background(), "pokemon", "ja", byCode, nil)
+	if err != nil {
+		t.Fatalf("applyFuzzyPrices: %v", err)
+	}
+	if changed != 1 {
+		t.Fatalf("changed = %d, want 1", changed)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+// The English Pokémon category must not price Japanese cards: Japanese sets reuse
+// English set codes for different cards. The Japanese category fills them instead.
+func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number"}).
+		AddRow("card-en", "sv3", "Obsidian Flames", "089")
+	mock.ExpectQuery("SELECT id, COALESCE\\(set_code[\\s\\S]*<> ALL\\(\\$3::text\\[\\]\\)").
+		WithArgs("pokemon", "", sqlmock.AnyArg()).
+		WillReturnRows(rows)
+	mock.ExpectExec("UPDATE cards AS c").
+		WithArgs("card-en", 3.0).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	worker := &DataSyncWorker{db: db}
+	byCode := fuzzyIndex("SV3", "089/108", 3.0)
+	changed, err := worker.applyFuzzyPricesExcluding(context.Background(), "pokemon", "", []string{"ja"}, byCode, nil)
+	if err != nil {
+		t.Fatalf("applyFuzzyPricesExcluding: %v", err)
+	}
+	if changed != 1 {
+		t.Fatalf("changed = %d, want 1", changed)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestOrderedFuzzyScopesPutsLanguageScopesFirst(t *testing.T) {
+	index := map[fuzzyScope]map[string]float64{
+		{game: "pokemon"}:             {},
+		{game: "pokemon", language: "ja"}: {},
+		{game: "digimon"}:             {},
+	}
+	scopes := orderedFuzzyScopes(index)
+	if scopes[0] != (fuzzyScope{game: "pokemon", language: "ja"}) {
+		t.Fatalf("scopes = %v, want the language scope first", scopes)
+	}
+	if scopes[1].game != "digimon" || scopes[2].game != "pokemon" {
+		t.Fatalf("scopes = %v, want the remaining scopes sorted by game", scopes)
 	}
 }
 

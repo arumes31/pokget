@@ -111,6 +111,10 @@ type Config struct {
 		MaxPriceRatio        float64 `env:"WORKER_MAX_PRICE_RATIO" env-default:"5"`
 		HistoryRetentionDays int     `env:"PRICE_HISTORY_RETENTION_DAYS" env-default:"730"`
 		FailurePath          string  `env:"WORKER_FAILURE_PATH" env-default:"data/worker-failures.jsonl"`
+		// EURFallback derives a EUR price from the USD market price with the daily
+		// ECB reference rate whenever a marketplace publishes no EUR price. The
+		// converted rows are flagged in cards.price_eur_estimated.
+		EURFallback bool `env:"PRICE_EUR_FALLBACK" env-default:"true"`
 	} `yaml:"worker"`
 }
 

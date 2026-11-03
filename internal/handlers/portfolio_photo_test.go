@@ -113,11 +113,11 @@ func TestPortfolioCardRendersPhotoAndBothMarkets(t *testing.T) {
 
 	rows := sqlmock.NewRows([]string{
 		"id", "condition", "grade", "notes", "custom_price", "is_public", "photo", "binder",
-		"cid", "name", "set", "set_code", "number", "language", "game", "rarity", "image", "usd", "eur",
+		"cid", "name", "set", "set_code", "number", "language", "game", "rarity", "image", "usd", "eur", "eur_fx",
 	}).AddRow(
 		"item-1", "NM", "", "stored flat", nil, false, "items/test-user/item-1.jpg", "",
 		"swsh1-1", "Celebi V", "Sword & Shield", "swsh1", "1", "ja", "pokemon", "Holo Rare V",
-		"https://example.test/celebi.png", 3.1, 2.55,
+		"https://example.test/celebi.png", 3.1, 2.55, true,
 	)
 	mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("item-1", "test-user").WillReturnRows(rows)
 	renderUserDataExpectation(mock, "test-user")
@@ -133,6 +133,12 @@ func TestPortfolioCardRendersPhotoAndBothMarkets(t *testing.T) {
 	for _, want := range []string{"/portfolio/item-1/photo", "Celebi V", "2.55", "3.10", "stored flat"} {
 		if !bytes.Contains([]byte(body), []byte(want)) {
 			t.Fatalf("detail page misses %q", want)
+		}
+	}
+	// A converted EUR price is marked so it never looks like a Cardmarket quote.
+	for _, want := range []string{"&#8776;", "Converted from the USD market price"} {
+		if !bytes.Contains([]byte(body), []byte(want)) {
+			t.Fatalf("detail page misses the FX marker %q", want)
 		}
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {

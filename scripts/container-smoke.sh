@@ -135,7 +135,7 @@ fi
 
 migration_version="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT version FROM schema_migrations')"
 migration_dirty="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT dirty FROM schema_migrations')"
-if [[ "${migration_version}" != "37" || "${migration_dirty}" != "f" ]]; then
+if [[ "${migration_version}" != "38" || "${migration_dirty}" != "f" ]]; then
   echo "unexpected migration state: version=${migration_version}, dirty=${migration_dirty}" >&2
   exit 1
 fi
@@ -196,7 +196,7 @@ fi
 
 migration_version="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT version FROM schema_migrations')"
 migration_dirty="$(docker exec "${database_container}" psql -At -U "${database_user}" -d "${database_name}" -c 'SELECT dirty FROM schema_migrations')"
-if [[ "${migration_version}" != "37" || "${migration_dirty}" != "f" ]]; then
+if [[ "${migration_version}" != "38" || "${migration_dirty}" != "f" ]]; then
   echo "schema reconciliation did not advance migration state: version=${migration_version}, dirty=${migration_dirty}" >&2
   exit 1
 fi
@@ -238,7 +238,7 @@ docker exec "${database_container}" createdb -U "${database_user}" pokget_restor
 docker exec "${database_container}" pg_restore -U "${database_user}" -d pokget_restore /tmp/pokget.dump
 
 restored_version="$(docker exec "${database_container}" psql -At -U "${database_user}" -d pokget_restore -c 'SELECT version FROM schema_migrations')"
-if [[ "${restored_version}" != "37" ]]; then
+if [[ "${restored_version}" != "38" ]]; then
   echo "backup/restore migration mismatch: restored_version=${restored_version}" >&2
   exit 1
 fi
