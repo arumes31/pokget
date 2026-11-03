@@ -31,6 +31,7 @@ import (
 	"pokget/internal/service"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -44,6 +45,7 @@ type DataSyncWorker struct {
 	eurRate          service.EURRateProvider
 	backfillBatch    int
 	backfillLimiter  interface{ Wait(context.Context) error }
+	backfillRunning  atomic.Bool
 	metadataClient   service.MetadataClient
 	metadataService  *service.MetadataService
 	interval         time.Duration

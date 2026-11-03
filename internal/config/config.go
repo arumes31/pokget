@@ -117,9 +117,9 @@ type Config struct {
 		EURFallback bool `env:"PRICE_EUR_FALLBACK" env-default:"true"`
 		// BackfillBatch is how many unowned cards the per-card price backfill walks
 		// per cycle; it covers languages the marketplaces do not list.
-		BackfillBatch int `env:"PRICE_BACKFILL_BATCH" env-default:"2500"`
+		BackfillBatch int `env:"PRICE_BACKFILL_BATCH" env-default:"25000"`
 		// BackfillRPS limits the backfill's requests per second.
-		BackfillRPS float64 `env:"PRICE_BACKFILL_REQUESTS_PER_SECOND" env-default:"4"`
+		BackfillRPS float64 `env:"PRICE_BACKFILL_REQUESTS_PER_SECOND" env-default:"6"`
 	} `yaml:"worker"`
 }
 

@@ -35,6 +35,12 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 	if w.backfillBatch <= 0 {
 		return
 	}
+	// A pass can outlast the price ticker; a second concurrent walk would only
+	// duplicate requests.
+	if !w.backfillRunning.CompareAndSwap(false, true) {
+		return
+	}
+	defer w.backfillRunning.Store(false)
 	clients := w.priceClients[models.NormalizeGame("pokemon")]
 	if len(clients) == 0 {
 		return
@@ -133,11 +139,13 @@ func (w *DataSyncWorker) storeBackfillPrice(ctx context.Context, cardID string, 
 	if err != nil {
 		return err
 	}
+	// The parameters are cast explicitly: an untyped parameter that first appears
+	// in `$1 > 0` is inferred as integer and rejects "2.15".
 	result, err := tx.ExecContext(ctx, `
 		UPDATE cards
-		SET price_usd = CASE WHEN $1 > 0 THEN $1 ELSE price_usd END,
-		    price_eur = CASE WHEN $2 > 0 THEN $2 ELSE price_eur END,
-		    price_eur_estimated = CASE WHEN $2 > 0 THEN FALSE ELSE price_eur_estimated END,
+		SET price_usd = CASE WHEN $1::numeric > 0 THEN $1::numeric ELSE price_usd END,
+		    price_eur = CASE WHEN $2::numeric > 0 THEN $2::numeric ELSE price_eur END,
+		    price_eur_estimated = CASE WHEN $2::numeric > 0 THEN FALSE ELSE price_eur_estimated END,
 		    last_updated = NOW()
 		WHERE id = $3
 		  AND COALESCE(price_usd, 0) <= 0
