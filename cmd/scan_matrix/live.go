@@ -192,13 +192,12 @@ func scanOneLive(ctx context.Context, imageClient *http.Client, session *liveSes
 		ExpectedName:   sample.Card.Name,
 		ExpectedNumber: sample.Card.CollectorNumber,
 	}
-	started := time.Now()
 	imageBytes, err := fetchImage(ctx, imageClient, sample.Card.ImageURL)
 	if err != nil {
 		row.Error = err.Error()
 		return row
 	}
-	started = time.Now()
+	started := time.Now()
 
 	scanCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
