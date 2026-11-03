@@ -11,6 +11,37 @@ import (
 	"pokget/internal/service"
 )
 
+// The check-stamp statement writes four values per row, so the placeholder indices
+// must advance by four. A wrong stride leaves a gap in the parameter list and
+// PostgreSQL rejects the statement with 42P18 - which no unit test caught before
+// because sqlmock only compared the argument count.
+func TestBulkCheckStampKeepsPlaceholdersContiguous(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec(`\(VALUES \(\$1, \$2, \$3::numeric, \$4\), \(\$5, \$6, \$7::numeric, \$8\)\)`).
+		WithArgs("scryfall", "card-a", 1.25, "foil", "ygoprodeck", "1234", 0.33, "normal").
+		WillReturnResult(sqlmock.NewResult(0, 2))
+
+	worker := &DataSyncWorker{db: db}
+	verified, err := worker.touchBulkChecks(context.Background(), []service.BulkPriceUpdate{
+		{SourceID: "scryfall", SourceCardID: "card-a", USD: 1.25, Variant: "foil"},
+		{SourceID: "ygoprodeck", SourceCardID: "1234", USD: 0.33, Variant: "normal"},
+	})
+	if err != nil {
+		t.Fatalf("touchBulkChecks: %v", err)
+	}
+	if verified != 2 {
+		t.Fatalf("verified = %d, want 2", verified)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func TestApplyBulkBatchUpdatesChangedPrices(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -21,10 +52,10 @@ func TestApplyBulkBatchUpdatesChangedPrices(t *testing.T) {
 	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_variant").
 		WithArgs("scryfall", "card-a", 1.25, 1.10, "foil", "ygoprodeck", "1234", 0.33, 0.02, "normal").
 		WillReturnResult(sqlmock.NewResult(0, 2))
-	// Cards whose quote did not move still get a fresh check stamp.
+	// Every matched card gets a fresh check stamp, changed or not.
 	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_checked_at").
 		WithArgs("scryfall", "card-a", 1.25, "foil", "ygoprodeck", "1234", 0.33, "normal").
-		WillReturnResult(sqlmock.NewResult(0, 1))
+		WillReturnResult(sqlmock.NewResult(0, 2))
 
 	worker := &DataSyncWorker{db: db}
 	result, err := worker.applyBulkBatch(context.Background(), []service.BulkPriceUpdate{
@@ -37,8 +68,8 @@ func TestApplyBulkBatchUpdatesChangedPrices(t *testing.T) {
 	if result.changed != 2 {
 		t.Fatalf("changed = %d, want 2", result.changed)
 	}
-	if result.matched != 3 {
-		t.Fatalf("matched = %d, want 3 (two changed + one verified)", result.matched)
+	if result.matched != 2 {
+		t.Fatalf("matched = %d, want 2 (each matched card once)", result.matched)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)

@@ -847,14 +847,16 @@ WHERE c.source_id = v.source_id
 		changed = 0
 	}
 
-	// The second statement stamps every other matched card, including the ones whose
-	// price did not move. Two statements keep both counters exact: RETURNING only
-	// sees the already updated row.
+	// The second statement stamps every matched card, including the ones whose price
+	// the first statement just changed, so `verified` is the matched count on its own.
+	// Two statements keep both counters exact: RETURNING only sees the already
+	// updated row.
 	verified, err := w.touchBulkChecks(ctx, batch)
 	if err != nil {
-		return bulkBatchResult{matched: changed, changed: changed}, err
+		// The stamps are unknown after the failure; a retry adds its own attempt.
+		return bulkBatchResult{changed: changed}, err
 	}
-	return bulkBatchResult{matched: changed + verified, changed: changed}, nil
+	return bulkBatchResult{matched: verified, changed: changed}, nil
 }
 
 // retryBulkBatch reruns a batch that lost a lock race with the catalog sync.
@@ -891,12 +893,14 @@ func (w *DataSyncWorker) touchBulkChecks(ctx context.Context, batch []service.Bu
 SET price_checked_at = NOW(),
     price_variant = CASE WHEN v.usd > 0 AND v.variant <> '' THEN v.variant ELSE c.price_variant END
 FROM (VALUES `)
-	args := make([]any, 0, len(batch)*5)
+	// Four placeholders per row: the offset must match, otherwise PostgreSQL sees a
+	// gap in the parameter list and rejects the statement with 42P18.
+	args := make([]any, 0, len(batch)*4)
 	for index, update := range batch {
 		if index > 0 {
 			query.WriteString(", ")
 		}
-		base := index * 5
+		base := index * 4
 		fmt.Fprintf(&query, "($%d, $%d, $%d::numeric, $%d)", base+1, base+2, base+3, base+4)
 		args = append(args, update.SourceID, update.SourceCardID, update.USD, update.Variant)
 	}
