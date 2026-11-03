@@ -376,6 +376,18 @@ func parseOptionalPrice(raw *string) float64 {
 	return value
 }
 
+// firstPositivePrice returns the first usable price of a series. Bulk sources list
+// the plain, foil and etched price of a printing side by side; a printing that only
+// exists as foil has no plain value.
+func firstPositivePrice(candidates ...*string) float64 {
+	for _, candidate := range candidates {
+		if value := parseOptionalPrice(candidate); value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
 // YGOPRODeckPriceClient reads the Cardmarket (EUR) and TCGplayer (USD) price
 // fields bundled in the YGOPRODeck card payload.
 type YGOPRODeckPriceClient struct {

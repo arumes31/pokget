@@ -115,6 +115,11 @@ type Config struct {
 		// ECB reference rate whenever a marketplace publishes no EUR price. The
 		// converted rows are flagged in cards.price_eur_estimated.
 		EURFallback bool `env:"PRICE_EUR_FALLBACK" env-default:"true"`
+		// BackfillBatch is how many unowned cards the per-card price backfill walks
+		// per cycle; it covers languages the marketplaces do not list.
+		BackfillBatch int `env:"PRICE_BACKFILL_BATCH" env-default:"2500"`
+		// BackfillRPS limits the backfill's requests per second.
+		BackfillRPS float64 `env:"PRICE_BACKFILL_REQUESTS_PER_SECOND" env-default:"4"`
 	} `yaml:"worker"`
 }
 

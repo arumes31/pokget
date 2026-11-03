@@ -24,17 +24,22 @@ type BulkPriceUpdate struct {
 	SourceID     string
 	SourceCardID string
 	Game         string
-	// Language restricts the fallback match to cards in this language. Empty
+	// Languages restricts the fallback match to cards in these languages. Empty
 	// means "any language". Marketplaces that split a game by language (TCGplayer
 	// keeps Japanese Pokémon in its own category) set it so a Japanese price never
-	// lands on an English printing.
-	Language string
+	// lands on an English printing. Asian printings share the Japanese set codes,
+	// so one category can serve several languages.
+	Languages []string
 	SetCode  string
 	// SetName is the source's set name. Catalog set codes and marketplace
 	// abbreviations disagree for several games (Pokémon, Digimon, UniVersus), so
 	// the worker also matches on the normalized set name when the code misses.
 	SetName string
 	Number  string
+	// ProductName is the marketplace card name. Old TCGs list their products
+	// without a collector number, so the worker falls back to matching the name
+	// inside the set.
+	ProductName string
 	// Rarity is the marketplace rarity label ("Rare Holo", "SR"). It is optional
 	// and lets the worker fill the rarity gap of catalog sources that only publish
 	// id, name and set (TCGdex lists sets without a rarity field).
@@ -141,8 +146,11 @@ func (s *scryfallBulkSource) FetchPrices(ctx context.Context, emit func(BulkPric
 		var card struct {
 			ID     string `json:"id"`
 			Prices struct {
-				USD *string `json:"usd"`
-				EUR *string `json:"eur"`
+				USD      *string `json:"usd"`
+				USDFoil  *string `json:"usd_foil"`
+				USDEtched *string `json:"usd_etched"`
+				EUR      *string `json:"eur"`
+				EURFoil  *string `json:"eur_foil"`
 			} `json:"prices"`
 		}
 		if err := json.Unmarshal([]byte(line), &card); err != nil {
@@ -151,8 +159,11 @@ func (s *scryfallBulkSource) FetchPrices(ctx context.Context, emit func(BulkPric
 		if card.ID == "" {
 			continue
 		}
-		usd := parseOptionalPrice(card.Prices.USD)
-		eur := parseOptionalPrice(card.Prices.EUR)
+		// Printings that only exist as foil (or only have an etched price) carry no
+		// plain usd/eur value. Without the foil fallbacks those cards stayed
+		// unpriced even though Scryfall knows their market price.
+		usd := firstPositivePrice(card.Prices.USD, card.Prices.USDFoil, card.Prices.USDEtched)
+		eur := firstPositivePrice(card.Prices.EUR, card.Prices.EURFoil)
 		if usd <= 0 && eur <= 0 {
 			continue
 		}
@@ -204,15 +215,17 @@ var tcgPlayerPriceCategories = map[string]int{
 // language. TCGplayer sells Japanese Pokémon under its own category ("Pokemon
 // Japan", 85), so those rows must never be written onto English printings.
 type tcgcsvLanguageCategory struct {
-	Game     string
-	Language string
-	Category int
+	Game      string
+	Languages []string
+	Category  int
 }
 
 // tcgPlayerLanguageCategories lists the marketplace categories that are bound to
-// a single language.
+// specific languages. Traditional Chinese, Simplified Chinese and Korean printings
+// of the Pokémon TCG use the Japanese set codes and collector numbers, so the
+// Japanese marketplace category prices them as well.
 var tcgPlayerLanguageCategories = []tcgcsvLanguageCategory{
-	{Game: "pokemon", Language: "ja", Category: 85},
+	{Game: "pokemon", Languages: []string{"ja", "ko", "zh-cn", "zh-tw"}, Category: 85},
 }
 
 // tcgcsvBulkSource downloads the daily TCGplayer price dump from TCGCSV. It
@@ -268,7 +281,7 @@ func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceU
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := s.fetchCategory(ctx, base, game, "", category, concurrency, emitSafe); err != nil {
+		if err := s.fetchCategory(ctx, base, game, nil, category, concurrency, emitSafe); err != nil {
 			return err
 		}
 	}
@@ -277,7 +290,7 @@ func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceU
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := s.fetchCategory(ctx, base, extra.Game, extra.Language, extra.Category, concurrency, emitSafe); err != nil {
+		if err := s.fetchCategory(ctx, base, extra.Game, extra.Languages, extra.Category, concurrency, emitSafe); err != nil {
 			return err
 		}
 	}
@@ -291,7 +304,7 @@ func (s *tcgcsvBulkSource) fetchCategory(
 	ctx context.Context,
 	base string,
 	game string,
-	language string,
+	languages []string,
 	category int,
 	concurrency int,
 	emit func(BulkPriceUpdate) error,
@@ -319,14 +332,14 @@ func (s *tcgcsvBulkSource) fetchCategory(
 		go func(groupID int, abbreviation, name string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if err := s.emitGroup(ctx, base, category, game, language, groupID, abbreviation, name, emit); err != nil {
+			if err := s.emitGroup(ctx, base, category, game, languages, groupID, abbreviation, name, emit); err != nil {
 				errMu.Lock()
 				if lastErr == nil {
 					lastErr = err
 				}
 				errMu.Unlock()
 				if n := atomic.AddInt64(&failed, 1); n <= 3 {
-					slog.Warn("tcgcsv: skipping group", "game", game, "language", language, "group", groupID, "error", err)
+					slog.Warn("tcgcsv: skipping group", "game", game, "languages", languages, "group", groupID, "error", err)
 				}
 			}
 		}(group.GroupID, group.Abbreviation, group.Name)
@@ -348,7 +361,7 @@ func (s *tcgcsvBulkSource) emitGroup(
 	base string,
 	category int,
 	game string,
-	language string,
+	languages []string,
 	groupID int,
 	abbreviation string,
 	setName string,
@@ -356,7 +369,8 @@ func (s *tcgcsvBulkSource) emitGroup(
 ) error {
 	var products struct {
 		Results []struct {
-			ProductID    int `json:"productId"`
+			ProductID    int    `json:"productId"`
+			Name         string `json:"name"`
 			ExtendedData []struct {
 				Name  string `json:"name"`
 				Value string `json:"value"`
@@ -411,10 +425,11 @@ func (s *tcgcsvBulkSource) emitGroup(
 			SourceID:     "tcgcsv",
 			SourceCardID: strconv.Itoa(product.ProductID),
 			Game:         game,
-			Language:     language,
+			Languages:    languages,
 			SetCode:      abbreviation,
 			SetName:      setName,
 			Number:       number,
+			ProductName:  strings.TrimSpace(product.Name),
 			Rarity:       rarity,
 			USD:          market,
 		}

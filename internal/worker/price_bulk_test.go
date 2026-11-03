@@ -97,7 +97,7 @@ func TestPriceMatchKeysCoversMarketplaceSpellings(t *testing.T) {
 		{"AOT1", "001", "AOT1", "AOT1 1/246"},
 		// Weiss Schwarz abbreviations end with a slash
 		{"KNK", "001", "KNK/", "001"},
-		// Japanese Pokémon numbers keep the print run
+		// Japanese PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon numbers keep the print run
 		{"SV3", "089", "SV3", "089/108"},
 	}
 	for _, pair := range pairs {
@@ -155,7 +155,7 @@ func TestPriceMatchKeysKeepsAlphaNumericNumbers(t *testing.T) {
 	}
 }
 
-// Catalog Pokémon rows carry TCGdex set codes ("me1") while TCGCSV groups use
+// Catalog PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon rows carry TCGdex set codes ("me1") while TCGCSV groups use
 // TCGplayer abbreviations ("MEG"); matching the normalized set name bridges that
 // gap without a hand-maintained alias table.
 func TestApplyFuzzyPricesMatchesSetNameWhenCodeMisses(t *testing.T) {
@@ -165,8 +165,8 @@ func TestApplyFuzzyPricesMatchesSetNameWhenCodeMisses(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number"}).
-		AddRow("card-1", "me1", "Mega Evolution", "001")
+	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}).
+		AddRow("card-1", "me1", "Mega Evolution", "001", "Bulbasaur")
 	mock.ExpectQuery("SELECT id, COALESCE\\(set_code").WillReturnRows(rows)
 	mock.ExpectExec("UPDATE cards AS c").
 		WithArgs("card-1", 7.5).
@@ -179,7 +179,7 @@ func TestApplyFuzzyPricesMatchesSetNameWhenCodeMisses(t *testing.T) {
 			byName[key] = price
 		}
 	}
-	changed, err := worker.applyFuzzyPrices(context.Background(), "pokemon", "", nil, byName)
+	changed, err := worker.applyFuzzyPrices(context.Background(), "pokemon", nil, nil, byName)
 	if err != nil {
 		t.Fatalf("applyFuzzyPrices: %v", err)
 	}
@@ -211,8 +211,8 @@ func TestApplyFuzzyPricesPrefersTheSetCodeMatch(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number"}).
-		AddRow("card-1", "OP-01", "Romance Dawn", "016")
+	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}).
+		AddRow("card-1", "OP-01", "Romance Dawn", "016", "Monkey D. Luffy")
 	mock.ExpectQuery("SELECT id, COALESCE\\(set_code").WillReturnRows(rows)
 	mock.ExpectExec("UPDATE cards AS c").
 		WithArgs("card-1", 11.0).
@@ -221,7 +221,7 @@ func TestApplyFuzzyPricesPrefersTheSetCodeMatch(t *testing.T) {
 	worker := &DataSyncWorker{db: db}
 	byCode := fuzzyIndex("OP01", "016", 11.0)
 	byName := fuzzyIndex("Romance Dawn", "016", 99.0)
-	if _, err := worker.applyFuzzyPrices(context.Background(), "one_piece", "", byCode, byName); err != nil {
+	if _, err := worker.applyFuzzyPrices(context.Background(), "one_piece", nil, byCode, byName); err != nil {
 		t.Fatalf("applyFuzzyPrices: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -229,7 +229,7 @@ func TestApplyFuzzyPricesPrefersTheSetCodeMatch(t *testing.T) {
 	}
 }
 
-// The Japanese Pokémon category prices only Japanese cards and runs before the
+// The Japanese PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon category prices only Japanese cards and runs before the
 // language-agnostic pass, so a Japanese collector keeps the Japanese quote.
 func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -238,10 +238,10 @@ func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number"}).
-		AddRow("card-jp", "SV3", "Ruler of the Black Flame", "089")
-	mock.ExpectQuery("SELECT id, COALESCE\\(set_code[\\s\\S]*\\$2 = ''").
-		WithArgs("pokemon", "ja", sqlmock.AnyArg()).
+	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}).
+		AddRow("card-jp", "SV3", "Ruler of the Black Flame", "089", "Nazonokusa")
+	mock.ExpectQuery("SELECT id, COALESCE\\(set_code[\\s\\S]*ANY\\(\\$2::text\\[\\]\\)").
+		WithArgs("pokemon", textArray{"{\"ja\"}"}, textArray{"{}"}).
 		WillReturnRows(rows)
 	mock.ExpectExec("UPDATE cards AS c").
 		WithArgs("card-jp", 12.5).
@@ -249,7 +249,7 @@ func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
 
 	worker := &DataSyncWorker{db: db}
 	byCode := fuzzyIndex("SV3", "089/108", 12.5)
-	changed, err := worker.applyFuzzyPrices(context.Background(), "pokemon", "ja", byCode, nil)
+	changed, err := worker.applyFuzzyPrices(context.Background(), "pokemon", []string{"ja"}, byCode, nil)
 	if err != nil {
 		t.Fatalf("applyFuzzyPrices: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
 	}
 }
 
-// The English Pokémon category must not price Japanese cards: Japanese sets reuse
+// The English PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon category must not price Japanese cards: Japanese sets reuse
 // English set codes for different cards. The Japanese category fills them instead.
 func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -270,10 +270,11 @@ func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number"}).
-		AddRow("card-en", "sv3", "Obsidian Flames", "089")
+	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}).
+		AddRow("card-en", "sv3", "Obsidian Flames", "089", "Nazonokusa")
+	// No language restriction, but Japanese is excluded.
 	mock.ExpectQuery("SELECT id, COALESCE\\(set_code[\\s\\S]*<> ALL\\(\\$3::text\\[\\]\\)").
-		WithArgs("pokemon", "", sqlmock.AnyArg()).
+		WithArgs("pokemon", emptyTextArray{}, textArray{"{\"ja\"}"}).
 		WillReturnRows(rows)
 	mock.ExpectExec("UPDATE cards AS c").
 		WithArgs("card-en", 3.0).
@@ -281,7 +282,7 @@ func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 
 	worker := &DataSyncWorker{db: db}
 	byCode := fuzzyIndex("SV3", "089/108", 3.0)
-	changed, err := worker.applyFuzzyPricesExcluding(context.Background(), "pokemon", "", []string{"ja"}, byCode, nil)
+	changed, err := worker.applyFuzzyPricesExcluding(context.Background(), "pokemon", nil, []string{"ja"}, byCode, nil, nil)
 	if err != nil {
 		t.Fatalf("applyFuzzyPricesExcluding: %v", err)
 	}
@@ -299,13 +300,25 @@ func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 type emptyTextArray struct{}
 
 func (emptyTextArray) Match(value driver.Value) bool {
+	return textArrayValue(value) == "{}"
+}
+
+// textArray matches the encoded Postgres array exactly, so a test cannot pass
+// with the wrong languages.
+type textArray struct{ want string }
+
+func (a textArray) Match(value driver.Value) bool {
+	return textArrayValue(value) == a.want
+}
+
+func textArrayValue(value driver.Value) string {
 	switch typed := value.(type) {
 	case []byte:
-		return string(typed) == "{}"
+		return string(typed)
 	case string:
-		return typed == "{}"
+		return typed
 	}
-	return false
+	return ""
 }
 
 func TestApplyFuzzyPricesSendsAnEmptyLanguageExclusion(t *testing.T) {
@@ -315,10 +328,10 @@ func TestApplyFuzzyPricesSendsAnEmptyLanguageExclusion(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number"}).
-		AddRow("card-jp", "SV3", "Ruler of the Black Flame", "001")
+	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}).
+		AddRow("card-jp", "SV3", "Ruler of the Black Flame", "001", "Bulbasaur")
 	mock.ExpectQuery("SELECT id, COALESCE\\(set_code").
-		WithArgs("pokemon", "ja", emptyTextArray{}).
+		WithArgs("pokemon", sqlmock.AnyArg(), emptyTextArray{}).
 		WillReturnRows(rows)
 	mock.ExpectExec("UPDATE cards AS c").
 		WithArgs("card-jp", 0.18).
@@ -326,7 +339,7 @@ func TestApplyFuzzyPricesSendsAnEmptyLanguageExclusion(t *testing.T) {
 
 	worker := &DataSyncWorker{db: db}
 	byCode := fuzzyIndex("SV3", "001/108", 0.18)
-	if _, err := worker.applyFuzzyPrices(context.Background(), "pokemon", "ja", byCode, nil); err != nil {
+	if _, err := worker.applyFuzzyPrices(context.Background(), "pokemon", []string{"ja"}, byCode, nil); err != nil {
 		t.Fatalf("applyFuzzyPrices: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -336,12 +349,12 @@ func TestApplyFuzzyPricesSendsAnEmptyLanguageExclusion(t *testing.T) {
 
 func TestOrderedFuzzyScopesPutsLanguageScopesFirst(t *testing.T) {
 	index := map[fuzzyScope]map[string]float64{
-		{game: "pokemon"}:             {},
-		{game: "pokemon", language: "ja"}: {},
-		{game: "digimon"}:             {},
+		{game: "pokemon"}:                {},
+		{game: "pokemon", languages: "ja"}: {},
+		{game: "digimon"}:                {},
 	}
 	scopes := orderedFuzzyScopes(index)
-	if scopes[0] != (fuzzyScope{game: "pokemon", language: "ja"}) {
+	if scopes[0] != (fuzzyScope{game: "pokemon", languages: "ja"}) {
 		t.Fatalf("scopes = %v, want the language scope first", scopes)
 	}
 	if scopes[1].game != "digimon" || scopes[2].game != "pokemon" {

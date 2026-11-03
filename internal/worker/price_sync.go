@@ -42,6 +42,8 @@ type DataSyncWorker struct {
 	priceClients     map[string][]service.PriceClient
 	bulkPriceSources []service.BulkPriceSource
 	eurRate          service.EURRateProvider
+	backfillBatch    int
+	backfillLimiter  interface{ Wait(context.Context) error }
 	metadataClient   service.MetadataClient
 	metadataService  *service.MetadataService
 	interval         time.Duration
@@ -101,6 +103,8 @@ func NewConfiguredDataSyncWorker(
 		priceClients:     priceClients,
 		bulkPriceSources: slices.Clone(config.BulkPriceSources),
 		eurRate:          config.EURRate,
+		backfillBatch:    config.PriceBackfillBatch,
+		backfillLimiter:  newRequestLimiter(backfillRate(config.PriceBackfillRate), 1),
 		metadataClient:   mc,
 		metadataService:  ms,
 		interval:         config.Interval,
@@ -150,6 +154,20 @@ func (w *DataSyncWorker) Start(ctx context.Context) {
 			w.syncMissingFingerprints(ctx)
 		}()
 	}
+	// The per-card backfill fills the languages and games the bulk exports do not
+	// cover; it runs at startup and then with every price cycle.
+	if w.backfillBatch > 0 {
+		w.tasks.Add(1)
+		go func() {
+			defer w.tasks.Done()
+			select {
+			case <-time.After(2 * time.Minute):
+			case <-ctx.Done():
+				return
+			}
+			w.backfillPrices(ctx)
+		}()
+	}
 	// Free bulk exports fill the catalog with market prices without any
 	// per-card request, so they run once at startup and then daily.
 	if len(w.bulkPriceSources) > 0 {
@@ -177,6 +195,15 @@ func (w *DataSyncWorker) Start(ctx context.Context) {
 			return
 		case <-priceTicker.C:
 			w.syncPrices(ctx)
+			// Cards nobody owns yet are not part of the tracked-card sync; the
+			// bounded backfill walks them in the background.
+			if w.backfillBatch > 0 {
+				w.tasks.Add(1)
+				go func() {
+					defer w.tasks.Done()
+					w.backfillPrices(ctx)
+				}()
+			}
 		case <-metadataTicker.C:
 			if w.metadataClient != nil {
 				w.syncMetadata(ctx)

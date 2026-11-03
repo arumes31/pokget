@@ -19,8 +19,8 @@ func TestApplyFuzzyRarityFillsMissingRarities(t *testing.T) {
 	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number"}).
 		AddRow("card-jp", "SV3", "Ruler of the Black Flame", "001").
 		AddRow("card-en", "sv3", "Obsidian Flames", "002")
-	mock.ExpectQuery("SELECT id, COALESCE\\(set_code[\\s\\S]*rarity IS NULL").
-		WithArgs("pokemon", "ja", sqlmock.AnyArg()).
+	mock.ExpectQuery("SELECT id, COALESCE\\(set_code[\\s\\S]*rarity IS NULL[\\s\\S]*ANY\\(\\$2::text\\[\\]\\)").
+		WithArgs("pokemon", textArray{"{\"ja\"}"}, emptyTextArray{}).
 		WillReturnRows(rows)
 	// The batch is written in id order so consecutive batches lock rows alike.
 	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*SET rarity = v.rarity").
@@ -36,7 +36,7 @@ func TestApplyFuzzyRarityFillsMissingRarities(t *testing.T) {
 		rarities[key] = value
 	}
 
-	changed, err := worker.applyFuzzyRarity(context.Background(), "pokemon", "ja", nil, rarities)
+	changed, err := worker.applyFuzzyRarity(context.Background(), "pokemon", []string{"ja"}, nil, rarities)
 	if err != nil {
 		t.Fatalf("applyFuzzyRarity: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestApplyFuzzyRarityFillsMissingRarities(t *testing.T) {
 
 func TestApplyFuzzyRaritySkipsWithoutData(t *testing.T) {
 	worker := &DataSyncWorker{}
-	changed, err := worker.applyFuzzyRarity(context.Background(), "pokemon", "ja", nil, nil)
+	changed, err := worker.applyFuzzyRarity(context.Background(), "pokemon", []string{"ja"}, nil, nil)
 	if err != nil || changed != 0 {
 		t.Fatalf("changed = %d, err = %v, want a no-op", changed, err)
 	}

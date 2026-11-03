@@ -7,6 +7,8 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/lib/pq"
+
+	"pokget/internal/service"
 )
 
 type fixedEURRate struct {
@@ -78,6 +80,42 @@ func TestRetryablePostgresError(t *testing.T) {
 		if got := retryablePostgresError(tc.err); got != tc.want {
 			t.Fatalf("retryablePostgresError(%v) = %v, want %v", tc.err, got, tc.want)
 		}
+	}
+}
+
+// A source that only knows EUR must not zero an existing USD price.
+func TestApplyBulkSourceKeepsTheMissingCurrency(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*CASE WHEN v.usd > 0").
+		WithArgs("scryfall", "abc", 0.0, 4.5).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	worker := &DataSyncWorker{db: db}
+	if _, err := worker.applyBulkBatch(context.Background(), []service.BulkPriceUpdate{
+		{SourceID: "scryfall", SourceCardID: "abc", USD: 0, EUR: 4.5},
+	}); err != nil {
+		t.Fatalf("applyBulkBatch: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+// A zero rate would mean "unlimited" and hammer the provider.
+func TestBackfillRateFallsBackToASafeDefault(t *testing.T) {
+	if got := backfillRate(0); got != defaultBackfillRate {
+		t.Fatalf("backfillRate(0) = %v, want %v", got, defaultBackfillRate)
+	}
+	if got := backfillRate(-1); got != defaultBackfillRate {
+		t.Fatalf("backfillRate(-1) = %v, want the default", got)
+	}
+	if got := backfillRate(4); got != 4 {
+		t.Fatalf("backfillRate(4) = %v, want 4", got)
 	}
 }
 

@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"pokget/internal/db"
@@ -161,7 +162,7 @@ func probeCategories() error {
 	fmt.Printf("%-22s %-6s %-9s %s\n", "GAME", "LANG", "CATEGORY", "GROUPS")
 	failures := 0
 	for _, category := range categories {
-		language := category.Language
+		language := strings.Join(category.Languages, ",")
 		if language == "" {
 			language = "any"
 		}

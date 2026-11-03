@@ -8,6 +8,20 @@ import (
 	"time"
 )
 
+func TestFirstPositivePricePrefersThePlainPrice(t *testing.T) {
+	plain, foil, etched := "1.50", "9.00", "4.00"
+	if got := firstPositivePrice(&plain, &foil, &etched); got != 1.5 {
+		t.Fatalf("got %v, want the plain price", got)
+	}
+	empty := ""
+	if got := firstPositivePrice(&empty, nil, &etched); got != 4 {
+		t.Fatalf("got %v, want the etched price", got)
+	}
+	if got := firstPositivePrice(&empty, nil); got != 0 {
+		t.Fatalf("got %v, want 0 without usable prices", got)
+	}
+}
+
 func TestFrankfurterEURRateReadsAndCachesTheRate(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

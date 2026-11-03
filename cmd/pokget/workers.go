@@ -86,8 +86,10 @@ func newDataSyncWorkerWithClients(
 			MaxPriceRatio:     cfg.Worker.MaxPriceRatio,
 			HistoryRetention:  time.Duration(cfg.Worker.HistoryRetentionDays) * 24 * time.Hour,
 			FailureSink:       failureSink,
-			Lease:             worker.NewPostgresAdvisoryLease(database),
-			EURRate:           eurRateProvider(cfg),
+			Lease:              worker.NewPostgresAdvisoryLease(database),
+			EURRate:            eurRateProvider(cfg),
+			PriceBackfillBatch: cfg.Worker.BackfillBatch,
+			PriceBackfillRate:  cfg.Worker.BackfillRPS,
 		},
 	)
 }
@@ -125,6 +127,14 @@ func validateRuntimeConfig(cfg *config.Config) error {
 	}
 	if cfg.Catalog.LegacyMetadataSync && len(parseMetadataTargets(cfg.Worker.MetadataTargets)) == 0 {
 		return fmt.Errorf("METADATA_TARGETS must contain game:language entries")
+	}
+	// A negative batch silently disabled the price backfill; zero is the
+	// documented way to turn it off.
+	if cfg.Worker.BackfillBatch < 0 {
+		return fmt.Errorf("PRICE_BACKFILL_BATCH must not be negative")
+	}
+	if cfg.Worker.BackfillRPS < 0 {
+		return fmt.Errorf("PRICE_BACKFILL_REQUESTS_PER_SECOND must not be negative")
 	}
 	return nil
 }
