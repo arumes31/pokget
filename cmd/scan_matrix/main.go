@@ -60,6 +60,7 @@ type resultRow struct {
 	ActualName      string   `json:"actual_name"`
 	ActualNumber    string   `json:"actual_number"`
 	ActualLanguage  string   `json:"actual_language"`
+	HintLanguage    string   `json:"hint_language"`
 	Status          string   `json:"status"`
 	Confidence      float64  `json:"confidence"`
 	Exact           bool     `json:"exact"`
@@ -92,16 +93,19 @@ func main() {
 	baseURL := flag.String("base-url", "", "scan through this live Pokget server URL instead of the in-process pipeline")
 	email := flag.String("email", os.Getenv("POKGET_EMAIL"), "account email for -base-url (env POKGET_EMAIL)")
 	password := flag.String("password", os.Getenv("POKGET_PASSWORD"), "account password for -base-url (env POKGET_PASSWORD)")
+	hint := flag.String("hint", "", "language hint sent to the server: empty = sampled language, auto = automatic, or an explicit code")
 	flag.Parse()
 
 	live := liveConfig{BaseURL: *baseURL, Email: *email, Password: *password}
-	if err := run(*gameFlag, *languageFlag, *per, *seed, *timeout, *asJSON, live); err != nil {
+	if err := run(*gameFlag, *languageFlag, *per, *seed, *timeout, *asJSON, *hint, live); err != nil {
 		fmt.Fprintln(os.Stderr, "scan_matrix:", err)
 		os.Exit(1)
 	}
 }
 
-func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Duration, asJSON bool, live liveConfig) error {
+const autoLanguageValue = "eng+jpn+deu+fra+chi_sim+chi_tra+kor+spa"
+
+func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Duration, asJSON bool, hint string, live liveConfig) error {
 	if per < 1 {
 		return errors.New("per must be at least 1")
 	}
@@ -160,10 +164,18 @@ func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Durati
 			return fmt.Errorf("sample %s/%s cards: %w", combination.game, combination.language, err)
 		}
 		combinationSummary := summary{Game: combination.game, Language: combination.language}
+		sentLanguage := combination.language
+		switch hint {
+		case "":
+		case "auto":
+			sentLanguage = autoLanguageValue
+		default:
+			sentLanguage = hint
+		}
 		for _, sample := range samples {
 			var row resultRow
 			if session != nil {
-				row = scanOneLive(context.Background(), client, session, combination, sample, timeout)
+				row = scanOneLive(context.Background(), client, session, combination, sentLanguage, sample, timeout)
 			} else {
 				row = scanOne(context.Background(), client, pipeline, scope, cards, combination, sample, timeout)
 			}
@@ -231,6 +243,13 @@ type combination struct {
 }
 
 func scopeCombinations(database *sql.DB, gameFilter, languageFilter string) ([]combination, error) {
+	// `-language auto` enumerates every language of the game; the scans then send
+	// the automatic hint instead of the sampled language.
+	if languageFilter != "" {
+		if parsed, err := models.ParseLanguage(languageFilter); err == nil && parsed == models.LanguageAny {
+			languageFilter = ""
+		}
+	}
 	query := `SELECT game, language, count(*) FROM cards
 		WHERE catalog_active = TRUE AND superseded_by_card_id IS NULL
 		  AND coalesce(image_url,'') <> '' AND coalesce(name,'') <> ''
@@ -330,6 +349,7 @@ func scanOne(ctx context.Context, client *http.Client, pipeline *service.Detecti
 	row := resultRow{
 		Game:           combination.game,
 		Language:       combination.language,
+		HintLanguage:   combination.language,
 		ExpectedID:     sample.Card.ID,
 		ExpectedName:   sample.Card.Name,
 		ExpectedNumber: sample.Card.CollectorNumber,

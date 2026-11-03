@@ -177,10 +177,11 @@ func (s *liveSession) scan(ctx context.Context, game, language string, image []b
 }
 
 func scanOneLive(ctx context.Context, imageClient *http.Client, session *liveSession,
-	combination combination, sample sampleCard, timeout time.Duration) resultRow {
+	combination combination, sentLanguage string, sample sampleCard, timeout time.Duration) resultRow {
 	row := resultRow{
 		Game:           combination.game,
 		Language:       combination.language,
+		HintLanguage:   sentLanguage,
 		ExpectedID:     sample.Card.ID,
 		ExpectedName:   sample.Card.Name,
 		ExpectedNumber: sample.Card.CollectorNumber,
@@ -197,7 +198,7 @@ func scanOneLive(ctx context.Context, imageClient *http.Client, session *liveSes
 	defer cancel()
 	var result *liveScanResponse
 	for attempt := 1; attempt <= 3; attempt++ {
-		result, err = session.scan(scanCtx, combination.game, combination.language, imageBytes)
+		result, err = session.scan(scanCtx, combination.game, sentLanguage, imageBytes)
 		if err != nil && strings.Contains(err.Error(), "status 429") && attempt < 3 {
 			select {
 			case <-scanCtx.Done():
