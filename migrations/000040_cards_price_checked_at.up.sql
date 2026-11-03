@@ -18,5 +18,10 @@ CREATE INDEX IF NOT EXISTS idx_cards_price_checked_at
 -- The dashboard records one valuation snapshot per user and hour. The insert checks
 -- for a recent row first, which two parallel requests can both pass; the unique
 -- index makes the surplus insert a no-op instead of a duplicate data point.
+--
+-- `date_trunc('hour', timestamptz)` depends on the session time zone, so PostgreSQL
+-- rejects it in an index expression as non-IMMUTABLE. Truncating the UTC wall clock
+-- (`AT TIME ZONE 'UTC'` yields a timestamp without time zone) is immutable and keeps
+-- the one-row-per-UTC-hour guarantee.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_history_user_hour
-    ON portfolio_history (user_id, (date_trunc('hour', recorded_at)));
+    ON portfolio_history (user_id, (date_trunc('hour', recorded_at AT TIME ZONE 'UTC')));
