@@ -62,10 +62,11 @@ type Config struct {
 	Timeout       time.Duration
 	PromptCaching bool
 	HTTPClient    *http.Client
-	// Temperature is clamped to 0..1. Defaults to 0 so the same photo always
-	// produces the same reading; sampling made scans of one image disagree.
-	Temperature float64
 }
+
+// The request deliberately omits sampling controls. Claude Sonnet rejects
+// "temperature" for this model (API 400: "temperature is deprecated"), and the
+// same photo must always produce the same reading anyway.
 
 // DetectedCardInfo holds the structured card metadata extracted by Claude.
 type DetectedCardInfo struct {
@@ -95,7 +96,6 @@ type Client struct {
 	endpoint      string
 	timeout       time.Duration
 	promptCaching bool
-	temperature   float64
 	http          *http.Client
 }
 
@@ -129,7 +129,6 @@ func New(cfg Config) (*Client, error) {
 		endpoint:      endpoint,
 		timeout:       timeout,
 		promptCaching: cfg.PromptCaching,
-		temperature:   min(max(cfg.Temperature, 0), 1),
 		http:          client,
 	}, nil
 }
@@ -197,7 +196,6 @@ func (c *Client) DetectImages(ctx context.Context, images [][]byte, gameHint, la
 	reqMap := map[string]any{
 		"model":       c.model,
 		"max_tokens":  2048,
-		"temperature": c.temperature,
 		"messages": []map[string]any{
 			{"role": "user", "content": content},
 		},

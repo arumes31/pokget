@@ -23,6 +23,7 @@ package claudedetect
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -217,16 +218,21 @@ func TestDetectValidation(t *testing.T) {
 
 func TestDetectImagesSendsDeterministicScopedRequest(t *testing.T) {
 	var payload struct {
-		Temperature float64 `json:"temperature"`
-		Messages    []struct {
+		Messages []struct {
 			Content []struct {
 				Type string `json:"type"`
 				Text string `json:"text"`
 			} `json:"content"`
 		} `json:"messages"`
 	}
+	rawBody := ""
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read payload: %v", err)
+		}
+		rawBody = string(body)
+		if err := json.Unmarshal(body, &payload); err != nil {
 			t.Errorf("decode payload: %v", err)
 		}
 		resp := map[string]any{
@@ -254,8 +260,8 @@ func TestDetectImagesSendsDeterministicScopedRequest(t *testing.T) {
 	if info.Name != "ピジョットex" {
 		t.Errorf("expected the printed Japanese name, got %q", info.Name)
 	}
-	if payload.Temperature != 0 {
-		t.Errorf("expected deterministic temperature 0, got %v", payload.Temperature)
+	if strings.Contains(rawBody, `"temperature"`) {
+		t.Errorf("request must not send temperature; the API rejects it: %s", rawBody)
 	}
 	if len(payload.Messages) != 1 {
 		t.Fatalf("expected one user message, got %d", len(payload.Messages))
