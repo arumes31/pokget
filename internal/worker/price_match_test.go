@@ -55,6 +55,41 @@ func TestPriceNameKeyIgnoresFormatting(t *testing.T) {
 	}
 }
 
+// Weiss Schwarz numbers carry the set code with a slash and mark foils with a
+// letter suffix, so the plain printing must still match.
+func TestPriceMatchKeysHandlesWeissNumbers(t *testing.T) {
+	catalog := priceMatchKeys("NIK/S135", "NIK/S135-E063S")
+	market := priceMatchKeys("NIK/S135", "NIK/S135-E063")
+	shared := false
+	for _, key := range catalog {
+		for _, other := range market {
+			if key == other {
+				shared = true
+			}
+		}
+	}
+	if !shared {
+		t.Fatalf("no shared key: catalog %v, market %v", catalog, market)
+	}
+}
+
+func TestTrimVariantLetters(t *testing.T) {
+	// canonicalPriceToken drops the leading zero of each digit run, so "E063"
+	// becomes "e63" on both sides and still matches.
+	cases := map[string]string{
+		"NIK/S135-E063SP":               "niks135e63",
+		"NIK/S135-E063":                 "niks135e63",
+		"1-001H":                        "11",
+		"006-aaj_kegon_ghost_crabs-b-f": "6aajkegonghostcrabsbf",
+		"089/108":                       "89108",
+	}
+	for input, want := range cases {
+		if got := trimVariantLetters(input); got != want {
+			t.Fatalf("trimVariantLetters(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 // Names in Japanese or Chinese script keep no ASCII letter after canonicalization;
 // they must not collapse into a single key that matches every such card.
 func TestPriceNameKeyRejectsUnusableNames(t *testing.T) {

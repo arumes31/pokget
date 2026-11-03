@@ -118,14 +118,40 @@ func priceNumberKeys(number, set string) []string {
 		if hasDigit && !strings.ContainsAny(field, "0123456789") {
 			continue
 		}
-		// "089/108" and "1/110" only keep the print run after the slash.
+		// "089/108" and "1/110" only keep the print run after the slash, but a
+		// Weiss Schwarz number carries the set code with a slash inside it
+		// ("NIK/S135-E063"), so the whole field is a candidate as well.
+		add(field)
 		segment := strings.SplitN(field, "/", 2)[0]
 		add(segment)
+		// Weiss Schwarz marks foils and signed copies by appending letters to the
+		// number ("E063S", "E063SP"); the base printing is the same card.
+		add(trimVariantLetters(field))
 		if set != "" {
 			add(priceStripSetPrefix(segment, set))
+			add(priceStripSetPrefix(trimVariantLetters(field), set))
 		}
 	}
 	return keys
+}
+
+// trimVariantLetters removes a short trailing letter block from a number when it
+// directly follows a digit ("niks135e063sp" -> "niks135e063"). Letters that follow a
+// separator are part of the number ("…-b-f") and stay, and a long block is a word
+// ("006-aaj_kegon…"), not a variant marker.
+func trimVariantLetters(field string) string {
+	token := canonicalPriceToken(field)
+	end := len(token)
+	for end > 0 && token[end-1] >= 'a' && token[end-1] <= 'z' {
+		end--
+	}
+	if end == 0 || len(token)-end > 3 {
+		return token
+	}
+	if previous := token[end-1]; previous < '0' || previous > '9' {
+		return token
+	}
+	return token[:end]
 }
 
 // priceStripSetPrefix removes the leading set code from a number
