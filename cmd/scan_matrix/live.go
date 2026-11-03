@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -65,6 +66,8 @@ func newLiveSession(ctx context.Context, cfg liveConfig) (*liveSession, error) {
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("X-CSRF-Token", token)
+	request.Header.Set("Origin", base)
+	request.Header.Set("Referer", base+"/auth")
 	response, err := session.client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("login: %w", err)
@@ -74,13 +77,13 @@ func newLiveSession(ctx context.Context, cfg liveConfig) (*liveSession, error) {
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("login failed with status %d: %s", response.StatusCode, firstLine(body))
 	}
-
-	// The login page and every protected page carry a fresh masked token for the
-	// authenticated session; use the one from the page that just loaded.
-	token, err = session.fetchCSRF(ctx, base+"/dashboard")
-	if err != nil {
-		return nil, fmt.Errorf("load dashboard: %w", err)
+	if response.Request != nil && response.Request.URL != nil && response.Request.URL.Path == "/auth" {
+		return nil, errors.New("login returned the auth page instead of the dashboard")
 	}
+
+	// The CSRF cookie is not rotated by login, so the token from /auth stays
+	// valid for the authenticated session. Keep it instead of scraping the
+	// dashboard, which does not render a hidden token field.
 	session.csrf = token
 	return session, nil
 }
@@ -106,7 +109,9 @@ func (s *liveSession) fetchCSRF(ctx context.Context, target string) (string, err
 	if match == nil {
 		return "", errors.New("CSRF token not found in page")
 	}
-	return string(match[1]), nil
+	// html/template escapes "+" as &#43; inside attribute values; the browser
+	// decodes it, so the harness must too or every POST is rejected.
+	return html.UnescapeString(string(match[1])), nil
 }
 
 type liveScanResponse struct {
@@ -152,6 +157,8 @@ func (s *liveSession) scan(ctx context.Context, game, language string, image []b
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	request.Header.Set("X-CSRF-Token", s.csrf)
 	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Origin", s.base)
+	request.Header.Set("Referer", s.base+"/dashboard")
 	response, err := s.client.Do(request)
 	if err != nil {
 		return nil, err
