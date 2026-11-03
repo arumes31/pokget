@@ -20,7 +20,10 @@
   const MAX_FILE_BYTES = 15 * 1024 * 1024;
   const MAX_SOURCE_DIMENSION = 12000;
   const MIN_SOURCE_DIMENSION = 180;
-  const MAX_OUTPUT_DIMENSION = 1800;
+  const MAX_OUTPUT_DIMENSION = 2200;
+  // A portrait card only fills a fraction of a landscape camera frame, so ask
+  // for more than 1080p: the printed kana and collector number stay readable.
+  const VIDEO_CONSTRAINTS = Object.freeze({ width: { ideal: 2560 }, height: { ideal: 1440 } });
   const SCAN_PROGRESS_STEPS = 5;
   const NO_CARDS_FOR_LANGUAGE = 'No cards are available for the selected TCG and language';
   const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -420,14 +423,9 @@
   }
 
   function createCardScanner(config = {}) {
-    // Keep native workers outside Alpine's reactive object graph.
-    let deviceReader = null;
     return {
-      useDeviceOCR: false,
       scanning: false,
       scanStatus: '',
-      deviceOCRDetail: '',
-      deviceOCROutcome: '',
       scanPreviewURL: '',
       scanStep: 0,
       scanError: '',
@@ -555,12 +553,11 @@
       },
 
       get scanProgressDetail() {
-        if (this.scanStatus === 'Reading card text on this device…') return this.deviceOCRDetail || 'The cropped image is being read on this device.';
-        if (this.scanStatus === 'Matching device text with the catalog…') return 'Sending OCR text only; the image stays on your device.';
+        // Device OCR is not offered, so its state is never surfaced: the phone
+        // only ever shows what the server detection is doing.
         if (this.scanStep <= 1) return 'Preparing the image on this device.';
-        if (this.scanStep === 2 && this.deviceOCROutcome) return `Device OCR: ${this.deviceOCROutcome.replaceAll('_', ' ')}. Uploading the crop for server detection.`;
         if (this.scanStep === 2 && this.scanElapsedSeconds < 15) {
-          return 'Uploading securely, then running OCR and scoped card matching.';
+          return 'Uploading securely, then reading the card artwork, name and collector number.';
         }
         if (this.scanStep === 2) {
           return 'Still processing. Keep this page open while the card is checked. You can cancel at any time.';
@@ -601,13 +598,6 @@
         if (this.deviceChangeHandler
           && typeof navigator.mediaDevices?.removeEventListener === 'function') {
           navigator.mediaDevices.removeEventListener('devicechange', this.deviceChangeHandler);
-        }
-      },
-
-      pauseDeviceOCR() {
-        if (deviceReader) {
-          deviceReader.dispose();
-          deviceReader = null;
         }
       },
 
@@ -726,8 +716,8 @@
         this.cameraError = '';
         const requestedCamera = this.currentCamera;
         const preferred = requestedCamera
-          ? { deviceId: { exact: requestedCamera }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-          : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+          ? { deviceId: { exact: requestedCamera }, ...VIDEO_CONSTRAINTS }
+          : { facingMode: { ideal: 'environment' }, ...VIDEO_CONSTRAINTS };
 
         stopStream(this.activeStream);
         this.activeStream = null;
@@ -997,7 +987,7 @@
         }
       },
 
-      async submitPreparedBlob(blob, filename, remember = true, serverOnly = false) {
+      async submitPreparedBlob(blob, filename, remember = true) {
         if (this.abortController) return;
         if (remember) {
           this.lastScanBlob = blob;
@@ -1006,8 +996,6 @@
 
         this.setScanning(true);
         this.scanError = '';
-        this.deviceOCRDetail = '';
-        this.deviceOCROutcome = '';
         const requestID = ++this.requestID;
         const scanID = globalThis.crypto?.randomUUID?.() || `scan-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
         const controller = new AbortController();
@@ -1024,65 +1012,18 @@
         try {
           const language = normalizeLanguage(this.game, this.lang);
           const game = this.game;
-          let outcome = serverOnly ? 'server_only' : !this.useDeviceOCR ? 'disabled' : 'unsupported';
-          let deviceDuration = 0;
-          let fallback = '';
-          let localText = null;
-          if (!serverOnly && this.useDeviceOCR && globalThis.PokgetDeviceOCR) {
-            deviceReader ||= globalThis.PokgetDeviceOCR.createReader();
-            if (deviceReader.supports(language)) {
-              this.setStatus('Reading card text on this device…', 2);
-              outcome = 'weak_text';
-              localText = await deviceReader.read(blob, language, controller.signal, (event) => {
-                if (requestID !== this.requestID || controller.signal.aborted) return;
-                deviceDuration = event.duration_ms;
-                if (event.outcome) outcome = event.outcome;
-                const labels = { initializing: 'Starting the OCR engine', loading_language: 'Loading the selected language', full_card: 'Reading the full card', top_band: 'Reading the top edge', bottom_band: 'Reading the bottom edge' };
-                if (labels[event.stage]) this.deviceOCRDetail = `${labels[event.stage]} on this device (${event.progress}%).`;
-              });
-              if (localText) outcome = 'usable';
-            }
-          }
-          this.deviceOCROutcome = outcome;
-          fallback = localText ? 'none' : outcome;
-          const headers = () => ({
-            'X-CSRF-Token': this.csrfToken, 'X-Scan-ID': scanID,
-            'X-Device-OCR': outcome, 'X-Device-OCR-MS': String(deviceDuration), 'X-Scan-Fallback': fallback,
-          });
           if (requestID !== this.requestID || controller.signal.aborted) return;
-          const upload = () => {
-            this.setStatus('Uploading the crop and running detection…', 2);
-            const formData = new FormData();
-            formData.append('card_image', blob, filename);
-            formData.append('lang', language);
-            formData.append('game', game);
-            return fetch('/api/scan', {
-              method: 'POST', headers: headers(),
-              body: formData, signal: controller.signal,
-            });
-          };
-          if (localText) this.setStatus('Matching device text with the catalog…', 3);
-          let response = localText ? await fetch('/api/scan', {
+          this.setStatus('Uploading the crop and running detection…', 2);
+          const formData = new FormData();
+          formData.append('card_image', blob, filename);
+          formData.append('lang', language);
+          formData.append('game', game);
+          const response = await fetch('/api/scan', {
             method: 'POST',
-            headers: { ...headers(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ocr_text: localText, lang: language, game }),
+            headers: { 'X-CSRF-Token': this.csrfToken, 'X-Scan-ID': scanID },
+            body: formData,
             signal: controller.signal,
-          }) : await upload();
-          let deviceData;
-          // Old servers reject JSON with 415. Only this compatibility response
-          // or an explicit no-match requests one image fallback; auth/rate-limit
-          // failures and ambiguous review candidates never cause a second scan.
-          if (localText && response.ok) {
-            try { deviceData = await response.json(); }
-            catch { throw new Error('The scanner returned an unreadable response. Retry the same photo.'); }
-          }
-          if (requestID !== this.requestID || controller.signal.aborted) return;
-          if (localText && (response.status === 415 || deviceData?.requires_image === true)) {
-            fallback = response.status === 415 ? 'unsupported_server' : 'no_match';
-            this.deviceOCROutcome = fallback;
-            deviceData = undefined;
-            response = await upload();
-          }
+          });
           if (requestID !== this.requestID || controller.signal.aborted) return;
           if (!response.ok) {
             const body = await response.text();
@@ -1095,7 +1036,7 @@
           this.setStatus('Reading the scanner response…', 3);
           let data;
           try {
-            data = deviceData || await response.json();
+            data = await response.json();
           } catch {
             throw new Error('The scanner returned an unreadable response. Retry the same photo.');
           }

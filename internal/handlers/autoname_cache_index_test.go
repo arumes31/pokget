@@ -306,7 +306,7 @@ func TestRefreshCache(t *testing.T) {
 	cardColumns := []string{
 		"id", "name", "set_name", "price_usd", "price_eur", "image_url", "variant",
 		"change_24h", "phash", "game", "language", "rarity", "set_code",
-		"collector_number", "catalog_active",
+		"collector_number", "catalog_active", "printed_name", "source_card_id",
 	}
 
 	t.Run("QueryError", func(t *testing.T) {
@@ -336,7 +336,7 @@ func TestRefreshCache(t *testing.T) {
 
 		mock.ExpectQuery("SELECT id, name, set_name").
 			WillReturnRows(sqlmock.NewRows(cardColumns).
-				AddRow("c1", "Mew", "151", 10.0, 9.0, "url", "Holo", 1.5, nil, "Pokemon", "en", "R", "sv1", "001", nil))
+				AddRow("c1", "Mew", "151", 10.0, 9.0, "url", "Holo", 1.5, nil, "Pokemon", "en", "R", "sv1", "001", nil, "Mew-ja", "jp-001"))
 
 		h.RefreshCache(rr, req)
 
@@ -353,6 +353,12 @@ func TestRefreshCache(t *testing.T) {
 		if len(cards) != 1 || cards[0].ID != "c1" {
 			t.Errorf("Expected cache to hold reloaded card c1, got %+v", cards)
 		}
+		if len(cards) == 1 && (len(cards[0].LocalizedNames) != 1 || cards[0].LocalizedNames[0] != "Mew-ja") {
+			t.Errorf("Expected printed name to populate LocalizedNames, got %+v", cards[0].LocalizedNames)
+		}
+		if len(cards) == 1 && cards[0].SourceCardID != "jp-001" {
+			t.Errorf("Expected source_card_id, got %q", cards[0].SourceCardID)
+		}
 	})
 
 	t.Run("SkipsUnscannableRows", func(t *testing.T) {
@@ -366,8 +372,8 @@ func TestRefreshCache(t *testing.T) {
 		mock.ExpectQuery("SELECT id, name, set_name").
 			WillReturnRows(sqlmock.NewRows(cardColumns).
 				// price_usd not numeric — the row must be skipped, not fatal
-				AddRow("bad", "Broken", "151", "not-a-price", 9.0, "url", "", 0.0, nil, "Pokemon", "en", "", "", "", nil).
-				AddRow("c1", "Mew", "151", 10.0, 9.0, "url", "", 0.0, nil, "Pokemon", "en", "", "", "", nil))
+				AddRow("bad", "Broken", "151", "not-a-price", 9.0, "url", "", 0.0, nil, "Pokemon", "en", "", "", "", nil, "", "").
+				AddRow("c1", "Mew", "151", 10.0, 9.0, "url", "", 0.0, nil, "Pokemon", "en", "", "", "", nil, "", ""))
 
 		h.RefreshCache(rr, req)
 
@@ -388,7 +394,7 @@ func TestRefreshCache(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		rows := sqlmock.NewRows(cardColumns).
-			AddRow("c1", "Mew", "151", 10.0, 9.0, "url", "", 0.0, nil, "Pokemon", "en", "", "", "", nil).
+			AddRow("c1", "Mew", "151", 10.0, 9.0, "url", "", 0.0, nil, "Pokemon", "en", "", "", "", nil, "", "").
 			RowError(0, errors.New("row stream failed"))
 		mock.ExpectQuery("SELECT id, name, set_name").WillReturnRows(rows)
 

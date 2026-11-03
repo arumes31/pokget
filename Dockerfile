@@ -14,14 +14,8 @@ RUN npm run build:static && npm run check:static
 # Go build stage
 FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 
-# Install Tesseract OCR dependencies
-RUN apk add --no-cache \
-    tesseract-ocr \
-    tesseract-ocr-dev \
-    gcc \
-    g++ \
-    musl-dev \
-    build-base
+# Pure-Go build: no CGO, no native OCR libraries.
+ENV CGO_ENABLED=0
 
 WORKDIR /app
 
@@ -39,19 +33,10 @@ RUN go build -o main ./cmd/pokget && \
 # Final stage
 FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 
-# Install runtime dependencies: Tesseract for OCR and Chromium for headless scraping
+# Install runtime dependencies: Chromium for headless catalog scraping.
 RUN apk add --no-cache \
     libcrypto3 \
     libssl3 \
-    tesseract-ocr \
-    tesseract-ocr-data-eng \
-    tesseract-ocr-data-jpn \
-    tesseract-ocr-data-deu \
-    tesseract-ocr-data-fra \
-    tesseract-ocr-data-chi_sim \
-    tesseract-ocr-data-chi_tra \
-    tesseract-ocr-data-kor \
-    tesseract-ocr-data-spa \
     chromium \
     nss \
     freetype \
@@ -64,8 +49,7 @@ RUN addgroup -S -g 10001 pokget \
     && mkdir -p /app/data/cache /app/data/catalog-images /app/data/card-photos /tmp/pokget \
     && chown -R pokget:pokget /app /tmp/pokget
 
-ENV TESSDATA_PREFIX=/usr/share/tessdata \
-    HOME=/tmp/pokget
+ENV HOME=/tmp/pokget
 
 WORKDIR /app
 

@@ -50,7 +50,6 @@ docker run --rm --entrypoint sh "${image}" -c '
       exit 1
     fi
   done
-  tesseract --version >/dev/null
   command -v chromium-browser >/dev/null || command -v chromium >/dev/null
 '
 

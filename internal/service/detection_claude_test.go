@@ -89,7 +89,7 @@ func TestClaudeDetection_ExactMatch(t *testing.T) {
 	}
 
 	req := DetectionRequest{
-		Image: []byte{1, 2, 3, 4},
+		Image: testCardImage(t),
 		Cards: cards,
 		Scope: ScanScope{
 			TCG:      models.TCGPokemon,
@@ -136,7 +136,7 @@ func TestClaudeDetection_UncatalogedSyntheticCard(t *testing.T) {
 	cards := []models.Card{}
 
 	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
-		Image: []byte{1, 2, 3},
+		Image: testCardImage(t),
 		Cards: cards,
 	}, false, time.Now())
 
@@ -169,27 +169,18 @@ func TestClaudeDetection_Synthetic_NoSecondaryFallback(t *testing.T) {
 
 	pipeline := NewDetectionPipeline(nil, nil)
 	pipeline.Claude = mock
-	// Local OCR should not be called
-	ocrCalled := false
-	pipeline.ocrRunner = func(ctx context.Context, img []byte, cards []models.Card, lang string) (string, string, []byte, error) {
-		ocrCalled = true
-		return "Pikachu 25", "card-pika", nil, nil
-	}
 
 	cards := []models.Card{
 		{ID: "card-pika", Name: "Pikachu", CollectorNumber: "25"},
 	}
 
 	result, err := pipeline.detect(context.Background(), DetectionRequest{
-		Image: []byte{1, 2, 3},
+		Image: testCardImage(t),
 		Cards: cards,
-	}, "eng", false)
+	}, false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if ocrCalled {
-		t.Error("secondary OCR runner was invoked but secondary detection should be disabled")
 	}
 	// Synthetic match from Claude is used directly without secondary fallback
 	if result.BestMatchID() != "" {
@@ -210,29 +201,259 @@ func TestClaudeDetection_Error_NoSecondaryFallback(t *testing.T) {
 
 	pipeline := NewDetectionPipeline(nil, nil)
 	pipeline.Claude = mock
-	// Local OCR should not be called
-	ocrCalled := false
-	pipeline.ocrRunner = func(ctx context.Context, img []byte, cards []models.Card, lang string) (string, string, []byte, error) {
-		ocrCalled = true
-		return "Pikachu 25", "card-pika", nil, nil
-	}
 
 	cards := []models.Card{
 		{ID: "card-pika", Name: "Pikachu", CollectorNumber: "25"},
 	}
 
 	result, err := pipeline.detect(context.Background(), DetectionRequest{
-		Image: []byte{1, 2, 3},
+		Image: testCardImage(t),
 		Cards: cards,
-	}, "eng", false)
+	}, false)
 
 	if err == nil {
 		t.Fatal("expected error from Claude detection failure without secondary fallback")
 	}
-	if ocrCalled {
-		t.Error("secondary OCR runner was invoked on Claude failure, but secondary detection should be removed")
+	if result == nil || result.Status != DetectionStatusFailed {
+		t.Errorf("expected DetectionStatusFailed, got %+v", result)
 	}
-	if result.Status != DetectionStatusFailed {
-		t.Errorf("expected DetectionStatusFailed, got %s", result.Status)
+}
+
+func TestClaudeDetection_MatchesLocalizedPrintedName(t *testing.T) {
+	// Magic keeps the English name in `name`; the Japanese card prints the
+	// localized name. Without LocalizedNames the detector read this card
+	// correctly and matched a different card by set+number instead.
+	mock := &mockClaudeDetector{
+		info: &claudedetect.DetectedCardInfo{
+			Game:            "magic",
+			Name:            "イモエン、神秘のトリックスター",
+			CollectorNumber: "385",
+			Set:             "統率者レジェンズ：バルダーズ・ゲートの戦い",
+			Language:        "ja",
+			Confidence:      0.93,
+		},
+	}
+
+	pipeline := NewDetectionPipeline(nil, nil)
+	pipeline.Claude = mock
+
+	cards := []models.Card{
+		{
+			ID:              "clb-385",
+			Name:            "Imoen, Mystic Trickster",
+			LocalizedNames:  []string{"イモエン、神秘のトリックスター"},
+			CollectorNumber: "385",
+			Set:             "Commander Legends: Battle for Baldur's Gate",
+			SetCode:         "clb",
+			Language:        "ja",
+			Game:            "magic",
+		},
+		{
+			ID:              "cmr-385",
+			Name:            "Spirit Mantle",
+			CollectorNumber: "385",
+			Set:             "Commander Legends",
+			SetCode:         "cmr",
+			Language:        "ja",
+			Game:            "magic",
+		},
+	}
+
+	result, err := pipeline.DetectScoped(context.Background(), DetectionRequest{
+		Image: testCardImage(t),
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGMagic, Language: models.LanguageJapanese},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BestMatchID() != "clb-385" {
+		t.Fatalf("expected localized name to win clb-385, got %q", result.BestMatchID())
+	}
+	if result.BestMatchNeedsReview() {
+		t.Errorf("exact localized name + number must not need review")
+	}
+}
+
+func TestClaudeDetection_VariantSuffixCollectorIsPartialEvidence(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "magic",
+		Name:            "Mirrex",
+		CollectorNumber: "254",
+		Set:             "Phyrexia: All Will Be One",
+		Language:        "en",
+		Confidence:      0.95,
+	}
+	cards := []models.Card{
+		{
+			ID:              "pone-254p",
+			Name:            "Mirrex",
+			CollectorNumber: "254p",
+			Set:             "Phyrexia: All Will Be One",
+			SetCode:         "pone",
+			Language:        "en",
+			Game:            "magic",
+			SourceCardID:    "254p",
+		},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if matches[0].Confidence != 94.0 {
+		t.Errorf("expected partial-variant confidence 94, got %f", matches[0].Confidence)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("name + set + base number is a confident match")
+	}
+}
+
+func TestClaudeDetection_DuplicatePrintingsDoNotForceReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "one_piece",
+		Name:            "Boa Hancock",
+		CollectorNumber: "ST17-004",
+		Set:             "ST-17",
+		Language:        "en",
+		Confidence:      0.96,
+	}
+	cards := []models.Card{
+		{
+			ID:              "card-alt",
+			Name:            "Boa Hancock",
+			CollectorNumber: "ST17-004",
+			Set:             "ST-17",
+			SetCode:         "ST-17",
+			Language:        "en",
+			Game:            "one_piece",
+			SourceCardID:    "ST17-004_p1",
+		},
+		{
+			ID:              "card-base",
+			Name:            "Boa Hancock",
+			CollectorNumber: "ST17-004",
+			Set:             "ST-17",
+			SetCode:         "ST-17",
+			Language:        "en",
+			Game:            "one_piece",
+			SourceCardID:    "ST17-004",
+		},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if matches[0].Card.ID != "card-base" {
+		t.Errorf("expected base printing first, got %q", matches[0].Card.ID)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("same card, different art must not require review")
+	}
+	if matches[1].NeedsReview {
+		t.Errorf("same card, different art must not require review")
+	}
+}
+
+func TestClaudeDetection_NormalizesSetPrefixedCollectorNumbers(t *testing.T) {
+	cases := []struct {
+		detected string
+		catalog  string
+	}{
+		{"TAEV EN027", "TAEV-EN027"},
+		{"TAEV_EN27", "TAEV-EN027"},
+		{"LON 78", "LON-078"},
+		{"OP01 001", "OP01-001"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.detected, func(t *testing.T) {
+			info := &claudedetect.DetectedCardInfo{
+				Game:            "yugioh",
+				Name:            "Crystal Beast Ruby Carbuncle",
+				CollectorNumber: tc.detected,
+				Set:             "Force of the Breaker",
+				Language:        "en",
+				Confidence:      0.95,
+			}
+			cards := []models.Card{{
+				ID:              "card-1",
+				Name:            "Crystal Beast Ruby Carbuncle",
+				CollectorNumber: tc.catalog,
+				Set:             "Force of the Breaker",
+				SetCode:         "TAEV",
+				Language:        "en",
+				Game:            "yugioh",
+			}}
+
+			matches := matchCardsWithClaude(info, cards)
+			if len(matches) != 1 {
+				t.Fatalf("expected one candidate, got %d", len(matches))
+			}
+			if matches[0].Confidence != 99.0 {
+				t.Errorf("expected name+number+set 99, got %f", matches[0].Confidence)
+			}
+		})
+	}
+}
+
+func TestClaudeDetection_IgnoresWhitespaceInPrintedName(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "pokemon",
+		Name:            "かがやくヒスイオオニューラ",
+		CollectorNumber: "046/071",
+		Set:             "S10a",
+		Language:        "ja",
+		Confidence:      0.93,
+	}
+	cards := []models.Card{{
+		ID:              "s10a-046",
+		Name:            "かがやくヒスイ オオニューラ",
+		CollectorNumber: "046/071",
+		Set:             "S10a",
+		SetCode:         "S10a",
+		Language:        "ja",
+		Game:            "pokemon",
+	}}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if matches[0].Confidence != 99.0 {
+		t.Errorf("expected whitespace-insensitive name match at 99, got %f", matches[0].Confidence)
+	}
+}
+
+func TestClaudeDetection_GenericSetSubstringDoesNotConfirmUnknownName(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "magic",
+		Name:            "Unleserlicher Name",
+		CollectorNumber: "385",
+		Set:             "Commander Legends",
+		Language:        "ja",
+		Confidence:      0.9,
+	}
+	cards := []models.Card{
+		{
+			ID:              "cmr-385",
+			Name:            "Spirit Mantle",
+			CollectorNumber: "385",
+			Set:             "Commander Legends: Battle for Baldur's Gate",
+			SetCode:         "cmr",
+			Language:        "ja",
+			Game:            "magic",
+		},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if matches[0].Confidence != 65.0 {
+		t.Errorf("substring set alone must not score 88, got %f", matches[0].Confidence)
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("number-only candidate must require review")
 	}
 }

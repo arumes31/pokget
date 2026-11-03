@@ -1,33 +1,133 @@
+// Copyright (c) 2026 arumes31
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 package service
 
 import (
+	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
+	"image/jpeg"
 	"math"
+	"strings"
 
-	"github.com/anthonynsimon/bild/adjust"
-	"github.com/anthonynsimon/bild/effect"
 	"github.com/anthonynsimon/bild/transform"
 )
 
 const (
-	maxUpscaleDim = 1500
-	minUpscaleDim = 800
+	defaultScanImageMaxBytes  = 20 << 20
+	defaultScanImageMaxPixels = int64(40_000_000)
 )
 
-func computeUpscaleFactors(bounds image.Rectangle) (scaleX, scaleY float64) {
-	longestSide := max(bounds.Dx(), bounds.Dy())
-	switch {
-	case longestSide >= maxUpscaleDim:
-		return 1, 1
-	case longestSide >= minUpscaleDim:
-		return 1.5, 1.5
-	default:
-		return 2, 2
+// GuideRect describes a crop using coordinates in the inclusive 0..1 range. It
+// is resolution independent, so the camera guide passes its rectangle through
+// unchanged.
+type GuideRect struct {
+	MinX float64
+	MinY float64
+	MaxX float64
+	MaxY float64
+}
+
+// ImagePrepareConfig bounds and normalizes an uploaded photo before the
+// detector sees it. Zero values select the safe defaults.
+type ImagePrepareConfig struct {
+	GuideCrop      *GuideRect
+	MaxInputBytes  int
+	MaxPixels      int64
+	AllowedFormats []string
+}
+
+type imagePrepareConfigContextKey struct{}
+
+// WithImagePrepareConfig returns a context carrying scan-image options.
+func WithImagePrepareConfig(ctx context.Context, config ImagePrepareConfig) context.Context {
+	return context.WithValue(ctx, imagePrepareConfigContextKey{}, config)
+}
+
+func imagePrepareConfigFromContext(ctx context.Context) ImagePrepareConfig {
+	if ctx != nil {
+		if config, ok := ctx.Value(imagePrepareConfigContextKey{}).(ImagePrepareConfig); ok {
+			return normalizeImagePrepareConfig(config)
+		}
 	}
+	return normalizeImagePrepareConfig(ImagePrepareConfig{})
+}
+
+func normalizeImagePrepareConfig(config ImagePrepareConfig) ImagePrepareConfig {
+	if config.MaxInputBytes <= 0 {
+		config.MaxInputBytes = defaultScanImageMaxBytes
+	}
+	if config.MaxPixels <= 0 {
+		config.MaxPixels = defaultScanImageMaxPixels
+	}
+	if len(config.AllowedFormats) == 0 {
+		config.AllowedFormats = []string{"jpeg", "png", "webp"}
+		return config
+	}
+	formats := make([]string, 0, len(config.AllowedFormats))
+	seen := make(map[string]struct{}, len(config.AllowedFormats))
+	for _, format := range config.AllowedFormats {
+		format = strings.ToLower(strings.TrimSpace(format))
+		if format == "jpg" {
+			format = "jpeg"
+		}
+		if format == "" {
+			continue
+		}
+		if _, ok := seen[format]; ok {
+			continue
+		}
+		seen[format] = struct{}{}
+		formats = append(formats, format)
+	}
+	config.AllowedFormats = formats
+	return config
+}
+
+// ImageInputError reports that an upload was rejected before any detector saw
+// it.
+type ImageInputError struct {
+	Reason string
+	Err    error
+}
+
+func (e *ImageInputError) Error() string {
+	if e == nil {
+		return "invalid scan image"
+	}
+	if e.Err != nil {
+		return fmt.Sprintf("invalid scan image: %s: %v", e.Reason, e.Err)
+	}
+	return "invalid scan image: " + e.Reason
+}
+
+func (e *ImageInputError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
 }
 
 func applyEXIFOrientation(imgBytes []byte, img image.Image) image.Image {
@@ -169,56 +269,15 @@ func parseEXIFOrientation(data []byte, offset int) int {
 	return 0
 }
 
-func flipHorizontal(dst *image.RGBA, src image.Image) {
-	destinationBounds := dst.Bounds()
-	sourceBounds := src.Bounds()
-	for y := 0; y < destinationBounds.Dy(); y++ {
-		for x := 0; x < destinationBounds.Dx(); x++ {
-			dst.Set(destinationBounds.Min.X+x, destinationBounds.Min.Y+y,
-				src.At(sourceBounds.Max.X-1-x, sourceBounds.Min.Y+y))
-		}
-	}
-}
-
-func flipVertical(dst *image.RGBA, src image.Image) {
-	destinationBounds := dst.Bounds()
-	sourceBounds := src.Bounds()
-	for y := 0; y < destinationBounds.Dy(); y++ {
-		for x := 0; x < destinationBounds.Dx(); x++ {
-			dst.Set(destinationBounds.Min.X+x, destinationBounds.Min.Y+y,
-				src.At(sourceBounds.Min.X+x, sourceBounds.Max.Y-1-y))
-		}
-	}
-}
-
-func rotate180(dst *image.RGBA, src image.Image) {
-	destinationBounds := dst.Bounds()
-	sourceBounds := src.Bounds()
-	for y := 0; y < destinationBounds.Dy(); y++ {
-		for x := 0; x < destinationBounds.Dx(); x++ {
-			dst.Set(destinationBounds.Min.X+x, destinationBounds.Min.Y+y,
-				src.At(sourceBounds.Max.X-1-x, sourceBounds.Max.Y-1-y))
-		}
-	}
-}
-
-func rotate90CW(src image.Image) *image.RGBA {
-	return applyImageOrientation(src, 6).(*image.RGBA)
-}
-
-func rotate90CCW(src image.Image) *image.RGBA {
-	return applyImageOrientation(src, 8).(*image.RGBA)
-}
-
-func cropNormalized(src image.Image, crop OCRNormalizedRect) (image.Image, error) {
+func cropNormalized(src image.Image, crop GuideRect) (image.Image, error) {
 	values := []float64{crop.MinX, crop.MinY, crop.MaxX, crop.MaxY}
 	for _, value := range values {
 		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
-			return nil, &OCRInputError{Reason: "guide crop coordinates must be finite values from 0 to 1"}
+			return nil, &ImageInputError{Reason: "guide crop coordinates must be finite values from 0 to 1"}
 		}
 	}
 	if crop.MinX >= crop.MaxX || crop.MinY >= crop.MaxY {
-		return nil, &OCRInputError{Reason: "guide crop must have positive width and height"}
+		return nil, &ImageInputError{Reason: "guide crop must have positive width and height"}
 	}
 
 	bounds := src.Bounds()
@@ -229,7 +288,7 @@ func cropNormalized(src image.Image, crop OCRNormalizedRect) (image.Image, error
 		bounds.Min.Y+int(math.Ceil(crop.MaxY*float64(bounds.Dy()))),
 	).Intersect(bounds)
 	if rectangle.Empty() {
-		return nil, &OCRInputError{Reason: "guide crop does not overlap the image"}
+		return nil, &ImageInputError{Reason: "guide crop does not overlap the image"}
 	}
 	return copyImageRegion(src, rectangle), nil
 }
@@ -310,121 +369,6 @@ func strongestOuterEdges(energy []float64) (int, int, bool) {
 	return first, last + 1, true
 }
 
-func preprocessForOCR(src image.Image) image.Image {
-	gray := effect.Grayscale(src)
-	enhanced := adjust.Contrast(gray, 0.4)
-	binarized := otsuBinarize(enhanced)
-	return deskewImage(binarized)
-}
-
-func otsuBinarize(src image.Image) *image.RGBA {
-	bounds := src.Bounds()
-	dst := image.NewRGBA(bounds)
-	histogram := make([]int, 256)
-	totalPixels := bounds.Dx() * bounds.Dy()
-
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			histogram[uint8(pixelLuminance(src.At(x, y)))]++
-		}
-	}
-
-	sum := 0
-	for intensity, count := range histogram {
-		sum += intensity * count
-	}
-	sumBackground, backgroundWeight, threshold := 0, 0, 0
-	maxVariance := 0.0
-	for candidate, count := range histogram {
-		backgroundWeight += count
-		if backgroundWeight == 0 {
-			continue
-		}
-		foregroundWeight := totalPixels - backgroundWeight
-		if foregroundWeight == 0 {
-			break
-		}
-		sumBackground += candidate * count
-		backgroundMean := float64(sumBackground) / float64(backgroundWeight)
-		foregroundMean := float64(sum-sumBackground) / float64(foregroundWeight)
-		variance := float64(backgroundWeight) * float64(foregroundWeight) * math.Pow(backgroundMean-foregroundMean, 2)
-		if variance > maxVariance {
-			maxVariance = variance
-			threshold = candidate
-		}
-	}
-
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			if pixelLuminance(src.At(x, y)) > float64(threshold) {
-				dst.Set(x, y, color.White)
-			} else {
-				dst.Set(x, y, color.Black)
-			}
-		}
-	}
-	return dst
-}
-
-func deskewImage(src image.Image) image.Image {
-	bounds := src.Bounds()
-	if bounds.Dx() < 50 || bounds.Dy() < 50 {
-		return src
-	}
-
-	scoreImage := resizeToMaxDimension(src, 600)
-	baselineScore := horizontalLineScore(scoreImage)
-	bestScore, bestAngle := baselineScore, 0.0
-	for angle := -15.0; angle <= 15.0; angle += 3 {
-		rotated := flattenOnWhite(transform.Rotate(scoreImage, angle, nil))
-		if score := horizontalLineScore(rotated); score > bestScore {
-			bestScore, bestAngle = score, angle
-		}
-	}
-	coarseAngle := bestAngle
-	for angle := coarseAngle - 2; angle <= coarseAngle+2; angle += 0.5 {
-		if angle < -15 || angle > 15 || math.Abs(angle) < 0.1 {
-			continue
-		}
-		rotated := flattenOnWhite(transform.Rotate(scoreImage, angle, nil))
-		if score := horizontalLineScore(rotated); score > bestScore {
-			bestScore, bestAngle = score, angle
-		}
-	}
-	if math.Abs(bestAngle) < 0.5 || baselineScore > 0 && bestScore < baselineScore*1.03 {
-		return src
-	}
-	return flattenOnWhite(transform.Rotate(src, bestAngle, nil))
-}
-
-func horizontalLineScore(src image.Image) float64 {
-	bounds := src.Bounds()
-	if bounds.Empty() {
-		return 0
-	}
-	projection := make([]float64, bounds.Dy())
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			if pixelLuminance(src.At(x, y)) < 128 {
-				projection[y-bounds.Min.Y]++
-			}
-		}
-	}
-	mean := 0.0
-	for _, value := range projection {
-		mean += value
-	}
-	mean /= float64(len(projection))
-	variance, adjacentChange := 0.0, 0.0
-	for index, value := range projection {
-		variance += math.Pow(value-mean, 2)
-		if index > 0 {
-			adjacentChange += math.Pow(value-projection[index-1], 2)
-		}
-	}
-	return (variance + adjacentChange*0.5) / (float64(bounds.Dx()*bounds.Dx()) * float64(bounds.Dy()))
-}
-
 func pixelLuminance(value color.Color) float64 {
 	r, g, b, a := value.RGBA()
 	if a == 0 {
@@ -443,16 +387,18 @@ func flattenOnWhite(src image.Image) *image.RGBA {
 	return dst
 }
 
-func prepareOCRSource(imgBytes []byte, src image.Image, config OCRScanConfig) (image.Image, error) {
+// prepareScanSource applies the shared orientation, guide-crop and content-trim
+// pipeline, then bounds the long side to maxDimension.
+func prepareScanSource(imgBytes []byte, src image.Image, config ImagePrepareConfig, maxDimension int) (image.Image, error) {
 	src = applyEXIFOrientation(imgBytes, src)
 	if config.GuideCrop != nil {
 		cropped, err := cropNormalized(src, *config.GuideCrop)
 		if err != nil {
-			return nil, fmt.Errorf("apply OCR guide crop: %w", err)
+			return nil, fmt.Errorf("apply guide crop: %w", err)
 		}
 		src = cropped
 	}
-	src = resizeToMaxDimension(src, 1800)
+	src = resizeToMaxDimension(src, maxDimension)
 	return cropToContentEdges(src), nil
 }
 
@@ -468,4 +414,14 @@ func resizeToMaxDimension(src image.Image, maximum int) image.Image {
 		max(1, int(math.Round(float64(bounds.Dy())*scale))),
 		transform.Lanczos,
 	)
+}
+
+// encodeScanJPEG writes an opaque JPEG. The vision encoder needs the original
+// gradients, so nothing is binarized here.
+func encodeScanJPEG(src image.Image) ([]byte, error) {
+	buffer := new(bytes.Buffer)
+	if err := jpeg.Encode(buffer, flattenOnWhite(src), &jpeg.Options{Quality: 95}); err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
 }

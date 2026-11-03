@@ -22,7 +22,9 @@ package service
 
 import (
 	"context"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,6 +39,13 @@ type ClaudeDetector interface {
 	PromptCachingEnabled() bool
 }
 
+// MultiImageClaudeDetector is optionally implemented by detectors that can
+// analyze magnified crops of the same card in one request. When a detector does
+// not implement it the pipeline falls back to the single full-card image.
+type MultiImageClaudeDetector interface {
+	DetectImages(ctx context.Context, images [][]byte, gameHint, langHint string) (*claudedetect.DetectedCardInfo, error)
+}
+
 // detectClaude runs Claude vision card detection, replacing legacy detections.
 func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionRequest, scoped bool, totalStart time.Time) (*DetectionResult, error) {
 	result := &DetectionResult{Status: DetectionStatusUnknown}
@@ -47,10 +56,32 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 	langHint := ""
 	if scoped {
 		gameHint = string(request.Scope.TCG)
-		langHint = string(request.Scope.Language)
+		langHint = claudeLanguageHint(request.Scope.Language)
 	}
 
-	info, err := p.Claude.Detect(ctx, request.Image, gameHint, langHint)
+	// The full card plus magnified title and bottom-information strips. The strips
+	// are what make kana (ピ vs ビ) and collector numbers reliable.
+	images, err := claudeImageVariants(ctx, request.Image)
+	if err != nil {
+		finish(err)
+		result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{
+			Name: "image_preparation", Error: err,
+		})
+		return nil, err
+	}
+	full := images[0]
+	var info *claudedetect.DetectedCardInfo
+	if multi, ok := p.Claude.(MultiImageClaudeDetector); ok && len(images) > 1 {
+		info, err = multi.DetectImages(ctx, images, gameHint, langHint)
+		if err != nil && ctx.Err() == nil {
+			// The crops are an enhancement: never let an oversized or rejected
+			// enhancement payload turn a readable card into a failed scan.
+			ScanLogger(ctx).Warn("Claude magnified crops rejected; retrying the full card only")
+			info, err = p.Claude.Detect(ctx, full, gameHint, langHint)
+		}
+	} else {
+		info, err = p.Claude.Detect(ctx, full, gameHint, langHint)
+	}
 	finish(err)
 
 	result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{
@@ -87,12 +118,39 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 	ScanLogger(ctx).Info("Claude detection complete",
 		"status", result.Status,
 		"model", info.ModelUsed,
+		"images", len(images),
+		"game_hint", gameHint,
+		"language_hint", langHint,
 		"cache_read_tokens", info.CacheReadTokens,
 		"cache_created_tokens", info.CacheCreationTokens,
 		"top_match", result.BestMatchName(),
 		"confidence", result.BestMatchConfidence())
 
 	return result, nil
+}
+
+// claudeLanguageHint names the selected language instead of passing a bare ISO
+// code, so the model cannot mistake "ja" for a set code or ignore it.
+func claudeLanguageHint(language models.Language) string {
+	if language == models.LanguageAny || !language.Valid() {
+		return ""
+	}
+	names := map[models.Language]string{
+		models.LanguageEnglish:            "English",
+		models.LanguageJapanese:           "Japanese",
+		models.LanguageGerman:             "German",
+		models.LanguageFrench:             "French",
+		models.LanguageSpanish:            "Spanish",
+		models.LanguageItalian:            "Italian",
+		models.LanguageChineseSimplified:  "Simplified Chinese",
+		models.LanguageChineseTraditional: "Traditional Chinese",
+		models.LanguageKorean:             "Korean",
+	}
+	name := names[language]
+	if name == "" {
+		return string(language)
+	}
+	return name + " (" + string(language) + ", " + language.ISO639Code() + ")"
 }
 
 func formatClaudeText(info *claudedetect.DetectedCardInfo) string {
@@ -126,7 +184,11 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 
 	var candidates []scoredMatch
 	normClaudeName := normalizeMatchText(info.Name)
+	compactClaudeName := compactMatchText(normClaudeName)
+	foldedClaudeName := foldVoicing(normClaudeName)
 	claudeCollector := normalizeCollectorNum(info.CollectorNumber)
+	claudeCollectorBase := collectorBaseKey(claudeCollector)
+	claudeCollectorCanonical := collectorCanonicalKey(info.CollectorNumber)
 	claudeSet := normalizeMatchText(info.Set)
 	claudeSetCode := normalizeMatchText(info.SetCode)
 
@@ -137,15 +199,39 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 
 		cardNormName := normalizeMatchText(card.Name)
 		cardCollector := normalizeCollectorNum(card.CollectorNumber)
+		cardCollectorBase := collectorBaseKey(cardCollector)
+		cardCollectorCanonical := collectorCanonicalKey(card.CollectorNumber)
 		cardSet := normalizeMatchText(card.Set)
 		cardSetCode := normalizeMatchText(card.SetCode)
 
-		// Name matching (check primary and localized names)
-		nameMatched := cardNormName == normClaudeName
+		// Name matching (check primary and localized names). Whitespace is not
+		// meaning: Japanese card names are printed without the spaces the
+		// catalog uses ("かがやくヒスイオオニューラ" vs "かがやくヒスイ オオニューラ").
+		nameMatched := cardNormName == normClaudeName ||
+			(compactClaudeName != "" && compactMatchText(cardNormName) == compactClaudeName)
 		if !nameMatched {
 			for _, loc := range card.LocalizedNames {
-				if normalizeMatchText(loc) == normClaudeName {
+				normalizedLocalized := normalizeMatchText(loc)
+				if normalizedLocalized == normClaudeName ||
+					(compactClaudeName != "" && compactMatchText(normalizedLocalized) == compactClaudeName) {
 					nameMatched = true
+					break
+				}
+			}
+		}
+
+		// Voicing-folded name matching. A single dakuten/handakuten is the most
+		// common vision error in Japanese names (ピジョット read as ビジョット),
+		// so the folded form still finds the card family. It is evidence for
+		// review, never proof, because two real cards can differ by that mark.
+		foldedNameMatched := false
+		if !nameMatched && foldedClaudeName != "" && foldVoicing(cardNormName) == foldedClaudeName {
+			foldedNameMatched = true
+		}
+		if !nameMatched && !foldedNameMatched {
+			for _, loc := range card.LocalizedNames {
+				if foldedClaudeName != "" && foldVoicing(normalizeMatchText(loc)) == foldedClaudeName {
+					foldedNameMatched = true
 					break
 				}
 			}
@@ -153,9 +239,12 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 
 		// Partial / substring name matching
 		partialName := false
-		if !nameMatched && normClaudeName != "" && cardNormName != "" {
-			if strings.Contains(cardNormName, normClaudeName) || strings.Contains(normClaudeName, cardNormName) {
-				partialName = true
+		if !nameMatched && compactClaudeName != "" {
+			compactCardName := compactMatchText(cardNormName)
+			if compactCardName != "" {
+				if strings.Contains(compactCardName, compactClaudeName) || strings.Contains(compactClaudeName, compactCardName) {
+					partialName = true
+				}
 			}
 		}
 
@@ -194,16 +283,31 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				// Neither has fraction: compare keys (strips leading zeroes)
 				if (k1 != "" && k1 == k2) || claudeCollector == cardCollector {
 					collectorMatched = true
+				} else if claudeCollectorCanonical != "" && claudeCollectorCanonical == cardCollectorCanonical {
+					collectorMatched = true
+				} else if claudeCollectorBase != "" && claudeCollectorBase == cardCollectorBase {
+					// Magic prints the same number with a variant suffix
+					// (254p / 254s): the base number still identifies the card,
+					// but not the printing, so it is partial evidence.
+					partialCollector = true
 				}
 			}
 		}
 
-		// Set / SetCode matching
-		setMatched := false
+		// Set / SetCode matching. Exact equality is the only form strong enough
+		// to identify a card without name evidence: generic set names are
+		// substrings of many products ("Commander Legends" is inside
+		// "Commander Legends: Battle for Baldur's Gate"), so substring matches
+		// must not lift an unrelated card over the real one.
+		setMatchedExact := false
 		if claudeSetCode != "" && cardSetCode != "" && claudeSetCode == cardSetCode {
-			setMatched = true
-		} else if claudeSet != "" && cardSet != "" {
-			if claudeSet == cardSet || strings.Contains(cardSet, claudeSet) || strings.Contains(claudeSet, cardSet) {
+			setMatchedExact = true
+		} else if claudeSet != "" && cardSet != "" && claudeSet == cardSet {
+			setMatchedExact = true
+		}
+		setMatched := setMatchedExact
+		if !setMatched && claudeSet != "" && cardSet != "" {
+			if strings.Contains(cardSet, claudeSet) || strings.Contains(claudeSet, cardSet) {
 				setMatched = true
 			}
 		}
@@ -230,17 +334,34 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		} else if nameMatched && setMatched {
 			score = 92.0
 			needsReview = false
-		} else if collectorMatched && setMatched {
+		} else if foldedNameMatched && collectorMatched && setMatched {
+			// The catalogue confirms the print run, but the name differs by a
+			// voicing mark: offer it as the leading candidate for review.
+			score = 90.0
+			needsReview = true
+		} else if collectorMatched && setMatchedExact {
+			// Number and set agree but the name gives no evidence (a different
+			// language, or an unclear title): offer it for review, never as a
+			// confirmed match.
 			score = 88.0
+			needsReview = true
+		} else if foldedNameMatched && collectorMatched {
+			score = 84.0
 			needsReview = true
 		} else if nameMatched {
 			score = 75.0
+			needsReview = true
+		} else if foldedNameMatched && setMatched {
+			score = 82.0
 			needsReview = true
 		} else if partialName && collectorMatched {
 			score = 85.0
 			needsReview = true
 		} else if partialName && setMatched {
 			score = 70.0
+			needsReview = true
+		} else if foldedNameMatched {
+			score = 74.0
 			needsReview = true
 		} else if collectorMatched {
 			score = 65.0
@@ -263,15 +384,36 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		})
 	}
 
-	// Sort by confidence descending
+	// Sort by confidence descending. Ties are broken deterministically, and the
+	// plain printing wins over an alt-art row: One Piece stores the same name and
+	// collector number on the base card and on every `_pN`/`_rN` reprint, so
+	// without this the awarded row would depend on database heap order.
 	sort.SliceStable(candidates, func(i, j int) bool {
-		return candidates[i].confidence > candidates[j].confidence
+		if candidates[i].confidence != candidates[j].confidence {
+			return candidates[i].confidence > candidates[j].confidence
+		}
+		baseI, baseJ := isBasePrinting(candidates[i].card), isBasePrinting(candidates[j].card)
+		if baseI != baseJ {
+			return baseI
+		}
+		return candidates[i].card.ID < candidates[j].card.ID
 	})
 
-	// Mark ties within 5 points for review
-	if len(candidates) >= 2 && (candidates[0].confidence-candidates[1].confidence) <= 5.0 {
-		candidates[0].needsReview = true
-		candidates[1].needsReview = true
+	// Mark ties within 5 points for review, but only when the tie is between
+	// different cards. Alt-art rows of the same card share name and number; two
+	// rows of one card are not an ambiguity the user must resolve.
+	if len(candidates) >= 2 {
+		topKey := logicalCardKey(candidates[0].card)
+		for i := 1; i < len(candidates); i++ {
+			if candidates[0].confidence-candidates[i].confidence > 5.0 {
+				break
+			}
+			if logicalCardKey(candidates[i].card) != topKey {
+				candidates[0].needsReview = true
+				candidates[i].needsReview = true
+				break
+			}
+		}
 	}
 
 	maxTop := 5
@@ -344,4 +486,74 @@ func extractNumerator(s string) string {
 		return strings.TrimSpace(s[:idx])
 	}
 	return s
+}
+
+var (
+	collectorVariantSuffixPattern = regexp.MustCompile(`^([a-z]{0,3})([0-9]{1,4})[a-z]$`)
+	altArtSourceIDPattern         = regexp.MustCompile(`(?i)_[pr][0-9]+$`)
+	collectorSeparatorPattern     = regexp.MustCompile(`[^a-z0-9]+`)
+)
+
+// collectorCanonicalKey makes the printed number comparable across the shapes
+// the model and the catalog use: `TAEV-EN027`, `TAEV EN27`, `taev_en027` and
+// `TAEV-EN27` all reduce to the same key. Yu-Gi-Oh and One Piece numbers carry
+// a set prefix, so the old `[a-z]{0,3}[0-9]+` parser returned no key at all for
+// them and only an exact byte match counted.
+func collectorCanonicalKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimPrefix(value, "#")
+	value = strings.ReplaceAll(value, "no.", "")
+	value = collectorSeparatorPattern.ReplaceAllString(value, "-")
+	value = strings.Trim(value, "-")
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(value, "-")
+	last := parts[len(parts)-1]
+	digitStart := len(last)
+	for digitStart > 0 && last[digitStart-1] >= '0' && last[digitStart-1] <= '9' {
+		digitStart--
+	}
+	if digitStart < len(last) {
+		number, err := strconv.Atoi(last[digitStart:])
+		if err == nil {
+			parts[len(parts)-1] = last[:digitStart] + strconv.Itoa(number)
+		}
+	}
+	return strings.Join(parts, "-")
+}
+
+// collectorBaseKey is the collector number without the single-letter variant
+// suffix Magic uses for alternate printings (`254p`, `254s`). It still keeps the
+// numeric identity of the card, so a scan that reads only "254" can match it as
+// partial evidence instead of finding no candidate at all.
+func collectorBaseKey(value string) string {
+	if key := collectorNumberKey(value); key != "" {
+		return key
+	}
+	match := collectorVariantSuffixPattern.FindStringSubmatch(strings.ToLower(strings.TrimSpace(value)))
+	if match == nil {
+		return ""
+	}
+	number, err := strconv.Atoi(match[2])
+	if err != nil {
+		return ""
+	}
+	return match[1] + strconv.Itoa(number)
+}
+
+// isBasePrinting prefers the plain catalog row over an alt-art/reprint row.
+func isBasePrinting(card models.Card) bool {
+	return card.SourceCardID == "" || !altArtSourceIDPattern.MatchString(card.SourceCardID)
+}
+
+// logicalCardKey identifies one card across its printings: reprints share name
+// and collector number but differ in artwork, price and catalog row.
+func logicalCardKey(card models.Card) string {
+	return normalizeMatchText(card.Name) + "\x00" + normalizeCollectorNum(card.CollectorNumber)
+}
+
+// compactMatchText removes the spaces normalizeMatchText leaves behind.
+func compactMatchText(value string) string {
+	return strings.ReplaceAll(value, " ", "")
 }

@@ -60,9 +60,9 @@ type Config struct {
 		SessionKey string `env:"SESSION_KEY" env-required:"true"`
 	} `yaml:"auth"`
 	Scan struct {
-		PhashHighConf  int `env:"SCAN_PHASH_HIGH_CONF" env-default:"5"`  // SCAN-02: Strict pHash threshold
-		PhashPotential int `env:"SCAN_PHASH_POTENTIAL" env-default:"10"` // SCAN-02: Relaxed pHash threshold
-		OCRPoolSize    int `env:"SCAN_OCR_POOL_SIZE" env-default:"3"`    // SCAN-03: Number of concurrent Tesseract clients
+		PhashHighConf  int `env:"SCAN_PHASH_HIGH_CONF" env-default:"5"`      // SCAN-02: Strict pHash threshold
+		PhashPotential int `env:"SCAN_PHASH_POTENTIAL" env-default:"10"`     // SCAN-02: Relaxed pHash threshold
+		MaxConcurrent  int `env:"SCAN_MAX_CONCURRENT" env-default:"3"`       // Concurrent detector requests per instance
 		TimeoutSeconds int `env:"SCAN_TIMEOUT_SECONDS" env-default:"75"`
 	} `yaml:"scan"`
 	Claude struct {
@@ -73,13 +73,6 @@ type Config struct {
 		TimeoutSeconds int    `env:"CLAUDE_TIMEOUT_SECONDS" env-default:"30"`
 		PromptCaching  bool   `env:"CLAUDE_PROMPT_CACHING" env-default:"true"`
 	} `yaml:"claude"`
-	VisionOCR struct {
-		Enabled        bool   `env:"SCAN_VISION_OCR_ENABLED" env-default:"false"`
-		BaseURL        string `env:"SCAN_VISION_OCR_URL" env-default:"http://localhost:11434"`
-		Model          string `env:"SCAN_VISION_OCR_MODEL" env-default:"qwen3.5:2b"`
-		TimeoutSeconds int    `env:"SCAN_VISION_OCR_TIMEOUT_SECONDS" env-default:"45"`
-		Threads        int    `env:"SCAN_VISION_OCR_THREADS" env-default:"4"`
-	} `yaml:"vision_ocr"`
 	Catalog struct {
 		Enabled             bool   `env:"CATALOG_ENABLED" env-default:"true"`
 		LegacyMetadataSync  bool   `env:"LEGACY_METADATA_SYNC_ENABLED" env-default:"false"`

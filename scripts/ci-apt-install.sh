@@ -7,7 +7,7 @@ if (( $# == 0 )); then
 fi
 
 # CI needs Ubuntu packages only. Unrelated runner repositories (for example
-# Chrome) must not block Tesseract installation during a repository sync outage.
+# Chrome) must not block package installation during a repository sync outage.
 # Keep the runner's signed Ubuntu sources and all APT integrity checks intact.
 ubuntu_sources=/etc/apt/sources.list.d/ubuntu.sources
 if [[ ! -s "$ubuntu_sources" ]]; then

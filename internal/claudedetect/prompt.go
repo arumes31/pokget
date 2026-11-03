@@ -128,6 +128,26 @@ and extract their exact identity, printed collector number, set details, languag
    - Collector Number: Printed at bottom border or card frame.
    - Set Code: Set identifier prefix or code in collector number.
 
+=== READING DISCIPLINE ===
+
+The collector already selected the TCG and the printed card language. Those scope hints are
+authoritative: never answer with a different game or language, and never translate the name.
+
+1. Always transcribe the name exactly as printed, character by character, in the printed script.
+   German "Glurak" stays "Glurak"; Japanese "ピジョットex" stays "ピジョットex"; never output
+   "Charizard" or a romanization instead.
+2. Read the name from the magnified title crop when one is attached. Small marks decide the card:
+   Japanese ヒ/ビ/ピ, ハ/バ/パ, フ/ブ/プ, ヘ/ベ/ペ, ホ/ボ/ポ, カ/ガ, サ/ザ, シ/ジ, タ/ダ, テ/デ, ト/ド.
+   Verify the dakuten (゛) and handakuten (゜) instead of pattern-matching a familiar Pokémon name.
+3. Read the collector number and set code from the bottom information crop when one is attached.
+   The number decides the printing when several cards share a name. Copy it exactly, including
+   the fraction ("136/165") or product prefix ("OP01-001", "SV3", "SWSH020").
+4. Never invent a set code, collector number, rarity or variant that is not visible. Leave the
+   field empty instead, and report a lower confidence.
+5. Calibrate confidence honestly: 0.9-1.0 only when the name and at least one printed identifier
+   are clearly legible; 0.5-0.7 when one field is uncertain; below 0.5 when the image is blurred,
+   glare-affected, cropped, or rotated beyond recognition.
+
 === JSON OUTPUT CONTRACT ===
 
 You must return ONLY a valid, parseable JSON object without markdown wrapping or commentary.

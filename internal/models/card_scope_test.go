@@ -49,7 +49,7 @@ func TestParseTCG(t *testing.T) {
 	}
 }
 
-func TestParseLanguageAndTesseractCode(t *testing.T) {
+func TestParseLanguageAndISOCode(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]Language{
@@ -75,8 +75,8 @@ func TestParseLanguageAndTesseractCode(t *testing.T) {
 		if got != want {
 			t.Errorf("ParseLanguage(%q) = %q, want %q", input, got, want)
 		}
-		if got.TesseractCode() == "" {
-			t.Errorf("TesseractCode(%q) is empty", got)
+		if got.ISO639Code() == "" {
+			t.Errorf("ISO639Code(%q) is empty", got)
 		}
 	}
 
@@ -95,8 +95,8 @@ func TestParseLanguageAutoDetect(t *testing.T) {
 			t.Errorf("ParseLanguage(%q) = %q, want %q", input, language, LanguageAny)
 		}
 	}
-	if got := LanguageAny.TesseractCode(); got != "eng+jpn+deu+fra+chi_sim+chi_tra+kor+spa" {
-		t.Errorf("LanguageAny.TesseractCode() = %q", got)
+	if got := LanguageAny.ISO639Code(); got != "" {
+		t.Errorf("LanguageAny.ISO639Code() = %q, want empty", got)
 	}
 	if !LanguageAny.Matches("jpn") || !LanguageAny.Matches("de") || !LanguageAny.Matches("es") {
 		t.Error("LanguageAny must match every supported catalog language")

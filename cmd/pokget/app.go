@@ -73,8 +73,6 @@ func initServices(cfg *config.Config, database *sql.DB, fingerprintIndexDirty *a
 	// SCAN-02: Apply configurable pHash thresholds from config
 	fingerprintSvc.PhashHighConf = cfg.Scan.PhashHighConf
 	fingerprintSvc.PhashPotential = cfg.Scan.PhashPotential
-	// SCAN-03: Set OCR pool size from config
-	service.OCRPoolSize = cfg.Scan.OCRPoolSize
 	services.fingerprintSvc = fingerprintSvc
 	services.auditSvc = service.NewAuditService(database)
 

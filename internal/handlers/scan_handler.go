@@ -11,14 +11,11 @@ import (
 
 const maxScanRequestBytes int64 = 10 << 20
 
-// APIScan accepts a bounded device transcription or validates the upload
-// envelope before the image detector allocates multipart/image buffers.
+// APIScan accepts a bounded card image upload and validates the envelope before
+// the image detector allocates multipart/image buffers.
 func (h *Handler) APIScan(writer http.ResponseWriter, request *http.Request) {
 	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
 	input := "invalid"
-	if err == nil && mediaType == "application/json" {
-		input = "device_text"
-	}
 	if err == nil && mediaType == "multipart/form-data" {
 		input = "server_image"
 	}
@@ -27,10 +24,6 @@ func (h *Handler) APIScan(writer http.ResponseWriter, request *http.Request) {
 	writer, request = loggedWriter, loggedRequest
 	if request.ContentLength > maxScanRequestBytes {
 		http.Error(writer, "Card image is too large", http.StatusRequestEntityTooLarge)
-		return
-	}
-	if err == nil && mediaType == "application/json" {
-		h.executeTextScan(writer, request)
 		return
 	}
 	if err != nil || mediaType != "multipart/form-data" {
@@ -45,9 +38,7 @@ func (h *Handler) APIScan(writer http.ResponseWriter, request *http.Request) {
 func writeDetectionError(writer http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	message := "Detection failed"
-	var inputError *service.OCRInputError
-	var unavailableError *service.OCRUnavailableError
-	var allPassesError *service.OCRAllPassesFailedError
+	var inputError *service.ImageInputError
 	switch {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		status = http.StatusRequestTimeout
@@ -55,15 +46,12 @@ func writeDetectionError(writer http.ResponseWriter, err error) {
 	case errors.Is(err, service.ErrNoEligibleCards):
 		status = http.StatusUnprocessableEntity
 		message = "No cards are available for the selected TCG and language"
+	case errors.Is(err, service.ErrDetectionUnavailable):
+		status = http.StatusServiceUnavailable
+		message = "Card recognition is not configured on this server"
 	case errors.Is(err, service.ErrInvalidDetectionRequest), errors.As(err, &inputError):
 		status = http.StatusBadRequest
 		message = "Invalid scan request"
-	case errors.As(err, &unavailableError):
-		status = http.StatusServiceUnavailable
-		message = "OCR is temporarily unavailable"
-	case errors.As(err, &allPassesError):
-		status = http.StatusUnprocessableEntity
-		message = "The card image could not be read"
 	}
 	http.Error(writer, message, status)
 }

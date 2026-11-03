@@ -19,7 +19,6 @@ const PRECACHE_URLS = [
   '/static/js/vault.js',
   '/static/js/dialogs.js',
   '/static/js/scanner.js',
-  '/static/js/device-ocr.js',
   '/static/js/measure.js',
   '/static/css/measure.css',
   '/static/img/logo-128.webp',

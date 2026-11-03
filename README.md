@@ -41,7 +41,7 @@ Run `npm run test:translations` to check translation behavior and coverage. Thes
 ### 👁️ Computer Vision & Recognition
 *   **Claude AI Vision Engine**: High-accuracy multimodal recognition powered by Anthropic's Claude API (`claude-sonnet-5-5` or `claude-opus-5-5`) with ephemeral prompt caching. Directly identifies card title, set, collector number, and variant from the camera crop, matching against the catalog with zero client OCR overhead and synthetic fallback for uncatalogued cards.
 *   **Full-Screen Mobile Matrix HUD**: An edge-to-edge camera viewfinder engineered for single-screen mobile use. The video stream spans the entire viewport behind high-contrast glassmorphic controls and a persistent, accessible bottom navigation bar.
-*   **Offline / Legacy Recognition Pipeline**: When Claude is not configured, Pokget falls back to local Tesseract OCR with intelligent preprocessing (grayscale, high contrast, sharpening), perceptual visual hashing (`goimagehash` pHash), and optional local LLM disambiguation (Ollama).
+*   **Offline Recognition**: Removed. Card recognition runs only on the server through the Claude detector; a deployment without it rejects scans instead of guessing a card.
 
 ### Card centering measurement
 
@@ -155,18 +155,14 @@ still requires review. Collector numbers match complete tokens, and photo
 fingerprints honor EXIF orientation and the selected card crop. Confidence is
 an evidence score, not a measured probability of correctness.
 
-On a Linux build with Tesseract installed, run the generated-image integration
-checks (including same-art printing disambiguation) with:
-
-```bash
-go test -tags=ocrintegration -run '^TestTesseract' -timeout=3m ./internal/service
-```
+Scanner recognition is server-side only; there is no local OCR integration
+suite anymore.
 
 ### Verification gates
 
-Pull requests run bounded unit and race-detector shards, real Linux Tesseract
-OCR, rendered mobile and service-worker lifecycle tests, static asset tests,
-and a production-container smoke test. The container gate starts PostgreSQL on
+Pull requests run bounded unit and race-detector shards, rendered mobile and
+service-worker lifecycle tests, static asset tests, and a production-container
+smoke test. The container gate starts PostgreSQL on
 an isolated network, applies every migration, checks the application health and
 runtime dependencies, then verifies a complete dump/restore into a second
 database. Historical migrations that cannot be reversed without data loss are
@@ -182,7 +178,7 @@ docker build -t pokget:verification .
 bash scripts/container-smoke.sh pokget:verification
 ```
 
-The Ubuntu 24.04 CI jobs install Tesseract through
+The Ubuntu 24.04 CI jobs install system packages through
 `scripts/ci-apt-install.sh`. It uses only the runner's signed Ubuntu sources, so
 an unrelated Chrome repository outage cannot block Go checks. Ubuntu index or
 package failures still fail the job; signature/hash verification is not disabled.
@@ -229,9 +225,9 @@ the source file uses a named Ollama volume, while the GHCR file uses `./data/oll
 
 ### 🔨 Manual Setup
 
-Install Go 1.27.1+, Node.js 26, a C/C++ compiler, Tesseract runtime/development
-libraries, Leptonica, `pkg-config`, and the seven OCR language packs. PostgreSQL
-must be reachable; Chromium is needed for browser tests and headless scraping.
+Install Go 1.27.3+ and Node.js 26. No C/C++ compiler, Tesseract or Leptonica is
+required: the server builds with `CGO_ENABLED=0`. PostgreSQL must be reachable;
+Chromium is needed for browser tests and headless scraping.
 Build the bundled static assets with `npm ci --ignore-scripts` followed by
 `npm run build:static`.
 
@@ -341,110 +337,12 @@ and at most half the remaining scan budget. If it times out, completed local
 matches remain available for review instead of being discarded.
 
 Ollama defaults to 128 output tokens so canonical printing IDs fit in structured
-responses. Compose sets `OMP_THREAD_LIMIT=1` for Tesseract; the application already
-pools OCR clients for concurrent scans. This bounds native OCR threading and
-reduced recognition time in the local card-image tests. The setting is configurable;
-see the [Tesseract threading documentation](https://tesseract-ocr.github.io/tessdoc/FAQ.html#can-i-increase-speed-of-ocr).
+responses. Card-name suggestions use the local text model; scan recognition does
+not wait for it.
 
-### Optional CPU card OCR with Qwen3.5 2B
-
-`qwen3.5:2b` replaces the unsuccessful GLM-OCR pilot as the default model for this
-separate **image OCR** stage. It does not replace the text-only `OLLAMA_MODEL`
-fallback above. The stage remains disabled by default and always requires review
-for model-selected cards. It asks for the visible card name and complete collector
-number in the original language, not a full transcript or a guessed catalog ID.
-
-The 2026-09-08/09 CPU pilot used Ollama 0.32.3, Q8_0 weights (about 2.7 GB),
-four CPU threads and no GPU. With the focused prompt, all three real-card PNGs
-contained the correct name and collector number (32–36 seconds per image), as
-did all seven synthetic language samples. Some responses included extra text.
-Full-transcription prompts timed out; the smaller 0.8B model misread collector
-numbers, and Qwen3-VL 2B Q4_K_M failed accuracy/latency checks. These are small
-pilot results, not proof of perfect multilingual or end-to-end printing accuracy.
-
-The production Go client also accepted all ten JPEG-quality-95 pilot inputs with
-the correct name and number: real cards took 33.7–44.4 seconds (Furret included a
-cold model load), and synthetic samples took 17.2–25.6 seconds. Only two synthetic
-responses exactly followed the requested two-field format; extra text and field
-ordering remain variable. This is a slow fallback, not a replacement for the
-local OCR/fingerprint first stage. Real photographs per language/game still need
-held-out validation before broad enablement.
-
-For an explicit trial with a build containing this integration, first pull the
-model into the Compose Ollama service:
-
-```sh
-docker compose up -d pokget_ollama
-docker compose exec pokget_ollama ollama pull qwen3.5:2b
-```
-
-Then set these variables in `.env` and rebuild/recreate the application:
-
-```env
-SCAN_VISION_OCR_ENABLED=true
-SCAN_VISION_OCR_URL=http://pokget_ollama:11434
-SCAN_VISION_OCR_MODEL=qwen3.5:2b
-SCAN_VISION_OCR_TIMEOUT_SECONDS=45
-SCAN_VISION_OCR_THREADS=4
-```
-
-```sh
-docker compose up -d --build pokget_app
-```
-
-Native, non-Compose applications default to `http://localhost:11434`. Configure
-only a trusted Ollama endpoint: it receives the cropped scan image. Startup does
-not download models or change the existing text model. Set
-`SCAN_VISION_OCR_ENABLED=false` and recreate the app to turn the stage off.
-
-If upgrading from the GLM experiment, replace any explicit
-`SCAN_VISION_OCR_MODEL=glm-ocr:q8_0` override; environment overrides take precedence
-over the new default. The old GLM-specific `Text Recognition:` protocol is no
-longer used. Updating source defaults does not change an already running app.
-
-The stage uses [Ollama native chat](https://docs.ollama.com/api/chat) with one image
-message, `think=false`, normalized JPEG images, `num_gpu=0`, and one in-flight
-request per application instance. Sampling follows the
-[Qwen3.5 non-thinking vision settings](https://huggingface.co/Qwen/Qwen3.5-2B)
-with a fixed seed and a 512-token output limit. Busy instances fail fast; requests are limited
-to 45 seconds (configurable downwards and shortened for the scan deadline).
-Model loading and host contention consume this same budget: cold requests can
-approach the limit, and a shorter remaining scan deadline can cause abstention.
-It runs only for scoped scans without strong local printing evidence when local
-scores are low or nearby printings are ambiguous. Local OCR/fingerprints remain
-the first stage and the fallback on model failure.
-
-Only complete `done=true`, `done_reason=stop` responses are accepted. Truncation,
-repetition, invalid/oversized responses, redirects and provider failures produce
-a `vision_ocr` stage error, not a guessed card. Text must match an exact catalog
-name or localized alias plus strong collector evidence for **one** eligible
-printing. Model-selected suggestions are capped below automatic acceptance and
-always require review; they never become deterministic printing evidence or get
-counted a second time by the text LLM.
-
-Language scope remains the user's selection: English, German, French, Japanese,
-Korean, simplified Chinese or traditional Chinese. `any` searches those catalog
-languages but does not guess between otherwise identical printings. Matching
-requires active catalog records and localized aliases; adding a language also
-requires catalog coverage, an installed Tesseract language pack and real-image
-validation. Unicode unit tests alone do not establish OCR accuracy.
-
-Regression tests cover all seven language scopes, inactive/wrong-game records,
-ambiguous identifiers, fingerprint conflicts, mandatory review, malformed or
-repetitive model output, cancellation, concurrency and fallback timeouts:
-
-```sh
-go test -race ./internal/visionocr
-go test ./internal/service -run TestVisionOCR
-go test ./internal/config ./cmd/pokget
-```
-
-Service/application tests require the project's CGO/Tesseract build environment.
-Before enabling broadly, compare local-only and hybrid scans on a held-out corpus
-of real cards **per language and game**, including variants, glare, blur and
-rotation. Record exact printing accuracy, false automatic matches, abstentions,
-completion failures, review rate and p50/p95 latency. Do not relax completion or
-review guards merely to increase the reported match rate.
+Scanner recognition happens only on the server. The earlier browser OCR,
+native Tesseract fallback and Ollama image-OCR stage were removed: a deployment
+without the Claude detector rejects scans instead of guessing a card.
 
 ---
 

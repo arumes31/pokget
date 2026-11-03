@@ -11,22 +11,19 @@ accidentally. The session key also derives the application's encryption key.
 | Stage | Runs on | Default / activation | Data sent to server/provider |
 | --- | --- | --- | --- |
 | **Claude AI Vision Detector** | Anthropic Claude API (`claude-sonnet-5-5` / `claude-opus-5-5` / `claude-haiku-5-5`) | `CLAUDE_ENABLED=true` (Requires `CLAUDE_API_KEY`; default `false`); uses Anthropic Prompt Caching | Card image to Anthropic API |
-| Device text OCR | Browser CPU, Tesseract WASM | Scanner's “Read text on this device” option | OCR text to Pokget when successful |
-| Image OCR and fingerprints | Pokget CPU, native Tesseract | Fallback when Claude is disabled, errors, or returns no match | Prepared image to Pokget |
-| Local text selector | Ollama CPU, `qwen2.5:1.5b` | `OLLAMA_MODEL`; optional ambiguity resolution | OCR text and bounded shortlist to Ollama |
-| Optional image OCR | Ollama CPU, `qwen3.5:2b` Q8_0 | `SCAN_VISION_OCR_ENABLED=true`; default false | Prepared image to the configured OCR endpoint |
+| Local text selector | Ollama CPU, `qwen2.5:1.5b` | `OLLAMA_MODEL`; card-name suggestions only | Text and bounded shortlist to Ollama |
 
-Device OCR has a 20-second budget and loads one selected language. Auto detect,
-unsupported browsers, weak OCR or no catalog candidate can fall back to uploading
-the image. Ambiguous device results instead offer an explicit server-image retry.
-Device-text and model-selected image results require review. No language/model
-setting removes that requirement or guarantees an exact physical printing.
+The phone never runs OCR: the cropped image is always uploaded, and only the
+server performs recognition. Card recognition requires the Claude detector; a
+server without it answers scans with a clear configuration error instead of
+guessing. A model-selected image result requires review. No
+language/model setting removes that requirement or guarantees an exact physical
+printing.
 
 An optional primary provider configured by `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API`,
-and `LLM_MAX_TOKENS` can receive scan images and approved reference artwork.
-Leave `LLM_BASE_URL` empty for local-only model use. The local device-text selector
-does not call this primary provider. See the README's provider section for retry
-and cancellation behavior.
+and `LLM_MAX_TOKENS` receives card-name suggestion prompts only. Leave
+`LLM_BASE_URL` empty for local-only text suggestions. See the README's provider
+section for retry and cancellation behavior.
 
 ### Claude AI Card Detection & Prompt Caching
 
@@ -82,11 +79,11 @@ Linux bind mounts. Do not solve permission errors by running the app privileged.
 Switching Compose files does not migrate the model cache. Keep database backups,
 the session key, and any required stored assets together. `docker compose down -v`
 removes named volumes, including the source stack's downloaded models; avoid it
-for routine upgrades. No database reset is needed to switch OCR models.
+for routine upgrades. No database reset is needed to change detection settings.
 
 ### Local-only text model
 
-Keep `LLM_BASE_URL=` and `SCAN_VISION_OCR_ENABLED=false`, then run:
+Keep `LLM_BASE_URL=` empty, then run:
 
 ```sh
 docker compose up -d pokget_ollama
@@ -95,45 +92,18 @@ docker compose up -d --build pokget_app
 ```
 
 The app also attempts background setup of its configured text model, but an
-explicit pull makes download errors visible before scanning. Image OCR models
-are not automatically downloaded. With the GHCR stack, add
-`-f docker-compose.ghcr.yml` to every command and use `pull`/`up -d` instead of
-`--build` when updating the app.
-
-### Enable Qwen image OCR or migrate from GLM
-
-Pull `qwen3.5:2b` in the same Ollama service. Set these values in `.env`:
-
-```env
-SCAN_VISION_OCR_ENABLED=true
-SCAN_VISION_OCR_URL=http://pokget_ollama:11434
-SCAN_VISION_OCR_MODEL=qwen3.5:2b
-SCAN_VISION_OCR_TIMEOUT_SECONDS=45
-SCAN_VISION_OCR_THREADS=4
-```
-
-Rebuild/recreate the application afterward. Replace an explicit old
-`glm-ocr:q8_0` override; changing the source default cannot override `.env`.
-Disable with `SCAN_VISION_OCR_ENABLED=false` and recreate the app; no model cache
-deletion is required. The text model remains `qwen2.5:1.5b` independently.
-
-Four threads and one in-flight request are the tested CPU baseline, not a host
-performance guarantee. The image pilot took roughly 34–44 seconds per real card.
-Cold loading can consume nearly the entire deadline. `OLLAMA_MAX_LOADED_MODELS=1`
-limits residency but switching text/image models can incur reloads. Increasing
-that setting uses more memory; benchmark before changing it. Request-level
-keep-alive settings can override the Ollama server's `OLLAMA_KEEP_ALIVE` default.
+explicit pull makes download errors visible before scanning. The text model only
+suggests card names; card recognition itself runs through the Claude detector.
+With the GHCR stack, add `-f docker-compose.ghcr.yml` to every command and use
+`pull`/`up -d` instead of `--build` when updating the app.
 
 ## Important controls
 
 | Variables | Default | Purpose / constraint |
 | --- | --- | --- |
-| `SCAN_TIMEOUT_SECONDS` | 75 | Detector queueing and local image-analysis budget |
-| `SCAN_OCR_POOL_SIZE` | 3 | Native OCR pool and scan concurrency limit |
-| `OMP_THREAD_LIMIT` | 1 in Compose | Native Tesseract OpenMP threads per operation |
+| `SCAN_TIMEOUT_SECONDS` | 75 | Detector queueing budget |
+| `SCAN_MAX_CONCURRENT` | 3 | Concurrent scan requests per instance |
 | `SCAN_PHASH_HIGH_CONF`, `SCAN_PHASH_POTENTIAL` | 5, 10 | Hash-distance thresholds; do not tune to hide bad matches |
-| `SCAN_VISION_OCR_TIMEOUT_SECONDS` | 45 | Valid 1–45; reduced by remaining scan budget |
-| `SCAN_VISION_OCR_THREADS` | 4 | Positive CPU thread count for image inference |
 | `OLLAMA_NUM_THREAD`, `OLLAMA_NUM_CTX`, `OLLAMA_NUM_PREDICT` | 4, 2048, 128 | Local text-model inference limits |
 | `OLLAMA_MAX_CANDIDATES`, `OLLAMA_MIN_EVIDENCE`, `OLLAMA_MIN_CONFIDENCE` | 20, 180, 0.55 | Text shortlist eligibility and response checks, not accuracy probabilities |
 | `OLLAMA_NUM_PARALLEL`, `OLLAMA_MAX_LOADED_MODELS` | 1, 1 | Ollama server concurrency/residency |
@@ -169,8 +139,7 @@ metacharacters. Set all required database values plus `SESSION_KEY`.
 For a native app connecting to the bundled Compose database, use
 `DB_HOST=localhost`, `DB_PORT=5433`; for a separately installed database use its
 actual port (often 5432). Use `DB_SSLMODE` appropriate to that server. Set
-`OLLAMA_HOST=http://localhost:11434` and
-`SCAN_VISION_OCR_URL=http://localhost:11434` for native local Ollama. Docker service
+`OLLAMA_HOST=http://localhost:11434` for native local Ollama. Docker service
 names such as `pokget_ollama` do not resolve outside the Compose network.
 `MIGRATIONS_PATH=migrations` is relative to the working directory.
 
@@ -179,10 +148,10 @@ names such as `pokget_ollama` do not resolve outside the Compose network.
 - **Login fails on local HTTP:** secure cookies are intentionally enabled. Use
   HTTPS, or explicitly disable secure cookies only in your local test environment.
 - **Phone camera unavailable:** use HTTPS on a trusted origin and grant camera
-  permission. Device OCR uses browser CPU/WASM, not native phone NPU acceleration.
-- **Browser OCR assets missing:** run `npm ci --ignore-scripts` and
-  `npm run build:static` for native development. The Dockerfile builds self-hosted
-  assets; no runtime OCR CDN is required.
+  permission. The phone only captures and crops; all recognition runs on the server.
+- **Missing detector:** set `CLAUDE_ENABLED=true` with a valid `CLAUDE_API_KEY`.
+  Without it scans return "Card recognition is not configured on this server"
+  instead of guessing a card.
 - **Model unavailable / timeout:** check the configured endpoint and
   `docker compose exec pokget_ollama ollama list`. Pull the exact configured tag.
   A timeout preserves local review candidates; it is not a successful model match.
@@ -193,11 +162,13 @@ names such as `pokget_ollama` do not resolve outside the Compose network.
 - **Database/Ollama exposure:** the Compose files publish PostgreSQL (5433) and
   Ollama (11434) on `127.0.0.1` only, for native tools on the same host. Do not
   widen these bindings; Ollama is not an authenticated API.
-- **Private scans:** successful device-text submissions omit the photo, but image
-  fallback uploads it. A configured remote primary or vision endpoint receives
-  its request data. Choose only trusted endpoints and keep API keys server-side.
+- **Private scans:** every scan uploads the cropped photo; nothing is recognized
+  on the device. A configured remote primary endpoint or the Claude detector
+  receives its request data. Choose only trusted endpoints and keep API keys
+  server-side.
 
 Run `DB_PASSWORD=placeholder docker compose --env-file example.env config --quiet`
 (and the GHCR variant) to validate syntax without printing resolved secrets. This does not validate
 credentials or start services. See [SECURITY.md](SECURITY.md) for reporting issues
-and [the phone OCR report](benchmarks/phone-ocr-20260909.md) for measured limitations.
+and [the phone scan report](benchmarks/phone-ocr-20260909.md) for historical
+server-side limitations.
