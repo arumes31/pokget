@@ -164,9 +164,10 @@ func (s *scryfallBulkSource) FetchPrices(ctx context.Context, emit func(BulkPric
 
 // tcgPlayerPriceCategories maps our game ids to TCGplayer categories that
 // TCGCSV mirrors with daily market prices.
+// Magic and Yu-Gi-Oh are missing on purpose: Scryfall and YGOPRODeck deliver both
+// currencies for the whole game, and re-downloading TCGplayer's Magic category
+// (90k products) only cost runtime.
 var tcgPlayerPriceCategories = map[string]int{
-	"magic":               1,
-	"yugioh":              2,
 	"pokemon":             3,
 	"vanguard":            16,
 	"force_of_will":       17,
