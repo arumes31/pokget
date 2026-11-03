@@ -88,15 +88,19 @@ func main() {
 	seed := flag.Int64("seed", 0, "sampling seed; 0 uses the current time")
 	timeout := flag.Duration("timeout", 90*time.Second, "timeout for one scan")
 	asJSON := flag.Bool("json", false, "emit JSON instead of text")
+	baseURL := flag.String("base-url", "", "scan through this live Pokget server URL instead of the in-process pipeline")
+	email := flag.String("email", os.Getenv("POKGET_EMAIL"), "account email for -base-url (env POKGET_EMAIL)")
+	password := flag.String("password", os.Getenv("POKGET_PASSWORD"), "account password for -base-url (env POKGET_PASSWORD)")
 	flag.Parse()
 
-	if err := run(*gameFlag, *languageFlag, *per, *seed, *timeout, *asJSON); err != nil {
+	live := liveConfig{BaseURL: *baseURL, Email: *email, Password: *password}
+	if err := run(*gameFlag, *languageFlag, *per, *seed, *timeout, *asJSON, live); err != nil {
 		fmt.Fprintln(os.Stderr, "scan_matrix:", err)
 		os.Exit(1)
 	}
 }
 
-func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Duration, asJSON bool) error {
+func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Duration, asJSON bool, live liveConfig) error {
 	if per < 1 {
 		return errors.New("per must be at least 1")
 	}
@@ -109,9 +113,18 @@ func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Durati
 	}
 	defer func() { _ = database.Close() }()
 
-	detector, err := newDetector(timeout)
-	if err != nil {
-		return err
+	var session *liveSession
+	var detector *claudedetect.Client
+	if live.BaseURL != "" {
+		session, err = newLiveSession(context.Background(), live)
+		if err != nil {
+			return err
+		}
+	} else {
+		detector, err = newDetector(timeout)
+		if err != nil {
+			return err
+		}
 	}
 
 	combinations, err := scopeCombinations(database, gameFlag, languageFlag)
@@ -126,23 +139,33 @@ func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Durati
 	rows := make([]resultRow, 0, len(combinations)*per)
 	summaries := make([]summary, 0, len(combinations))
 	for _, combination := range combinations {
-		scope, err := parseScope(combination.game, combination.language)
-		if err != nil {
-			return err
-		}
-		cards, err := scopeCards(database, combination.game, combination.language)
-		if err != nil {
-			return fmt.Errorf("load %s/%s cards: %w", combination.game, combination.language, err)
+		var scope service.ScanScope
+		var cards []models.Card
+		var pipeline *service.DetectionPipeline
+		if session == nil {
+			scope, err = parseScope(combination.game, combination.language)
+			if err != nil {
+				return err
+			}
+			cards, err = scopeCards(database, combination.game, combination.language)
+			if err != nil {
+				return fmt.Errorf("load %s/%s cards: %w", combination.game, combination.language, err)
+			}
+			pipeline = service.NewDetectionPipeline(nil, nil)
+			pipeline.Claude = detector
 		}
 		samples, err := sampleCards(database, combination.game, combination.language, per, seed)
 		if err != nil {
 			return fmt.Errorf("sample %s/%s cards: %w", combination.game, combination.language, err)
 		}
-		pipeline := service.NewDetectionPipeline(nil, nil)
-		pipeline.Claude = detector
 		combinationSummary := summary{Game: combination.game, Language: combination.language}
 		for _, sample := range samples {
-			row := scanOne(context.Background(), client, pipeline, scope, cards, combination, sample, timeout)
+			var row resultRow
+			if session != nil {
+				row = scanOneLive(context.Background(), client, session, combination, sample, timeout)
+			} else {
+				row = scanOne(context.Background(), client, pipeline, scope, cards, combination, sample, timeout)
+			}
 			combinationSummary.Sampled++
 			switch {
 			case row.Error != "":
