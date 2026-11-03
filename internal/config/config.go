@@ -120,6 +120,11 @@ type Config struct {
 		BackfillBatch int `env:"PRICE_BACKFILL_BATCH" env-default:"25000"`
 		// BackfillRPS limits the backfill's requests per second.
 		BackfillRPS float64 `env:"PRICE_BACKFILL_REQUESTS_PER_SECOND" env-default:"6"`
+		// TrackedLimit is the hourly refresh budget for cards a user tracks
+		// (portfolio, wantlist, alerts), split evenly across those users.
+		TrackedLimit int `env:"PRICE_TRACKED_LIMIT" env-default:"100"`
+		// BulkIntervalHours is the refresh cadence of the free bulk exports.
+		BulkIntervalHours int `env:"PRICE_BULK_INTERVAL_HOURS" env-default:"24"`
 	} `yaml:"worker"`
 }
 

@@ -61,10 +61,14 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 		FROM cards
 		WHERE superseded_by_card_id IS NULL
 		  AND game = 'pokemon'
-		  AND COALESCE(price_usd, 0) <= 0
-		  AND COALESCE(price_eur, 0) <= 0
+		  -- Either currency alone is enough to keep the card in the queue: TCGdex
+		  -- answers with TCGplayer USD and Cardmarket EUR separately, so a card with a
+		  -- EUR quote but no USD quote still needs the USD lookup.
+		  AND (COALESCE(price_usd, 0) <= 0 OR COALESCE(price_eur, 0) <= 0)
 		  AND COALESCE(source_card_id, '') <> ''
-		ORDER BY last_updated ASC NULLS FIRST, id
+		-- Least recently verified first: a card a provider just had no price for moves
+		-- to the back instead of being retried every cycle.
+		ORDER BY price_checked_at ASC NULLS FIRST, id
 		LIMIT $1`, w.backfillBatch)
 	if err != nil {
 		slog.Warn("Price backfill: query failed", "error", err)
@@ -108,18 +112,25 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 		}
 		usd, eur, err := fetchCardPriceFrom(ctx, clients, card)
 		if err != nil {
-			// Remember the attempt so the next cycle continues with other cards.
-			w.markBackfillMiss(ctx, card.ID)
+			// A provider that answered "no price" is a verification and moves the card
+			// to the back; a transport or provider error is not and must be retried on
+			// the next cycle with its stamp untouched.
+			if errors.Is(err, errNoBackfillPrice) {
+				w.markBackfillMiss(ctx, card.ID)
+			}
 			missing++
 			continue
 		}
-		if usd <= 0 && eur <= 0 {
-			w.markBackfillMiss(ctx, card.ID)
-			missing++
-			continue
-		}
-		if err := w.storeBackfillPrice(ctx, card.ID, usd, eur); err != nil {
+		applied, err := w.storeBackfillPrice(ctx, card.ID, usd, eur)
+		if err != nil {
 			slog.Warn("Price backfill: store failed", "card_id", card.ID, "error", err)
+			continue
+		}
+		if !applied {
+			// The provider answered only in a currency the card already has; nothing
+			// changed, so rotate the card to the back instead of retrying it forever.
+			w.markBackfillMiss(ctx, card.ID)
+			missing++
 			continue
 		}
 		priced++
@@ -130,11 +141,11 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 	}
 }
 
-// markBackfillMiss moves a card to the back of the queue by touching last_updated
-// without touching its (empty) prices.
+// markBackfillMiss moves a card to the back of the queue after a successful lookup
+// that found no price, without touching its (empty) prices.
 func (w *DataSyncWorker) markBackfillMiss(ctx context.Context, cardID string) {
 	if _, err := w.db.ExecContext(ctx,
-		`UPDATE cards SET last_updated = NOW() WHERE id = $1`, cardID); err != nil {
+		`UPDATE cards SET price_checked_at = NOW() WHERE id = $1`, cardID); err != nil {
 		slog.Debug("Price backfill: could not record the miss", "card_id", cardID, "error", err)
 	}
 }
@@ -142,13 +153,17 @@ func (w *DataSyncWorker) markBackfillMiss(ctx context.Context, cardID string) {
 // storeBackfillPrice writes a market price the same way the per-card sync does.
 //
 // The walk is slow, so the bulk or tracked-card sync may have priced the card in
-// the meantime: the statement rechecks that the card is still unpriced, keeps a
+// the meantime: the statement rechecks that a currency is still missing, keeps a
 // currency the provider did not return and only records history for the row it
 // actually changed. Card and history are written in one transaction.
-func (w *DataSyncWorker) storeBackfillPrice(ctx context.Context, cardID string, usd, eur float64) error {
+//
+// It reports whether a price was actually filled: a card whose only provider
+// answer repeats a currency it already has made no progress and has to move to the
+// back of the queue instead of being retried forever.
+func (w *DataSyncWorker) storeBackfillPrice(ctx context.Context, cardID string, usd, eur float64) (bool, error) {
 	tx, err := w.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	// The parameters are cast explicitly: an untyped parameter that first appears
 	// in `$1 > 0` is inferred as integer and rejects "2.15".
@@ -157,28 +172,28 @@ func (w *DataSyncWorker) storeBackfillPrice(ctx context.Context, cardID string, 
 		SET price_usd = CASE WHEN $1::numeric > 0 THEN $1::numeric ELSE price_usd END,
 		    price_eur = CASE WHEN $2::numeric > 0 THEN $2::numeric ELSE price_eur END,
 		    price_eur_estimated = CASE WHEN $2::numeric > 0 THEN FALSE ELSE price_eur_estimated END,
-		    last_updated = NOW()
+		    last_updated = NOW(), price_checked_at = NOW()
 		WHERE id = $3
-		  AND COALESCE(price_usd, 0) <= 0
-		  AND COALESCE(price_eur, 0) <= 0`, usd, eur, cardID)
+		  AND ((COALESCE(price_usd, 0) <= 0 AND $1::numeric > 0)
+		    OR (COALESCE(price_eur, 0) <= 0 AND $2::numeric > 0))`, usd, eur, cardID)
 	if err != nil {
 		_ = tx.Rollback()
-		return err
+		return false, err
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {
 		_ = tx.Rollback()
-		return err
+		return false, err
 	}
 	if changed == 0 {
 		_ = tx.Rollback()
-		return nil
+		return false, nil
 	}
-	// Deliberately no price_history row: the backfill only fills cards that never
-	// had a price, so a history entry would record the same moment twice and add
-	// a hundred thousand meaningless points to the chart. The first real change
-	// (sync or a later backfill of a new printing) starts the series.
-	return tx.Commit()
+	// Deliberately no price_history row: the backfill only fills a currency that was
+	// missing, so a history entry would record the same moment twice and add a
+	// hundred thousand meaningless points to the chart. The first real change (sync
+	// or a later backfill of a new printing) starts the series.
+	return true, tx.Commit()
 }
 
 // fetchCardPriceFrom walks a provider chain until one of them knows the card.

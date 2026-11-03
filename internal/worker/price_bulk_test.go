@@ -21,17 +21,24 @@ func TestApplyBulkBatchUpdatesChangedPrices(t *testing.T) {
 	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_variant").
 		WithArgs("scryfall", "card-a", 1.25, 1.10, "foil", "ygoprodeck", "1234", 0.33, 0.02, "normal").
 		WillReturnResult(sqlmock.NewResult(0, 2))
+	// Cards whose quote did not move still get a fresh check stamp.
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_checked_at").
+		WithArgs("scryfall", "card-a", 1.25, "foil", "ygoprodeck", "1234", 0.33, "normal").
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	worker := &DataSyncWorker{db: db}
-	affected, err := worker.applyBulkBatch(context.Background(), []service.BulkPriceUpdate{
+	result, err := worker.applyBulkBatch(context.Background(), []service.BulkPriceUpdate{
 		{SourceID: "scryfall", SourceCardID: "card-a", USD: 1.25, EUR: 1.10, Variant: "foil"},
 		{SourceID: "ygoprodeck", SourceCardID: "1234", USD: 0.33, EUR: 0.02, Variant: "normal"},
 	})
 	if err != nil {
 		t.Fatalf("applyBulkBatch: %v", err)
 	}
-	if affected != 2 {
-		t.Fatalf("affected = %d, want 2", affected)
+	if result.changed != 2 {
+		t.Fatalf("changed = %d, want 2", result.changed)
+	}
+	if result.matched != 3 {
+		t.Fatalf("matched = %d, want 3 (two changed + one verified)", result.matched)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
@@ -45,7 +52,8 @@ func TestApplyBulkSourceFlushesPartialBatches(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectExec("UPDATE cards AS c").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_variant").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_checked_at").WillReturnResult(sqlmock.NewResult(0, 0))
 
 	worker := &DataSyncWorker{db: db}
 	err = worker.applyBulkSource(context.Background(), stubBulkSource{

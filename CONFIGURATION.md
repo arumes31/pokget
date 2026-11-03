@@ -149,6 +149,8 @@ keep-alive settings can override the Ollama server's `OLLAMA_KEEP_ALIVE` default
 | `PRICE_EUR_FALLBACK` | true | Derive EUR from the USD market price with the daily ECB rate; converted rows carry `price_eur_estimated` |
 | `PRICE_BACKFILL_BATCH` | 25000 | Cards per hourly per-card price backfill pass; `0` disables it, negative values are rejected at startup |
 | `PRICE_BACKFILL_REQUESTS_PER_SECOND` | 6 | Request rate of the backfill, separate from `WORKER_REQUESTS_PER_SECOND`; `0` falls back to 2 |
+| `PRICE_TRACKED_LIMIT` | 100 | Cards per hourly per-card refresh for portfolio/wantlist/alerts; the budget is split across the collectors that track cards |
+| `PRICE_BULK_INTERVAL_HOURS` | 24 | Refresh cadence of the free bulk exports (Scryfall, YGOPRODeck, TCGCSV); they also run once at startup |
 | `PORTFOLIO_PHOTO_STORE` | `data/card-photos` | Directory that receives the scanned card photos; Compose mounts `/app/data/card-photos` |
 
 Catalog scheduling, image batches, worker retry/rate/circuit settings and price
