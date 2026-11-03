@@ -380,12 +380,31 @@ func parseOptionalPrice(raw *string) float64 {
 // the plain, foil and etched price of a printing side by side; a printing that only
 // exists as foil has no plain value.
 func firstPositivePrice(candidates ...*string) float64 {
-	for _, candidate := range candidates {
-		if value := parseOptionalPrice(candidate); value > 0 {
-			return value
+	price, _ := firstVariantPrice(candidates, nil)
+	return price
+}
+
+// pricedField pairs a raw marketplace price with the printing it describes.
+type pricedField struct {
+	raw     *string
+	variant string
+}
+
+// firstVariantPrice returns the first usable price and the printing it belongs to:
+// "normal" for the plain fields, otherwise the variant of the fallback field
+// ("foil", "etched"). A printing that only exists as foil has no plain value.
+func firstVariantPrice(plain []*string, variants []pricedField) (float64, string) {
+	for _, raw := range plain {
+		if value := parseOptionalPrice(raw); value > 0 {
+			return value, "normal"
 		}
 	}
-	return 0
+	for _, field := range variants {
+		if value := parseOptionalPrice(field.raw); value > 0 {
+			return value, field.variant
+		}
+	}
+	return 0, ""
 }
 
 // YGOPRODeckPriceClient reads the Cardmarket (EUR) and TCGplayer (USD) price

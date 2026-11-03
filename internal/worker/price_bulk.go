@@ -204,6 +204,11 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	}
 
 	var fuzzyUpdated int64
+	// The fallback keeps every normalized key in memory until the batch is done.
+	// Log the footprint so a growing catalog can be watched instead of guessed.
+	slog.Debug("Bulk prices: fallback index built", "source", source.Name(),
+		"set_keys", countIndexKeys(fuzzy), "name_keys", countIndexKeys(fuzzyByName),
+		"numberless_keys", countIndexKeys(fuzzyByNameNumberless), "number_keys", countIndexKeys(fuzzyByNumber))
 	// A category whose products all lack a collector number (World of Warcraft)
 	// only fills the name index, so the loop walks the union of both indexes.
 	scopes := make(map[fuzzyScope]struct{}, len(fuzzy)+len(fuzzyByNameNumberless)+len(fuzzyByNumber))
@@ -257,6 +262,14 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	}
 
 	slog.Info("Bulk prices applied", "source", source.Name(), "rows", rows, "updated", updated, "fallback_updated", fuzzyUpdated, "rarity_updated", rarityUpdated)
+	// The counters above count changed rows, not matched ones: a feed whose prices
+	// already match the database reports zero every run. Say that instead of
+	// blaming the mapping.
+	if rows > 0 && updated+fuzzyUpdated+rarityUpdated == 0 {
+		slog.Info("Bulk prices: source changed nothing",
+			"source", source.Name(), "rows", rows,
+			"hint", "every price was already stored; if that is unexpected, check the set abbreviations of this source")
+	}
 	return nil
 }
 
@@ -288,13 +301,16 @@ func (w *DataSyncWorker) applyFuzzyRarity(ctx context.Context, game string, lang
 	}
 	defer func() { _ = rows.Close() }()
 
-	lookup := func(index map[string]string, set, number string) (string, bool) {
-		for _, key := range priceMatchKeys(set, number) {
+	lookupKeys := func(index map[string]string, keys []string) (string, bool) {
+		for _, key := range keys {
 			if rarity, ok := index[key]; ok {
 				return rarity, true
 			}
 		}
 		return "", false
+	}
+	lookup := func(index map[string]string, set, number string) (string, bool) {
+		return lookupKeys(index, priceMatchKeys(set, number))
 	}
 
 	updates := make(map[string]string)
@@ -311,6 +327,18 @@ func (w *DataSyncWorker) applyFuzzyRarity(ctx context.Context, game string, lang
 		}
 		if setName != "" {
 			if rarity, ok := lookup(rarities, setName, number); ok {
+				updates[id] = rarity
+				continue
+			}
+		}
+		// The rarity rides along with the price payload, so a set the marketplace
+		// only knows under an alias must resolve here as well.
+		if codeKeys, nameKeys := setAliasKeys(game, setCode, number); len(codeKeys)+len(nameKeys) > 0 {
+			if rarity, ok := lookupKeys(rarities, codeKeys); ok {
+				updates[id] = rarity
+				continue
+			}
+			if rarity, ok := lookupKeys(rarities, nameKeys); ok {
 				updates[id] = rarity
 			}
 		}
@@ -531,6 +559,15 @@ func (s fuzzyScope) languageList() []string {
 	return strings.Split(s.languages, ",")
 }
 
+// countIndexKeys sums the keys of a per-scope index.
+func countIndexKeys[V any](index map[fuzzyScope]map[string]V) int {
+	total := 0
+	for _, entries := range index {
+		total += len(entries)
+	}
+	return total
+}
+
 // orderedFuzzyScopes returns the scopes of an index in a deterministic order with
 // the language-bound scopes first.
 func orderedFuzzyScopes[V any](index map[fuzzyScope]V) []fuzzyScope {
@@ -593,13 +630,16 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(
 	}
 	defer func() { _ = rows.Close() }()
 
-	lookup := func(index map[string]float64, set, number string) (float64, bool) {
-		for _, key := range priceMatchKeys(set, number) {
+	lookupKeys := func(index map[string]float64, keys []string) (float64, bool) {
+		for _, key := range keys {
 			if price, ok := index[key]; ok {
 				return price, true
 			}
 		}
 		return 0, false
+	}
+	lookup := func(index map[string]float64, set, number string) (float64, bool) {
+		return lookupKeys(index, priceMatchKeys(set, number))
 	}
 
 	updates := make(map[string]float64)
@@ -617,6 +657,18 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(
 			}
 			if setName != "" && len(namePrices) > 0 {
 				if price, ok := lookup(namePrices, setName, number); ok {
+					updates[id] = price
+					continue
+				}
+			}
+			// Games whose catalog set codes never appear in the marketplace use a
+			// configured mapping instead of the normalized set key.
+			if codeKeys, nameKeys := setAliasKeys(game, setCode, number); len(codeKeys)+len(nameKeys) > 0 {
+				if price, ok := lookupKeys(prices, codeKeys); ok {
+					updates[id] = price
+					continue
+				}
+				if price, ok := lookupKeys(namePrices, nameKeys); ok {
 					updates[id] = price
 					continue
 				}
@@ -752,22 +804,27 @@ func (w *DataSyncWorker) applyBulkBatch(ctx context.Context, batch []service.Bul
 SET price_usd = CASE WHEN v.usd > 0 THEN v.usd ELSE c.price_usd END,
     price_eur = CASE WHEN v.eur > 0 THEN v.eur ELSE c.price_eur END,
     price_eur_estimated = CASE WHEN v.eur > 0 THEN FALSE ELSE c.price_eur_estimated END,
-    last_updated = NOW()
+    price_variant = CASE WHEN v.usd > 0 AND v.variant <> '' THEN v.variant ELSE c.price_variant END,
+    -- A variant-only update must not claim the price changed.
+    last_updated = CASE WHEN (v.usd > 0 AND c.price_usd IS DISTINCT FROM v.usd)
+                          OR (v.eur > 0 AND c.price_eur IS DISTINCT FROM v.eur)
+                        THEN NOW() ELSE c.last_updated END
 FROM (VALUES `)
-	args := make([]any, 0, len(batch)*4)
+	args := make([]any, 0, len(batch)*5)
 	for index, update := range batch {
 		if index > 0 {
 			query.WriteString(", ")
 		}
-		base := index * 4
-		fmt.Fprintf(&query, "($%d, $%d, $%d::numeric, $%d::numeric)", base+1, base+2, base+3, base+4)
-		args = append(args, update.SourceID, update.SourceCardID, update.USD, update.EUR)
+		base := index * 5
+		fmt.Fprintf(&query, "($%d, $%d, $%d::numeric, $%d::numeric, $%d)", base+1, base+2, base+3, base+4, base+5)
+		args = append(args, update.SourceID, update.SourceCardID, update.USD, update.EUR, update.Variant)
 	}
-	query.WriteString(`) AS v(source_id, source_card_id, usd, eur)
+	query.WriteString(`) AS v(source_id, source_card_id, usd, eur, variant)
 WHERE c.source_id = v.source_id
   AND c.source_card_id = v.source_card_id
   AND ((v.usd > 0 AND c.price_usd IS DISTINCT FROM v.usd)
-       OR (v.eur > 0 AND c.price_eur IS DISTINCT FROM v.eur))`)
+       OR (v.eur > 0 AND c.price_eur IS DISTINCT FROM v.eur)
+       OR (v.usd > 0 AND v.variant <> '' AND c.price_variant IS DISTINCT FROM v.variant))`)
 
 	result, err := w.db.ExecContext(ctx, query.String(), args...)
 	if err != nil {

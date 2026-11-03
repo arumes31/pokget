@@ -18,14 +18,14 @@ func TestApplyBulkBatchUpdatesChangedPrices(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectExec("UPDATE cards AS c").
-		WithArgs("scryfall", "card-a", 1.25, 1.10, "ygoprodeck", "1234", 0.33, 0.02).
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_variant").
+		WithArgs("scryfall", "card-a", 1.25, 1.10, "foil", "ygoprodeck", "1234", 0.33, 0.02, "normal").
 		WillReturnResult(sqlmock.NewResult(0, 2))
 
 	worker := &DataSyncWorker{db: db}
 	affected, err := worker.applyBulkBatch(context.Background(), []service.BulkPriceUpdate{
-		{SourceID: "scryfall", SourceCardID: "card-a", USD: 1.25, EUR: 1.10},
-		{SourceID: "ygoprodeck", SourceCardID: "1234", USD: 0.33, EUR: 0.02},
+		{SourceID: "scryfall", SourceCardID: "card-a", USD: 1.25, EUR: 1.10, Variant: "foil"},
+		{SourceID: "ygoprodeck", SourceCardID: "1234", USD: 0.33, EUR: 0.02, Variant: "normal"},
 	})
 	if err != nil {
 		t.Fatalf("applyBulkBatch: %v", err)

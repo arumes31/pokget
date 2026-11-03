@@ -16,6 +16,9 @@ var errNoBackfillPrice = errors.New("price backfill: no provider returned a pric
 // a zero rate would mean "unlimited" and hammer the provider.
 const defaultBackfillRate = 2.0
 
+// backfillProgressEvery is how many cards are walked between two progress lines.
+const backfillProgressEvery = 500
+
 func backfillRate(configured float64) float64 {
 	if configured <= 0 {
 		return defaultBackfillRate
@@ -23,10 +26,12 @@ func backfillRate(configured float64) float64 {
 	return configured
 }
 
-// backfillPrices fills prices for catalog cards that nobody owns yet. The bulk
+// backfillPrices fills prices for Pokémon catalog cards without a price. The bulk
 // sources cover most games, but the Pokémon catalog (TCGdex) only knows prices per
 // card, so the long tail of a language the marketplace does not list (German,
 // French, Spanish, Chinese, Korean printings) stays unpriced without this pass.
+// Owned cards are included: the tracked-card sync only prices what it reaches
+// within its budget, and the backfill is the second chance.
 //
 // The pass is deliberately bounded: it walks `PRICE_BACKFILL_BATCH` cards per cycle
 // and orders by last_updated, so a card the source has no price for moves to the
@@ -86,9 +91,15 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 	}
 
 	var priced, missing int64
-	for _, card := range cards {
+	for index, card := range cards {
 		if ctx.Err() != nil {
 			break
+		}
+		// A pass takes about an hour, so log progress instead of staying silent
+		// until the summary line.
+		if index > 0 && index%backfillProgressEvery == 0 {
+			slog.Info("Price backfill progress", "done", index, "candidates", len(cards),
+				"priced", priced, "without_price", missing)
 		}
 		if w.backfillLimiter != nil {
 			if err := w.backfillLimiter.Wait(ctx); err != nil {
@@ -163,11 +174,10 @@ func (w *DataSyncWorker) storeBackfillPrice(ctx context.Context, cardID string, 
 		_ = tx.Rollback()
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO price_history (card_id, price_usd, price_eur) VALUES ($1, $2, $3)`, cardID, usd, eur); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
+	// Deliberately no price_history row: the backfill only fills cards that never
+	// had a price, so a history entry would record the same moment twice and add
+	// a hundred thousand meaningless points to the chart. The first real change
+	// (sync or a later backfill of a new printing) starts the series.
 	return tx.Commit()
 }
 
