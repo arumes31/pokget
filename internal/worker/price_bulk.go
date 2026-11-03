@@ -201,7 +201,9 @@ func (w *DataSyncWorker) applyEURFallback(ctx context.Context) {
 			break
 		}
 		total += changed
-		if changed < fxBatchSize {
+		// Rows the sync already priced are skipped by the row recheck, so a short
+		// batch does not mean the catalog is done; only an empty batch does.
+		if changed == 0 {
 			break
 		}
 	}
@@ -232,6 +234,10 @@ func (w *DataSyncWorker) applyEURBatchWithRetry(ctx context.Context, rate float6
 
 // applyEURBatch converts one id-ordered slice of unpriced EUR values.
 func (w *DataSyncWorker) applyEURBatch(ctx context.Context, rate float64, size int) (int64, error) {
+	// The eligibility check is repeated on the target row: the per-card sync can
+	// write a native EUR quote between the subquery and the row lock, and that
+	// fresh quote must survive. PostgreSQL re-evaluates the outer predicates on the
+	// locked row version, the subquery alone would overwrite it.
 	result, err := w.db.ExecContext(ctx, `
 		UPDATE cards
 		SET price_eur = ROUND(price_usd * $1, 2), price_eur_estimated = TRUE
@@ -242,7 +248,10 @@ func (w *DataSyncWorker) applyEURBatch(ctx context.Context, rate float64, size i
 			  AND (price_eur IS NULL OR price_eur <= 0)
 			ORDER BY id
 			LIMIT $2
-		)`, rate, size)
+		)
+		  AND superseded_by_card_id IS NULL
+		  AND price_usd > 0
+		  AND (price_eur IS NULL OR price_eur <= 0)`, rate, size)
 	if err != nil {
 		return 0, err
 	}

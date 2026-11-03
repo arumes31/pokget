@@ -26,6 +26,11 @@ func TestApplyEURFallbackConvertsOnlyUnpricedEuros(t *testing.T) {
 	mock.ExpectExec("UPDATE cards[\\s\\S]*price_eur_estimated = TRUE").
 		WithArgs(0.9, fxBatchSize).
 		WillReturnResult(sqlmock.NewResult(0, 3))
+	// An empty batch ends the loop; a short one does not (rows priced by the sync
+	// are filtered by the row recheck).
+	mock.ExpectExec("UPDATE cards[\\s\\S]*price_eur_estimated = TRUE").
+		WithArgs(0.9, fxBatchSize).
+		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	worker := &DataSyncWorker{db: db, eurRate: fixedEURRate{rate: 0.9}}
 	worker.applyEURFallback(context.Background())
@@ -48,6 +53,7 @@ func TestApplyEURFallbackRetriesADeadlock(t *testing.T) {
 	mock.ExpectExec("UPDATE cards[\\s\\S]*LIMIT \\$2").WithArgs(0.9, fxBatchSize).WillReturnError(deadlock)
 	// The retry converts fewer rows than the batch size, so the loop stops.
 	mock.ExpectExec("UPDATE cards[\\s\\S]*LIMIT \\$2").WithArgs(0.9, fxBatchSize).WillReturnResult(sqlmock.NewResult(0, 7))
+	mock.ExpectExec("UPDATE cards[\\s\\S]*LIMIT \\$2").WithArgs(0.9, fxBatchSize).WillReturnResult(sqlmock.NewResult(0, 0))
 
 	worker := &DataSyncWorker{db: db, eurRate: fixedEURRate{rate: 0.9}}
 	worker.applyEURFallback(context.Background())
