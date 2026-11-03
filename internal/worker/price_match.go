@@ -19,22 +19,63 @@ import (
 // Both sides go through this function, so every variant is generated twice and
 // the canonical forms meet in the middle.
 func priceMatchKeys(setCode, number string) []string {
-	set := canonicalPriceToken(setCode)
-	numbers := priceNumberKeys(number, set)
+	numbers := priceNumberKeys(number, canonicalPriceToken(setCode))
 	if len(numbers) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(numbers))
-	seen := make(map[string]struct{}, len(numbers))
-	for _, n := range numbers {
-		key := set + "|" + n
-		if _, ok := seen[key]; ok {
-			continue
+	keys := make([]string, 0, len(numbers)*2)
+	seen := make(map[string]struct{}, len(numbers)*2)
+	for _, set := range priceSetVariants(setCode) {
+		for _, n := range numbers {
+			key := set + "|" + n
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			keys = append(keys, key)
 		}
-		seen[key] = struct{}{}
-		keys = append(keys, key)
 	}
 	return keys
+}
+
+// priceSetVariants returns the set spellings a marketplace may use. TCGplayer sells
+// the English release of a Japanese hololive set under the Japanese code plus a
+// locale suffix ("hBP01" -> "hBP01e"), so the suffix-free form matches as well.
+func priceSetVariants(setCode string) []string {
+	canonical := canonicalPriceToken(setCode)
+	variants := []string{canonical}
+	if trimmed, ok := trimLocaleSuffix(canonical); ok {
+		variants = append(variants, trimmed)
+	}
+	return variants
+}
+
+// trimLocaleSuffix drops the trailing "e" TCGplayer appends to English releases of
+// Japanese sets, but only when it follows a digit so real set codes stay intact.
+func trimLocaleSuffix(canonical string) (string, bool) {
+	if len(canonical) < 4 || !strings.HasSuffix(canonical, "e") {
+		return "", false
+	}
+	previous := canonical[len(canonical)-2]
+	if previous < '0' || previous > '9' {
+		return "", false
+	}
+	return canonical[:len(canonical)-1], true
+}
+
+// priceNameKey identifies a card by set and name. It is the fallback for
+// marketplaces that list old cards without a collector number.
+func priceNameKey(setCode, name string) string {
+	return canonicalPriceToken(setCode) + "|" + canonicalPriceToken(name)
+}
+
+// nonNil returns an empty slice for a nil list. pq.Array(nil) would encode SQL
+// NULL and every comparison against it evaluates to NULL.
+func nonNil(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
 }
 
 // priceNumberKeys normalizes one collector number into the spellings a

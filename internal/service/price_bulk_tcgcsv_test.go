@@ -85,7 +85,7 @@ func TestTCGCSVBulkSourceTagsLanguageCategories(t *testing.T) {
 		case "/85/groups":
 			_, _ = writer.Write([]byte(`{"results":[{"groupId":23609,"abbreviation":"SV3","name":"SV3: Ruler of the Black Flame"}]}`))
 		case "/85/23609/products":
-			_, _ = writer.Write([]byte(`{"results":[{"productId":566955,"extendedData":[{"name":"Number","value":"001/108"}]}]}`))
+			_, _ = writer.Write([]byte(`{"results":[{"productId":566955,"name":"Oddish","extendedData":[{"name":"Number","value":"001/108"}]}]}`))
 		case "/85/23609/prices":
 			_, _ = writer.Write([]byte(`{"results":[{"productId":566955,"marketPrice":0.42,"subTypeName":"Normal"}]}`))
 		default:
@@ -111,10 +111,16 @@ func TestTCGCSVBulkSourceTagsLanguageCategories(t *testing.T) {
 		t.Fatalf("updates = %d, want 1", len(updates))
 	}
 	update := updates[0]
-	if update.Game != "pokemon" || update.Language != "ja" {
-		t.Fatalf("update = %+v, want a Japanese Pokémon row", update)
+	if update.Game != "pokemon" || len(update.Languages) != 4 {
+		t.Fatalf("update = %+v, want the Asian Pokémon languages", update)
+	}
+	if update.Languages[0] != "ja" || update.Languages[1] != "ko" {
+		t.Fatalf("Languages = %v", update.Languages)
 	}
 	if update.SetCode != "SV3" || update.Number != "001/108" || update.USD != 0.42 {
 		t.Fatalf("update = %+v", update)
+	}
+	if update.ProductName != "Oddish" {
+		t.Fatalf("ProductName = %q, want the marketplace card name", update.ProductName)
 	}
 }

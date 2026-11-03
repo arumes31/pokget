@@ -157,7 +157,12 @@ type DataSyncConfig struct {
 	BulkPriceSources  []service.BulkPriceSource
 	// EURRate fills the EUR column for marketplaces that only publish USD. Nil
 	// disables the conversion, which keeps the previous behaviour.
-	EURRate           service.EURRateProvider
+	EURRate service.EURRateProvider
+	// PriceBackfillBatch is how many unowned cards the per-card backfill prices per
+	// cycle (0 disables it). PriceBackfillRate limits its requests per second; the
+	// bulk sources cover the rest of the catalog.
+	PriceBackfillBatch int
+	PriceBackfillRate  float64
 	RequestsPerSecond float64
 	RequestBurst      int
 	RetryAttempts     int

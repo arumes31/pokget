@@ -79,6 +79,9 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	// Rarities ride along with the same payload: several catalog sources (TCGdex
 	// lists sets without a rarity field) leave the column empty.
 	fuzzyRarity := make(map[fuzzyScope]map[string]string)
+	// Old TCGs (World of Warcraft, Sorcery) list their products without a collector
+	// number, so those can only be matched by the card name inside the set.
+	fuzzyByNameNumberless := make(map[fuzzyScope]map[string]float64)
 	var rows, updated int64
 	// Languages that come with their own marketplace category. The generic
 	// category of the same game must skip them: TCGplayer's Japanese Pokémon sets
@@ -139,12 +142,12 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	err := source.FetchPrices(ctx, func(update service.BulkPriceUpdate) error {
 		batch = append(batch, update)
 		if update.Game != "" && update.Number != "" && update.USD > 0 {
-			scope := fuzzyScope{game: update.Game, language: update.Language}
-			if update.Language != "" {
+			scope := newFuzzyScope(update.Game, update.Languages)
+			for _, bound := range update.Languages {
 				if boundLanguages[update.Game] == nil {
 					boundLanguages[update.Game] = make(map[string]struct{})
 				}
-				boundLanguages[update.Game][update.Language] = struct{}{}
+				boundLanguages[update.Game][bound] = struct{}{}
 			}
 			if update.SetCode != "" {
 				rememberKeys(fuzzy, scope, update.SetCode, update.Number, update.USD)
@@ -153,8 +156,20 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 				rememberKeys(fuzzyByName, scope, alias, update.Number, update.USD)
 			}
 		}
+		if update.Game != "" && update.Number == "" && update.ProductName != "" && update.SetName != "" && update.USD > 0 {
+			scope := newFuzzyScope(update.Game, update.Languages)
+			if fuzzyByNameNumberless[scope] == nil {
+				fuzzyByNameNumberless[scope] = make(map[string]float64)
+			}
+			for _, alias := range setNameAliases(update.SetName) {
+				key := priceNameKey(alias, update.ProductName)
+				if _, exists := fuzzyByNameNumberless[scope][key]; !exists {
+					fuzzyByNameNumberless[scope][key] = update.USD
+				}
+			}
+		}
 		if update.Game != "" && update.Number != "" && update.Rarity != "" {
-			scope := fuzzyScope{game: update.Game, language: update.Language}
+			scope := newFuzzyScope(update.Game, update.Languages)
 			if update.SetCode != "" {
 				rememberRarity(scope, update.SetCode, update.Number, update.Rarity)
 			}
@@ -181,16 +196,16 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		exclude := []string(nil)
-		if scope.language == "" {
+		var exclude []string
+		if scope.languages == "" {
 			for language := range boundLanguages[scope.game] {
 				exclude = append(exclude, language)
 			}
 			sort.Strings(exclude)
 		}
-		changed, err := w.applyFuzzyPricesExcluding(ctx, scope.game, scope.language, exclude, fuzzy[scope], fuzzyByName[scope])
+		changed, err := w.applyFuzzyPricesExcluding(ctx, scope.game, scope.languageList(), exclude, fuzzy[scope], fuzzyByName[scope], fuzzyByNameNumberless[scope])
 		if err != nil {
-			slog.Warn("Bulk prices: fallback match failed", "source", source.Name(), "game", scope.game, "language", scope.language, "error", err)
+			slog.Warn("Bulk prices: fallback match failed", "source", source.Name(), "game", scope.game, "languages", scope.languages, "error", err)
 			continue
 		}
 		fuzzyUpdated += changed
@@ -201,14 +216,14 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		// A language-bound pass must not exclude its own language.
+		// A language-bound pass must not exclude its own languages.
 		var bound map[string]struct{}
-		if scope.language == "" {
+		if scope.languages == "" {
 			bound = boundLanguages[scope.game]
 		}
-		changed, err := w.applyFuzzyRarity(ctx, scope.game, scope.language, bound, fuzzyRarity[scope])
+		changed, err := w.applyFuzzyRarity(ctx, scope.game, scope.languageList(), bound, fuzzyRarity[scope])
 		if err != nil {
-			slog.Warn("Bulk prices: rarity match failed", "source", source.Name(), "game", scope.game, "language", scope.language, "error", err)
+			slog.Warn("Bulk prices: rarity match failed", "source", source.Name(), "game", scope.game, "languages", scope.languages, "error", err)
 			continue
 		}
 		rarityUpdated += changed
@@ -221,7 +236,7 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 // applyFuzzyRarity fills cards.rarity for cards whose catalog source published no
 // rarity. The marketplace rarity rides along with the price payload, so this costs
 // no extra request.
-func (w *DataSyncWorker) applyFuzzyRarity(ctx context.Context, game, language string, bound map[string]struct{}, rarities map[string]string) (int64, error) {
+func (w *DataSyncWorker) applyFuzzyRarity(ctx context.Context, game string, languages []string, bound map[string]struct{}, rarities map[string]string) (int64, error) {
 	if len(rarities) == 0 {
 		return 0, nil
 	}
@@ -238,9 +253,9 @@ func (w *DataSyncWorker) applyFuzzyRarity(ctx context.Context, game, language st
 		  AND superseded_by_card_id IS NULL
 		  AND (rarity IS NULL OR rarity = '')
 		  AND collector_number IS NOT NULL AND collector_number <> ''
-		  AND ($2 = '' OR language = $2)
+		  AND ($2::text[] = '{}' OR language = ANY($2::text[]))
 		  AND COALESCE(language, '') <> ALL($3::text[])`
-	rows, err := w.db.QueryContext(ctx, query, game, language, pq.Array(excluded))
+	rows, err := w.db.QueryContext(ctx, query, game, pq.Array(nonNil(languages)), pq.Array(excluded))
 	if err != nil {
 		return 0, fmt.Errorf("rarity query: %w", err)
 	}
@@ -457,10 +472,36 @@ func retryablePostgresError(err error) bool {
 }
 
 // fuzzyScope limits a fallback match to one game and, for marketplaces that
-// split a game by language, to one language.
+// split a game by language, to those languages. The language list is stored as a
+// sorted, comma separated string so the scope stays usable as a map key.
 type fuzzyScope struct {
-	game     string
-	language string
+	game      string
+	languages string
+}
+
+// newFuzzyScope builds the scope for a marketplace row. An empty language list
+// means "every language of the game".
+func newFuzzyScope(game string, languages []string) fuzzyScope {
+	if len(languages) == 0 {
+		return fuzzyScope{game: game}
+	}
+	sorted := make([]string, 0, len(languages))
+	for _, language := range languages {
+		language = strings.ToLower(strings.TrimSpace(language))
+		if language != "" {
+			sorted = append(sorted, language)
+		}
+	}
+	sort.Strings(sorted)
+	return fuzzyScope{game: game, languages: strings.Join(sorted, ",")}
+}
+
+// languageList returns the scope's languages, or nil for "any language".
+func (s fuzzyScope) languageList() []string {
+	if s.languages == "" {
+		return nil
+	}
+	return strings.Split(s.languages, ",")
 }
 
 // orderedFuzzyScopes returns the scopes of an index in a deterministic order with
@@ -471,13 +512,13 @@ func orderedFuzzyScopes[V any](index map[fuzzyScope]map[string]V) []fuzzyScope {
 		scopes = append(scopes, scope)
 	}
 	sort.Slice(scopes, func(i, j int) bool {
-		if (scopes[i].language == "") != (scopes[j].language == "") {
-			return scopes[i].language != ""
+		if (scopes[i].languages == "") != (scopes[j].languages == "") {
+			return scopes[i].languages != ""
 		}
 		if scopes[i].game != scopes[j].game {
 			return scopes[i].game < scopes[j].game
 		}
-		return scopes[i].language < scopes[j].language
+		return scopes[i].languages < scopes[j].languages
 	})
 	return scopes
 }
@@ -486,35 +527,40 @@ func orderedFuzzyScopes[V any](index map[fuzzyScope]map[string]V) []fuzzyScope {
 // normalized set code and collector number, then the normalized set name and
 // number. Existing prices are never replaced, so dedicated sources (Scryfall,
 // YGOPRODeck) keep their values.
-func (w *DataSyncWorker) applyFuzzyPrices(ctx context.Context, game, language string, prices, namePrices map[string]float64) (int64, error) {
-	return w.applyFuzzyPricesExcluding(ctx, game, language, nil, prices, namePrices)
+func (w *DataSyncWorker) applyFuzzyPrices(ctx context.Context, game string, languages []string, prices, namePrices map[string]float64) (int64, error) {
+	return w.applyFuzzyPricesExcluding(ctx, game, languages, nil, prices, namePrices, nil)
 }
 
 // applyFuzzyPricesExcluding is applyFuzzyPrices with a list of languages the
 // match must skip. The generic marketplace category of a game uses it to leave
 // the languages alone that have their own category.
-func (w *DataSyncWorker) applyFuzzyPricesExcluding(ctx context.Context, game, language string, excludeLanguages []string, prices, namePrices map[string]float64) (int64, error) {
-	if len(prices) == 0 && len(namePrices) == 0 {
+//
+// nameOnlyPrices keys the card name inside the set and covers marketplaces that
+// list old cards without a collector number (World of Warcraft, Sorcery).
+func (w *DataSyncWorker) applyFuzzyPricesExcluding(
+	ctx context.Context,
+	game string,
+	languages []string,
+	excludeLanguages []string,
+	prices, namePrices map[string]float64,
+	nameOnlyPrices map[string]float64,
+) (int64, error) {
+	if len(prices) == 0 && len(namePrices) == 0 && len(nameOnlyPrices) == 0 {
 		return 0, nil
 	}
 	// One static statement keeps every value a bound parameter: $2 restricts the
-	// match to one language ("" = all), $3 lists the languages to skip.
+	// match to the given languages (empty = all), $3 lists the languages to skip.
 	const query = `
-		SELECT id, COALESCE(set_code, ''), COALESCE(set_name, ''), COALESCE(collector_number, '')
+		SELECT id, COALESCE(set_code, ''), COALESCE(set_name, ''), COALESCE(collector_number, ''), COALESCE(name, '')
 		FROM cards
 		WHERE game = $1
 		  AND superseded_by_card_id IS NULL
 		  AND (price_usd IS NULL OR price_usd <= 0)
-		  AND collector_number IS NOT NULL AND collector_number <> ''
-		  AND ($2 = '' OR language = $2)
+		  AND ($2::text[] = '{}' OR language = ANY($2::text[]))
 		  AND COALESCE(language, '') <> ALL($3::text[])`
 	// pq.Array(nil) encodes SQL NULL, and `<> ALL(NULL)` is NULL for every row, so
 	// an empty list has to be an empty array.
-	excluded := excludeLanguages
-	if excluded == nil {
-		excluded = []string{}
-	}
-	rows, err := w.db.QueryContext(ctx, query, game, language, pq.Array(excluded))
+	rows, err := w.db.QueryContext(ctx, query, game, pq.Array(nonNil(languages)), pq.Array(nonNil(excludeLanguages)))
 	if err != nil {
 		return 0, fmt.Errorf("fallback price query: %w", err)
 	}
@@ -531,18 +577,27 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(ctx context.Context, game, la
 
 	updates := make(map[string]float64)
 	for rows.Next() {
-		var id, setCode, setName, number string
-		if err := rows.Scan(&id, &setCode, &setName, &number); err != nil {
+		var id, setCode, setName, number, name string
+		if err := rows.Scan(&id, &setCode, &setName, &number, &name); err != nil {
 			continue
 		}
-		if setCode != "" {
-			if price, ok := lookup(prices, setCode, number); ok {
-				updates[id] = price
-				continue
+		if number != "" {
+			if setCode != "" {
+				if price, ok := lookup(prices, setCode, number); ok {
+					updates[id] = price
+					continue
+				}
+			}
+			if setName != "" && len(namePrices) > 0 {
+				if price, ok := lookup(namePrices, setName, number); ok {
+					updates[id] = price
+					continue
+				}
 			}
 		}
-		if setName != "" && len(namePrices) > 0 {
-			if price, ok := lookup(namePrices, setName, number); ok {
+		// Products without a collector number can only be matched by name.
+		if len(nameOnlyPrices) > 0 && name != "" && setName != "" {
+			if price, ok := nameOnlyPrices[priceNameKey(setName, name)]; ok {
 				updates[id] = price
 			}
 		}

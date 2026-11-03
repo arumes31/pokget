@@ -86,8 +86,10 @@ func newDataSyncWorkerWithClients(
 			MaxPriceRatio:     cfg.Worker.MaxPriceRatio,
 			HistoryRetention:  time.Duration(cfg.Worker.HistoryRetentionDays) * 24 * time.Hour,
 			FailureSink:       failureSink,
-			Lease:             worker.NewPostgresAdvisoryLease(database),
-			EURRate:           eurRateProvider(cfg),
+			Lease:              worker.NewPostgresAdvisoryLease(database),
+			EURRate:            eurRateProvider(cfg),
+			PriceBackfillBatch: cfg.Worker.BackfillBatch,
+			PriceBackfillRate:  cfg.Worker.BackfillRPS,
 		},
 	)
 }

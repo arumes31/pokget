@@ -1,13 +1,16 @@
 package service
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
-// PriceCategory is one marketplace category that feeds catalog prices. Language
+// PriceCategory is one marketplace category that feeds catalog prices. Languages
 // is empty for categories that price every language of a game.
 type PriceCategory struct {
-	Game     string
-	Language string
-	Category int
+	Game      string
+	Languages []string
+	Category  int
 }
 
 // PriceCategories returns every TCGplayer category the bulk price source reads,
@@ -19,14 +22,19 @@ func PriceCategories() []PriceCategory {
 		categories = append(categories, PriceCategory{Game: game, Category: category})
 	}
 	for _, extra := range tcgPlayerLanguageCategories {
-		categories = append(categories, PriceCategory(extra))
+		categories = append(categories, PriceCategory{
+			Game:      extra.Game,
+			Languages: extra.Languages,
+			Category:  extra.Category,
+		})
 	}
 	sort.Slice(categories, func(i, j int) bool {
 		if categories[i].Game != categories[j].Game {
 			return categories[i].Game < categories[j].Game
 		}
-		if categories[i].Language != categories[j].Language {
-			return categories[i].Language < categories[j].Language
+		left, right := strings.Join(categories[i].Languages, ","), strings.Join(categories[j].Languages, ",")
+		if left != right {
+			return left < right
 		}
 		return categories[i].Category < categories[j].Category
 	})
