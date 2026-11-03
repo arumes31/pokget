@@ -76,6 +76,9 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	// English printing.
 	fuzzy := make(map[fuzzyScope]map[string]float64)
 	fuzzyByName := make(map[fuzzyScope]map[string]float64)
+	// Rarities ride along with the same payload: several catalog sources (TCGdex
+	// lists sets without a rarity field) leave the column empty.
+	fuzzyRarity := make(map[fuzzyScope]map[string]string)
 	var rows, updated int64
 	// Languages that come with their own marketplace category. The generic
 	// category of the same game must skip them: TCGplayer's Japanese Pokémon sets
@@ -96,6 +99,23 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		for _, key := range keys {
 			if _, exists := prices[key]; !exists {
 				prices[key] = usd
+			}
+		}
+	}
+
+	rememberRarity := func(scope fuzzyScope, set, number, rarity string) {
+		keys := priceMatchKeys(set, number)
+		if len(keys) == 0 {
+			return
+		}
+		index := fuzzyRarity[scope]
+		if index == nil {
+			index = make(map[string]string)
+			fuzzyRarity[scope] = index
+		}
+		for _, key := range keys {
+			if _, exists := index[key]; !exists {
+				index[key] = rarity
 			}
 		}
 	}
@@ -133,6 +153,15 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 				rememberKeys(fuzzyByName, scope, alias, update.Number, update.USD)
 			}
 		}
+		if update.Game != "" && update.Number != "" && update.Rarity != "" {
+			scope := fuzzyScope{game: update.Game, language: update.Language}
+			if update.SetCode != "" {
+				rememberRarity(scope, update.SetCode, update.Number, update.Rarity)
+			}
+			for _, alias := range setNameAliases(update.SetName) {
+				rememberRarity(scope, alias, update.Number, update.Rarity)
+			}
+		}
 		if len(batch) >= bulkPriceBatchSize {
 			return flush()
 		}
@@ -167,8 +196,152 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		fuzzyUpdated += changed
 	}
 
-	slog.Info("Bulk prices applied", "source", source.Name(), "rows", rows, "updated", updated, "fallback_updated", fuzzyUpdated)
+	var rarityUpdated int64
+	for _, scope := range orderedFuzzyScopes(fuzzyRarity) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		// A language-bound pass must not exclude its own language.
+		var bound map[string]struct{}
+		if scope.language == "" {
+			bound = boundLanguages[scope.game]
+		}
+		changed, err := w.applyFuzzyRarity(ctx, scope.game, scope.language, bound, fuzzyRarity[scope])
+		if err != nil {
+			slog.Warn("Bulk prices: rarity match failed", "source", source.Name(), "game", scope.game, "language", scope.language, "error", err)
+			continue
+		}
+		rarityUpdated += changed
+	}
+
+	slog.Info("Bulk prices applied", "source", source.Name(), "rows", rows, "updated", updated, "fallback_updated", fuzzyUpdated, "rarity_updated", rarityUpdated)
 	return nil
+}
+
+// applyFuzzyRarity fills cards.rarity for cards whose catalog source published no
+// rarity. The marketplace rarity rides along with the price payload, so this costs
+// no extra request.
+func (w *DataSyncWorker) applyFuzzyRarity(ctx context.Context, game, language string, bound map[string]struct{}, rarities map[string]string) (int64, error) {
+	if len(rarities) == 0 {
+		return 0, nil
+	}
+	excluded := make([]string, 0, len(bound))
+	for excludedLanguage := range bound {
+		excluded = append(excluded, excludedLanguage)
+	}
+	sort.Strings(excluded)
+
+	const query = `
+		SELECT id, COALESCE(set_code, ''), COALESCE(set_name, ''), COALESCE(collector_number, '')
+		FROM cards
+		WHERE game = $1
+		  AND superseded_by_card_id IS NULL
+		  AND (rarity IS NULL OR rarity = '')
+		  AND collector_number IS NOT NULL AND collector_number <> ''
+		  AND ($2 = '' OR language = $2)
+		  AND COALESCE(language, '') <> ALL($3::text[])`
+	rows, err := w.db.QueryContext(ctx, query, game, language, pq.Array(excluded))
+	if err != nil {
+		return 0, fmt.Errorf("rarity query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	lookup := func(index map[string]string, set, number string) (string, bool) {
+		for _, key := range priceMatchKeys(set, number) {
+			if rarity, ok := index[key]; ok {
+				return rarity, true
+			}
+		}
+		return "", false
+	}
+
+	updates := make(map[string]string)
+	for rows.Next() {
+		var id, setCode, setName, number string
+		if err := rows.Scan(&id, &setCode, &setName, &number); err != nil {
+			continue
+		}
+		if setCode != "" {
+			if rarity, ok := lookup(rarities, setCode, number); ok {
+				updates[id] = rarity
+				continue
+			}
+		}
+		if setName != "" {
+			if rarity, ok := lookup(rarities, setName, number); ok {
+				updates[id] = rarity
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	ids := make([]string, 0, len(updates))
+	for id := range updates {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	var total int64
+	batch := make([]service.BulkPriceUpdate, 0, bulkPriceBatchSize)
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		changed, err := retryOnConflict(ctx, fxRetryLimit, func() (int64, error) {
+			return w.applyRarityByCardID(ctx, batch)
+		})
+		if err != nil {
+			return err
+		}
+		total += changed
+		batch = batch[:0]
+		return nil
+	}
+	for _, id := range ids {
+		batch = append(batch, service.BulkPriceUpdate{SourceCardID: id, Rarity: updates[id]})
+		if len(batch) >= bulkPriceBatchSize {
+			if err := flush(); err != nil {
+				return total, err
+			}
+		}
+	}
+	if err := flush(); err != nil {
+		return total, err
+	}
+	return total, nil
+}
+
+// applyRarityByCardID writes rarities for explicit card ids that still have none.
+func (w *DataSyncWorker) applyRarityByCardID(ctx context.Context, batch []service.BulkPriceUpdate) (int64, error) {
+	if len(batch) == 0 {
+		return 0, nil
+	}
+	var query strings.Builder
+	query.WriteString(`UPDATE cards AS c
+SET rarity = v.rarity
+FROM (VALUES `)
+	args := make([]any, 0, len(batch)*2)
+	for index, update := range batch {
+		if index > 0 {
+			query.WriteString(", ")
+		}
+		base := index * 2
+		fmt.Fprintf(&query, "($%d, $%d)", base+1, base+2)
+		args = append(args, update.SourceCardID, update.Rarity)
+	}
+	query.WriteString(`) AS v(id, rarity)
+WHERE c.id = v.id AND (c.rarity IS NULL OR c.rarity = '')`)
+	result, err := w.db.ExecContext(ctx, query.String(), args...)
+	if err != nil {
+		return 0, fmt.Errorf("rarity update: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return affected, nil
 }
 
 // applyEURFallback fills the EUR column for cards whose marketplace only publishes
@@ -292,7 +465,7 @@ type fuzzyScope struct {
 
 // orderedFuzzyScopes returns the scopes of an index in a deterministic order with
 // the language-bound scopes first.
-func orderedFuzzyScopes(index map[fuzzyScope]map[string]float64) []fuzzyScope {
+func orderedFuzzyScopes[V any](index map[fuzzyScope]map[string]V) []fuzzyScope {
 	scopes := make([]fuzzyScope, 0, len(index))
 	for scope := range index {
 		scopes = append(scopes, scope)

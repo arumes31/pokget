@@ -346,7 +346,9 @@ func (u upsertContext) card(record CardRecord) (string, bool, error) {
 		     variant = EXCLUDED.variant,
 		     language = EXCLUDED.language,
 		     game = EXCLUDED.game,
-		     rarity = EXCLUDED.rarity,
+		     -- Sources that publish no rarity (TCGdex lists sets without one) must not
+		     -- erase a rarity the price sync filled in from the marketplace payload.
+		     rarity = COALESCE(EXCLUDED.rarity, cards.rarity),
 		     source_id = EXCLUDED.source_id,
 		     source_card_id = EXCLUDED.source_card_id,
 		     set_code = EXCLUDED.set_code,
@@ -523,7 +525,7 @@ func (u upsertContext) printings(
 			     set_code = EXCLUDED.set_code,
 			     set_name = EXCLUDED.set_name,
 			     collector_number = EXCLUDED.collector_number,
-			     rarity = EXCLUDED.rarity,
+			     rarity = COALESCE(EXCLUDED.rarity, catalog_printings.rarity),
 			     language = EXCLUDED.language,
 			     variant = EXCLUDED.variant,
 			     released_at = EXCLUDED.released_at,
