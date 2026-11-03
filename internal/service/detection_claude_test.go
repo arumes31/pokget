@@ -218,3 +218,173 @@ func TestClaudeDetection_Error_NoSecondaryFallback(t *testing.T) {
 		t.Errorf("expected DetectionStatusFailed, got %+v", result)
 	}
 }
+
+func TestClaudeDetection_MatchesLocalizedPrintedName(t *testing.T) {
+	// Magic keeps the English name in `name`; the Japanese card prints the
+	// localized name. Without LocalizedNames the detector read this card
+	// correctly and matched a different card by set+number instead.
+	mock := &mockClaudeDetector{
+		info: &claudedetect.DetectedCardInfo{
+			Game:            "magic",
+			Name:            "イモエン、神秘のトリックスター",
+			CollectorNumber: "385",
+			Set:             "統率者レジェンズ：バルダーズ・ゲートの戦い",
+			Language:        "ja",
+			Confidence:      0.93,
+		},
+	}
+
+	pipeline := NewDetectionPipeline(nil, nil)
+	pipeline.Claude = mock
+
+	cards := []models.Card{
+		{
+			ID:              "clb-385",
+			Name:            "Imoen, Mystic Trickster",
+			LocalizedNames:  []string{"イモエン、神秘のトリックスター"},
+			CollectorNumber: "385",
+			Set:             "Commander Legends: Battle for Baldur's Gate",
+			SetCode:         "clb",
+			Language:        "ja",
+			Game:            "magic",
+		},
+		{
+			ID:              "cmr-385",
+			Name:            "Spirit Mantle",
+			CollectorNumber: "385",
+			Set:             "Commander Legends",
+			SetCode:         "cmr",
+			Language:        "ja",
+			Game:            "magic",
+		},
+	}
+
+	result, err := pipeline.DetectScoped(context.Background(), DetectionRequest{
+		Image: testCardImage(t),
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGMagic, Language: models.LanguageJapanese},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BestMatchID() != "clb-385" {
+		t.Fatalf("expected localized name to win clb-385, got %q", result.BestMatchID())
+	}
+	if result.BestMatchNeedsReview() {
+		t.Errorf("exact localized name + number must not need review")
+	}
+}
+
+func TestClaudeDetection_VariantSuffixCollectorIsPartialEvidence(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "magic",
+		Name:            "Mirrex",
+		CollectorNumber: "254",
+		Set:             "Phyrexia: All Will Be One",
+		Language:        "en",
+		Confidence:      0.95,
+	}
+	cards := []models.Card{
+		{
+			ID:              "pone-254p",
+			Name:            "Mirrex",
+			CollectorNumber: "254p",
+			Set:             "Phyrexia: All Will Be One",
+			SetCode:         "pone",
+			Language:        "en",
+			Game:            "magic",
+			SourceCardID:    "254p",
+		},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if matches[0].Confidence != 94.0 {
+		t.Errorf("expected partial-variant confidence 94, got %f", matches[0].Confidence)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("name + set + base number is a confident match")
+	}
+}
+
+func TestClaudeDetection_DuplicatePrintingsDoNotForceReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "one_piece",
+		Name:            "Boa Hancock",
+		CollectorNumber: "ST17-004",
+		Set:             "ST-17",
+		Language:        "en",
+		Confidence:      0.96,
+	}
+	cards := []models.Card{
+		{
+			ID:              "card-alt",
+			Name:            "Boa Hancock",
+			CollectorNumber: "ST17-004",
+			Set:             "ST-17",
+			SetCode:         "ST-17",
+			Language:        "en",
+			Game:            "one_piece",
+			SourceCardID:    "ST17-004_p1",
+		},
+		{
+			ID:              "card-base",
+			Name:            "Boa Hancock",
+			CollectorNumber: "ST17-004",
+			Set:             "ST-17",
+			SetCode:         "ST-17",
+			Language:        "en",
+			Game:            "one_piece",
+			SourceCardID:    "ST17-004",
+		},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if matches[0].Card.ID != "card-base" {
+		t.Errorf("expected base printing first, got %q", matches[0].Card.ID)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("same card, different art must not require review")
+	}
+	if matches[1].NeedsReview {
+		t.Errorf("same card, different art must not require review")
+	}
+}
+
+func TestClaudeDetection_GenericSetSubstringDoesNotConfirmUnknownName(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "magic",
+		Name:            "Unleserlicher Name",
+		CollectorNumber: "385",
+		Set:             "Commander Legends",
+		Language:        "ja",
+		Confidence:      0.9,
+	}
+	cards := []models.Card{
+		{
+			ID:              "cmr-385",
+			Name:            "Spirit Mantle",
+			CollectorNumber: "385",
+			Set:             "Commander Legends: Battle for Baldur's Gate",
+			SetCode:         "cmr",
+			Language:        "ja",
+			Game:            "magic",
+		},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if matches[0].Confidence != 65.0 {
+		t.Errorf("substring set alone must not score 88, got %f", matches[0].Confidence)
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("number-only candidate must require review")
+	}
+}

@@ -22,7 +22,9 @@ package service
 
 import (
 	"context"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -184,6 +186,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	normClaudeName := normalizeMatchText(info.Name)
 	foldedClaudeName := foldVoicing(normClaudeName)
 	claudeCollector := normalizeCollectorNum(info.CollectorNumber)
+	claudeCollectorBase := collectorBaseKey(claudeCollector)
 	claudeSet := normalizeMatchText(info.Set)
 	claudeSetCode := normalizeMatchText(info.SetCode)
 
@@ -194,6 +197,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 
 		cardNormName := normalizeMatchText(card.Name)
 		cardCollector := normalizeCollectorNum(card.CollectorNumber)
+		cardCollectorBase := collectorBaseKey(cardCollector)
 		cardSet := normalizeMatchText(card.Set)
 		cardSetCode := normalizeMatchText(card.SetCode)
 
@@ -268,16 +272,29 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				// Neither has fraction: compare keys (strips leading zeroes)
 				if (k1 != "" && k1 == k2) || claudeCollector == cardCollector {
 					collectorMatched = true
+				} else if claudeCollectorBase != "" && claudeCollectorBase == cardCollectorBase {
+					// Magic prints the same number with a variant suffix
+					// (254p / 254s): the base number still identifies the card,
+					// but not the printing, so it is partial evidence.
+					partialCollector = true
 				}
 			}
 		}
 
-		// Set / SetCode matching
-		setMatched := false
+		// Set / SetCode matching. Exact equality is the only form strong enough
+		// to identify a card without name evidence: generic set names are
+		// substrings of many products ("Commander Legends" is inside
+		// "Commander Legends: Battle for Baldur's Gate"), so substring matches
+		// must not lift an unrelated card over the real one.
+		setMatchedExact := false
 		if claudeSetCode != "" && cardSetCode != "" && claudeSetCode == cardSetCode {
-			setMatched = true
-		} else if claudeSet != "" && cardSet != "" {
-			if claudeSet == cardSet || strings.Contains(cardSet, claudeSet) || strings.Contains(claudeSet, cardSet) {
+			setMatchedExact = true
+		} else if claudeSet != "" && cardSet != "" && claudeSet == cardSet {
+			setMatchedExact = true
+		}
+		setMatched := setMatchedExact
+		if !setMatched && claudeSet != "" && cardSet != "" {
+			if strings.Contains(cardSet, claudeSet) || strings.Contains(claudeSet, cardSet) {
 				setMatched = true
 			}
 		}
@@ -309,7 +326,10 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			// voicing mark: offer it as the leading candidate for review.
 			score = 90.0
 			needsReview = true
-		} else if collectorMatched && setMatched {
+		} else if collectorMatched && setMatchedExact {
+			// Number and set agree but the name gives no evidence (a different
+			// language, or an unclear title): offer it for review, never as a
+			// confirmed match.
 			score = 88.0
 			needsReview = true
 		} else if foldedNameMatched && collectorMatched {
@@ -351,15 +371,36 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		})
 	}
 
-	// Sort by confidence descending
+	// Sort by confidence descending. Ties are broken deterministically, and the
+	// plain printing wins over an alt-art row: One Piece stores the same name and
+	// collector number on the base card and on every `_pN`/`_rN` reprint, so
+	// without this the awarded row would depend on database heap order.
 	sort.SliceStable(candidates, func(i, j int) bool {
-		return candidates[i].confidence > candidates[j].confidence
+		if candidates[i].confidence != candidates[j].confidence {
+			return candidates[i].confidence > candidates[j].confidence
+		}
+		baseI, baseJ := isBasePrinting(candidates[i].card), isBasePrinting(candidates[j].card)
+		if baseI != baseJ {
+			return baseI
+		}
+		return candidates[i].card.ID < candidates[j].card.ID
 	})
 
-	// Mark ties within 5 points for review
-	if len(candidates) >= 2 && (candidates[0].confidence-candidates[1].confidence) <= 5.0 {
-		candidates[0].needsReview = true
-		candidates[1].needsReview = true
+	// Mark ties within 5 points for review, but only when the tie is between
+	// different cards. Alt-art rows of the same card share name and number; two
+	// rows of one card are not an ambiguity the user must resolve.
+	if len(candidates) >= 2 {
+		topKey := logicalCardKey(candidates[0].card)
+		for i := 1; i < len(candidates); i++ {
+			if candidates[0].confidence-candidates[i].confidence > 5.0 {
+				break
+			}
+			if logicalCardKey(candidates[i].card) != topKey {
+				candidates[0].needsReview = true
+				candidates[i].needsReview = true
+				break
+			}
+		}
 	}
 
 	maxTop := 5
@@ -432,4 +473,39 @@ func extractNumerator(s string) string {
 		return strings.TrimSpace(s[:idx])
 	}
 	return s
+}
+
+var (
+	collectorVariantSuffixPattern = regexp.MustCompile(`^([a-z]{0,3})([0-9]{1,4})[a-z]$`)
+	altArtSourceIDPattern         = regexp.MustCompile(`(?i)_[pr][0-9]+$`)
+)
+
+// collectorBaseKey is the collector number without the single-letter variant
+// suffix Magic uses for alternate printings (`254p`, `254s`). It still keeps the
+// numeric identity of the card, so a scan that reads only "254" can match it as
+// partial evidence instead of finding no candidate at all.
+func collectorBaseKey(value string) string {
+	if key := collectorNumberKey(value); key != "" {
+		return key
+	}
+	match := collectorVariantSuffixPattern.FindStringSubmatch(strings.ToLower(strings.TrimSpace(value)))
+	if match == nil {
+		return ""
+	}
+	number, err := strconv.Atoi(match[2])
+	if err != nil {
+		return ""
+	}
+	return match[1] + strconv.Itoa(number)
+}
+
+// isBasePrinting prefers the plain catalog row over an alt-art/reprint row.
+func isBasePrinting(card models.Card) bool {
+	return card.SourceCardID == "" || !altArtSourceIDPattern.MatchString(card.SourceCardID)
+}
+
+// logicalCardKey identifies one card across its printings: reprints share name
+// and collector number but differ in artwork, price and catalog row.
+func logicalCardKey(card models.Card) string {
+	return normalizeMatchText(card.Name) + "\x00" + normalizeCollectorNum(card.CollectorNumber)
 }

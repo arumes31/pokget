@@ -1284,7 +1284,15 @@ func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 
 // ReloadCardsOnly updates the in-memory card cache without rebuilding the BK-tree index.
 func (h *Handler) ReloadCardsOnly() (int, error) {
-	rows, err := h.DB.Query("SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash, COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, ''), COALESCE(set_code, ''), COALESCE(collector_number, ''), catalog_active FROM cards WHERE superseded_by_card_id IS NULL AND (source_id IS NULL OR catalog_active = TRUE)")
+	// The scan uses the printed name for non-English printings: Magic keeps the
+	// English name in `name` and the localized one in source_metadata, so without
+	// this the detector reads the card correctly and still finds no candidate.
+	rows, err := h.DB.Query(`SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0),
+		COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash,
+		COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, ''), COALESCE(set_code, ''),
+		COALESCE(collector_number, ''), catalog_active,
+		COALESCE(NULLIF(source_metadata->>'printed_name', ''), ''), COALESCE(source_card_id, '')
+		FROM cards WHERE superseded_by_card_id IS NULL AND (source_id IS NULL OR catalog_active = TRUE)`)
 	if err != nil {
 		return 0, err
 	}
@@ -1293,8 +1301,12 @@ func (h *Handler) ReloadCardsOnly() (int, error) {
 	allCards := make([]models.Card, 0, 1024) // BOLT OPTIMIZATION: Pre-allocate slice to reduce memory allocations for cache reload
 	for rows.Next() {
 		var c models.Card
-		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash, &c.Game, &c.Language, &c.Rarity, &c.SetCode, &c.CollectorNumber, &c.CatalogActive); err != nil {
+		var printedName string
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash, &c.Game, &c.Language, &c.Rarity, &c.SetCode, &c.CollectorNumber, &c.CatalogActive, &printedName, &c.SourceCardID); err != nil {
 			continue
+		}
+		if printedName != "" && !strings.EqualFold(printedName, c.Name) {
+			c.LocalizedNames = []string{printedName}
 		}
 		allCards = append(allCards, c)
 	}
