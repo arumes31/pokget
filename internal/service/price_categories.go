@@ -22,11 +22,7 @@ func PriceCategories() []PriceCategory {
 		categories = append(categories, PriceCategory{Game: game, Category: category})
 	}
 	for _, extra := range tcgPlayerLanguageCategories {
-		categories = append(categories, PriceCategory{
-			Game:      extra.Game,
-			Languages: extra.Languages,
-			Category:  extra.Category,
-		})
+		categories = append(categories, PriceCategory(extra))
 	}
 	sort.Slice(categories, func(i, j int) bool {
 		if categories[i].Game != categories[j].Game {
