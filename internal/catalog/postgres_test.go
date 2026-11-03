@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/lib/pq"
 )
 
 const testRunID = "11111111-1111-1111-1111-111111111111"
@@ -165,6 +166,97 @@ func TestPostgresRepositoryUpsertBatch(t *testing.T) {
 	}
 	if counts.CardsInserted != 1 || counts.ImagesInserted != 1 || counts.PrintingsInserted != 1 {
 		t.Fatalf("UpsertBatch() counts = %+v", counts)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The price workers update the same card rows, so an upsert batch loses a lock
+// race from time to time. It must retry instead of aborting a multi-minute source
+// sync.
+func TestPostgresRepositoryUpsertBatch_RetriesDeadlock(t *testing.T) {
+	t.Parallel()
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	repository, err := NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batch := Batch{
+		RunID:    testRunID,
+		SourceID: "ygoprodeck",
+		Game:     GameYuGiOh,
+		Records:  []CardRecord{{SourceCardID: "46986414", Name: "Dark Magician", SetName: "Legend of Blue Eyes", Language: "en"}},
+	}
+
+	// First attempt: the commit loses to the price worker.
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT run.source_id, source.game")).
+		WithArgs(testRunID).
+		WillReturnRows(sqlmock.NewRows([]string{"source_id", "game"}).AddRow("ygoprodeck", "yugioh"))
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO cards")).
+		WillReturnRows(sqlmock.NewRows([]string{"inserted"}).AddRow(true))
+	mock.ExpectCommit().WillReturnError(&pq.Error{Code: "40P01"})
+
+	// Second attempt succeeds.
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT run.source_id, source.game")).
+		WithArgs(testRunID).
+		WillReturnRows(sqlmock.NewRows([]string{"source_id", "game"}).AddRow("ygoprodeck", "yugioh"))
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO cards")).
+		WillReturnRows(sqlmock.NewRows([]string{"inserted"}).AddRow(true))
+	mock.ExpectCommit()
+
+	counts, err := repository.UpsertBatch(context.Background(), batch)
+	if err != nil {
+		t.Fatalf("UpsertBatch() error = %v, want a retried success", err)
+	}
+	if counts.CardsInserted != 1 {
+		t.Fatalf("UpsertBatch() counts = %+v", counts)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A real data error must not be retried.
+func TestPostgresRepositoryUpsertBatch_DoesNotRetryOtherErrors(t *testing.T) {
+	t.Parallel()
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	repository, err := NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT run.source_id, source.game")).
+		WithArgs(testRunID).
+		WillReturnRows(sqlmock.NewRows([]string{"source_id", "game"}).AddRow("ygoprodeck", "yugioh"))
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO cards")).
+		WillReturnRows(sqlmock.NewRows([]string{"inserted"}).AddRow(true))
+	mock.ExpectCommit().WillReturnError(&pq.Error{Code: "23505"})
+
+	_, err = repository.UpsertBatch(context.Background(), Batch{
+		RunID:    testRunID,
+		SourceID: "ygoprodeck",
+		Game:     GameYuGiOh,
+		Records:  []CardRecord{{SourceCardID: "46986414", Name: "Dark Magician", SetName: "Legend of Blue Eyes", Language: "en"}},
+	})
+	if err == nil {
+		t.Fatal("UpsertBatch() error = nil, want the unique violation")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

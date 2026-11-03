@@ -114,10 +114,11 @@ func TestPortfolioCardRendersPhotoAndBothMarkets(t *testing.T) {
 	rows := sqlmock.NewRows([]string{
 		"id", "condition", "grade", "notes", "custom_price", "is_public", "photo", "binder",
 		"cid", "name", "set", "set_code", "number", "language", "game", "rarity", "image", "usd", "eur", "eur_fx",
+		"variant",
 	}).AddRow(
 		"item-1", "NM", "", "stored flat", nil, false, "items/test-user/item-1.jpg", "",
 		"swsh1-1", "Celebi V", "Sword & Shield", "swsh1", "1", "ja", "pokemon", "Holo Rare V",
-		"https://example.test/celebi.png", 3.1, 2.55, true,
+		"https://example.test/celebi.png", 3.1, 2.55, true, "foil",
 	)
 	mock.ExpectQuery("SELECT p.id, p.condition").WithArgs("item-1", "test-user").WillReturnRows(rows)
 	renderUserDataExpectation(mock, "test-user")
@@ -140,6 +141,10 @@ func TestPortfolioCardRendersPhotoAndBothMarkets(t *testing.T) {
 		if !bytes.Contains([]byte(body), []byte(want)) {
 			t.Fatalf("detail page misses the FX marker %q", want)
 		}
+	}
+	// A price that belongs to the foil printing must say so.
+	if !bytes.Contains([]byte(body), []byte("Price for the foil printing")) {
+		t.Fatal("detail page misses the foil variant hint")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

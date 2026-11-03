@@ -22,6 +22,44 @@ func TestFirstPositivePricePrefersThePlainPrice(t *testing.T) {
 	}
 }
 
+// A foil-only printing gets the foil price, and the variant says so.
+func TestFirstVariantPriceNamesThePrinting(t *testing.T) {
+	plain, foil, etched := "2.00", "9.00", "4.00"
+	empty := ""
+
+	price, variant := firstVariantPrice([]*string{&plain}, nil)
+	if price != 2 || variant != "normal" {
+		t.Fatalf("got (%v, %q), want (2, normal)", price, variant)
+	}
+	price, variant = firstVariantPrice([]*string{&empty}, []pricedField{
+		{raw: &foil, variant: "foil"},
+		{raw: &etched, variant: "etched"},
+	})
+	if price != 9 || variant != "foil" {
+		t.Fatalf("got (%v, %q), want (9, foil)", price, variant)
+	}
+	price, variant = firstVariantPrice(nil, []pricedField{{raw: &etched, variant: "etched"}})
+	if price != 4 || variant != "etched" {
+		t.Fatalf("got (%v, %q), want (4, etched)", price, variant)
+	}
+	if price, variant := firstVariantPrice(nil, nil); price != 0 || variant != "" {
+		t.Fatalf("got (%v, %q), want no price", price, variant)
+	}
+}
+
+func TestHasMarketPriceSourceSeparatesGamesFromGaps(t *testing.T) {
+	for _, game := range []string{"pokemon", "magic", "yugioh", "one_piece", "POKEMON"} {
+		if !HasMarketPriceSource(game) {
+			t.Fatalf("HasMarketPriceSource(%q) = false, want true", game)
+		}
+	}
+	for _, game := range []string{"altered", "duel_masters", ""} {
+		if HasMarketPriceSource(game) {
+			t.Fatalf("HasMarketPriceSource(%q) = true, want false", game)
+		}
+	}
+}
+
 func TestFrankfurterEURRateReadsAndCachesTheRate(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

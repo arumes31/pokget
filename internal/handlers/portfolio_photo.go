@@ -15,6 +15,7 @@ import (
 
 	"pokget/internal/auth"
 	"pokget/internal/models"
+	"pokget/internal/service"
 
 	"github.com/gorilla/mux"
 	"github.com/shopspring/decimal"
@@ -150,14 +151,15 @@ func (h *Handler) PortfolioCard(w http.ResponseWriter, r *http.Request) {
 		       p.custom_price, p.is_public, COALESCE(p.photo_path, ''), COALESCE(p.binder_id::text, ''),
 		       c.id, c.name, c.set_name, COALESCE(c.set_code, ''), COALESCE(c.collector_number, ''),
 		       COALESCE(c.language, ''), COALESCE(c.game, ''), COALESCE(c.rarity, ''),
-		       COALESCE(c.image_url, ''), c.price_usd, c.price_eur, COALESCE(c.price_eur_estimated, FALSE)
+		       COALESCE(c.image_url, ''), c.price_usd, c.price_eur, COALESCE(c.price_eur_estimated, FALSE),
+		       COALESCE(c.price_variant, '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.id = $1 AND p.user_id = $2`, itemID, userID).
 		Scan(&item.ID, &item.Condition, &item.Grade, &item.Notes, &item.CustomPrice, &item.IsPublic,
 			&photo, &item.BinderID, &item.Card.ID, &item.Card.Name, &item.Card.Set, &item.Card.SetCode,
 			&item.Card.CollectorNumber, &item.Card.Language, &item.Card.Game, &item.Card.Rarity,
-			&item.Card.ImageURL, &usd, &eur, &eurViaRate)
+			&item.Card.ImageURL, &usd, &eur, &eurViaRate, &item.Card.PriceVariant)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Card not found", http.StatusNotFound)
@@ -181,6 +183,9 @@ func (h *Handler) PortfolioCard(w http.ResponseWriter, r *http.Request) {
 		"MarketEUR": item.Card.PriceEURValid,
 		// EUREstimated marks a price converted from USD with the daily ECB rate.
 		"EUREstimated": eurViaRate,
-		"UpdatedAt":    time.Now().UTC(),
+		// NoMarketSource tells a game without any price source (Altered, Duel
+		// Masters) apart from a card a source simply has no price for.
+		"NoMarketSource": !service.HasMarketPriceSource(item.Card.Game),
+		"UpdatedAt":      time.Now().UTC(),
 	})
 }

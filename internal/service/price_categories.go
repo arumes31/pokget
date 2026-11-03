@@ -13,6 +13,29 @@ type PriceCategory struct {
 	Category  int
 }
 
+// marketPriceGames lists the games with a price source outside the TCGCSV
+// categories: Scryfall covers Magic and YGOPRODeck covers Yu-Gi-Oh.
+var marketPriceGames = map[string]struct{}{
+	"magic":  {},
+	"yugioh": {},
+}
+
+// HasMarketPriceSource reports whether any configured source can price a game. A
+// game without one (Altered, Duel Masters) is not a gap the worker can close, so
+// the UI must not label its price "unavailable" like a temporary miss.
+func HasMarketPriceSource(game string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(game))
+	if _, ok := marketPriceGames[normalized]; ok {
+		return true
+	}
+	for _, category := range PriceCategories() {
+		if category.Game == normalized {
+			return true
+		}
+	}
+	return false
+}
+
 // PriceCategories returns every TCGplayer category the bulk price source reads,
 // sorted by game and language. It exists so operators and tooling can check which
 // game/language combination is covered by a marketplace.

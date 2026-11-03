@@ -41,6 +41,36 @@ production host pulls that image (`dr-dnode01`).
 5. Verify the deploy: `/health/ready` returns 204, container is `healthy` with
    `0 restarts`, `docker logs` shows no `level=ERROR` and no `status=5xx`.
 
+## Market prices
+
+Price coverage is measured, not assumed: `go run ./cmd/pricegaps` prints it per
+game/language/rarity and `-fail-under-usd 80 -fail-under-eur 80` turns the report
+into a gate (exit 2). `-sources` additionally probes every TCGCSV category.
+
+Sources per game: Scryfall (Magic, USD+EUR incl. foil/etched), YGOPRODeck
+(Yu-Gi-Oh), TCGdex (Pokémon per card, Cardmarket EUR + TCGplayer USD) and TCGCSV
+(the TCGplayer categories listed in `internal/service/price_bulk.go`). EUR for
+TCGplayer-only rows is derived from the daily ECB rate and flagged with
+`cards.price_eur_estimated`. `altered` and `duel_masters` have no marketplace with
+public prices.
+
+Matching rules in `internal/worker/price_match.go` (both sides run the same
+normalizer, so never key raw strings):
+
+- set code + collector number, normalized (leading zeros, set code inside the
+  number, rarity suffix, print run, separators),
+- set name + number for games whose set codes disagree,
+- card name inside the set for products without a collector number (WoW, Sorcery),
+- composite number alone for numbers that carry the set code (Weiss uses `NIK/`
+  while the number says `NIK/S135-E063`),
+- language-bound categories (`ja`, `ko`, `zh-cn`, `zh-tw` share the Japanese
+  Pokémon set codes) run before the language-agnostic pass; the generic pass skips
+  those languages.
+
+Bulk rules: a source never wipes a currency it does not know, the fallback only
+fills cards without a price, and an upsert batch retries after `40P01`/`40001`/
+`55P03` because the price worker writes the same rows.
+
 ## Conventions
 
 - Static assets referenced from templates carry `?v={{ .BuildVersion }}`;

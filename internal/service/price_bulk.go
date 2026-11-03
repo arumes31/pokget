@@ -30,7 +30,7 @@ type BulkPriceUpdate struct {
 	// lands on an English printing. Asian printings share the Japanese set codes,
 	// so one category can serve several languages.
 	Languages []string
-	SetCode  string
+	SetCode   string
 	// SetName is the source's set name. Catalog set codes and marketplace
 	// abbreviations disagree for several games (Pokémon, Digimon, UniVersus), so
 	// the worker also matches on the normalized set name when the code misses.
@@ -40,6 +40,9 @@ type BulkPriceUpdate struct {
 	// without a collector number, so the worker falls back to matching the name
 	// inside the set.
 	ProductName string
+	// Variant names the printing the USD price belongs to: "normal", "foil" or
+	// "etched". Empty leaves the stored variant untouched.
+	Variant string
 	// Rarity is the marketplace rarity label ("Rare Holo", "SR"). It is optional
 	// and lets the worker fill the rarity gap of catalog sources that only publish
 	// id, name and set (TCGdex lists sets without a rarity field).
@@ -146,11 +149,11 @@ func (s *scryfallBulkSource) FetchPrices(ctx context.Context, emit func(BulkPric
 		var card struct {
 			ID     string `json:"id"`
 			Prices struct {
-				USD      *string `json:"usd"`
-				USDFoil  *string `json:"usd_foil"`
+				USD       *string `json:"usd"`
+				USDFoil   *string `json:"usd_foil"`
 				USDEtched *string `json:"usd_etched"`
-				EUR      *string `json:"eur"`
-				EURFoil  *string `json:"eur_foil"`
+				EUR       *string `json:"eur"`
+				EURFoil   *string `json:"eur_foil"`
 			} `json:"prices"`
 		}
 		if err := json.Unmarshal([]byte(line), &card); err != nil {
@@ -162,12 +165,24 @@ func (s *scryfallBulkSource) FetchPrices(ctx context.Context, emit func(BulkPric
 		// Printings that only exist as foil (or only have an etched price) carry no
 		// plain usd/eur value. Without the foil fallbacks those cards stayed
 		// unpriced even though Scryfall knows their market price.
-		usd := firstPositivePrice(card.Prices.USD, card.Prices.USDFoil, card.Prices.USDEtched)
+		usd, variant := firstVariantPrice(
+			[]*string{card.Prices.USD},
+			[]pricedField{
+				{raw: card.Prices.USDFoil, variant: "foil"},
+				{raw: card.Prices.USDEtched, variant: "etched"},
+			},
+		)
 		eur := firstPositivePrice(card.Prices.EUR, card.Prices.EURFoil)
 		if usd <= 0 && eur <= 0 {
 			continue
 		}
-		if err := emit(BulkPriceUpdate{SourceID: "scryfall", SourceCardID: card.ID, USD: usd, EUR: eur}); err != nil {
+		if err := emit(BulkPriceUpdate{
+			SourceID:     "scryfall",
+			SourceCardID: card.ID,
+			USD:          usd,
+			EUR:          eur,
+			Variant:      variant,
+		}); err != nil {
 			return err
 		}
 	}
@@ -234,9 +249,9 @@ var tcgPlayerLanguageCategories = []tcgcsvLanguageCategory{
 // covers every TCGplayer category, so games without their own price API still
 // get a USD market price.
 type tcgcsvBulkSource struct {
-	BaseURL     string
-	HTTP        *http.Client
-	Categories  map[string]int
+	BaseURL    string
+	HTTP       *http.Client
+	Categories map[string]int
 	// LanguageCategories are the extra, language-bound categories. They are
 	// matched against cards of that language only.
 	LanguageCategories []tcgcsvLanguageCategory
@@ -311,6 +326,13 @@ func (s *tcgcsvBulkSource) fetchCategory(
 	concurrency int,
 	emit func(BulkPriceUpdate) error,
 ) error {
+	// The worker budget is 60 minutes; logging per category keeps a growing
+	// catalog from silently exceeding it.
+	started := time.Now()
+	defer func() {
+		slog.Info("tcgcsv: category finished", "game", game, "category", category,
+			"languages", languages, "duration", time.Since(started).Round(time.Second))
+	}()
 	endpoint := fmt.Sprintf("%s/%d", base, category)
 	var groups struct {
 		Results []struct {

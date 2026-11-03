@@ -6,6 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/lib/pq"
 )
 
 type PostgresRepository struct {
@@ -108,6 +112,10 @@ func (r *PostgresRepository) BeginRun(
 	return runID, nil
 }
 
+// UpsertBatch writes one batch in a transaction and retries when the transaction
+// lost a lock race. The price worker updates the same card rows (bulk prices, EUR
+// conversion, per-card backfill), so a deadlock used to abort a whole source sync
+// after minutes of work.
 func (r *PostgresRepository) UpsertBatch(
 	ctx context.Context,
 	batch Batch,
@@ -120,6 +128,26 @@ func (r *PostgresRepository) UpsertBatch(
 		return counts, nil
 	}
 
+	var lastErr error
+	for attempt := 0; attempt <= catalogUpsertAttempts; attempt++ {
+		counts, lastErr = r.upsertBatchOnce(ctx, batch)
+		if lastErr == nil {
+			return counts, nil
+		}
+		if !retryableCatalogError(lastErr) {
+			return counts, lastErr
+		}
+		slog.Warn("Catalog: retrying batch after a lock conflict",
+			"source", batch.SourceID, "game", batch.Game, "attempt", attempt+1, "error", lastErr)
+		if !waitForCatalogRetry(ctx, time.Duration(attempt+1)*catalogUpsertBackoff) {
+			return ChangeCounts{}, ctx.Err()
+		}
+	}
+	return ChangeCounts{}, lastErr
+}
+
+func (r *PostgresRepository) upsertBatchOnce(ctx context.Context, batch Batch) (ChangeCounts, error) {
+	var counts ChangeCounts
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return counts, fmt.Errorf("catalog: beginning batch transaction: %w", err)
@@ -165,6 +193,36 @@ func (r *PostgresRepository) UpsertBatch(
 		return counts, fmt.Errorf("catalog: committing batch: %w", err)
 	}
 	return counts, nil
+}
+
+// catalogUpsertAttempts is how often one batch is retried after a lock conflict.
+// The price workers write the same rows, so a conflict is expected work, not a
+// failure.
+const (
+	catalogUpsertAttempts = 4
+	catalogUpsertBackoff  = 250 * time.Millisecond
+)
+
+// retryableCatalogError reports whether the batch lost a lock race and may be
+// retried: 40P01 deadlock_detected, 40001 serialization_failure, 55P03
+// lock_not_available.
+func retryableCatalogError(err error) bool {
+	var pgErr *pq.Error
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return pgErr.Code == "40P01" || pgErr.Code == "40001" || pgErr.Code == "55P03"
+}
+
+func waitForCatalogRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func (r *PostgresRepository) CompleteRun(

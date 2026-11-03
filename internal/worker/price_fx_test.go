@@ -92,7 +92,7 @@ func TestApplyBulkSourceKeepsTheMissingCurrency(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*CASE WHEN v.usd > 0").
-		WithArgs("scryfall", "abc", 0.0, 4.5).
+		WithArgs("scryfall", "abc", 0.0, 4.5, "").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	worker := &DataSyncWorker{db: db}

@@ -31,6 +31,10 @@ type Card struct {
 	LocalizedNames  []string        `json:"localized_names,omitempty"`
 	PriceUSD        decimal.Decimal `json:"price_usd"`
 	PriceEUR        decimal.Decimal `json:"price_eur"`
+	// PriceVariant names the printing the USD quote belongs to ("", normal, foil,
+	// etched). Scryfall falls back to the foil price for foil-only printings, and a
+	// foil quote must not read like the value of the normal card.
+	PriceVariant string `json:"price_variant,omitempty"`
 	// Validity is presentation metadata; keep the existing catalog API numeric contract.
 	PriceUSDValid bool    `json:"-"`
 	PriceEURValid bool    `json:"-"`

@@ -47,17 +47,22 @@
                     <div class="rounded-xl border border-red-500/20 bg-black/40 p-3">
                         <p class="text-xs font-bold uppercase tracking-wide text-zinc-500">EUR</p>
                         <p class="font-display text-lg font-extrabold text-zinc-100">
-                            {{ if .MarketEUR }}{{ if .EUREstimated }}&#8776;{{ end }}&#8364;{{ .Item.Card.PriceEUR.StringFixed 2 }}{{ else }}<span data-i18n class="text-sm font-medium text-zinc-500">Price unavailable</span>{{ end }}
+                            {{ if .MarketEUR }}{{ if .EUREstimated }}&#8776;{{ end }}&#8364;{{ .Item.Card.PriceEUR.StringFixed 2 }}{{ else }}{{ if .NoMarketSource }}<span data-i18n class="text-sm font-medium text-zinc-500">No market price recorded</span>{{ else }}<span data-i18n class="text-sm font-medium text-zinc-500">Price unavailable</span>{{ end }}{{ end }}
                         </p>
                         {{ if .EUREstimated }}<p data-i18n class="mt-1 text-xs text-zinc-500">Converted from the USD market price</p>{{ end }}
                     </div>
                     <div class="rounded-xl border border-red-500/20 bg-black/40 p-3">
                         <p class="text-xs font-bold uppercase tracking-wide text-zinc-500">USD</p>
                         <p class="font-display text-lg font-extrabold text-zinc-100">
-                            {{ if .MarketUSD }}${{ .Item.Card.PriceUSD.StringFixed 2 }}{{ else }}<span data-i18n class="text-sm font-medium text-zinc-500">Price unavailable</span>{{ end }}
+                            {{ if .MarketUSD }}${{ .Item.Card.PriceUSD.StringFixed 2 }}{{ else }}{{ if .NoMarketSource }}<span data-i18n class="text-sm font-medium text-zinc-500">No market price recorded</span>{{ else }}<span data-i18n class="text-sm font-medium text-zinc-500">Price unavailable</span>{{ end }}{{ end }}
                         </p>
                     </div>
                 </div>
+                {{ if eq .Item.Card.PriceVariant "foil" }}
+                <p data-i18n class="mt-3 text-xs text-amber-300">Price for the foil printing</p>
+                {{ else if eq .Item.Card.PriceVariant "etched" }}
+                <p data-i18n class="mt-3 text-xs text-amber-300">Price for the etched printing</p>
+                {{ end }}
                 {{ if .Item.CustomPrice }}
                 <p data-i18n class="mt-3 text-sm text-zinc-300">Custom value: {{ $.CurrencySymbol }}{{ printf "%.2f" .Item.GetCustomPrice }}</p>
                 {{ end }}

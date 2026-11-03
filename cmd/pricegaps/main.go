@@ -8,6 +8,8 @@
 //	go run ./cmd/pricegaps                     # coverage report from the database
 //	go run ./cmd/pricegaps -sources            # additionally probe TCGplayer categories
 //	go run ./cmd/pricegaps -min 100 -table game  # only one dimension
+//	go run ./cmd/pricegaps -fail-under-usd 80 -fail-under-eur 80  # unattended gate
+//	go run ./cmd/pricegaps -unmatched          # sets without a price, for the alias table
 //
 // The database connection uses the usual DATABASE_* environment variables.
 package main
@@ -32,12 +34,25 @@ func main() {
 	minCards := flag.Int("min", 50, "only report groups with at least this many cards")
 	table := flag.String("table", "all", "which dimension to report: all, game, language or rarity")
 	probe := flag.Bool("sources", false, "probe every marketplace category for reachability")
+	// The gate turns the report into an unattended check: a source outage or a
+	// mapping regression drops the coverage below the threshold and the job fails.
+	minUSD := flag.Float64("fail-under-usd", 0, "exit 2 when overall USD coverage is below this percentage (0 disables)")
+	minEUR := flag.Float64("fail-under-eur", 0, "exit 2 when overall EUR coverage is below this percentage (0 disables)")
+	// The unmatched report feeds the set-alias table in internal/worker: every line
+	// is a catalog set the marketplace names differently.
+	unmatched := flag.Bool("unmatched", false, "list catalog sets without any price (input for the set-alias table)")
+	unmatchedLimit := flag.Int("unmatched-limit", 60, "how many unmatched sets to list")
 	flag.Parse()
 
 	var exitErr error
 	if *table == "all" || *table == "game" || *table == "language" || *table == "rarity" {
 		if err := reportCoverage(*table, *minCards); err != nil {
 			exitErr = err
+		}
+		if exitErr == nil && *unmatched {
+			if err := reportUnmatchedSets(*unmatchedLimit); err != nil {
+				exitErr = err
+			}
 		}
 	} else {
 		exitErr = fmt.Errorf("unknown -table %q (want all, game, language or rarity)", *table)
@@ -48,10 +63,52 @@ func main() {
 			exitErr = err
 		}
 	}
+	if exitErr == nil && (*minUSD > 0 || *minEUR > 0) {
+		if err := checkCoverageGate(*minUSD, *minEUR); err != nil {
+			fmt.Fprintln(os.Stderr, "pricegaps:", err)
+			os.Exit(2)
+		}
+	}
 	if exitErr != nil {
 		fmt.Fprintln(os.Stderr, "pricegaps:", exitErr)
 		os.Exit(1)
 	}
+}
+
+// checkCoverageGate compares the overall coverage against the thresholds the
+// operator passed on the command line.
+func checkCoverageGate(minUSD, minEUR float64) error {
+	connection, err := db.Connect()
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer func() { _ = connection.Close() }()
+
+	var cards, usd, eur int
+	err = connection.QueryRow(`SELECT count(*),
+	       count(*) FILTER (WHERE price_usd > 0),
+	       count(*) FILTER (WHERE price_eur > 0)
+	FROM cards WHERE superseded_by_card_id IS NULL`).Scan(&cards, &usd, &eur)
+	if err != nil {
+		return fmt.Errorf("coverage gate: %w", err)
+	}
+	if cards == 0 {
+		return fmt.Errorf("coverage gate: catalog is empty")
+	}
+	percentUSD := float64(usd) * 100 / float64(cards)
+	percentEUR := float64(eur) * 100 / float64(cards)
+	fmt.Printf("\noverall coverage: %.2f%% USD (%.2f%% EUR) over %d cards\n", percentUSD, percentEUR, cards)
+	var failures []string
+	if minUSD > 0 && percentUSD < minUSD {
+		failures = append(failures, fmt.Sprintf("USD coverage %.2f%% is below %.2f%%", percentUSD, minUSD))
+	}
+	if minEUR > 0 && percentEUR < minEUR {
+		failures = append(failures, fmt.Sprintf("EUR coverage %.2f%% is below %.2f%%", percentEUR, minEUR))
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("coverage gate failed: %s", strings.Join(failures, "; "))
+	}
+	return nil
 }
 
 func reportCoverage(table string, minCards int) error {
@@ -126,8 +183,8 @@ func printCoverage(connection *sql.DB, name, query string, minCards int) error {
 	unpriced := 0
 	for rows.Next() {
 		var (
-			group                          string
-			cards, usd, eur, eurFX, none   int
+			group                        string
+			cards, usd, eur, eurFX, none int
 		)
 		if err := rows.Scan(&group, &cards, &usd, &eur, &eurFX, &none); err != nil {
 			return fmt.Errorf("%s coverage scan: %w", name, err)
@@ -148,6 +205,49 @@ func printCoverage(connection *sql.DB, name, query string, minCards int) error {
 		fmt.Printf("cards without any market price: %d\n", unpriced)
 	}
 	return nil
+}
+
+// reportUnmatchedSets lists the catalog sets that have no price at all. Those are
+// the candidates for a manual mapping in internal/worker/price_set_aliases.go,
+// because the marketplace either groups them under another name or does not list
+// them at all.
+func reportUnmatchedSets(limit int) error {
+	connection, err := db.Connect()
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer func() { _ = connection.Close() }()
+
+	rows, err := connection.Query(`
+		SELECT COALESCE(NULLIF(game, ''), '(none)'),
+		       COALESCE(NULLIF(set_code, ''), '(none)'),
+		       COALESCE(NULLIF(set_name, ''), '(none)'),
+		       count(*)
+		FROM cards
+		WHERE superseded_by_card_id IS NULL
+		  AND COALESCE(price_usd, 0) = 0 AND COALESCE(price_eur, 0) = 0
+		GROUP BY 1, 2, 3
+		ORDER BY 4 DESC, 1, 2
+		LIMIT $1`, limit)
+	if err != nil {
+		return fmt.Errorf("unmatched sets: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	fmt.Printf("\ncatalog sets without any price (candidates for a set alias)\n")
+	fmt.Printf("%-22s %-18s %-34s %9s\n", "GAME", "SET CODE", "SET NAME", "CARDS")
+	for rows.Next() {
+		var game, setCode, setName string
+		var cards int
+		if err := rows.Scan(&game, &setCode, &setName, &cards); err != nil {
+			return fmt.Errorf("unmatched sets scan: %w", err)
+		}
+		if len(setName) > 34 {
+			setName = setName[:31] + "..."
+		}
+		fmt.Printf("%-22s %-18s %-34s %9d\n", game, setCode, setName, cards)
+	}
+	return rows.Err()
 }
 
 // probeCategories checks that every configured marketplace category is reachable

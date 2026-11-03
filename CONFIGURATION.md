@@ -146,6 +146,10 @@ keep-alive settings can override the Ollama server's `OLLAMA_KEEP_ALIVE` default
 | `CATALOG_IMAGE_CONCURRENCY` | 4 | Parallel image downloads/hashing, 1–8; database writes remain serialized |
 | `CATALOG_IMAGE_BATCH_SIZE` | 8 | Maximum leased batch, capped at twice concurrency to limit waiting leases |
 | `CATALOG_IMAGE_POLL_INTERVAL_MS` | 5000 | Delay after idle/error cycles; no delay while successfully draining queued work |
+| `PRICE_EUR_FALLBACK` | true | Derive EUR from the USD market price with the daily ECB rate; converted rows carry `price_eur_estimated` |
+| `PRICE_BACKFILL_BATCH` | 25000 | Cards per hourly per-card price backfill pass; `0` disables it, negative values are rejected at startup |
+| `PRICE_BACKFILL_REQUESTS_PER_SECOND` | 6 | Request rate of the backfill, separate from `WORKER_REQUESTS_PER_SECOND`; `0` falls back to 2 |
+| `PORTFOLIO_PHOTO_STORE` | `data/card-photos` | Directory that receives the scanned card photos; Compose mounts `/app/data/card-photos` |
 
 Catalog scheduling, image batches, worker retry/rate/circuit settings and price
 retention defaults are annotated in the template. Compose fixes image storage
