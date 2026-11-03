@@ -104,7 +104,9 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		if len(batch) == 0 {
 			return nil
 		}
-		changed, err := w.applyBulkBatch(ctx, batch)
+		changed, err := retryOnConflict(ctx, fxRetryLimit, func() (int64, error) {
+			return w.applyBulkBatch(ctx, batch)
+		})
 		if err != nil {
 			return err
 		}
@@ -215,9 +217,18 @@ func (w *DataSyncWorker) applyEURFallback(ctx context.Context) {
 // applyEURBatchWithRetry retries a batch that lost a lock race against the
 // per-card price sync instead of giving up on the whole conversion.
 func (w *DataSyncWorker) applyEURBatchWithRetry(ctx context.Context, rate float64) (int64, error) {
+	return retryOnConflict(ctx, fxRetryLimit, func() (int64, error) {
+		return w.applyEURBatch(ctx, rate, fxBatchSize)
+	})
+}
+
+// retryOnConflict reruns a statement that lost a lock race with another writer
+// (the per-card price sync or the catalog sync). Without the retry a single
+// deadlock throws away a whole batch of already matched prices.
+func retryOnConflict(ctx context.Context, attempts int, run func() (int64, error)) (int64, error) {
 	var lastErr error
-	for attempt := 0; attempt <= fxRetryLimit; attempt++ {
-		changed, err := w.applyEURBatch(ctx, rate, fxBatchSize)
+	for attempt := 0; attempt <= attempts; attempt++ {
+		changed, err := run()
 		if err == nil {
 			return changed, nil
 		}
@@ -225,7 +236,7 @@ func (w *DataSyncWorker) applyEURBatchWithRetry(ctx context.Context, rate float6
 			return 0, err
 		}
 		lastErr = err
-		if !waitForContext(ctx, time.Second) {
+		if !waitForContext(ctx, time.Duration(attempt+1)*time.Second) {
 			return 0, ctx.Err()
 		}
 	}
@@ -324,7 +335,13 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(ctx context.Context, game, la
 		  AND collector_number IS NOT NULL AND collector_number <> ''
 		  AND ($2 = '' OR language = $2)
 		  AND COALESCE(language, '') <> ALL($3::text[])`
-	rows, err := w.db.QueryContext(ctx, query, game, language, pq.Array(excludeLanguages))
+	// pq.Array(nil) encodes SQL NULL, and `<> ALL(NULL)` is NULL for every row, so
+	// an empty list has to be an empty array.
+	excluded := excludeLanguages
+	if excluded == nil {
+		excluded = []string{}
+	}
+	rows, err := w.db.QueryContext(ctx, query, game, language, pq.Array(excluded))
 	if err != nil {
 		return 0, fmt.Errorf("fallback price query: %w", err)
 	}
@@ -372,7 +389,9 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(ctx context.Context, game, la
 		for _, id := range pending {
 			batch = append(batch, service.BulkPriceUpdate{SourceCardID: id, USD: values[id]})
 		}
-		changed, err := w.applyPriceByCardID(ctx, batch)
+		changed, err := retryOnConflict(ctx, fxRetryLimit, func() (int64, error) {
+			return w.applyPriceByCardID(ctx, batch)
+		})
 		if err != nil {
 			return err
 		}

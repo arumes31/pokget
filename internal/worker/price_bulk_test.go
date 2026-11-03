@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"testing"
 
@@ -289,6 +290,47 @@ func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+// emptyTextArray matches the encoded empty Postgres array. A nil []string
+// encodes as SQL NULL and `<> ALL(NULL)` would filter every row, which silently
+// disabled the language-scoped (Japanese) fallback in production.
+type emptyTextArray struct{}
+
+func (emptyTextArray) Match(value driver.Value) bool {
+	switch typed := value.(type) {
+	case []byte:
+		return string(typed) == "{}"
+	case string:
+		return typed == "{}"
+	}
+	return false
+}
+
+func TestApplyFuzzyPricesSendsAnEmptyLanguageExclusion(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	rows := sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number"}).
+		AddRow("card-jp", "SV3", "Ruler of the Black Flame", "001")
+	mock.ExpectQuery("SELECT id, COALESCE\\(set_code").
+		WithArgs("pokemon", "ja", emptyTextArray{}).
+		WillReturnRows(rows)
+	mock.ExpectExec("UPDATE cards AS c").
+		WithArgs("card-jp", 0.18).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	worker := &DataSyncWorker{db: db}
+	byCode := fuzzyIndex("SV3", "001/108", 0.18)
+	if _, err := worker.applyFuzzyPrices(context.Background(), "pokemon", "ja", byCode, nil); err != nil {
+		t.Fatalf("applyFuzzyPrices: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("the language filter must send an empty array, not NULL: %v", err)
 	}
 }
 
