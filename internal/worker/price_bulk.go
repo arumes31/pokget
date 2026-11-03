@@ -833,9 +833,10 @@ FROM (VALUES `)
 	query.WriteString(`) AS v(source_id, source_card_id, usd, eur, variant)
 WHERE c.source_id = v.source_id
   AND c.source_card_id = v.source_card_id
+  -- Only a currency that actually moves is a price change; a variant-only match is
+  -- counted as verified by touchBulkChecks.
   AND ((v.usd > 0 AND c.price_usd IS DISTINCT FROM v.usd)
-       OR (v.eur > 0 AND c.price_eur IS DISTINCT FROM v.eur)
-       OR (v.usd > 0 AND v.variant <> '' AND c.price_variant IS DISTINCT FROM v.variant))`)
+       OR (v.eur > 0 AND c.price_eur IS DISTINCT FROM v.eur))`)
 
 	result, err := w.db.ExecContext(ctx, query.String(), args...)
 	if err != nil {
@@ -846,8 +847,9 @@ WHERE c.source_id = v.source_id
 		changed = 0
 	}
 
-	// The second statement stamps the cards whose quote did not move. Two statements
-	// keep both counters exact: RETURNING would only see the already updated row.
+	// The second statement stamps every other matched card, including the ones whose
+	// price did not move. Two statements keep both counters exact: RETURNING only
+	// sees the already updated row.
 	verified, err := w.touchBulkChecks(ctx, batch)
 	if err != nil {
 		return bulkBatchResult{matched: changed, changed: changed}, err
@@ -860,7 +862,12 @@ func retryBulkBatch(ctx context.Context, w *DataSyncWorker, batch []service.Bulk
 	var result bulkBatchResult
 	var lastErr error
 	for attempt := 0; attempt <= fxRetryLimit; attempt++ {
-		result, lastErr = w.applyBulkBatch(ctx, batch)
+		var attemptResult bulkBatchResult
+		attemptResult, lastErr = w.applyBulkBatch(ctx, batch)
+		// The statements of a batch autocommit one by one, so an attempt that dies in
+		// the second statement still changed prices in the first: keep its counts.
+		result.matched += attemptResult.matched
+		result.changed += attemptResult.changed
 		if lastErr == nil {
 			return result, nil
 		}
@@ -875,26 +882,27 @@ func retryBulkBatch(ctx context.Context, w *DataSyncWorker, batch []service.Bulk
 }
 
 // touchBulkChecks records that the matched cards were verified even when their
-// price did not change. It only touches rows whose stamp is older than an hour, so
-// a normal daily run writes each card once.
+// price did not change, and applies a variant the price alone does not show. Every
+// matched row is stamped, so a run that follows another one still reports how many
+// cards it matched instead of blaming the mapping for a quiet market.
 func (w *DataSyncWorker) touchBulkChecks(ctx context.Context, batch []service.BulkPriceUpdate) (int64, error) {
 	var query strings.Builder
 	query.WriteString(`UPDATE cards AS c
-SET price_checked_at = NOW()
+SET price_checked_at = NOW(),
+    price_variant = CASE WHEN v.usd > 0 AND v.variant <> '' THEN v.variant ELSE c.price_variant END
 FROM (VALUES `)
-	args := make([]any, 0, len(batch)*2)
+	args := make([]any, 0, len(batch)*5)
 	for index, update := range batch {
 		if index > 0 {
 			query.WriteString(", ")
 		}
-		base := index * 2
-		fmt.Fprintf(&query, "($%d, $%d)", base+1, base+2)
-		args = append(args, update.SourceID, update.SourceCardID)
+		base := index * 5
+		fmt.Fprintf(&query, "($%d, $%d, $%d::numeric, $%d)", base+1, base+2, base+3, base+4)
+		args = append(args, update.SourceID, update.SourceCardID, update.USD, update.Variant)
 	}
-	query.WriteString(`) AS v(source_id, source_card_id)
+	query.WriteString(`) AS v(source_id, source_card_id, usd, variant)
 WHERE c.source_id = v.source_id
-  AND c.source_card_id = v.source_card_id
-  AND (c.price_checked_at IS NULL OR c.price_checked_at < NOW() - INTERVAL '1 hour')`)
+  AND c.source_card_id = v.source_card_id`)
 
 	result, err := w.db.ExecContext(ctx, query.String(), args...)
 	if err != nil {

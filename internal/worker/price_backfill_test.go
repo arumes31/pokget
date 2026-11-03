@@ -36,7 +36,9 @@ func TestBackfillPricesStoresMissingPokemonPrices(t *testing.T) {
 		AddRow("card-1", "Bulbasaur", "151", "pokemon", "de", "tcgdex", "sv03.5-001", "sv03.5", "001")
 	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
 	mock.ExpectBegin()
-	mock.ExpectExec("UPDATE cards[\\s\\S]*COALESCE\\(price_eur, 0\\) <= 0").
+	// Either missing currency is a reason to write, so a EUR-only card still gets its
+	// USD quote without losing the EUR one.
+	mock.ExpectExec("UPDATE cards[\\s\\S]*COALESCE\\(price_eur, 0\\) <= 0 AND \\$2").
 		WithArgs(0.12, 0.17, "card-1").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	// The backfill deliberately writes no price_history row.
@@ -58,8 +60,8 @@ func TestBackfillPricesStoresMissingPokemonPrices(t *testing.T) {
 	}
 }
 
-// A card the provider does not price must be recorded so the next cycle moves on
-// instead of retrying the same card forever.
+// A card the provider answers for without a price must be recorded so the next cycle
+// moves on instead of retrying the same card forever.
 func TestBackfillPricesRecordsMisses(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -70,13 +72,70 @@ func TestBackfillPricesRecordsMisses(t *testing.T) {
 	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
 		AddRow("card-2", "Unpriced", "Set", "pokemon", "ja", "tcgdex", "SV3-999", "SV3", "999")
 	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
-	// The miss is recorded as a check, not as a price change.
+	// The empty answer is recorded as a check, not as a price change.
 	mock.ExpectExec("UPDATE cards SET price_checked_at = NOW\\(\\)").WithArgs("card-2").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	worker := &DataSyncWorker{
 		db:            db,
-		priceClients:  map[string][]service.PriceClient{"pokemon": {&stubPriceClient{err: errors.New("no price")}}},
+		priceClients:  map[string][]service.PriceClient{"pokemon": {&stubPriceClient{}}},
+		backfillBatch: 50,
+	}
+	worker.backfillPrices(context.Background())
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+// A provider or transport error is not a verification: the card keeps its stamp so
+// the next cycle retries it instead of moving it to the back of the queue.
+func TestBackfillPricesKeepsStampOnProviderError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
+		AddRow("card-3", "Retry", "Set", "pokemon", "en", "tcgdex", "SV3-1", "SV3", "1")
+	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
+
+	worker := &DataSyncWorker{
+		db:            db,
+		priceClients:  map[string][]service.PriceClient{"pokemon": {&stubPriceClient{err: errors.New("timeout")}}},
+		backfillBatch: 50,
+	}
+	worker.backfillPrices(context.Background())
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations (no stamp must be written): %v", err)
+	}
+}
+
+// A provider that only repeats the currency the card already has made no progress;
+// the card must rotate to the back of the queue instead of being retried every cycle.
+func TestBackfillPricesRotatesWhenNothingIsFilled(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
+		AddRow("card-4", "EurOnly", "Set", "pokemon", "en", "tcgdex", "SV3-2", "SV3", "2")
+	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
+	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE cards[\\s\\S]*COALESCE\\(price_eur, 0\\) <= 0 AND \\$2").
+		WithArgs(0.0, 0.9, "card-4").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
+	mock.ExpectExec("UPDATE cards SET price_checked_at = NOW\\(\\)").WithArgs("card-4").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	worker := &DataSyncWorker{
+		db:            db,
+		priceClients:  map[string][]service.PriceClient{"pokemon": {&stubPriceClient{usd: 0, eur: 0.9}}},
 		backfillBatch: 50,
 	}
 	worker.backfillPrices(context.Background())

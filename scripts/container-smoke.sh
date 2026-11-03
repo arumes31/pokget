@@ -142,7 +142,7 @@ fi
 
 # Reproduce a legacy installation whose migration ledger reached version 27
 # even though card metadata, price, and catalog objects were absent. Restarting
-# the application must apply migrations 28-39 and pass runtime schema validation.
+# the application must apply migrations 28-40 and pass runtime schema validation.
 docker stop "${application_container}" >/dev/null
 docker exec "${database_container}" psql -v ON_ERROR_STOP=1 -U "${database_user}" -d "${database_name}" -c '
   ALTER TABLE cards

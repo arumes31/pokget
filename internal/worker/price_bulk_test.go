@@ -23,7 +23,7 @@ func TestApplyBulkBatchUpdatesChangedPrices(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	// Cards whose quote did not move still get a fresh check stamp.
 	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_checked_at").
-		WithArgs("scryfall", "card-a", "ygoprodeck", "1234").
+		WithArgs("scryfall", "card-a", 1.25, "foil", "ygoprodeck", "1234", 0.33, "normal").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	worker := &DataSyncWorker{db: db}

@@ -258,12 +258,16 @@ func (w *DataSyncWorker) trackedBatchLimit() trackedBudget {
 	users := 1
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// Only collectors whose tracked cards still exist count: a superseded printing
+	// would otherwise shrink everybody's budget without any card to refresh.
 	if err := w.db.QueryRowContext(ctx, `
-		SELECT count(DISTINCT user_id) FROM (
-			SELECT user_id::text AS user_id FROM portfolio
-			UNION ALL SELECT user_id::text FROM wantlist
-			UNION ALL SELECT user_id::text FROM price_alerts WHERE is_active = TRUE
-		) AS tracked`).Scan(&users); err != nil || users < 1 {
+		SELECT count(DISTINCT tracked.user_id) FROM (
+			SELECT card_id, user_id::text AS user_id FROM portfolio
+			UNION ALL SELECT card_id, user_id::text FROM wantlist
+			UNION ALL SELECT card_id, user_id::text FROM price_alerts WHERE is_active = TRUE
+		) AS tracked
+		JOIN cards c ON c.id = tracked.card_id
+		WHERE c.superseded_by_card_id IS NULL`).Scan(&users); err != nil || users < 1 {
 		users = 1
 	}
 	perUser := total / users
@@ -558,20 +562,26 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 			SELECT card_id, user_id::text, 0 FROM price_alerts WHERE is_active = TRUE
 			UNION ALL
 			SELECT card_id, user_id::text, 2 FROM wantlist
+		), deduped AS (
+			-- One card can sit in a portfolio, a wantlist and an alert at once; it must
+			-- consume one slot, not three.
+			SELECT card_id, user_id, MIN(priority) AS priority
+			FROM tracked
+			GROUP BY card_id, user_id
 		), ranked AS (
-			SELECT tracked.card_id,
+			SELECT deduped.card_id,
 			       ROW_NUMBER() OVER (
-			           PARTITION BY tracked.user_id
-			           ORDER BY tracked.priority,
+			           PARTITION BY deduped.user_id
+			           ORDER BY deduped.priority,
 			                    -- An unpriced card is the "Price unavailable" label the
 			                    -- user is looking at; it goes before a priced one.
 			                    CASE WHEN COALESCE(c.price_usd, 0) > 0 OR COALESCE(c.price_eur, 0) > 0
 			                         THEN 1 ELSE 0 END,
 			                    c.price_checked_at ASC NULLS FIRST,
-			                    tracked.card_id
+			                    deduped.card_id
 			       ) AS position
-			FROM tracked
-			JOIN cards c ON c.id = tracked.card_id
+			FROM deduped
+			JOIN cards c ON c.id = deduped.card_id
 			WHERE c.superseded_by_card_id IS NULL
 		)
 		SELECT c.id, c.name, c.set_name, COALESCE(c.price_usd, 0), COALESCE(c.price_eur, 0), COALESCE(c.game, ''),

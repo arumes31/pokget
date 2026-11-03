@@ -357,7 +357,8 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		WHERE NOT EXISTS (
 			SELECT 1 FROM portfolio_history
 			WHERE user_id = $1 AND recorded_at > NOW() - INTERVAL '1 hour'
-		)`, userID, totalValuation); snapshotErr != nil {
+		)
+		ON CONFLICT DO NOTHING`, userID, totalValuation); snapshotErr != nil {
 		// The snapshot is a convenience; a failure must not break the dashboard.
 		slog.Warn("Failed to record portfolio valuation snapshot", "user_id", userID, "error", snapshotErr)
 	}

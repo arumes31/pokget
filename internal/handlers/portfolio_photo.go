@@ -154,7 +154,7 @@ func (h *Handler) PortfolioCard(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(c.language, ''), COALESCE(c.game, ''), COALESCE(c.rarity, ''),
 		       COALESCE(c.image_url, ''), c.price_usd, c.price_eur, COALESCE(c.price_eur_estimated, FALSE),
 		       COALESCE(c.price_variant, ''),
-		       COALESCE(to_char(c.price_checked_at, 'YYYY-MM-DD HH24:MI') || ' UTC', '')
+		       COALESCE(to_char(c.price_checked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') || ' UTC', '')
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.id = $1 AND p.user_id = $2`, itemID, userID).
