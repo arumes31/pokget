@@ -118,6 +118,7 @@ type liveScanResponse struct {
 	Detected        string  `json:"detected"`
 	ID              string  `json:"id"`
 	CollectorNumber string  `json:"collector_number"`
+	Language        string  `json:"language"`
 	Confidence      float64 `json:"confidence"`
 	NeedsReview     bool    `json:"needs_review"`
 	Text            string  `json:"text"`
@@ -222,11 +223,13 @@ func scanOneLive(ctx context.Context, imageClient *http.Client, session *liveSes
 	row.ActualID = result.ID
 	row.ActualName = result.Detected
 	row.ActualNumber = result.CollectorNumber
+	row.ActualLanguage = result.Language
 	row.Confidence = result.Confidence
 	row.Exact = result.ID != "" && result.ID == sample.Card.ID
 	row.SamePrinting = !row.Exact &&
 		strings.EqualFold(strings.TrimSpace(result.Detected), strings.TrimSpace(sample.Card.Name)) &&
 		strings.EqualFold(strings.TrimSpace(result.CollectorNumber), strings.TrimSpace(sample.Card.CollectorNumber)) &&
+		strings.EqualFold(strings.TrimSpace(result.Language), strings.TrimSpace(sample.Card.Language)) &&
 		result.Detected != ""
 	for _, match := range result.TopMatches {
 		if match.ID != "" && match.ID == sample.Card.ID {

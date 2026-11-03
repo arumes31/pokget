@@ -59,6 +59,7 @@ type resultRow struct {
 	ActualID        string   `json:"actual_id"`
 	ActualName      string   `json:"actual_name"`
 	ActualNumber    string   `json:"actual_number"`
+	ActualLanguage  string   `json:"actual_language"`
 	Status          string   `json:"status"`
 	Confidence      float64  `json:"confidence"`
 	Exact           bool     `json:"exact"`
@@ -361,6 +362,7 @@ func scanOne(ctx context.Context, client *http.Client, pipeline *service.Detecti
 		row.ActualID = best.ID
 		row.ActualName = best.Name
 		row.ActualNumber = best.CollectorNumber
+		row.ActualLanguage = best.Language
 		row.Confidence = result.BestMatchConfidence()
 		if best.ID != sample.Card.ID && len(result.TopMatches) > 0 {
 			row.TopAlternative = strings.TrimSpace(result.TopMatches[0].Card.Name + " " + result.TopMatches[0].Card.CollectorNumber)
@@ -369,6 +371,7 @@ func scanOne(ctx context.Context, client *http.Client, pipeline *service.Detecti
 	row.Exact = row.ActualID != "" && row.ActualID == sample.Card.ID
 	row.SamePrinting = !row.Exact && strings.EqualFold(strings.TrimSpace(row.ActualName), strings.TrimSpace(sample.Card.Name)) &&
 		strings.EqualFold(strings.TrimSpace(row.ActualNumber), strings.TrimSpace(sample.Card.CollectorNumber)) &&
+		strings.EqualFold(strings.TrimSpace(row.ActualLanguage), strings.TrimSpace(sample.Card.Language)) &&
 		row.ActualName != ""
 	for _, match := range result.TopMatches {
 		if match.Card != nil && match.Card.ID == sample.Card.ID {
