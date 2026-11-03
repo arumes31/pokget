@@ -35,8 +35,12 @@ type BulkPriceUpdate struct {
 	// the worker also matches on the normalized set name when the code misses.
 	SetName string
 	Number  string
-	USD     float64
-	EUR     float64
+	// Rarity is the marketplace rarity label ("Rare Holo", "SR"). It is optional
+	// and lets the worker fill the rarity gap of catalog sources that only publish
+	// id, name and set (TCGdex lists sets without a rarity field).
+	Rarity string
+	USD    float64
+	EUR    float64
 }
 
 // BulkPriceSource streams current market prices for its whole catalog. An
@@ -394,11 +398,13 @@ func (s *tcgcsvBulkSource) emitGroup(
 		if !ok {
 			continue
 		}
-		number := ""
+		number, rarity := "", ""
 		for _, ext := range product.ExtendedData {
-			if ext.Name == "Number" {
+			switch ext.Name {
+			case "Number":
 				number = strings.TrimSpace(ext.Value)
-				break
+			case "Rarity":
+				rarity = strings.TrimSpace(ext.Value)
 			}
 		}
 		update := BulkPriceUpdate{
@@ -409,6 +415,7 @@ func (s *tcgcsvBulkSource) emitGroup(
 			SetCode:      abbreviation,
 			SetName:      setName,
 			Number:       number,
+			Rarity:       rarity,
 			USD:          market,
 		}
 		if err := emit(update); err != nil {
