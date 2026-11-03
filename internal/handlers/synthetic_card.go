@@ -78,6 +78,18 @@ func (h *Handler) persistSyntheticCard(ctx context.Context, card models.Card) {
 	if setName == "" {
 		setName = "Uncataloged Set"
 	}
+	// cards.source_id references catalog_sources, and no catalog sync ever
+	// creates a "claude" source. Without this row the insert fails silently and
+	// the UI then cannot add the card it just offered.
+	if _, err := h.DB.ExecContext(ctx, `
+		INSERT INTO catalog_sources (id, game, name, base_url, coverage_note)
+		VALUES ('claude', 'multiple', 'Claude detection', 'https://pokget.local/claude',
+			'Cards detected by the scan model that are not yet in a synced catalog.')
+		ON CONFLICT (id) DO NOTHING
+	`); err != nil {
+		slog.Warn("Failed to ensure synthetic card source", "error", err)
+		return
+	}
 	_, err := h.DB.ExecContext(ctx, `
 		INSERT INTO cards (
 			id, name, set_name, set_code, collector_number, language, game, variant,

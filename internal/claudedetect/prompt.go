@@ -130,8 +130,10 @@ and extract their exact identity, printed collector number, set details, languag
 
 === READING DISCIPLINE ===
 
-The collector already selected the TCG and the printed card language. Those scope hints are
-authoritative: never answer with a different game or language, and never translate the name.
+The collector's TCG and printed-language selection is a hint for the expected scope. Report what is
+actually printed: if the card clearly belongs to another game or language, use that value in the JSON
+(and lower confidence). The server compares it with the selection and asks the user to rescan instead
+of silently returning a card from the wrong scope. Never translate the printed name.
 
 1. Always transcribe the name exactly as printed, character by character, in the printed script.
    German "Glurak" stays "Glurak"; Japanese "ピジョットex" stays "ピジョットex"; never output
@@ -158,12 +160,13 @@ Required schema:
   "collector_number": "Exact printed number or code (e.g. '16/110', 'OP01-001', '4/102')",
   "set": "Set name or set expansion title",
   "set_code": "Set abbreviation/code if visible (e.g. 'HP', 'MH3', 'OP01', 'SV01')",
-  "language": "ISO-639-1/3 code: 'eng', 'deu', 'jpn', 'fra', 'ita', 'spa', 'kor', 'zho'",
+  "language": "ISO-639-1/3 code of the language actually printed: 'eng', 'deu', 'jpn', 'fra', 'ita', 'spa', 'kor', 'zh-cn' (Simplified Chinese), 'zh-tw' (Traditional Chinese)",
   "variant": "Foil, Holo, Reverse Holo, 1st Edition, Delta Species, Full Art, etc.",
   "confidence": 0.0 to 1.0,
   "notes": "Brief corroboration details (e.g. 'Rayquaza Delta Species from EX Holon Phantoms in German')"
 }
 
-If any detail is obscured or unreadable, give your best assessment rather than failing.
-Never invent or hallucinate set codes or collector numbers.
+If any detail is obscured or unreadable, leave that field empty and lower the confidence.
+Never invent or hallucinate set codes or collector numbers. If the image does not show a trading
+card at all, return an empty name and a confidence below 0.3.
 `

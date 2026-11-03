@@ -194,8 +194,8 @@ func (c *Client) DetectImages(ctx context.Context, images [][]byte, gameHint, la
 
 	// Prepare request payload
 	reqMap := map[string]any{
-		"model":       c.model,
-		"max_tokens":  2048,
+		"model":      c.model,
+		"max_tokens": 2048,
 		"messages": []map[string]any{
 			{"role": "user", "content": content},
 		},
@@ -342,14 +342,14 @@ func imageLabel(index, total int) string {
 func userPrompt(gameHint, langHint string) string {
 	var prompt strings.Builder
 	prompt.WriteString("Identify the trading card in these images. Return only the JSON object from the output contract.")
-	prompt.WriteString("\n\nCollector scope (authoritative, do not override):")
+	prompt.WriteString("\n\nCollector scope hint (the photo may differ; report what you actually see):")
 	if gameHint != "" {
-		prompt.WriteString("\n- game: " + gameHint + " (the JSON \"game\" value must be exactly this)")
+		prompt.WriteString("\n- expected game: " + gameHint + " (report the game printed on the card; if it is a different game, use that game)")
 	} else {
 		prompt.WriteString("\n- game: infer from the card frame and symbols")
 	}
 	if langHint != "" {
-		prompt.WriteString("\n- printed language: " + langHint + " (the JSON \"language\" value must match this language)")
+		prompt.WriteString("\n- expected printed language: " + langHint + " (report the language actually printed; if it differs, use the printed language)")
 	}
 	prompt.WriteString("\n\nReading rules:")
 	prompt.WriteString("\n1. Transcribe the name exactly as printed, in the printed script. Never translate, romanize or localize it.")

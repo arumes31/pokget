@@ -1591,6 +1591,10 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 			resp["collector_number"] = best.CollectorNumber
 			resp["language"] = best.Language
 		}
+		resp["status"] = string(result.Status)
+		if result.Conflict != nil {
+			resp["conflict"] = result.Conflict
+		}
 		if diagnostics {
 			resp["pipeline_metrics"] = result.Metrics.Format()
 		}

@@ -35,6 +35,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -61,6 +62,9 @@ type resultRow struct {
 	ActualNumber    string   `json:"actual_number"`
 	ActualLanguage  string   `json:"actual_language"`
 	HintLanguage    string   `json:"hint_language"`
+	Conflict        string   `json:"conflict,omitempty"`
+	NeedsReview     bool     `json:"needs_review"`
+	WrongAuto       bool     `json:"wrong_auto"`
 	Status          string   `json:"status"`
 	Confidence      float64  `json:"confidence"`
 	Exact           bool     `json:"exact"`
@@ -77,9 +81,11 @@ type summary struct {
 	Language     string `json:"language"`
 	Sampled      int    `json:"sampled"`
 	Exact        int    `json:"exact"`
+	ExactAuto    int    `json:"exact_auto"`
 	SamePrinting int    `json:"same_printing"`
 	Review       int    `json:"review"`
 	Wrong        int    `json:"wrong"`
+	WrongAuto    int    `json:"wrong_auto"`
 	Errors       int    `json:"errors"`
 }
 
@@ -187,10 +193,18 @@ func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Durati
 				combinationSummary.Exact++
 			case row.SamePrinting:
 				combinationSummary.SamePrinting++
+			case row.WrongAuto:
+				combinationSummary.Wrong++
 			case row.ReviewCandidate:
 				combinationSummary.Review++
 			default:
 				combinationSummary.Wrong++
+			}
+			if row.Exact && !row.NeedsReview {
+				combinationSummary.ExactAuto++
+			}
+			if row.WrongAuto {
+				combinationSummary.WrongAuto++
 			}
 			rows = append(rows, row)
 			if !asJSON {
@@ -317,17 +331,14 @@ func scopeCards(database *sql.DB, game, language string) ([]models.Card, error) 
 }
 
 func sampleCards(database *sql.DB, game, language string, per int, seed int64) ([]sampleCard, error) {
-	// setseed makes "ORDER BY random()" reproducible for a given seed.
-	seedFraction := float64(seed%1_000_000_007) / 1_000_000_007.0
-	if _, err := database.Exec(`SELECT setseed($1)`, seedFraction); err != nil {
-		return nil, err
-	}
+	// md5(id|seed) is deterministic across pooled connections, unlike setseed
+	// (session-scoped) combined with ORDER BY random().
 	query := `SELECT ` + cardColumns + ` FROM cards
 		WHERE catalog_active = TRUE AND superseded_by_card_id IS NULL
 		  AND game = $1 AND language = $2
 		  AND coalesce(image_url,'') <> '' AND coalesce(name,'') <> ''
-		ORDER BY random() LIMIT $3`
-	rows, err := database.Query(query, game, language, per)
+		ORDER BY md5(id || '|' || $3) LIMIT $4`
+	rows, err := database.Query(query, game, language, strconv.FormatInt(seed, 10), per)
 	if err != nil {
 		return nil, err
 	}
@@ -354,13 +365,12 @@ func scanOne(ctx context.Context, client *http.Client, pipeline *service.Detecti
 		ExpectedName:   sample.Card.Name,
 		ExpectedNumber: sample.Card.CollectorNumber,
 	}
-	started := time.Now()
 	imageBytes, err := fetchImage(ctx, client, sample.Card.ImageURL)
 	if err != nil {
 		row.Error = err.Error()
-		row.DurationMS = time.Since(started).Milliseconds()
 		return row
 	}
+	started := time.Now()
 	scanCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	result, err := pipeline.DetectScoped(scanCtx, service.DetectionRequest{
@@ -389,10 +399,12 @@ func scanOne(ctx context.Context, client *http.Client, pipeline *service.Detecti
 		}
 	}
 	row.Exact = row.ActualID != "" && row.ActualID == sample.Card.ID
+	row.NeedsReview = result.BestMatchNeedsReview()
 	row.SamePrinting = !row.Exact && strings.EqualFold(strings.TrimSpace(row.ActualName), strings.TrimSpace(sample.Card.Name)) &&
 		strings.EqualFold(strings.TrimSpace(row.ActualNumber), strings.TrimSpace(sample.Card.CollectorNumber)) &&
 		strings.EqualFold(strings.TrimSpace(row.ActualLanguage), strings.TrimSpace(sample.Card.Language)) &&
 		row.ActualName != ""
+	row.WrongAuto = row.ActualID != "" && !row.NeedsReview && !row.Exact && !row.SamePrinting
 	for _, match := range result.TopMatches {
 		if match.Card != nil && match.Card.ID == sample.Card.ID {
 			row.ReviewCandidate = true
@@ -511,8 +523,8 @@ func printRow(row resultRow) {
 }
 
 func printSummary(summaries []summary) {
-	fmt.Println("game                 language  sampled  exact  same#  review  wrong  errors  exact%")
-	var totalSampled, totalExact, totalSame int
+	fmt.Println("game                 language  sampled  exact  auto#  same#  review  wrong  wauto  errors  exact%")
+	var totalSampled, totalExact, totalAuto, totalSame, totalWrongAuto int
 	for _, item := range summaries {
 		percent := 0.0
 		if item.Sampled > 0 {
@@ -520,18 +532,22 @@ func printSummary(summaries []summary) {
 		}
 		totalSampled += item.Sampled
 		totalExact += item.Exact
+		totalAuto += item.ExactAuto
 		totalSame += item.SamePrinting
-		fmt.Printf("%-20s %-9s %7d %6d %6d %7d %6d %7d %6.0f%%\n",
-			item.Game, item.Language, item.Sampled, item.Exact, item.SamePrinting, item.Review, item.Wrong, item.Errors, percent)
+		totalWrongAuto += item.WrongAuto
+		fmt.Printf("%-20s %-9s %7d %6d %6d %6d %7d %6d %6d %7d %6.0f%%\n",
+			item.Game, item.Language, item.Sampled, item.Exact, item.ExactAuto, item.SamePrinting,
+			item.Review, item.Wrong, item.WrongAuto, item.Errors, percent)
 	}
 	if len(summaries) > 0 {
 		percent := 0.0
 		if totalSampled > 0 {
 			percent = 100 * float64(totalExact) / float64(totalSampled)
 		}
-		fmt.Printf("%-20s %-9s %7d %6d %6d\n", "TOTAL", "", totalSampled, totalExact, totalSame)
-		fmt.Printf("exact match rate: %.1f%% (name+number rate: %.1f%%)\n", percent,
-			100*float64(totalExact+totalSame)/float64(totalSampled))
+		fmt.Printf("%-20s %-9s %7d %6d %6d %6d %6d\n", "TOTAL", "", totalSampled, totalExact, totalAuto, totalSame, totalWrongAuto)
+		fmt.Printf("exact match rate: %.1f%% (auto %.1f%%, name+number %.1f%%, wrong auto %d)\n", percent,
+			100*float64(totalAuto)/float64(totalSampled),
+			100*float64(totalExact+totalSame)/float64(totalSampled), totalWrongAuto)
 	}
 }
 
