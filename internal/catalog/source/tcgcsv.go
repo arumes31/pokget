@@ -77,6 +77,16 @@ func tcgcsvVariant(game catalog.Game, name, number string) string {
 	return ""
 }
 
+// tcgcsvImageURL upgrades the game whose printed collector number is unreadable
+// at thumbnail size. Other games keep the thumbnail because not every older
+// TCGplayer product has a 1000 px scan (a missing scan is a broken image).
+func tcgcsvImageURL(game catalog.Game, url string) string {
+	if game == catalog.GameWIXOSS {
+		return highResolutionTCGPlayerImage(url)
+	}
+	return url
+}
+
 func (p *TCGCSVProvider) Fetch(ctx context.Context, request catalog.FetchRequest, emit func(catalog.CardRecord) error) (catalog.FetchResult, error) {
 	baseURL := strings.TrimRight(p.BaseURL, "/")
 	if baseURL == "" {
@@ -194,10 +204,13 @@ func (p *TCGCSVProvider) Fetch(ctx context.Context, request catalog.FetchRequest
 				// The 200 px thumbnail is too small for the printed collector
 				// number: WIXOSS scans read no number at all from it. TCGplayer
 				// serves a 1000 px product scan under the same product id.
+				// Other TCGCSV games keep the thumbnail: their older products do
+				// not all have a 1000 px scan and would get a broken URL.
+				imageURL := tcgcsvImageURL(p.GameType, prod.ImageURL)
 				record.Images = []catalog.ImageRecord{{
 					SourceImageID: sourceID + ":front",
 					Kind:          "front",
-					URL:           highResolutionTCGPlayerImage(prod.ImageURL),
+					URL:           imageURL,
 				}}
 			}
 
