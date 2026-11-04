@@ -180,7 +180,7 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 	}
 	ranked := make([]rankedCard, 0, len(group))
 	for _, card := range group {
-		ranked = append(ranked, rankedCard{card: card, distance: hammingDistance(uint64(hash), uint64(*card.Phash))})
+		ranked = append(ranked, rankedCard{card: card, distance: hammingDistance(uint64(hash), uint64(*card.Phash))}) // #nosec G115 - comparing hash bits, not a numeric value
 	}
 	sort.Slice(ranked, func(i, j int) bool { return ranked[i].distance < ranked[j].distance })
 	if ranked[0].distance > p.Fingerprint.PhashHighConf {
