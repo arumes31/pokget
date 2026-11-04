@@ -31,7 +31,7 @@ func runLocalImage(live liveConfig, imagePath, game, language string, expected m
 	if strings.TrimSpace(game) == "" || strings.TrimSpace(language) == "" {
 		return errors.New("-image requires -game and -language")
 	}
-	payload, err := os.ReadFile(imagePath)
+	payload, err := os.ReadFile(imagePath) // #nosec G304 - operator-supplied fixture path
 	if err != nil {
 		return fmt.Errorf("read image: %w", err)
 	}
