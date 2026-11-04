@@ -983,3 +983,39 @@ func TestClaudeDetection_VariantConflictWithSingleCandidateNeedsReview(t *testin
 		t.Errorf("a finish the catalog contradicts must not auto-match")
 	}
 }
+
+func TestClaudeDetection_GenericHoloOnNormalCardDoesNotBlockAuto(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "pokemon", Name: "Yveltal", CollectorNumber: "78",
+		Set: "XY", SetCode: "XY", Variant: "Holo", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{{
+		ID: "yveltal-78", Name: "Yveltal", CollectorNumber: "78",
+		Set: "XY", SetCode: "XY", Variant: "Normal", Language: "en", Game: "pokemon",
+	}}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("a generic Holo reading on a Normal row must not force review")
+	}
+}
+
+func TestClaudeDetection_SpecificFinishOnNormalCardNeedsReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "pokemon", Name: "Yveltal", CollectorNumber: "78",
+		Set: "XY", SetCode: "XY", Variant: "Rainbow Rare", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{{
+		ID: "yveltal-78", Name: "Yveltal", CollectorNumber: "78",
+		Set: "XY", SetCode: "XY", Variant: "Normal", Language: "en", Game: "pokemon",
+	}}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a specific finish the catalog contradicts must force review")
+	}
+}

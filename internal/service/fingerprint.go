@@ -249,6 +249,12 @@ func (scope FingerprintIndexScope) normalized() FingerprintIndexScope {
 }
 
 // hammingDistance computes the Hamming distance between two uint64 hashes.
+// HashDistance reports how many bits two stored perceptual hashes differ by.
+// It is exposed for diagnostics that compare catalog hashes with fresh images.
+func HashDistance(a, b int64) int {
+	return hammingDistance(uint64(a), uint64(b)) // #nosec G115 - comparing hash bits, not a numeric value
+}
+
 func hammingDistance(a, b uint64) int {
 	xor := a ^ b
 	count := 0
