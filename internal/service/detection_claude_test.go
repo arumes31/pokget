@@ -807,3 +807,50 @@ func TestClaudeDetection_NameSuffixWithSameNumberRequiresReview(t *testing.T) {
 		t.Errorf("a SEC name variant sharing the number must require review")
 	}
 }
+
+func TestClaudeDetection_FingerprintResolvesDroppedVariantSuffix(t *testing.T) {
+	imageBytes := testCardImage(t)
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		t.Fatalf("decode test image: %v", err)
+	}
+	fingerprint := NewFingerprintService(nil)
+	hash, err := fingerprint.CalculateHash(decoded)
+	if err != nil {
+		t.Fatalf("hash test image: %v", err)
+	}
+	otherHash := hash ^ 0xFF
+
+	info := &claudedetect.DetectedCardInfo{
+		Game: "magic", Name: "Meeting of the Five", CollectorNumber: "202",
+		Set: "Streets of New Capenna", SetCode: "snc", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{
+			ID: "snc-202", Name: "Meeting of the Five", CollectorNumber: "202",
+			Set: "Streets of New Capenna", SetCode: "snc", Language: "en", Game: "magic",
+			SourceCardID: "202", Phash: &otherHash,
+		},
+		{
+			ID: "snc-202s", Name: "Meeting of the Five", CollectorNumber: "202s",
+			Set: "Streets of New Capenna", SetCode: "snc", Language: "en", Game: "magic",
+			SourceCardID: "202s", Phash: &hash,
+		},
+	}
+	pipeline := NewDetectionPipeline(fingerprint, nil)
+	pipeline.Claude = &mockClaudeDetector{info: info}
+	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
+		Image: imageBytes,
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGMagic, Language: models.LanguageEnglish},
+	}, false, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BestMatchID() != "snc-202s" {
+		t.Fatalf("expected the photographed variant printing, got %q", result.BestMatchID())
+	}
+	if result.BestMatchNeedsReview() || result.Status != DetectionStatusMatched {
+		t.Errorf("a decisive hash must auto-match the variant, got status=%s review=%v", result.Status, result.BestMatchNeedsReview())
+	}
+}
