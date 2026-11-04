@@ -119,10 +119,16 @@ type liveScanResponse struct {
 	ID              string  `json:"id"`
 	CollectorNumber string  `json:"collector_number"`
 	Language        string  `json:"language"`
+	Status          string  `json:"status"`
 	Confidence      float64 `json:"confidence"`
-	NeedsReview     bool    `json:"needs_review"`
-	Text            string  `json:"text"`
-	TopMatches      []struct {
+	Conflict        *struct {
+		Field    string `json:"field"`
+		Selected string `json:"selected"`
+		Detected string `json:"detected"`
+	} `json:"conflict"`
+	NeedsReview bool   `json:"needs_review"`
+	Text        string `json:"text"`
+	TopMatches  []struct {
 		ID              string  `json:"id"`
 		Name            string  `json:"name"`
 		CollectorNumber string  `json:"collector_number"`
@@ -177,27 +183,27 @@ func (s *liveSession) scan(ctx context.Context, game, language string, image []b
 }
 
 func scanOneLive(ctx context.Context, imageClient *http.Client, session *liveSession,
-	combination combination, sample sampleCard, timeout time.Duration) resultRow {
+	combination combination, sentLanguage string, sample sampleCard, timeout time.Duration) resultRow {
 	row := resultRow{
 		Game:           combination.game,
 		Language:       combination.language,
+		HintLanguage:   sentLanguage,
 		ExpectedID:     sample.Card.ID,
 		ExpectedName:   sample.Card.Name,
 		ExpectedNumber: sample.Card.CollectorNumber,
 	}
-	started := time.Now()
 	imageBytes, err := fetchImage(ctx, imageClient, sample.Card.ImageURL)
 	if err != nil {
 		row.Error = err.Error()
-		row.DurationMS = time.Since(started).Milliseconds()
 		return row
 	}
+	started := time.Now()
 
 	scanCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var result *liveScanResponse
 	for attempt := 1; attempt <= 3; attempt++ {
-		result, err = session.scan(scanCtx, combination.game, combination.language, imageBytes)
+		result, err = session.scan(scanCtx, combination.game, sentLanguage, imageBytes)
 		if err != nil && strings.Contains(err.Error(), "status 429") && attempt < 3 {
 			select {
 			case <-scanCtx.Done():
@@ -216,9 +222,15 @@ func scanOneLive(ctx context.Context, imageClient *http.Client, session *liveSes
 		return row
 	}
 
-	row.Status = "matched"
-	if result.NeedsReview {
-		row.Status = "needs_review"
+	row.Status = result.Status
+	if row.Status == "" {
+		row.Status = "matched"
+		if result.NeedsReview {
+			row.Status = "needs_review"
+		}
+	}
+	if result.Conflict != nil {
+		row.Conflict = result.Conflict.Field + ":" + result.Conflict.Selected + "->" + result.Conflict.Detected
 	}
 	row.ActualID = result.ID
 	row.ActualName = result.Detected
@@ -226,11 +238,13 @@ func scanOneLive(ctx context.Context, imageClient *http.Client, session *liveSes
 	row.ActualLanguage = result.Language
 	row.Confidence = result.Confidence
 	row.Exact = result.ID != "" && result.ID == sample.Card.ID
+	row.NeedsReview = result.NeedsReview
 	row.SamePrinting = !row.Exact &&
 		strings.EqualFold(strings.TrimSpace(result.Detected), strings.TrimSpace(sample.Card.Name)) &&
 		strings.EqualFold(strings.TrimSpace(result.CollectorNumber), strings.TrimSpace(sample.Card.CollectorNumber)) &&
 		strings.EqualFold(strings.TrimSpace(result.Language), strings.TrimSpace(sample.Card.Language)) &&
 		result.Detected != ""
+	row.WrongAuto = row.ActualID != "" && !row.NeedsReview && !row.Exact && !row.SamePrinting
 	for _, match := range result.TopMatches {
 		if match.ID != "" && match.ID == sample.Card.ID {
 			row.ReviewCandidate = true

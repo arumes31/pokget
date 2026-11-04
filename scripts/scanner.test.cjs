@@ -577,3 +577,69 @@ test('missing catalog preserves the selected language and crop without an automa
     global.fetch = originalFetch;
   }
 });
+
+test('a zero-match scan reports an error instead of promising printings', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => new Response(JSON.stringify({
+    detected: '', id: '', status: 'no_match', needs_review: true, top_matches: [],
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  try {
+    const component = scanner.createCardScanner({ csrfToken: 'csrf' });
+    component.notify = () => {};
+    await component.submitPreparedBlob(new Blob(['jpeg'], { type: 'image/jpeg' }), 'crop.jpg');
+    assert.equal(component.detectedID, '');
+    assert.match(component.scanError, /No confident match/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('a language conflict names the printed language and clears the guess', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => new Response(JSON.stringify({
+    detected: 'ピカチュウ',
+    id: 'card-wrong-scope',
+    status: 'language_conflict',
+    needs_review: true,
+    conflict: { field: 'language', selected: 'eng', detected: 'jpn' },
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  try {
+    const component = scanner.createCardScanner({ csrfToken: 'csrf' });
+    component.notify = () => {};
+    component.game = 'pokemon';
+    component.lang = 'eng';
+    await component.submitPreparedBlob(new Blob(['jpeg'], { type: 'image/jpeg' }), 'crop.jpg');
+    assert.equal(component.detectedID, '', 'a conflict must not keep the wrong-scope card');
+    assert.equal(component.detectedCard, '');
+    assert.match(component.scanError, /printed in Japanese/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('changing game or language clears the previously detected card', () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => new Response(JSON.stringify({ price: 0, unavailable: true }), {
+    status: 200, headers: { 'Content-Type': 'application/json' },
+  });
+  try {
+    const component = scanner.createCardScanner();
+    component.notify = () => {};
+    component.applyScanResult({ detected: 'Card', id: 'card-1' });
+    assert.equal(component.detectedID, 'card-1');
+    component.setGame('magic');
+    assert.equal(component.detectedID, '');
+    component.applyScanResult({ detected: 'Card', id: 'card-1' });
+    component.setLanguage('jpn');
+    assert.equal(component.detectedID, '');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('destroy stops the scanner without a missing device reader', () => {
+  const component = scanner.createCardScanner();
+  component.scanning = true;
+  assert.doesNotThrow(() => component.destroy());
+  assert.equal(component.scanning, false);
+});

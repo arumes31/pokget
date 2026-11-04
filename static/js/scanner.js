@@ -527,11 +527,20 @@
       },
 
       setLanguage(val) {
-        this.lang = normalizeLanguage(this.game, val);
+        const next = normalizeLanguage(this.game, val);
+        if (next !== this.lang) {
+          if (this.scanning) this.cancelScan('reset');
+          this.resetResult();
+        }
+        this.lang = next;
         this.showLangPopover = false;
       },
 
       setGame(val) {
+        if (val !== this.game) {
+          if (this.scanning) this.cancelScan('reset');
+          this.resetResult();
+        }
         this.game = val;
         this.showGamePopover = false;
       },
@@ -586,8 +595,6 @@
       },
 
       destroy() {
-        deviceReader?.dispose();
-        deviceReader = null;
         this.cancelScan('destroyed');
         this.setScanning(false);
         stopStream(this.activeStream);
@@ -894,6 +901,7 @@
         } catch (error) {
           if (operationID === this.operationID) {
             this.clearPreview();
+            this.resetResult();
             this.scanError = error.message || 'The selected image could not be opened.';
             this.notify(this.scanError, 'error');
           }
@@ -988,7 +996,9 @@
       },
 
       async submitPreparedBlob(blob, filename, remember = true) {
-        if (this.abortController) return;
+        // A second click while a request is in flight used to return silently
+        // after the overlay opened. Supersede the old request instead.
+        if (this.abortController) this.cancelScan('reset');
         if (remember) {
           this.lastScanBlob = blob;
           this.lastScanName = filename;
@@ -1041,12 +1051,33 @@
             throw new Error('The scanner returned an unreadable response. Retry the same photo.');
           }
           if (requestID !== this.requestID || controller.signal.aborted) return;
+          const status = String(data.status || '');
+          if (status === 'language_conflict' || status === 'game_conflict') {
+            const conflict = data.conflict && typeof data.conflict === 'object' ? data.conflict : {};
+            const isoLanguages = {
+              eng: 'English', jpn: 'Japanese', deu: 'German', fra: 'French',
+              ita: 'Italian', spa: 'Spanish', kor: 'Korean',
+              'zh-cn': 'Simplified Chinese', 'zh-tw': 'Traditional Chinese',
+            };
+            const detected = conflict.field === 'language'
+              ? (isoLanguages[conflict.detected] || conflict.detected || 'another language')
+              : this.gameDisplayName(conflict.detected);
+            this.resetResult();
+            this.scanError = conflict.field === 'language'
+              ? `This card is printed in ${detected}. Select ${detected} and scan again.`
+              : `This card belongs to ${detected}. Select that TCG and scan again.`;
+            this.notify(this.scanError, 'error');
+            return;
+          }
           this.setStatus('Validating the match…', 4);
           this.applyScanResult(data);
           resultReceived = true;
           this.setStatus('Scan complete', 5);
 
-          if (this.needsReview) {
+          if (status === 'no_match') {
+            this.scanError = 'No confident match was found. Adjust the guides, retry, or enter a card ID.';
+            this.notify(this.scanError, 'error');
+          } else if (this.needsReview || status === 'needs_review') {
             this.notify('Review the possible printings before adding the card.', 'info');
           } else if (this.detectedID || this.detectedCard) {
             this.notify('Card detected.', 'success');

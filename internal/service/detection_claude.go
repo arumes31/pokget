@@ -21,7 +21,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"image"
 	"regexp"
 	"sort"
 	"strconv"
@@ -101,10 +103,23 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 	// Match extracted card details against candidate catalog
 	matches := matchCardsWithClaude(info, request.Cards)
 	result.TopMatches = matches
+	p.applyFingerprintTieBreak(result, request.Cards, request.Image)
 	result.Metrics.TotalTime = time.Since(totalStart)
 
-	if len(matches) > 0 {
-		top := matches[0]
+	// A hint can be wrong. Do not silently answer in the selected language/game:
+	// report the conflict so the user can rescan with the right scope.
+	if conflict := detectionScopeConflict(request.Scope, info); conflict != nil {
+		result.Conflict = conflict
+		if conflict.Field == "game" {
+			result.Status = DetectionStatusGameConflict
+		} else {
+			result.Status = DetectionStatusLanguageConflict
+		}
+		for index := range result.TopMatches {
+			result.TopMatches[index].NeedsReview = true
+		}
+	} else if len(result.TopMatches) > 0 {
+		top := result.TopMatches[0]
 		// A synthetic card (ID == "") does not represent a resolved catalog match and requires review.
 		if top.Card != nil && top.Card.ID != "" && top.Confidence >= 70 && !top.NeedsReview {
 			result.Status = DetectionStatusMatched
@@ -127,6 +142,90 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 		"confidence", result.BestMatchConfidence())
 
 	return result, nil
+}
+
+// applyFingerprintTieBreak resolves catalog rows whose readable text is
+// identical (alt art, foil) with the stored perceptual hash. It only fires when
+// the photographed printing is close to the hash and clearly ahead of the
+// runner-up; otherwise the review choice stays.
+func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, cards []models.Card, imageBytes []byte) {
+	if p == nil || p.Fingerprint == nil || result == nil || len(result.TopMatches) == 0 {
+		return
+	}
+	top := result.TopMatches[0]
+	if top.Card == nil || !top.NeedsReview || top.Card.ID == "" {
+		return
+	}
+	key := logicalCardKey(*top.Card)
+	group := make([]models.Card, 0, 8)
+	for _, card := range cards {
+		if card.Phash != nil && logicalCardKey(card) == key {
+			group = append(group, card)
+		}
+	}
+	if len(group) < 2 {
+		return
+	}
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		return
+	}
+	hash, err := p.Fingerprint.CalculateHash(decoded)
+	if err != nil {
+		return
+	}
+	type rankedCard struct {
+		card     models.Card
+		distance int
+	}
+	ranked := make([]rankedCard, 0, len(group))
+	for _, card := range group {
+		ranked = append(ranked, rankedCard{card: card, distance: hammingDistance(uint64(hash), uint64(*card.Phash))}) // #nosec G115 - comparing hash bits, not a numeric value
+	}
+	sort.Slice(ranked, func(i, j int) bool { return ranked[i].distance < ranked[j].distance })
+	if ranked[0].distance > p.Fingerprint.PhashHighConf {
+		return
+	}
+	if len(ranked) > 1 && ranked[1].distance-ranked[0].distance < 3 {
+		return
+	}
+	winner := ranked[0].card
+	result.TopMatches[0].Card = &winner
+	result.TopMatches[0].Confidence = 99
+	result.TopMatches[0].NeedsReview = false
+}
+
+// detectionScopeConflict compares the printed language/game reported by the
+// detector with the collector's selection. The prompt asks the model to report
+// what it actually sees, so a mismatch here is evidence of a wrong hint rather
+// than a reading error.
+func detectionScopeConflict(scope ScanScope, info *claudedetect.DetectedCardInfo) *DetectionConflict {
+	if info == nil {
+		return nil
+	}
+	if scope.Language.Valid() && scope.Language != models.LanguageAny {
+		if detected, err := models.ParseLanguage(info.Language); err == nil {
+			if detected.Valid() && detected != models.LanguageAny && detected != scope.Language {
+				return &DetectionConflict{
+					Field:    "language",
+					Selected: scope.Language.ISO639Code(),
+					Detected: detected.ISO639Code(),
+				}
+			}
+		}
+	}
+	if scope.TCG != models.TCGUnknown {
+		if detected, err := models.ParseTCG(info.Game); err == nil {
+			if detected != models.TCGUnknown && detected != scope.TCG {
+				return &DetectionConflict{
+					Field:    "game",
+					Selected: string(scope.TCG),
+					Detected: string(detected),
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // claudeLanguageHint names the selected language instead of passing a bare ISO
@@ -177,9 +276,11 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	}
 
 	type scoredMatch struct {
-		card        models.Card
-		confidence  float64
-		needsReview bool
+		card           models.Card
+		confidence     float64
+		needsReview    bool
+		setExact       bool
+		collectorExact bool
 	}
 
 	var candidates []scoredMatch
@@ -271,13 +372,17 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 					partialCollector = true
 				}
 			} else if hasSlash1 || hasSlash2 {
-				// One has a fraction and the other is just a number
+				// The catalog stores the bare collector number ("1") while the
+				// card prints a fraction ("1/102"). The numerator is the card
+				// number; the denominator is set-size information the catalog
+				// does not carry, so it must not weaken the match.
 				cNum1 := extractNumerator(claudeCollector)
 				cNum2 := extractNumerator(cardCollector)
 				kNum1 := collectorNumberKey(cNum1)
 				kNum2 := collectorNumberKey(cNum2)
-				if kNum1 != "" && kNum1 == kNum2 {
-					partialCollector = true
+				if (kNum1 != "" && kNum1 == kNum2) ||
+					(collectorCanonicalKey(cNum1) != "" && collectorCanonicalKey(cNum1) == collectorCanonicalKey(cNum2)) {
+					collectorMatched = true
 				}
 			} else {
 				// Neither has fraction: compare keys (strips leading zeroes)
@@ -319,21 +424,26 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		if nameMatched && collectorMatched {
 			// Exact name + exact collector number = definitive match!
 			score = 98.0
-			if setMatched {
+			if setMatchedExact {
 				score = 99.0
 			}
 			needsReview = false
 		} else if nameMatched && partialCollector {
-			if setMatched {
+			if setMatchedExact {
 				score = 94.0
 				needsReview = false
 			} else {
 				score = 86.0
 				needsReview = true
 			}
-		} else if nameMatched && setMatched {
+		} else if nameMatched && setMatchedExact {
+			// Name and an exactly matching set, but no collector number: the
+			// reprint is still ambiguous unless the name exists only once.
 			score = 92.0
-			needsReview = false
+			needsReview = true
+		} else if nameMatched && setMatched {
+			score = 90.0
+			needsReview = true
 		} else if foldedNameMatched && collectorMatched && setMatched {
 			// The catalogue confirms the print run, but the name differs by a
 			// voicing mark: offer it as the leading candidate for review.
@@ -378,10 +488,28 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		}
 
 		candidates = append(candidates, scoredMatch{
-			card:        card,
-			confidence:  score,
-			needsReview: needsReview,
+			card:           card,
+			confidence:     score,
+			needsReview:    needsReview,
+			setExact:       setMatchedExact,
+			collectorExact: collectorMatched,
 		})
+	}
+
+	// When the scope spans languages (Auto), the language printed on the card is
+	// the only field that separates identical printings (Base Set Pikachu #58
+	// exists in de/en/fr with the same name and number). Keep the model's
+	// language and fall back to all candidates when it matches none.
+	if detectedLanguage, err := models.ParseLanguage(info.Language); err == nil && detectedLanguage != models.LanguageAny {
+		matching := make([]scoredMatch, 0, len(candidates))
+		for _, candidate := range candidates {
+			if detectedLanguage.Matches(candidate.card.Language) {
+				matching = append(matching, candidate)
+			}
+		}
+		if len(matching) > 0 {
+			candidates = matching
+		}
 	}
 
 	// Sort by confidence descending. Ties are broken deterministically, and the
@@ -399,17 +527,33 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		return candidates[i].card.ID < candidates[j].card.ID
 	})
 
-	// Mark ties within 5 points for review, but only when the tie is between
-	// different cards. Alt-art rows of the same card share name and number; two
-	// rows of one card are not an ambiguity the user must resolve.
+	// Mark ties within 5 points for review. A tie between different cards is
+	// ambiguous unless the top match carries decisive evidence (name + exact
+	// number + exact set). Rows of the same card that differ in variant are an
+	// alt-art/reprint choice and need the user, because the price differs.
 	if len(candidates) >= 2 {
-		topKey := logicalCardKey(candidates[0].card)
+		top := &candidates[0]
+		topKey := logicalCardKey(top.card)
+		topVariant := normalizeMatchText(top.card.Variant)
 		for i := 1; i < len(candidates); i++ {
-			if candidates[0].confidence-candidates[i].confidence > 5.0 {
+			if top.confidence-candidates[i].confidence > 5.0 {
 				break
 			}
 			if logicalCardKey(candidates[i].card) != topKey {
-				candidates[0].needsReview = true
+				if top.setExact && top.collectorExact {
+					continue
+				}
+				top.needsReview = true
+				candidates[i].needsReview = true
+				break
+			}
+			// Same name+number+set+language: two catalog rows can still be
+			// different printings (alt art, foil) whose readable text is
+			// identical. Without variant metadata the scan cannot tell them
+			// apart, so it must ask instead of preferring one silently.
+			if normalizeMatchText(candidates[i].card.Variant) != topVariant ||
+				candidates[i].card.SourceCardID != top.card.SourceCardID {
+				top.needsReview = true
 				candidates[i].needsReview = true
 				break
 			}
@@ -550,7 +694,17 @@ func isBasePrinting(card models.Card) bool {
 // logicalCardKey identifies one card across its printings: reprints share name
 // and collector number but differ in artwork, price and catalog row.
 func logicalCardKey(card models.Card) string {
-	return normalizeMatchText(card.Name) + "\x00" + normalizeCollectorNum(card.CollectorNumber)
+	return normalizeMatchText(card.Name) + "\x00" +
+		normalizeCollectorNum(card.CollectorNumber) + "\x00" +
+		setIdentity(card) + "\x00" +
+		normalizeMatchText(card.Language)
+}
+
+func setIdentity(card models.Card) string {
+	if code := normalizeMatchText(card.SetCode); code != "" {
+		return code
+	}
+	return normalizeMatchText(card.Set)
 }
 
 // compactMatchText removes the spaces normalizeMatchText leaves behind.

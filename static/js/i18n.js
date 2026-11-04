@@ -227,6 +227,7 @@
     "Card detected.": "Karte erkannt.",
     "No confident match was found. Adjust the guides, retry, or enter a card ID.": "Kein eindeutiger Treffer. Passe die Hilfslinien an, versuche es erneut oder gib eine Karten-ID ein.",
     "Scan cancelled. The prepared image is still available.": "Scan abgebrochen. Das vorbereitete Bild bleibt verfügbar.",
+    "The scan took too long. Retry the prepared image.": "Der Scan hat zu lange gedauert. Versuche das vorbereitete Bild erneut.",
     "The scan failed. Retry the prepared image.": "Der Scan ist fehlgeschlagen. Versuche das vorbereitete Bild erneut.",
     "Image preparation cancelled.": "Bildvorbereitung abgebrochen.",
     "Confirm the intended printing before adding it.": "Bestätige die gewünschte Druckversion vor dem Hinzufügen.",
@@ -714,7 +715,9 @@
     "for {0} (opens a new tab)": "für {0} (öffnet einen neuen Tab)",
     "Stage {0} of 5": "Schritt {0} von 5",
     "{0} elapsed": "{0} vergangen",
-    "Camera {0}": "Kamera {0}"
+    "Camera {0}": "Kamera {0}",
+    "This card is printed in {0}. Select {1} and scan again.": "Diese Karte ist auf {0} gedruckt. Wähle {1} und scanne erneut.",
+    "This card belongs to {0}. Select that TCG and scan again.": "Diese Karte gehört zu {0}. Wähle dieses TCG und scanne erneut."
   };
   const patterns = Object.entries(germanPatterns).map(([source, translated]) => ({
     regex: new RegExp('^' + source.split(/\{\d+\}/).map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('(.+?)') + '$'),

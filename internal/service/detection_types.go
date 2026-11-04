@@ -22,14 +22,24 @@ var (
 type DetectionStatus string
 
 const (
-	DetectionStatusUnknown        DetectionStatus = "unknown"
-	DetectionStatusMatched        DetectionStatus = "matched"
-	DetectionStatusNeedsReview    DetectionStatus = "needs_review"
-	DetectionStatusNoMatch        DetectionStatus = "no_match"
-	DetectionStatusInvalidRequest DetectionStatus = "invalid_request"
-	DetectionStatusFailed         DetectionStatus = "failed"
-	DetectionStatusCanceled       DetectionStatus = "canceled"
+	DetectionStatusUnknown          DetectionStatus = "unknown"
+	DetectionStatusMatched          DetectionStatus = "matched"
+	DetectionStatusNeedsReview      DetectionStatus = "needs_review"
+	DetectionStatusNoMatch          DetectionStatus = "no_match"
+	DetectionStatusLanguageConflict DetectionStatus = "language_conflict"
+	DetectionStatusGameConflict     DetectionStatus = "game_conflict"
+	DetectionStatusInvalidRequest   DetectionStatus = "invalid_request"
+	DetectionStatusFailed           DetectionStatus = "failed"
+	DetectionStatusCanceled         DetectionStatus = "canceled"
 )
+
+// DetectionConflict describes a scope hint that contradicts the card in the
+// photo. The scan must surface it instead of silently searching another scope.
+type DetectionConflict struct {
+	Field    string `json:"field"`
+	Selected string `json:"selected"`
+	Detected string `json:"detected"`
+}
 
 // ScanScope is selected by the user before scanning. It is also carried into
 // fingerprint index selection so visually identical cards from another TCG or
@@ -102,6 +112,7 @@ type DetectionResult struct {
 	Metrics        DetectionMetrics
 	OCRText        string
 	ProcessedImage []byte
+	Conflict       *DetectionConflict
 }
 
 // BestMatchID returns the stable printing ID of the top match.

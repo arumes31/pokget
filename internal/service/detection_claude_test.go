@@ -21,8 +21,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image"
 	"testing"
 	"time"
 
@@ -309,7 +311,7 @@ func TestClaudeDetection_VariantSuffixCollectorIsPartialEvidence(t *testing.T) {
 	}
 }
 
-func TestClaudeDetection_DuplicatePrintingsDoNotForceReview(t *testing.T) {
+func TestClaudeDetection_DuplicatePrintingsRequireReview(t *testing.T) {
 	info := &claudedetect.DetectedCardInfo{
 		Game:            "one_piece",
 		Name:            "Boa Hancock",
@@ -348,11 +350,11 @@ func TestClaudeDetection_DuplicatePrintingsDoNotForceReview(t *testing.T) {
 	if matches[0].Card.ID != "card-base" {
 		t.Errorf("expected base printing first, got %q", matches[0].Card.ID)
 	}
-	if matches[0].NeedsReview {
-		t.Errorf("same card, different art must not require review")
+	if !matches[0].NeedsReview {
+		t.Errorf("indistinguishable printings must require review")
 	}
-	if matches[1].NeedsReview {
-		t.Errorf("same card, different art must not require review")
+	if !matches[1].NeedsReview {
+		t.Errorf("indistinguishable printings must require review")
 	}
 }
 
@@ -425,6 +427,144 @@ func TestClaudeDetection_IgnoresWhitespaceInPrintedName(t *testing.T) {
 	}
 }
 
+func TestClaudeDetection_PrintedFractionMatchesBareCatalogNumber(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "pokemon",
+		Name:            "Alakazam",
+		CollectorNumber: "1/102",
+		Set:             "Base Set",
+		Language:        "en",
+		Confidence:      0.95,
+	}
+	cards := []models.Card{
+		{ID: "base-1", Name: "Alakazam", CollectorNumber: "1", Set: "Base Set", SetCode: "bs", Language: "en", Game: "pokemon"},
+		{ID: "base2-1", Name: "Alakazam", CollectorNumber: "1", Set: "Base Set 2", SetCode: "bs2", Language: "en", Game: "pokemon"},
+		{ID: "exp-1", Name: "Alakazam", CollectorNumber: "1", Set: "Expedition Base Set", SetCode: "ex", Language: "en", Game: "pokemon"},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 3 {
+		t.Fatalf("expected three printings, got %d", len(matches))
+	}
+	if matches[0].Card.ID != "base-1" {
+		t.Fatalf("expected Base Set printing first, got %q", matches[0].Card.ID)
+	}
+	if matches[0].Confidence != 99.0 {
+		t.Errorf("printed 1/102 must match catalog 1 at 99, got %f", matches[0].Confidence)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("exact set tells the Base Set printing apart")
+	}
+}
+
+func TestClaudeDetection_CrossSetNumberTieRequiresReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "pokemon",
+		Name:            "Alakazam",
+		CollectorNumber: "1/102",
+		Language:        "en",
+		Confidence:      0.95,
+	}
+	cards := []models.Card{
+		{ID: "base-1", Name: "Alakazam", CollectorNumber: "1", Set: "Base Set", SetCode: "bs", Language: "en", Game: "pokemon"},
+		{ID: "base2-1", Name: "Alakazam", CollectorNumber: "1", Set: "Base Set 2", SetCode: "bs2", Language: "en", Game: "pokemon"},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 2 {
+		t.Fatalf("expected two printings, got %d", len(matches))
+	}
+	if !matches[0].NeedsReview || !matches[1].NeedsReview {
+		t.Errorf("same name+number across sets without a set must require review")
+	}
+}
+
+func TestClaudeDetection_VariantAmbiguityRequiresReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "one_piece",
+		Name:            "Monkey.D.Luffy",
+		CollectorNumber: "OP01-001",
+		Set:             "Romance Dawn",
+		Language:        "en",
+		Confidence:      0.96,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "Monkey.D.Luffy", CollectorNumber: "OP01-001", Set: "Romance Dawn", SetCode: "OP01", Variant: "Normal", Language: "en", Game: "one_piece", SourceCardID: "OP01-001"},
+		{ID: "alt", Name: "Monkey.D.Luffy", CollectorNumber: "OP01-001", Set: "Romance Dawn", SetCode: "OP01", Variant: "Parallel", Language: "en", Game: "one_piece", SourceCardID: "OP01-001_p1"},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if matches[0].Card.ID != "base" {
+		t.Errorf("expected base printing first, got %q", matches[0].Card.ID)
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("different variants must be a review choice")
+	}
+}
+
+func TestClaudeDetection_AutoUsesPrintedLanguage(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "pokemon",
+		Name:            "Pikachu",
+		CollectorNumber: "58",
+		Set:             "Base Set",
+		Language:        "deu",
+		Confidence:      0.94,
+	}
+	cards := []models.Card{
+		{ID: "de-58", Name: "Pikachu", CollectorNumber: "58", Set: "Base Set", SetCode: "bs", Language: "de", Game: "pokemon"},
+		{ID: "en-58", Name: "Pikachu", CollectorNumber: "58", Set: "Base Set", SetCode: "bs", Language: "en", Game: "pokemon"},
+		{ID: "fr-58", Name: "Pikachu", CollectorNumber: "58", Set: "Base Set", SetCode: "bs", Language: "fr", Game: "pokemon"},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("printed language must narrow the candidates, got %d", len(matches))
+	}
+	if matches[0].Card.ID != "de-58" {
+		t.Errorf("expected the German printing, got %q", matches[0].Card.ID)
+	}
+}
+
+func TestClaudeDetection_LanguageHintConflictIsExplicit(t *testing.T) {
+	mock := &mockClaudeDetector{
+		info: &claudedetect.DetectedCardInfo{
+			Game:            "pokemon",
+			Name:            "ピカチュウ",
+			CollectorNumber: "58",
+			Set:             "Base Set",
+			Language:        "jpn",
+			Confidence:      0.93,
+		},
+	}
+	pipeline := NewDetectionPipeline(nil, nil)
+	pipeline.Claude = mock
+
+	cards := []models.Card{
+		{ID: "en-58", Name: "Pikachu", CollectorNumber: "58", Set: "Base Set", Language: "en", Game: "pokemon"},
+	}
+	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
+		Image: testCardImage(t),
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGPokemon, Language: models.LanguageEnglish},
+	}, false, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != DetectionStatusLanguageConflict {
+		t.Fatalf("expected language conflict, got %s", result.Status)
+	}
+	if result.Conflict == nil || result.Conflict.Field != "language" || result.Conflict.Detected != "jpn" {
+		t.Fatalf("expected explicit language conflict, got %+v", result.Conflict)
+	}
+	if !result.BestMatchNeedsReview() {
+		t.Errorf("a conflict must need review")
+	}
+}
+
 func TestClaudeDetection_GenericSetSubstringDoesNotConfirmUnknownName(t *testing.T) {
 	info := &claudedetect.DetectedCardInfo{
 		Game:            "magic",
@@ -455,5 +595,60 @@ func TestClaudeDetection_GenericSetSubstringDoesNotConfirmUnknownName(t *testing
 	}
 	if !matches[0].NeedsReview {
 		t.Errorf("number-only candidate must require review")
+	}
+}
+
+func TestClaudeDetection_FingerprintResolvesIdenticalPrintings(t *testing.T) {
+	imageBytes := testCardImage(t)
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		t.Fatalf("decode test image: %v", err)
+	}
+	fingerprint := NewFingerprintService(nil)
+	hash, err := fingerprint.CalculateHash(decoded)
+	if err != nil {
+		t.Fatalf("hash test image: %v", err)
+	}
+	otherHash := hash ^ 0xFF
+
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "one_piece",
+		Name:            "Boa Hancock",
+		CollectorNumber: "ST17-004",
+		Set:             "ST-17",
+		Language:        "en",
+		Confidence:      0.96,
+	}
+	cards := []models.Card{
+		{
+			ID: "card-base", Name: "Boa Hancock", CollectorNumber: "ST17-004",
+			Set: "ST-17", SetCode: "ST-17", Language: "en", Game: "one_piece",
+			SourceCardID: "ST17-004", Phash: &otherHash,
+		},
+		{
+			ID: "card-alt", Name: "Boa Hancock", CollectorNumber: "ST17-004",
+			Set: "ST-17", SetCode: "ST-17", Language: "en", Game: "one_piece",
+			SourceCardID: "ST17-004_p1", Phash: &hash,
+		},
+	}
+
+	pipeline := NewDetectionPipeline(fingerprint, nil)
+	pipeline.Claude = &mockClaudeDetector{info: info}
+	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
+		Image: imageBytes,
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGOnePiece, Language: models.LanguageEnglish},
+	}, false, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BestMatchID() != "card-alt" {
+		t.Fatalf("expected the photographed printing, got %q", result.BestMatchID())
+	}
+	if result.BestMatchNeedsReview() {
+		t.Errorf("a decisive fingerprint must clear the review flag")
+	}
+	if result.Status != DetectionStatusMatched {
+		t.Errorf("expected matched, got %s", result.Status)
 	}
 }
