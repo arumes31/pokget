@@ -222,8 +222,10 @@ func fingerprintGroupKey(card models.Card) string {
 }
 
 // variantEvidence compares the printed finish the detector reported with the
-// catalog variant. A generic "Foil" does not identify a specific foil type, so
-// it must not count as a match for "Rainbow Foil" or "Cold Foil".
+// catalog variant. "Normal" rows only conflict with a specific finish
+// (Rainbow/Cold/Gold/Parallel/...); a generic "Holo"/"Foil" reading is noise on
+// ordinary cards and must not send every scan to review. A generic reading also
+// cannot identify one specific foil type.
 func variantEvidence(detected, catalog string) (matched, conflict bool) {
 	if detected == "" || catalog == "" {
 		return false, false
@@ -231,11 +233,31 @@ func variantEvidence(detected, catalog string) (matched, conflict bool) {
 	if detected == catalog {
 		return true, false
 	}
+	specific := func(value string) bool {
+		for _, marker := range []string{"rainbow", "cold", "gold", "parallel", "alternate", "alt art", "reverse", "etched", "showcase", "borderless", "extended"} {
+			if strings.Contains(value, marker) {
+				return true
+			}
+		}
+		return false
+	}
+	generic := func(value string) bool {
+		return value == "foil" || value == "holo" || value == "holofoil" || value == "foil holo"
+	}
+	if catalog == "normal" {
+		if specific(detected) {
+			return false, true
+		}
+		return false, false
+	}
 	if strings.Contains(detected, catalog) {
 		return true, false
 	}
 	if strings.Contains(catalog, detected) && len(detected) >= 5 && len(catalog)-len(detected) <= 4 {
 		return true, false
+	}
+	if generic(detected) {
+		return false, false
 	}
 	return false, true
 }
