@@ -25,3 +25,15 @@ func TestTCGCSVVariantDerivesFinish(t *testing.T) {
 		}
 	}
 }
+
+func TestTCGCSVImageURLOnlyUpgradesWixoss(t *testing.T) {
+	const thumb = "https://tcgplayer-cdn.tcgplayer.com/product/1_200w.jpg"
+	if got := tcgcsvImageURL(catalog.GameWIXOSS, thumb); got != "https://tcgplayer-cdn.tcgplayer.com/product/1_in_1000x1000.jpg" {
+		t.Errorf("wixoss image = %q, want the 1000px scan", got)
+	}
+	for _, game := range []catalog.Game{catalog.GameCookieRun, catalog.GameForceOfWill, catalog.GameRiftbound, catalog.GameAlphaClash} {
+		if got := tcgcsvImageURL(game, thumb); got != thumb {
+			t.Errorf("%s image = %q, want the thumbnail kept", game, got)
+		}
+	}
+}
