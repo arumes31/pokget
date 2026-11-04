@@ -203,6 +203,9 @@ func scanOneLive(ctx context.Context, imageClient *http.Client, session *liveSes
 	defer cancel()
 	var result *liveScanResponse
 	for attempt := 1; attempt <= 3; attempt++ {
+		// Time the successful request only: a rate-limit retry waits for the
+		// global scan limiter and must not inflate the measured scan latency.
+		started = time.Now()
 		result, err = session.scan(scanCtx, combination.game, sentLanguage, imageBytes)
 		if err != nil && strings.Contains(err.Error(), "status 429") && attempt < 3 {
 			select {
@@ -221,7 +224,15 @@ func scanOneLive(ctx context.Context, imageClient *http.Client, session *liveSes
 		row.Error = err.Error()
 		return row
 	}
+	fillLiveRow(&row, result, sample)
+	return row
+}
 
+func fillLiveRow(row *resultRow, result *liveScanResponse, sample sampleCard) {
+	if result == nil {
+		row.Error = "empty detection result"
+		return
+	}
 	row.Status = result.Status
 	if row.Status == "" {
 		row.Status = "matched"
@@ -254,7 +265,6 @@ func scanOneLive(ctx context.Context, imageClient *http.Client, session *liveSes
 	if !row.Exact {
 		row.Notes = differenceNotes(sample.Card, result.Text)
 	}
-	return row
 }
 
 func firstLine(payload []byte) string {

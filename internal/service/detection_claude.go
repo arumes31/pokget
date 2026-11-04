@@ -444,11 +444,12 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		} else if nameMatched && setMatched {
 			score = 90.0
 			needsReview = true
-		} else if foldedNameMatched && collectorMatched && setMatched {
-			// The catalogue confirms the print run, but the name differs by a
-			// voicing mark: offer it as the leading candidate for review.
-			score = 90.0
-			needsReview = true
+		} else if foldedNameMatched && collectorMatched && setMatchedExact {
+			// The printed number and set identify the printing; the name differs
+			// only by a voicing mark (ピ/ビ), which is the most common Japanese
+			// vision error. Number + set are decisive, so no review is needed.
+			score = 96.0
+			needsReview = false
 		} else if collectorMatched && setMatchedExact {
 			// Number and set agree but the name gives no evidence (a different
 			// language, or an unclear title): offer it for review, never as a
@@ -527,6 +528,26 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		return candidates[i].card.ID < candidates[j].card.ID
 	})
 
+	// A unique name in this scan scope is enough to identify the card when the
+	// number was unreadable: no other candidate shares the name, so the name-only
+	// bucket is a decision, not a guess.
+	if len(candidates) > 0 {
+		top := &candidates[0]
+		if (top.confidence == 75.0 || top.confidence == 92.0) && !top.collectorExact {
+			topName := normalizeMatchText(top.card.Name)
+			sameName := 0
+			for index := range candidates {
+				if normalizeMatchText(candidates[index].card.Name) == topName {
+					sameName++
+				}
+			}
+			if sameName == 1 {
+				top.confidence = 85.0
+				top.needsReview = false
+			}
+		}
+	}
+
 	// Mark ties within 5 points for review. A tie between different cards is
 	// ambiguous unless the top match carries decisive evidence (name + exact
 	// number + exact set). Rows of the same card that differ in variant are an
@@ -537,6 +558,18 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		topVariant := normalizeMatchText(top.card.Variant)
 		for i := 1; i < len(candidates); i++ {
 			if top.confidence-candidates[i].confidence > 5.0 {
+				break
+			}
+			// The detector may drop Magic's variant suffix ("202s" read as
+			// "202"). The base number would then match two different printings
+			// exactly, so ask instead of silently choosing the shorter row.
+			otherNumber := normalizeCollectorNum(candidates[i].card.CollectorNumber)
+			otherFull := collectorCanonicalKey(candidates[i].card.CollectorNumber)
+			otherBase := collectorBaseKey(otherNumber)
+			if claudeCollectorCanonical != "" && otherFull != claudeCollectorCanonical &&
+				otherBase == claudeCollectorCanonical && otherFull != otherBase {
+				top.needsReview = true
+				candidates[i].needsReview = true
 				break
 			}
 			if logicalCardKey(candidates[i].card) != topKey {

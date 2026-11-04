@@ -175,8 +175,11 @@ func TestClaudeDetectionRecoversVoicingOnlyDifference(t *testing.T) {
 	if result.BestMatchID() != "pidgeot-136" {
 		t.Fatalf("expected the voicing-folded printing pidgeot-136, got %q", result.BestMatchID())
 	}
-	if result.Status != DetectionStatusNeedsReview {
-		t.Errorf("a voicing-folded match must stay reviewable, got %s", result.Status)
+	// The printed number (136) and set (SV3) identify the printing. Two cards in
+	// one set cannot share a collector number, so the folded name is a reading
+	// error, not an ambiguity: no manual review needed.
+	if result.Status != DetectionStatusMatched {
+		t.Errorf("voicing fold with exact number+set should match, got %s", result.Status)
 	}
 }
 

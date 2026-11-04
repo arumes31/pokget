@@ -502,7 +502,18 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 		chromedp.Evaluate[chromedp.Void](
 			`localStorage.setItem('pokget_scan_game', `+string(gameJSON)+`)`,
 		),
-		chromedp.Click(chromedp.CSS(scanNavigationSelector)),
+		// Load the scan fragment through htmx itself. Clicking the sidebar entry
+		// raced htmx initialization on a slow edge: the click fell through to a
+		// full navigation, landed on the dashboard and the harness timed out.
+		// The ajax call is the same request the sidebar makes, without a reload.
+		chromedp.Poll[chromedp.Void](
+			`Boolean(window.htmx)`,
+			chromedp.WithPollingTimeout(10*time.Second),
+			chromedp.WithPollingInterval(50*time.Millisecond),
+		),
+		chromedp.Evaluate[chromedp.Void](
+			`window.htmx.ajax('GET', '/centering', {target: '#main-content', swap: 'innerHTML'})`,
+		),
 		chromedp.Func(func(ctx context.Context, t *chromedp.Target) error {
 			pageContext, cancel := context.WithTimeout(ctx, 15*time.Second)
 			defer cancel()

@@ -1565,6 +1565,8 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 				"set":              m.Card.Set,
 				"collector_number": m.Card.CollectorNumber,
 				"language":         m.Card.Language,
+				"variant":          m.Card.Variant,
+				"rarity":           m.Card.Rarity,
 				"confidence":       m.Confidence,
 				"needs_review":     m.NeedsReview,
 			}
