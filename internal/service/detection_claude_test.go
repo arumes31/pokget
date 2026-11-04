@@ -1187,3 +1187,43 @@ func TestClaudeDetection_IdenticalArtworkDuplicatesKeepTextMatch(t *testing.T) {
 		t.Errorf("identical artwork must not override the printed set, got status=%s review=%v", result.Status, result.BestMatchNeedsReview())
 	}
 }
+
+func TestClaudeDetection_ArtworkResolvesNameOnlyPrinting(t *testing.T) {
+	imageBytes := testCardImage(t)
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		t.Fatalf("decode test image: %v", err)
+	}
+	fingerprint := NewFingerprintService(nil)
+	hash, err := fingerprint.CalculateHash(decoded)
+	if err != nil {
+		t.Fatalf("hash test image: %v", err)
+	}
+	otherHash := hash ^ 0xFF
+	info := &claudedetect.DetectedCardInfo{
+		Game: "pokemon", Name: "Pikachu", Language: "eng", Confidence: 0.9,
+	}
+	cards := []models.Card{
+		{ID: "pika-58", Name: "Pikachu", CollectorNumber: "58", Set: "Base Set", Language: "en", Game: "pokemon", Phash: &otherHash},
+		{ID: "pika-60", Name: "Pikachu", CollectorNumber: "60", Set: "Base Set 2", Language: "en", Game: "pokemon", Phash: &hash},
+	}
+	pipeline := NewDetectionPipeline(fingerprint, nil)
+	pipeline.Claude = &mockClaudeDetector{info: info}
+	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
+		Image: imageBytes,
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGPokemon, Language: models.LanguageEnglish},
+	}, false, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BestMatchID() != "pika-60" {
+		t.Fatalf("expected the artwork-matched printing, got %q", result.BestMatchID())
+	}
+	if result.BestMatchNeedsReview() || result.Status != DetectionStatusMatched {
+		t.Errorf("a decisive artwork match must auto-match, got status=%s", result.Status)
+	}
+	if result.BestMatchConfidence() != 92 {
+		t.Errorf("name-only artwork match should score 92, got %f", result.BestMatchConfidence())
+	}
+}

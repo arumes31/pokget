@@ -103,7 +103,7 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 	// Match extracted card details against candidate catalog
 	matches := matchCardsWithClaude(info, request.Cards)
 	result.TopMatches = matches
-	p.applyFingerprintTieBreak(result, request.Cards, request.Image)
+	p.applyFingerprintTieBreak(result, request.Cards, request.Image, normalizeCollectorNum(info.CollectorNumber) != "")
 	result.Metrics.TotalTime = time.Since(totalStart)
 
 	// A hint can be wrong. Do not silently answer in the selected language/game:
@@ -149,8 +149,10 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 // even when the text scorer was confident, because the base row can win on set
 // evidence while the photo shows another printing. Only a close hash that is
 // clearly ahead of the runner-up is accepted; otherwise the printing becomes a
-// review choice instead of a silent guess.
-func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, cards []models.Card, imageBytes []byte) {
+// review choice instead of a silent guess. When the detector read no collector
+// number, every printing of that name competes on artwork, which is the only
+// evidence left for cards printed without a number.
+func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, cards []models.Card, imageBytes []byte, collectorKnown bool) {
 	if p == nil || p.Fingerprint == nil || result == nil || len(result.TopMatches) == 0 {
 		return
 	}
@@ -158,11 +160,17 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 	if top.Card == nil || top.Card.ID == "" {
 		return
 	}
-	key := fingerprintGroupKey(*top.Card)
+	groupKey := func(card models.Card) string {
+		if collectorKnown {
+			return fingerprintGroupKey(card)
+		}
+		return normalizeMatchText(card.Name) + "\x00" + normalizeMatchText(card.Language)
+	}
+	key := groupKey(*top.Card)
 	group := make([]models.Card, 0, 8)
 	distinct := make(map[string]struct{}, 4)
 	for _, card := range cards {
-		if card.Phash == nil || fingerprintGroupKey(card) != key {
+		if card.Phash == nil || groupKey(card) != key {
 			continue
 		}
 		group = append(group, card)
@@ -216,7 +224,12 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 		(len(ranked) == 1 || ranked[1].distance-ranked[0].distance >= 3) {
 		winner := ranked[0].card
 		result.TopMatches[0].Card = &winner
+		// Without a printed number the artwork is the only printing evidence, so
+		// the score says "name + artwork", not "name + number + set".
 		result.TopMatches[0].Confidence = 99
+		if !collectorKnown {
+			result.TopMatches[0].Confidence = 92
+		}
 		result.TopMatches[0].NeedsReview = false
 		return
 	}
