@@ -1227,3 +1227,44 @@ func TestClaudeDetection_ArtworkResolvesNameOnlyPrinting(t *testing.T) {
 		t.Errorf("name-only artwork match should score 92, got %f", result.BestMatchConfidence())
 	}
 }
+
+func TestClaudeDetection_ReadVariantSuffixDoesNotMatchBaseRow(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "riftbound", Name: "Body Rune", CollectorNumber: "R04c",
+		Set: "Unleashed", SetCode: "UNL", Language: "eng", Confidence: 0.85,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "Body Rune", CollectorNumber: "R04", Set: "Unleashed", SetCode: "UNL", Language: "en", Game: "riftbound"},
+		{ID: "variant", Name: "Body Rune R04c", CollectorNumber: "R04c", Set: "Unleashed", SetCode: "UNL", Language: "en", Game: "riftbound"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	for _, match := range matches {
+		if match.Card.ID == "base" && !match.NeedsReview {
+			t.Fatalf("a read suffix must never auto-match the base row")
+		}
+	}
+	if len(matches) == 0 || matches[0].Card.ID != "variant" {
+		t.Fatalf("expected the R04c printing first, got %+v", matches)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("an exact variant number with an exact set must auto-match")
+	}
+}
+
+func TestClaudeDetection_NameVariantSiblingInSetStaysReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "wixoss", Name: "Focalor Azure Evil", CollectorNumber: "",
+		Set: "WIXOSS Diva Booster Pack P01", SetCode: "WXDi-P01", Language: "eng", Confidence: 0.9,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "Focalor Azure Evil", CollectorNumber: "WXDi-P01-066[EN]", Set: "WIXOSS Diva Booster Pack P01", SetCode: "WXDi-P01", Variant: "Normal", Language: "en", Game: "wixoss"},
+		{ID: "parallel", Name: "Focalor Azure Evil Parallel Foil", CollectorNumber: "WXDi-P01-066P[EN]", Set: "WIXOSS Diva Booster Pack P01", SetCode: "WXDi-P01", Variant: "Parallel Foil", Language: "en", Game: "wixoss"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 {
+		t.Fatalf("expected a candidate")
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a name-suffix variant in the same set must keep review")
+	}
+}
