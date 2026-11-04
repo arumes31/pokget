@@ -1344,10 +1344,12 @@ func (h *Handler) ReloadCardsCache() (int, error) {
 func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	logger := service.ScanLogger(r.Context())
 
-	// Snapshot MockCards under read lock to avoid races with reloadCards
+	// Snapshot MockCards under the read lock. The slice is publish-on-reload and
+	// append-only (synthetic cards), so taking the header is enough: copying 869k
+	// cards here cost ~257 MB per request. Reload assigns a fresh slice; append
+	// writes past len and never mutates the entries a scan reads.
 	h.CardsMu.RLock()
-	cards := make([]models.Card, len(h.MockCards))
-	copy(cards, h.MockCards)
+	cards := h.MockCards
 	h.CardsMu.RUnlock()
 
 	err := r.ParseMultipartForm(maxScanRequestBytes) // #nosec G120 - bounded by MaxBytesReader
