@@ -168,7 +168,7 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 		group = append(group, card)
 		distinct[card.ID] = struct{}{}
 	}
-	if len(group) < 2 || len(distinct) < 2 {
+	if len(group) == 0 {
 		return
 	}
 	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
@@ -177,6 +177,16 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 	}
 	hash, err := p.Fingerprint.CalculateHash(decoded)
 	if err != nil {
+		return
+	}
+	if len(group) < 2 || len(distinct) < 2 {
+		// A single candidate still has to look like the photo. A confident text
+		// match on the wrong row (a misread digit such as 006 vs 008) lands far
+		// from the stored artwork hash and must become a review choice.
+		if top.Card.Phash != nil &&
+			hammingDistance(uint64(hash), uint64(*top.Card.Phash)) > p.Fingerprint.PhashPotential { // #nosec G115 - comparing hash bits, not a numeric value
+			result.TopMatches[0].NeedsReview = true
+		}
 		return
 	}
 	type rankedCard struct {
@@ -209,6 +219,25 @@ func fingerprintGroupKey(card models.Card) string {
 	return normalizeMatchText(card.Name) + "\x00" +
 		collectorVariantBase(card.CollectorNumber) + "\x00" +
 		normalizeMatchText(card.Language)
+}
+
+// variantEvidence compares the printed finish the detector reported with the
+// catalog variant. A generic "Foil" does not identify a specific foil type, so
+// it must not count as a match for "Rainbow Foil" or "Cold Foil".
+func variantEvidence(detected, catalog string) (matched, conflict bool) {
+	if detected == "" || catalog == "" {
+		return false, false
+	}
+	if detected == catalog {
+		return true, false
+	}
+	if strings.Contains(detected, catalog) {
+		return true, false
+	}
+	if strings.Contains(catalog, detected) && len(detected) >= 5 && len(catalog)-len(detected) <= 4 {
+		return true, false
+	}
+	return false, true
 }
 
 // detectionScopeConflict compares the printed language/game reported by the
@@ -292,11 +321,13 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	}
 
 	type scoredMatch struct {
-		card           models.Card
-		confidence     float64
-		needsReview    bool
-		setExact       bool
-		collectorExact bool
+		card            models.Card
+		confidence      float64
+		needsReview     bool
+		setExact        bool
+		collectorExact  bool
+		variantMatched  bool
+		variantConflict bool
 	}
 
 	var candidates []scoredMatch
@@ -308,6 +339,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	claudeCollectorCanonical := collectorCanonicalKey(info.CollectorNumber)
 	claudeSet := normalizeMatchText(info.Set)
 	claudeSetCode := normalizeMatchText(info.SetCode)
+	claudeVariant := normalizeMatchText(info.Variant)
 
 	for _, card := range cards {
 		if !card.IsCatalogActive() {
@@ -320,6 +352,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		cardCollectorCanonical := collectorCanonicalKey(card.CollectorNumber)
 		cardSet := normalizeMatchText(card.Set)
 		cardSetCode := normalizeMatchText(card.SetCode)
+		variantMatched, variantConflict := variantEvidence(claudeVariant, normalizeMatchText(card.Variant))
 
 		// Name matching (check primary and localized names). Whitespace is not
 		// meaning: Japanese card names are printed without the spaces the
@@ -503,13 +536,21 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				score = 80.0
 			}
 		}
+		// A printed finish that contradicts the catalog row is conflicting
+		// evidence: never auto-accept it, even when name, number and set agree.
+		if variantConflict {
+			needsReview = true
+			score -= 4
+		}
 
 		candidates = append(candidates, scoredMatch{
-			card:           card,
-			confidence:     score,
-			needsReview:    needsReview,
-			setExact:       setMatchedExact,
-			collectorExact: collectorMatched,
+			card:            card,
+			confidence:      score,
+			needsReview:     needsReview,
+			setExact:        setMatchedExact,
+			collectorExact:  collectorMatched,
+			variantMatched:  variantMatched,
+			variantConflict: variantConflict,
 		})
 	}
 
@@ -536,6 +577,11 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	sort.SliceStable(candidates, func(i, j int) bool {
 		if candidates[i].confidence != candidates[j].confidence {
 			return candidates[i].confidence > candidates[j].confidence
+		}
+		// Equal text evidence: the printed finish decides which printing the
+		// collector is holding.
+		if candidates[i].variantMatched != candidates[j].variantMatched {
+			return candidates[i].variantMatched
 		}
 		baseI, baseJ := isBasePrinting(candidates[i].card), isBasePrinting(candidates[j].card)
 		if baseI != baseJ {
@@ -618,10 +664,13 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			}
 			// Same name+number+set+language: two catalog rows can still be
 			// different printings (alt art, foil) whose readable text is
-			// identical. Without variant metadata the scan cannot tell them
-			// apart, so it must ask instead of preferring one silently.
-			if normalizeMatchText(candidates[i].card.Variant) != topVariant ||
-				candidates[i].card.SourceCardID != top.card.SourceCardID {
+			// identical. A printed finish that matches exactly one of them
+			// decides; otherwise the scan must ask.
+			otherVariant := normalizeMatchText(candidates[i].card.Variant)
+			if otherVariant != topVariant || candidates[i].card.SourceCardID != top.card.SourceCardID {
+				if top.variantMatched && !candidates[i].variantMatched {
+					continue
+				}
 				top.needsReview = true
 				candidates[i].needsReview = true
 				break

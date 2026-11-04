@@ -25,42 +25,42 @@ func (p *FFTCGProvider) ID() string         { return "fftcg" }
 func (p *FFTCGProvider) Game() catalog.Game { return catalog.GameFFTCG }
 
 type fftcgCard struct {
-	ID         any      `json:"id"`
-	Code       string   `json:"code"`
-	Image      string   `json:"image"`
-	Element    []string `json:"element"`
-	Rarity     string   `json:"rarity"`
-	Cost       any      `json:"cost"`
-	Power      any      `json:"power"`
-	Category1  string   `json:"category_1"`
-	Category2  string   `json:"category_2"`
-	Multicard  any      `json:"multicard"`
-	ExBurst    any      `json:"ex_burst"`
-	Set        []string `json:"set"`
-	NameEN     string   `json:"name_en"`
-	TypeEN     string   `json:"type_en"`
-	JobEN      string   `json:"job_en"`
-	TextEN     string   `json:"text_en"`
-	NameJA     string   `json:"name_ja"`
-	TypeJA     string   `json:"type_ja"`
-	JobJA      string   `json:"job_ja"`
-	TextJA     string   `json:"text_ja"`
-	NameDE     string   `json:"name_de"`
-	TypeDE     string   `json:"type_de"`
-	JobDE      string   `json:"job_de"`
-	TextDE     string   `json:"text_de"`
-	NameES     string   `json:"name_es"`
-	TypeES     string   `json:"type_es"`
-	JobES      string   `json:"job_es"`
-	TextES     string   `json:"text_es"`
-	NameFR     string   `json:"name_fr"`
-	TypeFR     string   `json:"type_fr"`
-	JobFR      string   `json:"job_fr"`
-	TextFR     string   `json:"text_fr"`
-	NameIT     string   `json:"name_it"`
-	TypeIT     string   `json:"type_it"`
-	JobIT      string   `json:"job_it"`
-	TextIT     string   `json:"text_it"`
+	ID        any      `json:"id"`
+	Code      string   `json:"code"`
+	Image     string   `json:"image"`
+	Element   []string `json:"element"`
+	Rarity    string   `json:"rarity"`
+	Cost      any      `json:"cost"`
+	Power     any      `json:"power"`
+	Category1 string   `json:"category_1"`
+	Category2 string   `json:"category_2"`
+	Multicard any      `json:"multicard"`
+	ExBurst   any      `json:"ex_burst"`
+	Set       []string `json:"set"`
+	NameEN    string   `json:"name_en"`
+	TypeEN    string   `json:"type_en"`
+	JobEN     string   `json:"job_en"`
+	TextEN    string   `json:"text_en"`
+	NameJA    string   `json:"name_ja"`
+	TypeJA    string   `json:"type_ja"`
+	JobJA     string   `json:"job_ja"`
+	TextJA    string   `json:"text_ja"`
+	NameDE    string   `json:"name_de"`
+	TypeDE    string   `json:"type_de"`
+	JobDE     string   `json:"job_de"`
+	TextDE    string   `json:"text_de"`
+	NameES    string   `json:"name_es"`
+	TypeES    string   `json:"type_es"`
+	JobES     string   `json:"job_es"`
+	TextES    string   `json:"text_es"`
+	NameFR    string   `json:"name_fr"`
+	TypeFR    string   `json:"type_fr"`
+	JobFR     string   `json:"job_fr"`
+	TextFR    string   `json:"text_fr"`
+	NameIT    string   `json:"name_it"`
+	TypeIT    string   `json:"type_it"`
+	JobIT     string   `json:"job_it"`
+	TextIT    string   `json:"text_it"`
 }
 
 type fftcgResponse struct {
@@ -84,6 +84,15 @@ func (p *FFTCGProvider) Fetch(ctx context.Context, request catalog.FetchRequest,
 	if lang == "" {
 		lang = "en"
 	}
+	languages := fftcgLanguages(catalogLanguages(lang))
+	if len(languages) > 1 {
+		return fetchLanguages(ctx, languages, request, func(ctx context.Context, language string, request catalog.FetchRequest) (catalog.FetchResult, error) {
+			localized := *p
+			localized.Language = language
+			return localized.Fetch(ctx, request, emit)
+		})
+	}
+	lang = languages[0]
 
 	endpoint := baseURL + "/en/get-cards"
 	reqPayload := map[string]any{
@@ -232,6 +241,35 @@ func (p *FFTCGProvider) Fetch(ctx context.Context, request catalog.FetchRequest,
 	}
 
 	return result, nil
+}
+
+// fftcgLanguages keeps the languages the provider can actually render: the
+// name fields and the `_xx` image suffix exist for these five. Japanese names
+// are present in the API but the card images are the English `_eg` files, so a
+// ja row would show English artwork and poison the fingerprint.
+func fftcgLanguages(values []string) []string {
+	supported := map[string]bool{"en": true, "de": true, "fr": true, "es": true, "it": true}
+	var languages []string
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if !supported[value] {
+			continue
+		}
+		seen := false
+		for _, existing := range languages {
+			if existing == value {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			languages = append(languages, value)
+		}
+	}
+	if len(languages) == 0 {
+		return []string{"en"}
+	}
+	return languages
 }
 
 func (p *FFTCGProvider) cardNameForLang(card fftcgCard, lang string) string {

@@ -854,3 +854,132 @@ func TestClaudeDetection_FingerprintResolvesDroppedVariantSuffix(t *testing.T) {
 		t.Errorf("a decisive hash must auto-match the variant, got status=%s review=%v", result.Status, result.BestMatchNeedsReview())
 	}
 }
+
+func TestClaudeDetection_ArtworkMismatchForcesReview(t *testing.T) {
+	imageBytes := testCardImage(t)
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		t.Fatalf("decode test image: %v", err)
+	}
+	fingerprint := NewFingerprintService(nil)
+	hash, err := fingerprint.CalculateHash(decoded)
+	if err != nil {
+		t.Fatalf("hash test image: %v", err)
+	}
+	wrongHash := hash ^ 0xFFFF // 16 bits away, well beyond the potential radius
+
+	info := &claudedetect.DetectedCardInfo{
+		Game: "hololive", Name: "森カリオペ", CollectorNumber: "hSD18-008",
+		Set: "hSD18", SetCode: "hSD18", Language: "jpn", Confidence: 0.96,
+	}
+	cards := []models.Card{{
+		ID: "card-008", Name: "森カリオペ", CollectorNumber: "hSD18-008",
+		Set: "hSD18", SetCode: "hSD18", Language: "ja", Game: "hololive",
+		SourceCardID: "hSD18-008", Phash: &wrongHash,
+	}}
+	pipeline := NewDetectionPipeline(fingerprint, nil)
+	pipeline.Claude = &mockClaudeDetector{info: info}
+	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
+		Image: imageBytes,
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGHololive, Language: models.LanguageJapanese},
+	}, false, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.BestMatchNeedsReview() || result.Status != DetectionStatusNeedsReview {
+		t.Errorf("a confident text match whose artwork does not match must be review, got %s", result.Status)
+	}
+}
+
+func TestClaudeDetection_ArtworkMatchKeepsAutoMatch(t *testing.T) {
+	imageBytes := testCardImage(t)
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		t.Fatalf("decode test image: %v", err)
+	}
+	fingerprint := NewFingerprintService(nil)
+	hash, err := fingerprint.CalculateHash(decoded)
+	if err != nil {
+		t.Fatalf("hash test image: %v", err)
+	}
+
+	info := &claudedetect.DetectedCardInfo{
+		Game: "hololive", Name: "森カリオペ", CollectorNumber: "hSD18-008",
+		Set: "hSD18", SetCode: "hSD18", Language: "jpn", Confidence: 0.96,
+	}
+	cards := []models.Card{{
+		ID: "card-008", Name: "森カリオペ", CollectorNumber: "hSD18-008",
+		Set: "hSD18", SetCode: "hSD18", Language: "ja", Game: "hololive",
+		SourceCardID: "hSD18-008", Phash: &hash,
+	}}
+	pipeline := NewDetectionPipeline(fingerprint, nil)
+	pipeline.Claude = &mockClaudeDetector{info: info}
+	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
+		Image: imageBytes,
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGHololive, Language: models.LanguageJapanese},
+	}, false, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != DetectionStatusMatched {
+		t.Errorf("a matching artwork must keep the auto match, got %s", result.Status)
+	}
+}
+
+func TestClaudeDetection_VariantMatchSelectsFoilPrinting(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "flesh_and_blood", Name: "Short and Sharp", CollectorNumber: "OUT155",
+		Set: "Outsiders", SetCode: "OUT", Variant: "Rainbow Foil", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{ID: "normal", Name: "Short and Sharp", CollectorNumber: "OUT155", Set: "Outsiders", SetCode: "OUT", Variant: "Normal", Language: "en", Game: "flesh_and_blood", SourceCardID: "OUT155"},
+		{ID: "rainbow", Name: "Short and Sharp", CollectorNumber: "OUT155", Set: "Outsiders", SetCode: "OUT", Variant: "Rainbow Foil", Language: "en", Game: "flesh_and_blood", SourceCardID: "OUT155-RF"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if matches[0].Card.ID != "rainbow" {
+		t.Fatalf("expected the rainbow foil printing first, got %q", matches[0].Card.ID)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("an explicit finish that matches one printing should auto-match")
+	}
+}
+
+func TestClaudeDetection_GenericFoilDoesNotPickSpecificFoil(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "flesh_and_blood", Name: "Short and Sharp", CollectorNumber: "OUT155",
+		Set: "Outsiders", SetCode: "OUT", Variant: "Foil", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{ID: "normal", Name: "Short and Sharp", CollectorNumber: "OUT155", Set: "Outsiders", SetCode: "OUT", Variant: "Normal", Language: "en", Game: "flesh_and_blood", SourceCardID: "OUT155"},
+		{ID: "rainbow", Name: "Short and Sharp", CollectorNumber: "OUT155", Set: "Outsiders", SetCode: "OUT", Variant: "Rainbow Foil", Language: "en", Game: "flesh_and_blood", SourceCardID: "OUT155-RF"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a generic Foil must not silently choose a specific foil type")
+	}
+}
+
+func TestClaudeDetection_VariantConflictWithSingleCandidateNeedsReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "flesh_and_blood", Name: "Short and Sharp", CollectorNumber: "OUT155",
+		Set: "Outsiders", SetCode: "OUT", Variant: "Rainbow Foil", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{ID: "normal", Name: "Short and Sharp", CollectorNumber: "OUT155", Set: "Outsiders", SetCode: "OUT", Variant: "Normal", Language: "en", Game: "flesh_and_blood", SourceCardID: "OUT155"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a finish the catalog contradicts must not auto-match")
+	}
+}
