@@ -100,9 +100,27 @@ func main() {
 	email := flag.String("email", os.Getenv("POKGET_EMAIL"), "account email for -base-url (env POKGET_EMAIL)")
 	password := flag.String("password", os.Getenv("POKGET_PASSWORD"), "account password for -base-url (env POKGET_PASSWORD)")
 	hint := flag.String("hint", "", "language hint sent to the server: empty = sampled language, auto = automatic, or an explicit code")
+	imagePath := flag.String("image", "", "scan one local photo through -base-url instead of sampling the catalog")
+	expectedID := flag.String("expected-id", "", "expected catalog ID for -image")
+	expectedName := flag.String("expected-name", "", "expected card name for -image")
+	expectedNumber := flag.String("expected-number", "", "expected collector number for -image")
+	expectedLanguage := flag.String("expected-language", "", "expected language code for -image")
 	flag.Parse()
 
 	live := liveConfig{BaseURL: *baseURL, Email: *email, Password: *password}
+	if *imagePath != "" {
+		expected := models.Card{
+			ID:              *expectedID,
+			Name:            *expectedName,
+			CollectorNumber: *expectedNumber,
+			Language:        *expectedLanguage,
+		}
+		if err := runLocalImage(live, *imagePath, *gameFlag, *languageFlag, expected, *asJSON, *timeout); err != nil {
+			fmt.Fprintln(os.Stderr, "scan_matrix:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(*gameFlag, *languageFlag, *per, *seed, *timeout, *asJSON, *hint, live); err != nil {
 		fmt.Fprintln(os.Stderr, "scan_matrix:", err)
 		os.Exit(1)

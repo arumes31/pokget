@@ -374,7 +374,7 @@
                             <img x-show="match.image_url" :src="match.image_url" alt="" loading="lazy" referrerpolicy="no-referrer">
                             <span class="min-w-0 flex-1 font-mono">
                                 <span class="block font-bold text-white text-xs" x-text="match.name"></span>
-                                <span class="block mt-0.5 text-[11px] text-zinc-400" x-text="[match.set, match.collector_number ? '#' + match.collector_number : '', match.language.toUpperCase()].filter(Boolean).join(' · ')"></span>
+                                <span class="block mt-0.5 text-[11px] text-zinc-400" x-text="[match.set, match.collector_number ? '#' + match.collector_number : '', match.variant, match.rarity, match.language.toUpperCase()].filter(Boolean).join(' · ')"></span>
                             </span>
                             <span class="material-symbols-outlined ml-auto scanner-accent-solid text-lg" x-show="detectedID === match.id" aria-hidden="true">check_circle</span>
                         </button>

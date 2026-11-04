@@ -502,7 +502,11 @@ func scanFixture(ctx context.Context, cfg config) (scanResult, error) {
 		chromedp.Evaluate[chromedp.Void](
 			`localStorage.setItem('pokget_scan_game', `+string(gameJSON)+`)`,
 		),
-		chromedp.Click(chromedp.CSS(scanNavigationSelector)),
+		// Navigate to the scan view directly. Clicking the sidebar entry raced
+		// htmx initialization on a slow edge: the click fell through to a full
+		// navigation, landed on the dashboard and the harness timed out waiting
+		// for an upload input that never rendered.
+		chromedp.Navigate(pageURL(cfg.baseURL, "/?view=scan")),
 		chromedp.Func(func(ctx context.Context, t *chromedp.Target) error {
 			pageContext, cancel := context.WithTimeout(ctx, 15*time.Second)
 			defer cancel()

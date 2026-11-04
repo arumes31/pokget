@@ -652,3 +652,40 @@ func TestClaudeDetection_FingerprintResolvesIdenticalPrintings(t *testing.T) {
 		t.Errorf("expected matched, got %s", result.Status)
 	}
 }
+
+func TestClaudeDetection_UniqueNameWithoutNumberMatches(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "magic", Name: "Generous Visitor", Language: "eng", Confidence: 0.9,
+	}
+	cards := []models.Card{
+		{ID: "gv-185", Name: "Generous Visitor", CollectorNumber: "185", Set: "Kamigawa: Neon Dynasty", SetCode: "neo", Language: "en", Game: "magic"},
+		{ID: "other", Name: "Other Card", CollectorNumber: "12", Set: "Kamigawa: Neon Dynasty", SetCode: "neo", Language: "en", Game: "magic"},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 || matches[0].Card.ID != "gv-185" {
+		t.Fatalf("expected the unique name match, got %+v", matches)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("a name that is unique in scope must not require review")
+	}
+}
+
+func TestClaudeDetection_DroppedVariantSuffixRequiresReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "magic", Name: "Meeting of the Five", CollectorNumber: "202",
+		Set: "Streets of New Capenna", SetCode: "snc", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{ID: "snc-202", Name: "Meeting of the Five", CollectorNumber: "202", Set: "Streets of New Capenna", SetCode: "snc", Language: "en", Game: "magic", SourceCardID: "202"},
+		{ID: "snc-202s", Name: "Meeting of the Five", CollectorNumber: "202s", Set: "Streets of New Capenna", SetCode: "snc", Language: "en", Game: "magic", SourceCardID: "202s"},
+	}
+
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a dropped variant suffix must ask which printing was photographed")
+	}
+}
