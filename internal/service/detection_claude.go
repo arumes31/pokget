@@ -145,25 +145,30 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 }
 
 // applyFingerprintTieBreak resolves catalog rows whose readable text is
-// identical (alt art, foil) with the stored perceptual hash. It only fires when
-// the photographed printing is close to the hash and clearly ahead of the
-// runner-up; otherwise the review choice stays.
+// identical (alt art, foil, reprint) with the stored perceptual hash. It runs
+// even when the text scorer was confident, because the base row can win on set
+// evidence while the photo shows another printing. Only a close hash that is
+// clearly ahead of the runner-up is accepted; otherwise the printing becomes a
+// review choice instead of a silent guess.
 func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, cards []models.Card, imageBytes []byte) {
 	if p == nil || p.Fingerprint == nil || result == nil || len(result.TopMatches) == 0 {
 		return
 	}
 	top := result.TopMatches[0]
-	if top.Card == nil || !top.NeedsReview || top.Card.ID == "" {
+	if top.Card == nil || top.Card.ID == "" {
 		return
 	}
-	key := logicalCardKey(*top.Card)
+	key := fingerprintGroupKey(*top.Card)
 	group := make([]models.Card, 0, 8)
+	distinct := make(map[string]struct{}, 4)
 	for _, card := range cards {
-		if card.Phash != nil && logicalCardKey(card) == key {
-			group = append(group, card)
+		if card.Phash == nil || fingerprintGroupKey(card) != key {
+			continue
 		}
+		group = append(group, card)
+		distinct[card.ID] = struct{}{}
 	}
-	if len(group) < 2 {
+	if len(group) < 2 || len(distinct) < 2 {
 		return
 	}
 	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
@@ -183,16 +188,25 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 		ranked = append(ranked, rankedCard{card: card, distance: hammingDistance(uint64(hash), uint64(*card.Phash))}) // #nosec G115 - comparing hash bits, not a numeric value
 	}
 	sort.Slice(ranked, func(i, j int) bool { return ranked[i].distance < ranked[j].distance })
-	if ranked[0].distance > p.Fingerprint.PhashHighConf {
+	if ranked[0].distance <= p.Fingerprint.PhashHighConf &&
+		(len(ranked) == 1 || ranked[1].distance-ranked[0].distance >= 3) {
+		winner := ranked[0].card
+		result.TopMatches[0].Card = &winner
+		result.TopMatches[0].Confidence = 99
+		result.TopMatches[0].NeedsReview = false
 		return
 	}
-	if len(ranked) > 1 && ranked[1].distance-ranked[0].distance < 3 {
-		return
-	}
-	winner := ranked[0].card
-	result.TopMatches[0].Card = &winner
-	result.TopMatches[0].Confidence = 99
-	result.TopMatches[0].NeedsReview = false
+	result.TopMatches[0].NeedsReview = true
+}
+
+// fingerprintGroupKey groups printings that share every readable field: name,
+// number and printed language. The set is deliberately excluded, because alt
+// art and reprint rows often carry a different product set while the card face
+// still reads the same.
+func fingerprintGroupKey(card models.Card) string {
+	return normalizeMatchText(card.Name) + "\x00" +
+		normalizeCollectorNum(card.CollectorNumber) + "\x00" +
+		normalizeMatchText(card.Language)
 }
 
 // detectionScopeConflict compares the printed language/game reported by the
