@@ -202,10 +202,12 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 // fingerprintGroupKey groups printings that share every readable field: name,
 // number and printed language. The set is deliberately excluded, because alt
 // art and reprint rows often carry a different product set while the card face
-// still reads the same.
+// still reads the same. Variant markers in the number ("202s", "026a/221") are
+// stripped too: the detector may have dropped the marker, and the artwork hash
+// is exactly what can tell those printings apart.
 func fingerprintGroupKey(card models.Card) string {
 	return normalizeMatchText(card.Name) + "\x00" +
-		normalizeCollectorNum(card.CollectorNumber) + "\x00" +
+		collectorVariantBase(card.CollectorNumber) + "\x00" +
 		normalizeMatchText(card.Language)
 }
 
