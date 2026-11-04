@@ -333,3 +333,28 @@ func TestExtractJSONString(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractJSONStringPrefersLastCompleteObject(t *testing.T) {
+	raw := `{"game":"gundam","name":"First","confidence":0.8}` + "\n\nWait - I must transcribe exactly as printed.\n\n" +
+		`{"game":"gundam","name":"Second","collector_number":"GD02-090","confidence":0.9}`
+	clean := extractJSONString(raw)
+	var info DetectedCardInfo
+	if err := json.Unmarshal([]byte(clean), &info); err != nil {
+		t.Fatalf("extracted JSON does not parse: %v (%q)", err, clean)
+	}
+	if info.Name != "Second" {
+		t.Errorf("expected the corrected last object, got %q", info.Name)
+	}
+}
+
+func TestExtractJSONStringHandlesBracesInsideNotes(t *testing.T) {
+	raw := "Here is the card:\n" + `{"name":"Test","notes":"uses {braces} in text","confidence":0.9}` + "\ntrailing prose"
+	clean := extractJSONString(raw)
+	var info DetectedCardInfo
+	if err := json.Unmarshal([]byte(clean), &info); err != nil {
+		t.Fatalf("extracted JSON does not parse: %v (%q)", err, clean)
+	}
+	if info.Name != "Test" || info.Confidence != 0.9 {
+		t.Errorf("unexpected extraction: %+v", info)
+	}
+}
