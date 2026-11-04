@@ -736,3 +736,74 @@ func TestClaudeDetection_FingerprintOverridesSetEvidence(t *testing.T) {
 		t.Errorf("a decisive fingerprint must auto-match, got status=%s review=%v", result.Status, result.BestMatchNeedsReview())
 	}
 }
+
+func TestClaudeDetection_NameVariantSiblingBlocksUniqueAuto(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "alpha_clash", Name: "Sadistic Strategy", Language: "eng", Confidence: 0.92,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "Sadistic Strategy", CollectorNumber: "AC4-092", Set: "Alpha Clash 4", SetCode: "AC4", Language: "en", Game: "alpha_clash"},
+		{ID: "iconic", Name: "Sadistic Strategy Iconic Art", CollectorNumber: "AC4-161", Set: "Alpha Clash 4", SetCode: "AC4", Language: "en", Game: "alpha_clash"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 {
+		t.Fatalf("expected a candidate")
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a name-only read with a variant-name sibling must not auto-match")
+	}
+}
+
+func TestClaudeDetection_PlusVariantSuffixRequiresReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "godzilla", Name: "Operation Wadatsumi", CollectorNumber: "ESD01-015",
+		Set: "Godzilla", SetCode: "ESD01", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "Operation Wadatsumi", CollectorNumber: "ESD01-015", Set: "Godzilla", SetCode: "ESD01", Language: "en", Game: "godzilla"},
+		{ID: "plus", Name: "Operation Wadatsumi", CollectorNumber: "ESD01-015+", Set: "Godzilla", SetCode: "ESD01", Language: "en", Game: "godzilla"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a dropped + suffix must ask which printing was photographed")
+	}
+}
+
+func TestClaudeDetection_VariantLetterBeforeSlashRequiresReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "riftbound", Name: "Rumble Hotheaded", CollectorNumber: "026/221",
+		Set: "Origins", SetCode: "OGN", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "Rumble Hotheaded", CollectorNumber: "026/221", Set: "Origins", SetCode: "OGN", Language: "en", Game: "riftbound"},
+		{ID: "alt", Name: "Rumble Hotheaded Alternate Art", CollectorNumber: "026a/221", Set: "Origins", SetCode: "OGN", Language: "en", Game: "riftbound"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a dropped alternate-art letter must require review")
+	}
+}
+
+func TestClaudeDetection_NameSuffixWithSameNumberRequiresReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "cookie_run", Name: "Blue Slushy Cookie", CollectorNumber: "BS6-007",
+		Set: "Braverse 6", SetCode: "BS6", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "Blue Slushy Cookie", CollectorNumber: "BS6-007", Set: "Braverse 6", SetCode: "BS6", Language: "en", Game: "cookie_run"},
+		{ID: "sec", Name: "Blue Slushy Cookie SEC", CollectorNumber: "BS6-007", Set: "Braverse 6", SetCode: "BS6", Language: "en", Game: "cookie_run"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a SEC name variant sharing the number must require review")
+	}
+}
