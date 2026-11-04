@@ -1106,3 +1106,124 @@ func TestClaudeDetection_CatalogNumberWithEditionSuffixIsPartial(t *testing.T) {
 		t.Errorf("a single printing with metadata suffix is a confident match")
 	}
 }
+
+func TestClaudeDetection_UniqueNameInExactSetAutoMatches(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "magic", Name: "Overrun", CollectorNumber: "",
+		Set: "Tempest", SetCode: "TMP", Language: "eng", Confidence: 0.92,
+	}
+	cards := []models.Card{
+		{ID: "tmp-243", Name: "Overrun", CollectorNumber: "243", Set: "Tempest", SetCode: "TMP", Language: "en", Game: "magic"},
+		{ID: "tmp2-243", Name: "Overrun", CollectorNumber: "243", Set: "Tempest Remastered", SetCode: "TPR", Language: "en", Game: "magic"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 || matches[0].Card.ID != "tmp-243" {
+		t.Fatalf("expected the Tempest printing first, got %+v", matches)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("a name unique in the exactly matched set must auto-match")
+	}
+}
+
+func TestClaudeDetection_AmbiguousNameInsideSetStaysReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "magic", Name: "Overrun", CollectorNumber: "",
+		Set: "Tempest", SetCode: "TMP", Language: "eng", Confidence: 0.92,
+	}
+	cards := []models.Card{
+		{ID: "tmp-243", Name: "Overrun", CollectorNumber: "243", Set: "Tempest", SetCode: "TMP", Language: "en", Game: "magic"},
+		{ID: "tmp-244", Name: "Overrun", CollectorNumber: "244", Set: "Tempest", SetCode: "TMP", Language: "en", Game: "magic"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) < 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("two rows with the same name in the set must require review")
+	}
+}
+
+func TestClaudeDetection_IdenticalArtworkDuplicatesKeepTextMatch(t *testing.T) {
+	imageBytes := testCardImage(t)
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		t.Fatalf("decode test image: %v", err)
+	}
+	fingerprint := NewFingerprintService(nil)
+	hash, err := fingerprint.CalculateHash(decoded)
+	if err != nil {
+		t.Fatalf("hash test image: %v", err)
+	}
+	info := &claudedetect.DetectedCardInfo{
+		Game: "altered", Name: "Kelon-Generator", CollectorNumber: "BTG-027-R-DE",
+		Set: "CORE", SetCode: "CORE", Language: "deu", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{
+			ID: "core", Name: "Kelon-Generator", CollectorNumber: "BTG-027-R-DE",
+			Set: "CORE", SetCode: "CORE", Language: "de", Game: "altered",
+			SourceCardID: "ALT_CORE_B_AX_27_R1", Phash: &hash,
+		},
+		{
+			ID: "coreks", Name: "Kelon-Generator", CollectorNumber: "BTG-027-R-DE",
+			Set: "COREKS", SetCode: "COREKS", Language: "de", Game: "altered",
+			SourceCardID: "ALT_COREKS_B_AX_27_R1", Phash: &hash,
+		},
+	}
+	pipeline := NewDetectionPipeline(fingerprint, nil)
+	pipeline.Claude = &mockClaudeDetector{info: info}
+	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
+		Image: imageBytes,
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGAltered, Language: models.LanguageGerman},
+	}, false, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BestMatchID() != "core" {
+		t.Fatalf("expected the exactly read set, got %q", result.BestMatchID())
+	}
+	if result.BestMatchNeedsReview() || result.Status != DetectionStatusMatched {
+		t.Errorf("identical artwork must not override the printed set, got status=%s review=%v", result.Status, result.BestMatchNeedsReview())
+	}
+}
+
+func TestClaudeDetection_ArtworkResolvesNameOnlyPrinting(t *testing.T) {
+	imageBytes := testCardImage(t)
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		t.Fatalf("decode test image: %v", err)
+	}
+	fingerprint := NewFingerprintService(nil)
+	hash, err := fingerprint.CalculateHash(decoded)
+	if err != nil {
+		t.Fatalf("hash test image: %v", err)
+	}
+	otherHash := hash ^ 0xFF
+	info := &claudedetect.DetectedCardInfo{
+		Game: "pokemon", Name: "Pikachu", Language: "eng", Confidence: 0.9,
+	}
+	cards := []models.Card{
+		{ID: "pika-58", Name: "Pikachu", CollectorNumber: "58", Set: "Base Set", Language: "en", Game: "pokemon", Phash: &otherHash},
+		{ID: "pika-60", Name: "Pikachu", CollectorNumber: "60", Set: "Base Set 2", Language: "en", Game: "pokemon", Phash: &hash},
+	}
+	pipeline := NewDetectionPipeline(fingerprint, nil)
+	pipeline.Claude = &mockClaudeDetector{info: info}
+	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
+		Image: imageBytes,
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGPokemon, Language: models.LanguageEnglish},
+	}, false, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BestMatchID() != "pika-60" {
+		t.Fatalf("expected the artwork-matched printing, got %q", result.BestMatchID())
+	}
+	if result.BestMatchNeedsReview() || result.Status != DetectionStatusMatched {
+		t.Errorf("a decisive artwork match must auto-match, got status=%s", result.Status)
+	}
+	if result.BestMatchConfidence() != 92 {
+		t.Errorf("name-only artwork match should score 92, got %f", result.BestMatchConfidence())
+	}
+}

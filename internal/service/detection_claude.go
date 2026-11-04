@@ -103,7 +103,7 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 	// Match extracted card details against candidate catalog
 	matches := matchCardsWithClaude(info, request.Cards)
 	result.TopMatches = matches
-	p.applyFingerprintTieBreak(result, request.Cards, request.Image)
+	p.applyFingerprintTieBreak(result, request.Cards, request.Image, normalizeCollectorNum(info.CollectorNumber) != "")
 	result.Metrics.TotalTime = time.Since(totalStart)
 
 	// A hint can be wrong. Do not silently answer in the selected language/game:
@@ -149,8 +149,10 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 // even when the text scorer was confident, because the base row can win on set
 // evidence while the photo shows another printing. Only a close hash that is
 // clearly ahead of the runner-up is accepted; otherwise the printing becomes a
-// review choice instead of a silent guess.
-func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, cards []models.Card, imageBytes []byte) {
+// review choice instead of a silent guess. When the detector read no collector
+// number, every printing of that name competes on artwork, which is the only
+// evidence left for cards printed without a number.
+func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, cards []models.Card, imageBytes []byte, collectorKnown bool) {
 	if p == nil || p.Fingerprint == nil || result == nil || len(result.TopMatches) == 0 {
 		return
 	}
@@ -158,11 +160,17 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 	if top.Card == nil || top.Card.ID == "" {
 		return
 	}
-	key := fingerprintGroupKey(*top.Card)
+	groupKey := func(card models.Card) string {
+		if collectorKnown {
+			return fingerprintGroupKey(card)
+		}
+		return normalizeMatchText(card.Name) + "\x00" + normalizeMatchText(card.Language)
+	}
+	key := groupKey(*top.Card)
 	group := make([]models.Card, 0, 8)
 	distinct := make(map[string]struct{}, 4)
 	for _, card := range cards {
-		if card.Phash == nil || fingerprintGroupKey(card) != key {
+		if card.Phash == nil || groupKey(card) != key {
 			continue
 		}
 		group = append(group, card)
@@ -189,6 +197,20 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 		}
 		return
 	}
+	// Printings with identical artwork cannot be told apart by the hash. Some
+	// catalogs duplicate one card across set variants (Altered CORE/COREKS) with
+	// the same art and number; the printed set symbol already decided, so the
+	// artwork must not turn an exact text match into a review.
+	identicalArtwork := true
+	for index := 1; index < len(group); index++ {
+		if *group[index].Phash != *group[0].Phash {
+			identicalArtwork = false
+			break
+		}
+	}
+	if identicalArtwork {
+		return
+	}
 	type rankedCard struct {
 		card     models.Card
 		distance int
@@ -202,7 +224,12 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 		(len(ranked) == 1 || ranked[1].distance-ranked[0].distance >= 3) {
 		winner := ranked[0].card
 		result.TopMatches[0].Card = &winner
+		// Without a printed number the artwork is the only printing evidence, so
+		// the score says "name + artwork", not "name + number + set".
 		result.TopMatches[0].Confidence = 99
+		if !collectorKnown {
+			result.TopMatches[0].Confidence = 92
+		}
 		result.TopMatches[0].NeedsReview = false
 		return
 	}
@@ -713,6 +740,27 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				top.needsReview = true
 				candidates[i].needsReview = true
 				break
+			}
+		}
+	}
+
+	// Name + an exactly matching set is enough when that set contains the name
+	// only once: the unread collector number cannot belong to another row in
+	// the same set because there is no other row. Reprints in other sets are
+	// different printings, and the printed set was read exactly.
+	if len(candidates) > 0 {
+		top := &candidates[0]
+		if top.confidence == 92.0 && top.setExact && top.needsReview {
+			topName := normalizeMatchText(top.card.Name)
+			topSet := setIdentity(top.card)
+			sameSet := 0
+			for index := range cards {
+				if normalizeMatchText(cards[index].Name) == topName && setIdentity(cards[index]) == topSet {
+					sameSet++
+				}
+			}
+			if sameSet == 1 {
+				top.needsReview = false
 			}
 		}
 	}
