@@ -558,12 +558,10 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				score = 80.0
 			}
 		}
-		// A printed finish that contradicts the catalog row is conflicting
-		// evidence: never auto-accept it, even when name, number and set agree.
-		if variantConflict {
-			needsReview = true
-			score -= 4
-		}
+		// Variant conflicts are resolved where the competing printings are known
+		// (the tie pass). A single catalog row cannot represent a finish the model
+		// claims, so it must not block the match on its own: Pokémon and hololive
+		// store most rows as "Normal" even for holo/parallel cards.
 
 		candidates = append(candidates, scoredMatch{
 			card:            card,

@@ -967,7 +967,7 @@ func TestClaudeDetection_GenericFoilDoesNotPickSpecificFoil(t *testing.T) {
 	}
 }
 
-func TestClaudeDetection_VariantConflictWithSingleCandidateNeedsReview(t *testing.T) {
+func TestClaudeDetection_VariantConflictWithSingleCandidateKeepsMatch(t *testing.T) {
 	info := &claudedetect.DetectedCardInfo{
 		Game: "flesh_and_blood", Name: "Short and Sharp", CollectorNumber: "OUT155",
 		Set: "Outsiders", SetCode: "OUT", Variant: "Rainbow Foil", Language: "eng", Confidence: 0.95,
@@ -979,8 +979,10 @@ func TestClaudeDetection_VariantConflictWithSingleCandidateNeedsReview(t *testin
 	if len(matches) != 1 {
 		t.Fatalf("expected one candidate, got %d", len(matches))
 	}
-	if !matches[0].NeedsReview {
-		t.Errorf("a finish the catalog contradicts must not auto-match")
+	// The catalog has no rainbow row to choose; the name+number identify the
+	// card, so the finish claim must not block it.
+	if matches[0].NeedsReview {
+		t.Errorf("a finish the catalog cannot represent must not block the only printing")
 	}
 }
 
@@ -1002,7 +1004,7 @@ func TestClaudeDetection_GenericHoloOnNormalCardDoesNotBlockAuto(t *testing.T) {
 	}
 }
 
-func TestClaudeDetection_SpecificFinishOnNormalCardNeedsReview(t *testing.T) {
+func TestClaudeDetection_SpecificFinishOnOnlyNormalRowKeepsMatch(t *testing.T) {
 	info := &claudedetect.DetectedCardInfo{
 		Game: "pokemon", Name: "Yveltal", CollectorNumber: "78",
 		Set: "XY", SetCode: "XY", Variant: "Rainbow Rare", Language: "eng", Confidence: 0.95,
@@ -1015,7 +1017,9 @@ func TestClaudeDetection_SpecificFinishOnNormalCardNeedsReview(t *testing.T) {
 	if len(matches) != 1 {
 		t.Fatalf("expected one candidate, got %d", len(matches))
 	}
-	if !matches[0].NeedsReview {
-		t.Errorf("a specific finish the catalog contradicts must force review")
+	// No sibling row represents the finish, so the identity is still the only
+	// printing the catalog knows.
+	if matches[0].NeedsReview {
+		t.Errorf("a finish without a catalog sibling must not block the match")
 	}
 }
