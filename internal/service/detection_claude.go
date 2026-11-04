@@ -717,6 +717,27 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		}
 	}
 
+	// Name + an exactly matching set is enough when that set contains the name
+	// only once: the unread collector number cannot belong to another row in
+	// the same set because there is no other row. Reprints in other sets are
+	// different printings, and the printed set was read exactly.
+	if len(candidates) > 0 {
+		top := &candidates[0]
+		if top.confidence == 92.0 && top.setExact && top.needsReview {
+			topName := normalizeMatchText(top.card.Name)
+			topSet := setIdentity(top.card)
+			sameSet := 0
+			for index := range cards {
+				if normalizeMatchText(cards[index].Name) == topName && setIdentity(cards[index]) == topSet {
+					sameSet++
+				}
+			}
+			if sameSet == 1 {
+				top.needsReview = false
+			}
+		}
+	}
+
 	maxTop := 5
 	if len(candidates) > maxTop {
 		candidates = candidates[:maxTop]

@@ -1106,3 +1106,39 @@ func TestClaudeDetection_CatalogNumberWithEditionSuffixIsPartial(t *testing.T) {
 		t.Errorf("a single printing with metadata suffix is a confident match")
 	}
 }
+
+func TestClaudeDetection_UniqueNameInExactSetAutoMatches(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "magic", Name: "Overrun", CollectorNumber: "",
+		Set: "Tempest", SetCode: "TMP", Language: "eng", Confidence: 0.92,
+	}
+	cards := []models.Card{
+		{ID: "tmp-243", Name: "Overrun", CollectorNumber: "243", Set: "Tempest", SetCode: "TMP", Language: "en", Game: "magic"},
+		{ID: "tmp2-243", Name: "Overrun", CollectorNumber: "243", Set: "Tempest Remastered", SetCode: "TPR", Language: "en", Game: "magic"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 || matches[0].Card.ID != "tmp-243" {
+		t.Fatalf("expected the Tempest printing first, got %+v", matches)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("a name unique in the exactly matched set must auto-match")
+	}
+}
+
+func TestClaudeDetection_AmbiguousNameInsideSetStaysReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "magic", Name: "Overrun", CollectorNumber: "",
+		Set: "Tempest", SetCode: "TMP", Language: "eng", Confidence: 0.92,
+	}
+	cards := []models.Card{
+		{ID: "tmp-243", Name: "Overrun", CollectorNumber: "243", Set: "Tempest", SetCode: "TMP", Language: "en", Game: "magic"},
+		{ID: "tmp-244", Name: "Overrun", CollectorNumber: "244", Set: "Tempest", SetCode: "TMP", Language: "en", Game: "magic"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) < 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("two rows with the same name in the set must require review")
+	}
+}
