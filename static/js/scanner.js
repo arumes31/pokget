@@ -86,7 +86,6 @@
     ]),
     digimon: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
     ]),
     grand_archive: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
@@ -109,7 +108,6 @@
     ]),
     union_arena: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
     ]),
     gundam: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
@@ -122,7 +120,6 @@
     ]),
     fftcg: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
       { value: 'deu', label: 'German', flag: '🇩🇪', code: 'DE' },
       { value: 'fra', label: 'French', flag: '🇫🇷', code: 'FR' },
       { value: 'spa', label: 'Spanish', flag: '🇪🇸', code: 'ES' },
@@ -130,38 +127,30 @@
     ]),
     godzilla: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
     ]),
     shadowverse_evolve: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
     ]),
     universus: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
     ]),
     vanguard: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
     ]),
     hololive: Object.freeze([
       { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
-      { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
     ]),
     duel_masters: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
     ]),
     cookie_run: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'kor', label: 'Korean', flag: '🇰🇷', code: 'KR' },
     ]),
     force_of_will: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
     ]),
     wixoss: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
-      { value: 'jpn', label: 'Japanese', flag: '🇯🇵', code: 'JP' },
     ]),
     alpha_clash: Object.freeze([
       { value: 'eng', label: 'English', flag: '🇺🇸', code: 'EN' },
