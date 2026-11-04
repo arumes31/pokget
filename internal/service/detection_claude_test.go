@@ -689,3 +689,50 @@ func TestClaudeDetection_DroppedVariantSuffixRequiresReview(t *testing.T) {
 		t.Errorf("a dropped variant suffix must ask which printing was photographed")
 	}
 }
+
+func TestClaudeDetection_FingerprintOverridesSetEvidence(t *testing.T) {
+	imageBytes := testCardImage(t)
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		t.Fatalf("decode test image: %v", err)
+	}
+	fingerprint := NewFingerprintService(nil)
+	hash, err := fingerprint.CalculateHash(decoded)
+	if err != nil {
+		t.Fatalf("hash test image: %v", err)
+	}
+	otherHash := hash ^ 0xFF
+
+	info := &claudedetect.DetectedCardInfo{
+		Game: "one_piece", Name: "Boa Hancock", CollectorNumber: "ST17-004",
+		Set: "ST-17", SetCode: "ST-17", Language: "eng", Confidence: 0.96,
+	}
+	cards := []models.Card{
+		{
+			ID: "card-base", Name: "Boa Hancock", CollectorNumber: "ST17-004",
+			Set: "ST-17", SetCode: "ST-17", Language: "en", Game: "one_piece",
+			SourceCardID: "ST17-004", Phash: &otherHash,
+		},
+		{
+			ID: "card-alt", Name: "Boa Hancock", CollectorNumber: "ST17-004",
+			Set: "EB-05", SetCode: "EB-05", Language: "en", Game: "one_piece",
+			SourceCardID: "ST17-004_p1", Phash: &hash,
+		},
+	}
+	pipeline := NewDetectionPipeline(fingerprint, nil)
+	pipeline.Claude = &mockClaudeDetector{info: info}
+	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
+		Image: imageBytes,
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGOnePiece, Language: models.LanguageEnglish},
+	}, false, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BestMatchID() != "card-alt" {
+		t.Fatalf("expected the photographed alt-art row, got %q", result.BestMatchID())
+	}
+	if result.BestMatchNeedsReview() || result.Status != DetectionStatusMatched {
+		t.Errorf("a decisive fingerprint must auto-match, got status=%s review=%v", result.Status, result.BestMatchNeedsReview())
+	}
+}
