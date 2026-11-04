@@ -498,8 +498,13 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				} else if claudeCollectorBase != "" && claudeCollectorBase == cardCollectorBase {
 					// Magic prints the same number with a variant suffix
 					// (254p / 254s): the base number still identifies the card,
-					// but not the printing, so it is partial evidence.
-					partialCollector = true
+					// but not the printing, so it is partial evidence. This only
+					// holds when the detector read the base form; a suffix the
+					// detector did read but the catalog row lacks is a different
+					// printing and must not match the base row.
+					if !hasCollectorVariantSuffix(claudeCollector) && hasCollectorVariantSuffix(cardCollector) {
+						partialCollector = true
+					}
 				}
 			}
 		}
@@ -554,6 +559,13 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			// only by a voicing mark (ピ/ビ), which is the most common Japanese
 			// vision error. Number + set are decisive, so no review is needed.
 			score = 96.0
+			needsReview = false
+		} else if partialName && collectorMatched && setMatchedExact {
+			// The printed number carries the variant marker and matches a row
+			// whose name extends the detected one ("Body Rune R04c",
+			// "… Parallel Foil", "… SRP"). The number identifies the printing;
+			// the extra name tokens are catalog labels, not a different card.
+			score = 95.0
 			needsReview = false
 		} else if collectorMatched && setMatchedExact {
 			// Number and set agree but the name gives no evidence (a different
@@ -747,19 +759,25 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	// Name + an exactly matching set is enough when that set contains the name
 	// only once: the unread collector number cannot belong to another row in
 	// the same set because there is no other row. Reprints in other sets are
-	// different printings, and the printed set was read exactly.
+	// different printings, and the printed set was read exactly. Name-suffix
+	// variants ("... Parallel Foil", "... SRP", "Body Rune R04c") are different
+	// printings even though the detected base name matches only one of them.
 	if len(candidates) > 0 {
 		top := &candidates[0]
 		if top.confidence == 92.0 && top.setExact && top.needsReview {
-			topName := normalizeMatchText(top.card.Name)
+			topName := compactMatchText(normalizeMatchText(top.card.Name))
 			topSet := setIdentity(top.card)
-			sameSet := 0
+			relatedInSet := 0
 			for index := range cards {
-				if normalizeMatchText(cards[index].Name) == topName && setIdentity(cards[index]) == topSet {
-					sameSet++
+				if setIdentity(cards[index]) != topSet {
+					continue
+				}
+				otherName := compactMatchText(normalizeMatchText(cards[index].Name))
+				if otherName == topName || strings.Contains(otherName, topName) || strings.Contains(topName, otherName) {
+					relatedInSet++
 				}
 			}
-			if sameSet == 1 {
+			if relatedInSet == 1 {
 				top.needsReview = false
 			}
 		}
@@ -856,6 +874,18 @@ func collectorVariantBase(value string) string {
 	trimmed = strings.TrimSuffix(trimmed, "+")
 	trimmed = collectorVariantMarkerPattern.ReplaceAllString(trimmed, "$1$3")
 	return collectorCanonicalKey(trimmed)
+}
+
+// hasCollectorVariantSuffix reports whether the number carries a printing
+// marker (254p, R04c, 026a/221, ESD01-015+, …044P[EN]) beyond the bare card
+// number. It decides whether a base-number match is partial evidence or a
+// different printing.
+func hasCollectorVariantSuffix(value string) bool {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if strings.HasSuffix(trimmed, "+") {
+		return true
+	}
+	return collectorVariantBase(value) != collectorCanonicalKey(value)
 }
 
 func digitsOnly(value string) string {
