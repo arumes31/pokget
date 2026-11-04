@@ -544,20 +544,52 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 
 	// A unique name in this scan scope is enough to identify the card when the
 	// number was unreadable: no other candidate shares the name, so the name-only
-	// bucket is a decision, not a guess.
+	// bucket is a decision, not a guess. A name that only contains the detected
+	// name ("Blue Slushy Cookie SEC", "Sadistic Strategy Iconic Art") is a
+	// different printing, so those candidates count as related too.
 	if len(candidates) > 0 {
 		top := &candidates[0]
 		if (top.confidence == 75.0 || top.confidence == 92.0) && !top.collectorExact {
-			topName := normalizeMatchText(top.card.Name)
-			sameName := 0
-			for index := range candidates {
-				if normalizeMatchText(candidates[index].card.Name) == topName {
-					sameName++
+			topName := compactMatchText(normalizeMatchText(top.card.Name))
+			related := 0
+			for index := range cards {
+				otherName := compactMatchText(normalizeMatchText(cards[index].Name))
+				if otherName == topName || strings.Contains(otherName, topName) || strings.Contains(topName, otherName) {
+					related++
 				}
 			}
-			if sameName == 1 {
+			if related == 1 {
 				top.confidence = 85.0
 				top.needsReview = false
+			}
+		}
+	}
+
+	// Variant markers live in the catalog number or in a name suffix ("202s",
+	// "026a/221", "ESD01-015+", "… SEC"). A detector that reads the base form
+	// must not silently pick the base printing, even when name and set match
+	// exactly: the photographed card can be the variant.
+	if len(candidates) > 0 && claudeCollectorCanonical != "" {
+		top := &candidates[0]
+		topName := compactMatchText(normalizeMatchText(top.card.Name))
+		topCollector := collectorCanonicalKey(top.card.CollectorNumber)
+		for index := 1; index < len(candidates); index++ {
+			other := &candidates[index]
+			otherFull := collectorCanonicalKey(other.card.CollectorNumber)
+			if otherFull != "" &&
+				normalizeCollectorNum(other.card.CollectorNumber) != normalizeCollectorNum(top.card.CollectorNumber) &&
+				collectorVariantBase(other.card.CollectorNumber) == claudeCollectorCanonical {
+				top.needsReview = true
+				other.needsReview = true
+				break
+			}
+			if topCollector != "" && otherFull == topCollector {
+				otherName := compactMatchText(normalizeMatchText(other.card.Name))
+				if otherName != topName && (strings.Contains(otherName, topName) || strings.Contains(topName, otherName)) {
+					top.needsReview = true
+					other.needsReview = true
+					break
+				}
 			}
 		}
 	}
@@ -572,18 +604,6 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		topVariant := normalizeMatchText(top.card.Variant)
 		for i := 1; i < len(candidates); i++ {
 			if top.confidence-candidates[i].confidence > 5.0 {
-				break
-			}
-			// The detector may drop Magic's variant suffix ("202s" read as
-			// "202"). The base number would then match two different printings
-			// exactly, so ask instead of silently choosing the shorter row.
-			otherNumber := normalizeCollectorNum(candidates[i].card.CollectorNumber)
-			otherFull := collectorCanonicalKey(candidates[i].card.CollectorNumber)
-			otherBase := collectorBaseKey(otherNumber)
-			if claudeCollectorCanonical != "" && otherFull != claudeCollectorCanonical &&
-				otherBase == claudeCollectorCanonical && otherFull != otherBase {
-				top.needsReview = true
-				candidates[i].needsReview = true
 				break
 			}
 			if logicalCardKey(candidates[i].card) != topKey {
@@ -681,9 +701,20 @@ func extractNumerator(s string) string {
 
 var (
 	collectorVariantSuffixPattern = regexp.MustCompile(`^([a-z]{0,3})([0-9]{1,4})[a-z]$`)
+	collectorVariantMarkerPattern = regexp.MustCompile(`([0-9])([a-z])(\[|/|$)`)
 	altArtSourceIDPattern         = regexp.MustCompile(`(?i)_[pr][0-9]+$`)
 	collectorSeparatorPattern     = regexp.MustCompile(`[^a-z0-9]+`)
 )
+
+// collectorVariantBase strips the markers catalogs use for alternate printings
+// ("202s", "026a/221", "ESD01-015+", "…044P[EN]") so the base form can be
+// compared with what the detector read.
+func collectorVariantBase(value string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	trimmed = strings.TrimSuffix(trimmed, "+")
+	trimmed = collectorVariantMarkerPattern.ReplaceAllString(trimmed, "$1$3")
+	return collectorCanonicalKey(trimmed)
+}
 
 // collectorCanonicalKey makes the printed number comparable across the shapes
 // the model and the catalog use: `TAEV-EN027`, `TAEV EN27`, `taev_en027` and
