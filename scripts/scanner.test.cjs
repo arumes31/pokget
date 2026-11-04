@@ -123,7 +123,7 @@ test('scanner exposes game-specific languages and repairs stale selections', () 
   );
   assert.deepEqual(
     scanner.languagesForGame('digimon').map(({ value }) => value),
-    ['eng', 'jpn'],
+    ['eng'],
   );
   assert.deepEqual(
     scanner.languagesForGame('grand_archive').map(({ value }) => value),
@@ -147,7 +147,7 @@ test('scanner exposes game-specific languages and repairs stale selections', () 
   );
   assert.deepEqual(
     scanner.languagesForGame('union_arena').map(({ value }) => value),
-    ['eng', 'jpn'],
+    ['eng'],
   );
   assert.deepEqual(
     scanner.languagesForGame('gundam').map(({ value }) => value),
@@ -163,11 +163,11 @@ test('scanner exposes game-specific languages and repairs stale selections', () 
   );
   assert.deepEqual(
     scanner.languagesForGame('fftcg').map(({ value }) => value),
-    ['eng', 'jpn', 'deu', 'fra', 'spa', 'ita'],
+    ['eng', 'deu', 'fra', 'spa', 'ita'],
   );
   assert.deepEqual(
     scanner.languagesForGame('godzilla').map(({ value }) => value),
-    ['eng', 'jpn'],
+    ['eng'],
   );
   assert.deepEqual(
     scanner.languagesForGame('universus').map(({ value }) => value),

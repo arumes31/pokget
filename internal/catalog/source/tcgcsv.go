@@ -51,6 +51,32 @@ type tcgcsvProductsResponse struct {
 	Results []tcgcsvProduct `json:"results"`
 }
 
+// tcgcsvVariant derives the finish/art label from the product name and number.
+// WIXOSS and Riftbound print parallel/alternate rows with the same name base and
+// a letter marker in the number; without the label the matcher cannot use the
+// finish the detector reports.
+func tcgcsvVariant(game catalog.Game, name, number string) string {
+	lowerName := strings.ToLower(strings.TrimSpace(name))
+	lowerNumber := strings.ToLower(strings.TrimSpace(number))
+	switch game {
+	case catalog.GameWIXOSS:
+		if strings.Contains(lowerName, "parallel") || strings.Contains(lowerNumber, "p[") {
+			return "Parallel Foil"
+		}
+		if strings.Contains(lowerName, "foil") {
+			return "Foil"
+		}
+	case catalog.GameRiftbound:
+		if strings.Contains(lowerName, "alternate art") || strings.HasSuffix(lowerNumber, "a") {
+			return "Alternate Art"
+		}
+		if strings.Contains(lowerName, "foil") {
+			return "Foil"
+		}
+	}
+	return ""
+}
+
 func (p *TCGCSVProvider) Fetch(ctx context.Context, request catalog.FetchRequest, emit func(catalog.CardRecord) error) (catalog.FetchResult, error) {
 	baseURL := strings.TrimRight(p.BaseURL, "/")
 	if baseURL == "" {
@@ -159,6 +185,7 @@ func (p *TCGCSVProvider) Fetch(ctx context.Context, request catalog.FetchRequest
 				SetName:         setName,
 				CollectorNumber: collectorNum,
 				Language:        "en",
+				Variant:         tcgcsvVariant(p.GameType, name, collectorNum),
 				Rarity:          rarity,
 				Metadata:        rawMetadata(prod),
 			}
@@ -197,32 +224,32 @@ func (p *TCGCSVProvider) Fetch(ctx context.Context, request catalog.FetchRequest
 // NewCookieRunProvider returns a provider for CookieRun: Braverse TCG.
 func NewCookieRunProvider(options HTTPOptions) *TCGCSVProvider {
 	return &TCGCSVProvider{
-		HTTP:        options,
-		CategoryID:  90,
-		ProviderID:  "cookierun_braverse",
-		GameType:    catalog.GameCookieRun,
-		DefaultSet:  "CookieRun",
+		HTTP:       options,
+		CategoryID: 90,
+		ProviderID: "cookierun_braverse",
+		GameType:   catalog.GameCookieRun,
+		DefaultSet: "CookieRun",
 	}
 }
 
 // NewForceOfWillProvider returns a provider for Force of Will TCG.
 func NewForceOfWillProvider(options HTTPOptions) *TCGCSVProvider {
 	return &TCGCSVProvider{
-		HTTP:        options,
-		CategoryID:  17,
-		ProviderID:  "force_of_will",
-		GameType:    catalog.GameForceOfWill,
-		DefaultSet:  "ForceOfWill",
+		HTTP:       options,
+		CategoryID: 17,
+		ProviderID: "force_of_will",
+		GameType:   catalog.GameForceOfWill,
+		DefaultSet: "ForceOfWill",
 	}
 }
 
 // NewWIXOSSProvider returns a provider for WIXOSS TCG.
 func NewWIXOSSProvider(options HTTPOptions) *TCGCSVProvider {
 	return &TCGCSVProvider{
-		HTTP:        options,
-		CategoryID:  67,
-		ProviderID:  "wixoss",
-		GameType:    catalog.GameWIXOSS,
-		DefaultSet:  "WIXOSS",
+		HTTP:       options,
+		CategoryID: 67,
+		ProviderID: "wixoss",
+		GameType:   catalog.GameWIXOSS,
+		DefaultSet: "WIXOSS",
 	}
 }
