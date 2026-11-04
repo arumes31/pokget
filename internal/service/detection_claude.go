@@ -461,6 +461,13 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 					collectorMatched = true
 				} else if claudeCollectorCanonical != "" && claudeCollectorCanonical == cardCollectorCanonical {
 					collectorMatched = true
+				} else if claudeCollectorCanonical != "" && strings.Contains(cardCollectorCanonical, "-") &&
+					collectorCanonicalKey(strings.SplitN(cardCollectorCanonical, "-", 2)[0]) == claudeCollectorCanonical {
+					// Some catalogs append edition/finish tokens to the printed
+					// number ("006-cage_of_sidrak-b-f" for a card that prints
+					// "006"). The leading token is the number; the rest is
+					// printing metadata, so this is partial evidence.
+					partialCollector = true
 				} else if claudeCollectorBase != "" && claudeCollectorBase == cardCollectorBase {
 					// Magic prints the same number with a variant suffix
 					// (254p / 254s): the base number still identifies the card,
@@ -769,6 +776,9 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 
 func normalizeCollectorNum(s string) string {
 	s = strings.TrimSpace(strings.ToLower(s))
+	// WIXOSS stores the language tag in the number ("WXDi-P12-013[EN]") while the
+	// card prints only the code. Remove bracketed metadata before comparing.
+	s = collectorBracketPattern.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, " ", "")
 	s = strings.ReplaceAll(s, "#", "")
 	s = strings.ReplaceAll(s, "no.", "")
@@ -787,6 +797,7 @@ var (
 	collectorVariantMarkerPattern = regexp.MustCompile(`([0-9])([a-z])(\[|/|$)`)
 	altArtSourceIDPattern         = regexp.MustCompile(`(?i)_[pr][0-9]+$`)
 	collectorSeparatorPattern     = regexp.MustCompile(`[^a-z0-9]+`)
+	collectorBracketPattern       = regexp.MustCompile(`\[[^\]]*\]`)
 )
 
 // collectorVariantBase strips the markers catalogs use for alternate printings
@@ -825,6 +836,7 @@ func hasLetter(value string) bool {
 // them and only an exact byte match counted.
 func collectorCanonicalKey(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
+	value = collectorBracketPattern.ReplaceAllString(value, "")
 	value = strings.TrimPrefix(value, "#")
 	value = strings.ReplaceAll(value, "no.", "")
 	value = collectorSeparatorPattern.ReplaceAllString(value, "-")

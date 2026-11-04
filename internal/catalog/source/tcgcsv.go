@@ -191,10 +191,13 @@ func (p *TCGCSVProvider) Fetch(ctx context.Context, request catalog.FetchRequest
 			}
 
 			if prod.ImageURL != "" {
+				// The 200 px thumbnail is too small for the printed collector
+				// number: WIXOSS scans read no number at all from it. TCGplayer
+				// serves a 1000 px product scan under the same product id.
 				record.Images = []catalog.ImageRecord{{
 					SourceImageID: sourceID + ":front",
 					Kind:          "front",
-					URL:           prod.ImageURL,
+					URL:           highResolutionTCGPlayerImage(prod.ImageURL),
 				}}
 			}
 
