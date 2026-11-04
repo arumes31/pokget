@@ -1064,3 +1064,45 @@ func TestClaudeDetection_WrappedReprintNumberRequiresReview(t *testing.T) {
 		t.Errorf("a reprint whose number wraps the same digits must require review")
 	}
 }
+
+func TestClaudeDetection_BracketedLanguageSuffixInCatalogNumber(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "wixoss", Name: "Yuki Authentic Miko", CollectorNumber: "WXDi-P12-013",
+		SetCode: "WXDi-P12", Language: "eng", Confidence: 0.93,
+	}
+	cards := []models.Card{{
+		ID: "wixoss-013", Name: "Yuki Authentic Miko", CollectorNumber: "WXDi-P12-013[EN]",
+		Set: "Wixoss Diva", SetCode: "WXDi-P12", Variant: "Normal", Language: "en", Game: "wixoss",
+	}}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if matches[0].Confidence != 99 {
+		t.Errorf("expected name+number+set 99 despite the [EN] suffix, got %f", matches[0].Confidence)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("the language tag is catalog metadata, not an ambiguity")
+	}
+}
+
+func TestClaudeDetection_CatalogNumberWithEditionSuffixIsPartial(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "sorcery", Name: "Cage of Sidrak", CollectorNumber: "006",
+		Set: "Beta", SetCode: "BETA", Language: "eng", Confidence: 0.92,
+	}
+	cards := []models.Card{{
+		ID: "sorcery-006-f", Name: "Cage of Sidrak", CollectorNumber: "006-cage_of_sidrak-b-f",
+		Set: "Beta", SetCode: "BETA", Variant: "Foil", Language: "en", Game: "sorcery",
+	}}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if matches[0].Confidence != 94 {
+		t.Errorf("expected name+number+suffix 94, got %f", matches[0].Confidence)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("a single printing with metadata suffix is a confident match")
+	}
+}

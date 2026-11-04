@@ -406,7 +406,7 @@ func TestTCGCSVProvider(t *testing.T) {
 	if records[0].Rarity != "C" {
 		t.Fatalf("unexpected rarity: %q", records[0].Rarity)
 	}
-	if len(records[0].Images) != 1 || records[0].Images[0].URL != "https://tcgplayer-cdn.tcgplayer.com/product/717968_200w.jpg" {
+	if len(records[0].Images) != 1 || records[0].Images[0].URL != "https://tcgplayer-cdn.tcgplayer.com/product/717968_in_1000x1000.jpg" {
 		t.Fatalf("unexpected images: %+v", records[0].Images)
 	}
 	if result.Count != 1 {
