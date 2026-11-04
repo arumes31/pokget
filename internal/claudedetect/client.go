@@ -381,12 +381,25 @@ func extractJSONString(s string) string {
 	if idx := strings.Index(s, "```json"); idx != -1 {
 		start := idx + 7
 		if end := strings.Index(s[start:], "```"); end != -1 {
-			return strings.TrimSpace(s[start : start+end])
+			if candidate := strings.TrimSpace(s[start : start+end]); json.Valid([]byte(candidate)) {
+				return candidate
+			}
 		}
 	} else if idx := strings.Index(s, "```"); idx != -1 {
 		start := idx + 3
 		if end := strings.Index(s[start:], "```"); end != -1 {
-			return strings.TrimSpace(s[start : start+end])
+			if candidate := strings.TrimSpace(s[start : start+end]); json.Valid([]byte(candidate)) {
+				return candidate
+			}
+		}
+	}
+
+	// The model sometimes corrects itself and returns two complete objects with
+	// prose in between. Prefer the last valid object; it is the corrected one.
+	objects := completeJSONObjects(s)
+	for index := len(objects) - 1; index >= 0; index-- {
+		if json.Valid([]byte(objects[index])) {
+			return objects[index]
 		}
 	}
 
@@ -397,4 +410,45 @@ func extractJSONString(s string) string {
 		return s[start : end+1]
 	}
 	return s
+}
+
+// completeJSONObjects returns every balanced {...} block in s, respecting
+// strings and escapes so braces inside notes do not split an object.
+func completeJSONObjects(s string) []string {
+	var objects []string
+	depth := 0
+	start := -1
+	inString := false
+	escaped := false
+	for index, r := range s {
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case r == '\\':
+				escaped = true
+			case r == '"':
+				inString = false
+			}
+			continue
+		}
+		switch r {
+		case '"':
+			inString = true
+		case '{':
+			if depth == 0 {
+				start = index
+			}
+			depth++
+		case '}':
+			if depth > 0 {
+				depth--
+				if depth == 0 && start >= 0 {
+					objects = append(objects, s[start:index+1])
+					start = -1
+				}
+			}
+		}
+	}
+	return objects
 }
