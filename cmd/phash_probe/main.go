@@ -19,6 +19,7 @@ func main() {
 	game := flag.String("game", "pokemon", "game")
 	language := flag.String("language", "en", "language")
 	limit := flag.Int("limit", 20, "cards")
+	id := flag.String("id", "", "single card id")
 	flag.Parse()
 
 	database, err := db.Connect()
@@ -29,7 +30,8 @@ func main() {
 	rows, err := database.Query(`SELECT id, coalesce(image_url,''), phash FROM cards
 		WHERE game=$1 AND language=$2 AND catalog_active AND superseded_by_card_id IS NULL
 		  AND phash IS NOT NULL AND coalesce(image_url,'') <> ''
-		ORDER BY md5(id || '|probe') LIMIT $3`, *game, *language, *limit)
+		  AND ($4 = '' OR id = $4)
+		ORDER BY md5(id || '|probe') LIMIT $3`, *game, *language, *limit, *id)
 	if err != nil {
 		panic(err)
 	}
