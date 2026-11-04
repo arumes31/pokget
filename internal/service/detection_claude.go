@@ -651,6 +651,18 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				other.needsReview = true
 				break
 			}
+			// A reprint whose catalog number wraps the same digits in letters
+			// ("cr124sb" for a card that prints 124) belongs to a different
+			// product. The printed set symbol decides; without it the scan must
+			// ask instead of trusting the model's set guess.
+			if other.card.Set != top.card.Set && otherFull != "" && topCollector != "" &&
+				digitsOnly(other.card.CollectorNumber) == digitsOnly(top.card.CollectorNumber) &&
+				digitsOnly(top.card.CollectorNumber) != "" &&
+				hasLetter(other.card.CollectorNumber) && !hasLetter(top.card.CollectorNumber) {
+				top.needsReview = true
+				other.needsReview = true
+				break
+			}
 			if topCollector != "" && otherFull == topCollector {
 				otherName := compactMatchText(normalizeMatchText(other.card.Name))
 				if otherName != topName && (strings.Contains(otherName, topName) || strings.Contains(topName, otherName)) {
@@ -785,6 +797,25 @@ func collectorVariantBase(value string) string {
 	trimmed = strings.TrimSuffix(trimmed, "+")
 	trimmed = collectorVariantMarkerPattern.ReplaceAllString(trimmed, "$1$3")
 	return collectorCanonicalKey(trimmed)
+}
+
+func digitsOnly(value string) string {
+	var builder strings.Builder
+	for _, r := range value {
+		if r >= '0' && r <= '9' {
+			builder.WriteRune(r)
+		}
+	}
+	return builder.String()
+}
+
+func hasLetter(value string) bool {
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			return true
+		}
+	}
+	return false
 }
 
 // collectorCanonicalKey makes the printed number comparable across the shapes

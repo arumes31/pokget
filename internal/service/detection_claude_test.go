@@ -1023,3 +1023,44 @@ func TestClaudeDetection_SpecificFinishOnOnlyNormalRowKeepsMatch(t *testing.T) {
 		t.Errorf("a finish without a catalog sibling must not block the match")
 	}
 }
+
+func TestClaudeDetection_SecretRareOnNormalRowKeepsAuto(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "pokemon", Name: "Rare Candy", CollectorNumber: "105/101",
+		Set: "Plasma Blast", SetCode: "PLB", Variant: "Secret Rare (Gold)",
+		Language: "eng", Confidence: 0.9,
+	}
+	cards := []models.Card{{
+		ID: "rare-candy-105", Name: "Rare Candy", CollectorNumber: "105",
+		Set: "Plasma Blast", SetCode: "bw10", Variant: "Normal",
+		Language: "en", Game: "pokemon",
+	}}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(matches))
+	}
+	if matches[0].Confidence != 99 {
+		t.Errorf("expected exact name+number+set 99, got %f", matches[0].Confidence)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("a gold secret rare on a Normal catalog row must not force review")
+	}
+}
+
+func TestClaudeDetection_WrappedReprintNumberRequiresReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "magic", Name: "Coffin Purge", CollectorNumber: "124",
+		Set: "Odyssey", SetCode: "ody", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{ID: "ody-124", Name: "Coffin Purge", CollectorNumber: "124", Set: "Odyssey", SetCode: "ody", Variant: "Normal", Language: "en", Game: "magic", SourceCardID: "ody-124"},
+		{ID: "wc02-cr124sb", Name: "Coffin Purge", CollectorNumber: "cr124sb", Set: "World Championship Decks 2002", SetCode: "wc02", Variant: "Normal", Language: "en", Game: "magic", SourceCardID: "wc02-cr124sb"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) != 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a reprint whose number wraps the same digits must require review")
+	}
+}
