@@ -189,6 +189,20 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 		}
 		return
 	}
+	// Printings with identical artwork cannot be told apart by the hash. Some
+	// catalogs duplicate one card across set variants (Altered CORE/COREKS) with
+	// the same art and number; the printed set symbol already decided, so the
+	// artwork must not turn an exact text match into a review.
+	identicalArtwork := true
+	for index := 1; index < len(group); index++ {
+		if *group[index].Phash != *group[0].Phash {
+			identicalArtwork = false
+			break
+		}
+	}
+	if identicalArtwork {
+		return
+	}
 	type rankedCard struct {
 		card     models.Card
 		distance int

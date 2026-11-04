@@ -1142,3 +1142,48 @@ func TestClaudeDetection_AmbiguousNameInsideSetStaysReview(t *testing.T) {
 		t.Errorf("two rows with the same name in the set must require review")
 	}
 }
+
+func TestClaudeDetection_IdenticalArtworkDuplicatesKeepTextMatch(t *testing.T) {
+	imageBytes := testCardImage(t)
+	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		t.Fatalf("decode test image: %v", err)
+	}
+	fingerprint := NewFingerprintService(nil)
+	hash, err := fingerprint.CalculateHash(decoded)
+	if err != nil {
+		t.Fatalf("hash test image: %v", err)
+	}
+	info := &claudedetect.DetectedCardInfo{
+		Game: "altered", Name: "Kelon-Generator", CollectorNumber: "BTG-027-R-DE",
+		Set: "CORE", SetCode: "CORE", Language: "deu", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{
+			ID: "core", Name: "Kelon-Generator", CollectorNumber: "BTG-027-R-DE",
+			Set: "CORE", SetCode: "CORE", Language: "de", Game: "altered",
+			SourceCardID: "ALT_CORE_B_AX_27_R1", Phash: &hash,
+		},
+		{
+			ID: "coreks", Name: "Kelon-Generator", CollectorNumber: "BTG-027-R-DE",
+			Set: "COREKS", SetCode: "COREKS", Language: "de", Game: "altered",
+			SourceCardID: "ALT_COREKS_B_AX_27_R1", Phash: &hash,
+		},
+	}
+	pipeline := NewDetectionPipeline(fingerprint, nil)
+	pipeline.Claude = &mockClaudeDetector{info: info}
+	result, err := pipeline.detectClaude(context.Background(), DetectionRequest{
+		Image: imageBytes,
+		Cards: cards,
+		Scope: ScanScope{TCG: models.TCGAltered, Language: models.LanguageGerman},
+	}, false, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BestMatchID() != "core" {
+		t.Fatalf("expected the exactly read set, got %q", result.BestMatchID())
+	}
+	if result.BestMatchNeedsReview() || result.Status != DetectionStatusMatched {
+		t.Errorf("identical artwork must not override the printed set, got status=%s review=%v", result.Status, result.BestMatchNeedsReview())
+	}
+}
