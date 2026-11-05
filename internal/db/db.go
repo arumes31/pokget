@@ -71,7 +71,11 @@ func InitDB() {
 var sqlOpen = sql.Open
 
 const (
-	maxOpenConnections = 20
+	// Every catalog source syncs at startup and each holds a connection. With
+	// 20 connections the pool was fully consumed by ~30 sources, so the
+	// readiness ping waited for a connection and /health/ready returned 503 for
+	// minutes after a restart. 40 leaves headroom for health, scans and prices.
+	maxOpenConnections = 40
 	maxIdleConnections = 5
 	connectionLifetime = 30 * time.Minute
 	connectionIdleTime = 5 * time.Minute
