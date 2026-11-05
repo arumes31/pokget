@@ -58,7 +58,7 @@ func (m *multiImageClaudeDetector) DetectImages(_ context.Context, images [][]by
 	return m.info, nil
 }
 
-func (m *multiImageClaudeDetector) Model() string             { return "claude-sonnet-5-5" }
+func (m *multiImageClaudeDetector) Model() string              { return "claude-sonnet-5-5" }
 func (m *multiImageClaudeDetector) PromptCachingEnabled() bool { return true }
 
 func testCardImage(t *testing.T) []byte {
@@ -282,5 +282,34 @@ func TestClaudeBandsFallBackToGenerousStrips(t *testing.T) {
 	}
 	if bands[1].MinY != claudeFallbackInfoStart || bands[1].MaxY != 1 {
 		t.Errorf("unexpected fallback information band %+v", bands[1])
+	}
+}
+
+func TestClaudeFullImageIsCappedAtVisionResolution(t *testing.T) {
+	const width, height = 2000, 2800
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x % 256), G: uint8(y % 256), B: 128, A: 255})
+		}
+	}
+	var buffer bytes.Buffer
+	if err := png.Encode(&buffer, img); err != nil {
+		t.Fatalf("encode test image: %v", err)
+	}
+	variants, err := claudeImageVariants(context.Background(), buffer.Bytes())
+	if err != nil {
+		t.Fatalf("prepare image: %v", err)
+	}
+	if len(variants) == 0 {
+		t.Fatalf("expected variants")
+	}
+	decoded, _, err := image.Decode(bytes.NewReader(variants[0]))
+	if err != nil {
+		t.Fatalf("decode full image: %v", err)
+	}
+	longest := max(decoded.Bounds().Dx(), decoded.Bounds().Dy())
+	if longest > claudeFullImageMaxDimension {
+		t.Fatalf("full image long edge = %d, want <= %d", longest, claudeFullImageMaxDimension)
 	}
 }
