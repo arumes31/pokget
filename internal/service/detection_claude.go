@@ -257,8 +257,32 @@ func variantEvidence(detected, catalog string) (matched, conflict bool) {
 	if detected == "" || catalog == "" {
 		return false, false
 	}
+	// The model says "Standard" / "Regular" for a plain card; the catalogs say
+	// "Normal". Treat those as the same finish, otherwise a plain row is sent to
+	// review merely because a foil sibling exists.
+	plain := func(value string) bool {
+		switch value {
+		case "standard", "regular", "nonfoil", "non foil", "plain", "normal", "base":
+			return true
+		}
+		return false
+	}
+	if plain(detected) {
+		detected = "normal"
+	}
+	if plain(catalog) {
+		catalog = "normal"
+	}
 	if detected == catalog {
 		return true, false
+	}
+	// Different catalogs name the same finish differently ("Parallel Foil" vs
+	// "Parallel (P) print"). A shared specific marker is the same finish family;
+	// a generic "Foil" still cannot identify which foil.
+	for _, marker := range []string{"rainbow", "cold", "gold", "parallel", "alternate", "alt art", "reverse", "etched", "showcase", "borderless", "extended"} {
+		if strings.Contains(detected, marker) && strings.Contains(catalog, marker) {
+			return true, false
+		}
 	}
 	specific := func(value string) bool {
 		for _, marker := range []string{"rainbow", "cold", "gold", "parallel", "alternate", "alt art", "reverse", "etched", "showcase", "borderless", "extended"} {
@@ -608,6 +632,14 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		// (the tie pass). A single catalog row cannot represent a finish the model
 		// claims, so it must not block the match on its own: Pokémon and hololive
 		// store most rows as "Normal" even for holo/parallel cards.
+
+		// A specific finish the catalog records is conflicting evidence when the
+		// detector read the plain card: the plain printing is not in the catalog.
+		// The reverse (a specific read on a Normal row) stays suppressed because
+		// several sources store every row as Normal even for holo cards.
+		if variantConflict && normalizeMatchText(card.Variant) != "normal" {
+			needsReview = true
+		}
 
 		candidates = append(candidates, scoredMatch{
 			card:            card,

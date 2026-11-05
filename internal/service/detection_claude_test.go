@@ -1268,3 +1268,57 @@ func TestClaudeDetection_NameVariantSiblingInSetStaysReview(t *testing.T) {
 		t.Errorf("a name-suffix variant in the same set must keep review")
 	}
 }
+
+func TestClaudeDetection_StandardFinishSelectsNormalRow(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "flesh_and_blood", Name: "Spears of Surreality", CollectorNumber: "MON102",
+		Set: "Monarch", SetCode: "MON", Variant: "Standard", Language: "eng", Confidence: 0.96,
+	}
+	cards := []models.Card{
+		{ID: "normal", Name: "Spears of Surreality", CollectorNumber: "MON102", Set: "Monarch", SetCode: "MON", Variant: "Normal", Language: "en", Game: "flesh_and_blood", SourceCardID: "MON102"},
+		{ID: "rainbow", Name: "Spears of Surreality", CollectorNumber: "MON102", Set: "Monarch", SetCode: "MON", Variant: "Rainbow Foil", Language: "en", Game: "flesh_and_blood", SourceCardID: "MON102-RF"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 || matches[0].Card.ID != "normal" {
+		t.Fatalf("expected the plain printing first, got %+v", matches)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("Standard is the catalog's Normal; it must auto-match")
+	}
+}
+
+func TestClaudeDetection_StandardFinishWithoutNormalRowStaysReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "flesh_and_blood", Name: "Spears of Surreality", CollectorNumber: "MON102",
+		Set: "Monarch", SetCode: "MON", Variant: "Standard", Language: "eng", Confidence: 0.96,
+	}
+	cards := []models.Card{
+		{ID: "rainbow", Name: "Spears of Surreality", CollectorNumber: "MON102", Set: "Monarch", SetCode: "MON", Variant: "Rainbow Foil", Language: "en", Game: "flesh_and_blood", SourceCardID: "MON102-RF"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 {
+		t.Fatalf("expected a candidate")
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a plain read must not auto-match a rainbow-only catalog row")
+	}
+}
+
+func TestClaudeDetection_ParallelFinishFamilyMatches(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "wixoss", Name: "Focalor Azure Evil", CollectorNumber: "WXDi-P01-066P[EN]",
+		Set: "WIXOSS Diva Booster Pack P01", SetCode: "WXDi-P01", Variant: "Parallel (P) print",
+		Language: "eng", Confidence: 0.9,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "Focalor Azure Evil", CollectorNumber: "WXDi-P01-066[EN]", Set: "WIXOSS Diva Booster Pack P01", SetCode: "WXDi-P01", Variant: "Normal", Language: "en", Game: "wixoss"},
+		{ID: "parallel", Name: "Focalor Azure Evil Parallel Foil", CollectorNumber: "WXDi-P01-066P[EN]", Set: "WIXOSS Diva Booster Pack P01", SetCode: "WXDi-P01", Variant: "Parallel Foil", Language: "en", Game: "wixoss"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 || matches[0].Card.ID != "parallel" {
+		t.Fatalf("expected the parallel printing first, got %+v", matches)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("the printed P suffix and the parallel family identify the printing")
+	}
+}
