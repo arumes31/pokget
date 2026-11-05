@@ -41,25 +41,37 @@ func parseTrustedProxies(value string) []*net.IPNet {
 		value = defaultTrustedProxies
 	}
 	var networks []*net.IPNet
-	for _, entry := range strings.Split(value, ",") {
+	for {
+		i := strings.IndexByte(value, ',')
+		var entry string
+		if i == -1 {
+			entry = value
+		} else {
+			entry = value[:i]
+		}
+
 		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
-		if ip := net.ParseIP(entry); ip != nil {
-			bits := 8 * len(ip)
-			if ip4 := ip.To4(); ip4 != nil {
-				ip, bits = ip4, 32
+		if entry != "" {
+			if ip := net.ParseIP(entry); ip != nil {
+				bits := 8 * len(ip)
+				if ip4 := ip.To4(); ip4 != nil {
+					ip, bits = ip4, 32
+				}
+				networks = append(networks, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			} else {
+				_, network, err := net.ParseCIDR(entry)
+				if err != nil {
+					slog.Warn("auth: ignoring invalid TRUSTED_PROXIES entry", "entry", entry)
+				} else {
+					networks = append(networks, network)
+				}
 			}
-			networks = append(networks, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
-			continue
 		}
-		_, network, err := net.ParseCIDR(entry)
-		if err != nil {
-			slog.Warn("auth: ignoring invalid TRUSTED_PROXIES entry", "entry", entry)
-			continue
+
+		if i == -1 {
+			break
 		}
-		networks = append(networks, network)
+		value = value[i+1:]
 	}
 	return networks
 }
