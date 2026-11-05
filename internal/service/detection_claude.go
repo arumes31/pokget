@@ -722,7 +722,11 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		for index := 1; index < len(candidates); index++ {
 			other := &candidates[index]
 			otherFull := collectorCanonicalKey(other.card.CollectorNumber)
-			if otherFull != "" &&
+			// Only a number that actually carries a printing marker is a variant
+			// of the printed base number. A zero-padded number belongs to another
+			// card in a three-digit set ("008" Whimsicott vs "8" Mew): its
+			// canonical base is the same even though it is a different card.
+			if otherFull != "" && hasCollectorVariantSuffix(other.card.CollectorNumber) &&
 				normalizeCollectorNum(other.card.CollectorNumber) != normalizeCollectorNum(top.card.CollectorNumber) &&
 				collectorVariantBase(other.card.CollectorNumber) == claudeCollectorCanonical {
 				top.needsReview = true
