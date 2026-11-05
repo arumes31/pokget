@@ -741,7 +741,11 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				other.needsReview = true
 				break
 			}
-			if topCollector != "" && otherFull == topCollector {
+			// A same-number row whose name extends the detected one is a variant
+			// printing only inside the same product: "Rocket's Mewtwo" #8 in
+			// another set merely contains the detected name "Mew" and is a
+			// different card, not a finish choice.
+			if topCollector != "" && otherFull == topCollector && setIdentity(other.card) == setIdentity(top.card) {
 				otherName := compactMatchText(normalizeMatchText(other.card.Name))
 				if otherName != topName && (strings.Contains(otherName, topName) || strings.Contains(topName, otherName)) {
 					top.needsReview = true
