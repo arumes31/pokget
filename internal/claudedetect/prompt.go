@@ -163,10 +163,11 @@ Required schema:
   "language": "ISO-639-1/3 code of the language actually printed: 'eng', 'deu', 'jpn', 'fra', 'ita', 'spa', 'kor', 'zh-cn' (Simplified Chinese), 'zh-tw' (Traditional Chinese)",
   "variant": "Foil, Holo, Reverse Holo, 1st Edition, Delta Species, Full Art, etc.",
   "confidence": 0.0 to 1.0,
-  "notes": "Brief corroboration details (e.g. 'Rayquaza Delta Species from EX Holon Phantoms in German')"
+  "notes": "Optional, at most 12 words (e.g. 'German print, set symbol matches')"
 }
 
 If any detail is obscured or unreadable, leave that field empty and lower the confidence.
+Keep "notes" under 12 words; do not restate the card or the JSON fields.
 Never invent or hallucinate set codes or collector numbers. If the image does not show a trading
 card at all, return an empty name and a confidence below 0.3.
 `
