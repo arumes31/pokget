@@ -52,9 +52,13 @@ const (
 	// the thin title and information strips are cropped from it, so printed kana
 	// stay large enough to distinguish ピ from ビ.
 	claudeSourceMaxDimension = 2400
+	// claudeFullImageMaxDimension matches the vision encoder's long-edge cap.
+	// Larger uploads are downscaled by the API anyway, so sending 2400 px only
+	// adds upload time and bytes without adding detail.
+	claudeFullImageMaxDimension = 1568
 	// Card geometry: a trading card is roughly 0.7 as wide as it is tall.
-	claudeCardMinAspect = 0.52
-	claudeCardMaxAspect = 0.95
+	claudeCardMinAspect   = 0.52
+	claudeCardMaxAspect   = 0.95
 	claudeCardMinCoverage = 0.18
 )
 
@@ -72,7 +76,7 @@ func claudeImageVariants(ctx context.Context, imageData []byte) ([][]byte, error
 	if err != nil {
 		return nil, err
 	}
-	full, err := encodeScanJPEG(src)
+	full, err := encodeScanJPEG(resizeToMaxDimension(src, claudeFullImageMaxDimension))
 	if err != nil {
 		return nil, err
 	}
@@ -110,8 +114,12 @@ func claudeBands(src image.Image) []GuideRect {
 	}
 	imageBounds := src.Bounds()
 	cardWidth, cardHeight := float64(card.Dx()), float64(card.Dy())
-	toX := func(x float64) float64 { return clampUnit((x - float64(imageBounds.Min.X)) / float64(imageBounds.Dx())) }
-	toY := func(y float64) float64 { return clampUnit((y - float64(imageBounds.Min.Y)) / float64(imageBounds.Dy())) }
+	toX := func(x float64) float64 {
+		return clampUnit((x - float64(imageBounds.Min.X)) / float64(imageBounds.Dx()))
+	}
+	toY := func(y float64) float64 {
+		return clampUnit((y - float64(imageBounds.Min.Y)) / float64(imageBounds.Dy()))
+	}
 	// Reach to the frame edges on the vertical axis: a card box that is a few
 	// percent short must never slice the printed name or the collector number.
 	x1 := toX(float64(card.Min.X) - cardWidth*claudeBandMargin)

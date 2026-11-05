@@ -24,7 +24,7 @@ func databaseReadinessHandler(database *sql.DB) http.HandlerFunc {
 			http.Error(writer, "not ready", http.StatusServiceUnavailable)
 			return
 		}
-		ctx, cancel := context.WithTimeout(request.Context(), time.Second)
+		ctx, cancel := context.WithTimeout(request.Context(), 4*time.Second)
 		defer cancel()
 		if err := database.PingContext(ctx); err != nil {
 			http.Error(writer, "not ready", http.StatusServiceUnavailable)
