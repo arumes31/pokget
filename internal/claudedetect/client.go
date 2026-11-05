@@ -192,11 +192,12 @@ func (c *Client) DetectImages(ctx context.Context, images [][]byte, gameHint, la
 	}
 	content = append(content, map[string]any{"type": "text", "text": userPrompt(gameHint, langHint)})
 
-	// Prepare request payload. 768 tokens fit the structured card plus the
-	// 12-word notes cap; a lower ceiling also bounds worst-case generation time.
+	// Prepare request payload. The notes are capped by the prompt, not by
+	// max_tokens: 768 truncated some answers mid-JSON (stop_reason=max_tokens),
+	// so the ceiling stays high enough for a complete object.
 	reqMap := map[string]any{
 		"model":      c.model,
-		"max_tokens": 768,
+		"max_tokens": 2048,
 		"messages": []map[string]any{
 			{"role": "user", "content": content},
 		},
