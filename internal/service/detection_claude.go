@@ -746,10 +746,13 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				break
 			}
 			// A same-number row whose name extends the detected one is a variant
-			// printing only inside the same product: "Rocket's Mewtwo" #8 in
-			// another set merely contains the detected name "Mew" and is a
-			// different card, not a finish choice.
-			if topCollector != "" && otherFull == topCollector && setIdentity(other.card) == setIdentity(top.card) {
+			// printing when the two rows share the product, or when the printed
+			// set could not be read. A different product merely containing the
+			// detected name ("Rocket's Mewtwo" #8 vs "Mew" #8) is another card.
+			sameSet := setIdentity(other.card) == setIdentity(top.card) ||
+				(normalizeMatchText(other.card.Set) != "" &&
+					normalizeMatchText(other.card.Set) == normalizeMatchText(top.card.Set))
+			if topCollector != "" && otherFull == topCollector && (sameSet || !top.setExact) {
 				otherName := compactMatchText(normalizeMatchText(other.card.Name))
 				if otherName != topName && (strings.Contains(otherName, topName) || strings.Contains(topName, otherName)) {
 					top.needsReview = true
@@ -922,7 +925,19 @@ func collectorVariantBase(value string) string {
 // different printing.
 func hasCollectorVariantSuffix(value string) bool {
 	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if trimmed == "" {
+		return false
+	}
 	if strings.HasSuffix(trimmed, "+") {
+		return true
+	}
+	// A trailing symbol is a printing marker (Scryfall uses "9★" for the
+	// Collector's Edition surge foil) even though canonicalisation drops it.
+	// Bracketed metadata (".044P[EN]") is not a trailing marker and is handled
+	// by the canonical comparison below.
+	last := trimmed[len(trimmed)-1]
+	trailingSymbol := last != ']' && last != '#' && (last < '0' || last > '9') && (last < 'a' || last > 'z')
+	if trailingSymbol {
 		return true
 	}
 	return collectorVariantBase(value) != collectorCanonicalKey(value)
