@@ -94,3 +94,114 @@ func TestClaudeDetection_NameSuffixInSameSetStillNeedsReview(t *testing.T) {
 		t.Errorf("a same-set name-suffix variant must stay a review choice")
 	}
 }
+
+// A trailing symbol is a printing marker: Scryfall stores the Collector's
+// Edition surge foil of "And They Shall Know No Fear" as #9★ next to #9.
+func TestClaudeDetection_SymbolVariantSuffixStillNeedsReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "magic", Name: "And They Shall Know No Fear", CollectorNumber: "9",
+		Set: "Warhammer 40,000 Commander", SetCode: "40k", Language: "eng", Confidence: 0.9,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "And They Shall Know No Fear", CollectorNumber: "9", Set: "Warhammer 40,000 Commander", SetCode: "40k", Language: "en", Game: "magic", Variant: "Normal"},
+		{ID: "surge", Name: "And They Shall Know No Fear", CollectorNumber: "9★", Set: "Warhammer 40,000 Commander", SetCode: "40k", Language: "en", Game: "magic", Variant: "Normal"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 {
+		t.Fatal("expected candidates")
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a symbol variant number must stay a review choice")
+	}
+}
+
+// A sibling row of the same product can miss set_code; the set name is still
+// enough to treat it as one product and keep the name-suffix variant in review.
+func TestClaudeDetection_SameSetNameDifferentSetCodeStillNeedsReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "riftbound", Name: "Body Rune", CollectorNumber: "R04",
+		Set: "Origins", SetCode: "OGN", Language: "eng", Confidence: 0.9,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "Body Rune", CollectorNumber: "R04", Set: "Origins", SetCode: "OGN", Language: "en", Game: "riftbound", Variant: "Normal"},
+		{ID: "alt", Name: "Body Rune R04c", CollectorNumber: "R04", Set: "Origins", SetCode: "", Language: "en", Game: "riftbound", Variant: "Alternate Art"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 {
+		t.Fatal("expected candidates")
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a same-set-name variant must stay a review choice even when its set_code is empty")
+	}
+}
+
+// Without a read set, a same-number name-prefix sibling cannot be separated by
+// product, so the exact match must ask instead of trusting the name alone.
+func TestClaudeDetection_PrefixSiblingWithoutSetStaysReview(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "pokemon", Name: "Mew", CollectorNumber: "8",
+		Set: "", SetCode: "", Language: "eng", Confidence: 0.9,
+	}
+	cards := []models.Card{
+		{ID: "mew8", Name: "Mew", CollectorNumber: "8", Set: "Wizards Black Star Promos", SetCode: "basep", Language: "en", Game: "pokemon", Variant: "Normal"},
+		{ID: "mewtwo8", Name: "Rocket's Mewtwo", CollectorNumber: "8", Set: "Best of game", SetCode: "bog", Language: "en", Game: "pokemon", Variant: "Normal"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 {
+		t.Fatal("expected candidates")
+	}
+	if !matches[0].NeedsReview {
+		t.Errorf("a prefix sibling without a read set must stay a review choice")
+	}
+}
+
+func TestClaudeDetection_ConflictingSetCodesDoNotMergeByName(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "pokemon", Name: "Mew", CollectorNumber: "8",
+		Set: "Promo", Language: "eng", Confidence: 0.9,
+	}
+	cards := []models.Card{
+		{ID: "mew8", Name: "Mew", CollectorNumber: "8", Set: "Promo", SetCode: "PR", Language: "en", Game: "pokemon", Variant: "Normal"},
+		{ID: "mewtwo8", Name: "Rocket's Mewtwo", CollectorNumber: "8", Set: "Promo", SetCode: "SVP", Language: "en", Game: "pokemon", Variant: "Normal"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 || matches[0].Card.ID != "mew8" {
+		t.Fatalf("expected Mew #8 first, got %+v", matches)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("two different set codes sharing a generic set name are not one product")
+	}
+}
+
+func TestHasCollectorVariantSuffixBoundaries(t *testing.T) {
+	cases := []struct {
+		number string
+		want   bool
+	}{
+		{"8", false},
+		{"008", false},
+		{"8.", false},
+		{"8a", true},
+		{"8+", true},
+		{"8★", true},
+		{"WXDi-P01-066P", true},
+		{"026a/221", true},
+	}
+	for _, tc := range cases {
+		if got := hasCollectorVariantSuffix(tc.number); got != tc.want {
+			t.Errorf("hasCollectorVariantSuffix(%q) = %v, want %v", tc.number, got, tc.want)
+		}
+	}
+}
+
+func TestSameProductFallbackOnlyWithoutCodes(t *testing.T) {
+	base := models.Card{Set: "Origins", SetCode: "OGN"}
+	missingCode := models.Card{Set: "Origins"}
+	otherCode := models.Card{Set: "Origins", SetCode: "SVP"}
+	if !sameProduct(base, missingCode) {
+		t.Error("a missing set code must fall back to the product name")
+	}
+	if sameProduct(base, otherCode) {
+		t.Error("two different set codes must not merge because the names match")
+	}
+}

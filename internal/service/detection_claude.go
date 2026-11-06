@@ -746,10 +746,10 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				break
 			}
 			// A same-number row whose name extends the detected one is a variant
-			// printing only inside the same product: "Rocket's Mewtwo" #8 in
-			// another set merely contains the detected name "Mew" and is a
-			// different card, not a finish choice.
-			if topCollector != "" && otherFull == topCollector && setIdentity(other.card) == setIdentity(top.card) {
+			// printing when the two rows share the product, or when the printed
+			// set could not be read. A different product merely containing the
+			// detected name ("Rocket's Mewtwo" #8 vs "Mew" #8) is another card.
+			if topCollector != "" && otherFull == topCollector && (sameProduct(other.card, top.card) || !top.setExact) {
 				otherName := compactMatchText(normalizeMatchText(other.card.Name))
 				if otherName != topName && (strings.Contains(otherName, topName) || strings.Contains(topName, otherName)) {
 					top.needsReview = true
@@ -806,10 +806,9 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		top := &candidates[0]
 		if top.confidence == 92.0 && top.setExact && top.needsReview {
 			topName := compactMatchText(normalizeMatchText(top.card.Name))
-			topSet := setIdentity(top.card)
 			relatedInSet := 0
 			for index := range cards {
-				if setIdentity(cards[index]) != topSet {
+				if !sameProduct(cards[index], top.card) {
 					continue
 				}
 				otherName := compactMatchText(normalizeMatchText(cards[index].Name))
@@ -922,7 +921,18 @@ func collectorVariantBase(value string) string {
 // different printing.
 func hasCollectorVariantSuffix(value string) bool {
 	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if trimmed == "" {
+		return false
+	}
 	if strings.HasSuffix(trimmed, "+") {
+		return true
+	}
+	// A trailing symbol is a printing marker (Scryfall uses "9★" for the
+	// Collector's Edition surge foil) even though canonicalisation drops it.
+	// ASCII formatting punctuation (".", ",", "-") is not a marker; only
+	// non-ASCII symbols and "*" are.
+	last := trimmed[len(trimmed)-1]
+	if last >= 0x80 || last == '*' {
 		return true
 	}
 	return collectorVariantBase(value) != collectorCanonicalKey(value)
@@ -1015,6 +1025,20 @@ func setIdentity(card models.Card) string {
 		return code
 	}
 	return normalizeMatchText(card.Set)
+}
+
+// sameProduct reports whether two catalog rows describe the same product. Set
+// codes are authoritative when both rows carry one; the product name is only a
+// fallback for sources that omit the code, so two different codes with a
+// generic shared name do not merge into one product.
+func sameProduct(a, b models.Card) bool {
+	aCode := normalizeMatchText(a.SetCode)
+	bCode := normalizeMatchText(b.SetCode)
+	if aCode != "" && bCode != "" {
+		return aCode == bCode
+	}
+	aSet := normalizeMatchText(a.Set)
+	return aSet != "" && aSet == normalizeMatchText(b.Set)
 }
 
 // compactMatchText removes the spaces normalizeMatchText leaves behind.
