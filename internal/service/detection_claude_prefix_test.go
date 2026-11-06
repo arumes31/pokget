@@ -154,3 +154,54 @@ func TestClaudeDetection_PrefixSiblingWithoutSetStaysReview(t *testing.T) {
 		t.Errorf("a prefix sibling without a read set must stay a review choice")
 	}
 }
+
+func TestClaudeDetection_ConflictingSetCodesDoNotMergeByName(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "pokemon", Name: "Mew", CollectorNumber: "8",
+		Set: "Promo", Language: "eng", Confidence: 0.9,
+	}
+	cards := []models.Card{
+		{ID: "mew8", Name: "Mew", CollectorNumber: "8", Set: "Promo", SetCode: "PR", Language: "en", Game: "pokemon", Variant: "Normal"},
+		{ID: "mewtwo8", Name: "Rocket's Mewtwo", CollectorNumber: "8", Set: "Promo", SetCode: "SVP", Language: "en", Game: "pokemon", Variant: "Normal"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 || matches[0].Card.ID != "mew8" {
+		t.Fatalf("expected Mew #8 first, got %+v", matches)
+	}
+	if matches[0].NeedsReview {
+		t.Errorf("two different set codes sharing a generic set name are not one product")
+	}
+}
+
+func TestHasCollectorVariantSuffixBoundaries(t *testing.T) {
+	cases := []struct {
+		number string
+		want   bool
+	}{
+		{"8", false},
+		{"008", false},
+		{"8.", false},
+		{"8a", true},
+		{"8+", true},
+		{"8★", true},
+		{"WXDi-P01-066P", true},
+		{"026a/221", true},
+	}
+	for _, tc := range cases {
+		if got := hasCollectorVariantSuffix(tc.number); got != tc.want {
+			t.Errorf("hasCollectorVariantSuffix(%q) = %v, want %v", tc.number, got, tc.want)
+		}
+	}
+}
+
+func TestSameProductFallbackOnlyWithoutCodes(t *testing.T) {
+	base := models.Card{Set: "Origins", SetCode: "OGN"}
+	missingCode := models.Card{Set: "Origins"}
+	otherCode := models.Card{Set: "Origins", SetCode: "SVP"}
+	if !sameProduct(base, missingCode) {
+		t.Error("a missing set code must fall back to the product name")
+	}
+	if sameProduct(base, otherCode) {
+		t.Error("two different set codes must not merge because the names match")
+	}
+}
