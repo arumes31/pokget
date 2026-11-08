@@ -188,6 +188,10 @@ func (s *MailService) sendMail(to, subject, body string) error {
 		return fmt.Errorf("mail: only STARTTLS-capable port 587 is supported for secure mail transmission (got port %s)", s.Port)
 	}
 
+	// Sanitize inputs to prevent CRLF/header injection
+	cleanTo := strings.ReplaceAll(strings.ReplaceAll(to, "\r", ""), "\n", "")
+	cleanSubject := strings.ReplaceAll(strings.ReplaceAll(subject, "\r", ""), "\n", "")
+
 	auth := smtp.PlainAuth("", s.Username, s.Password, s.Host)
 	// Go's smtp.SendMail automatically upgrades to TLS via STARTTLS on port 587
 	// PlainAuth will refuse to send credentials if TLS is not established
@@ -197,10 +201,10 @@ func (s *MailService) sendMail(to, subject, body string) error {
 		"MIME-version: 1.0;\r\n"+
 		"Content-Type: text/html; charset=\"UTF-8\";\r\n"+
 		"\r\n"+
-		"%s\r\n", s.From, to, subject, body))
+		"%s\r\n", s.From, cleanTo, cleanSubject, body))
 
 	addr := fmt.Sprintf("%s:%s", s.Host, s.Port)
-	return s.sendMailFunc(addr, auth, s.From, []string{to}, msg)
+	return s.sendMailFunc(addr, auth, s.From, []string{cleanTo}, msg)
 }
 
 const confirmEmailTemplate = `
