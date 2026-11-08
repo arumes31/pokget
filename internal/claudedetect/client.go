@@ -254,14 +254,6 @@ func (c *Client) DetectImages(ctx context.Context, images [][]byte, gameHint, la
 		return nil, fmt.Errorf("claude detect: API status %d: %s", resp.StatusCode, string(errBody))
 	}
 
-	respData, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("claude detect: read response: %w", err)
-	}
-	if len(respData) > maxResponseBytes {
-		return nil, errors.New("claude detect: response body too large")
-	}
-
 	var apiResp struct {
 		Model      string `json:"model"`
 		StopReason string `json:"stop_reason"`
@@ -278,9 +270,11 @@ func (c *Client) DetectImages(ctx context.Context, images [][]byte, gameHint, la
 		} `json:"usage"`
 	}
 
-	if err := json.Unmarshal(respData, &apiResp); err != nil {
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes+1))
+	if err := decoder.Decode(&apiResp); err != nil {
 		return nil, fmt.Errorf("claude detect: unmarshal response: %w", err)
 	}
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	// Extract the text block (skipping any thinking blocks)
 	var rawText string
