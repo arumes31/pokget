@@ -6,7 +6,7 @@ on:
       - 'go.sum'
       - 'package.json'
       - 'package-lock.json'
-      - '.github/workflows/dependency-review.yml'
+      - '.github/workflows/**'
 permissions:
   contents: read
 concurrency:

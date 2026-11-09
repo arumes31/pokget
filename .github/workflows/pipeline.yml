@@ -221,7 +221,7 @@ jobs:
           load: true
           tags: pokget:verification
           cache-from: type=gha,scope=pokget
-          cache-to: type=gha,mode=max,scope=pokget
+          cache-to: type=gha,mode=max,scope=pokget,ignore-error=true
       - name: Scan production image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -316,7 +316,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=pokget
-          cache-to: type=gha,mode=max,scope=pokget
+          cache-to: type=gha,mode=max,scope=pokget,ignore-error=true
           sbom: true
           provenance: mode=max
 
