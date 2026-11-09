@@ -254,13 +254,7 @@ func (c *Client) DetectImages(ctx context.Context, images [][]byte, gameHint, la
 		return nil, fmt.Errorf("claude detect: API status %d: %s", resp.StatusCode, string(errBody))
 	}
 
-	respData, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("claude detect: read response: %w", err)
-	}
-	if len(respData) > maxResponseBytes {
-		return nil, errors.New("claude detect: response body too large")
-	}
+	limitReader := io.LimitReader(resp.Body, maxResponseBytes+1)
 
 	var apiResp struct {
 		Model      string `json:"model"`
@@ -278,8 +272,19 @@ func (c *Client) DetectImages(ctx context.Context, images [][]byte, gameHint, la
 		} `json:"usage"`
 	}
 
-	if err := json.Unmarshal(respData, &apiResp); err != nil {
-		return nil, fmt.Errorf("claude detect: unmarshal response: %w", err)
+	decoder := json.NewDecoder(limitReader)
+	if err := decoder.Decode(&apiResp); err != nil {
+		return nil, fmt.Errorf("claude detect: decode response: %w", err)
+	}
+
+	// Drain the remaining body to ensure connection reuse
+	if _, err := io.Copy(io.Discard, limitReader); err != nil {
+		return nil, fmt.Errorf("claude detect: drain response: %w", err)
+	}
+
+	// If the decoder + discard consumed maxResponseBytes+1 bytes, it exceeded the limit
+	if limitReader.(*io.LimitedReader).N == 0 {
+		return nil, errors.New("claude detect: response body too large")
 	}
 
 	// Extract the text block (skipping any thinking blocks)
