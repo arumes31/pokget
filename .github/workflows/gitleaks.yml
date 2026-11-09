@@ -2,6 +2,10 @@ name: Secret scanning
 on:
   push:
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'graphify-out/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,7 +24,15 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: true
+      - name: Restore gitleaks cache
+        id: cache-gitleaks
+        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
+        with:
+          path: ~/go/bin/gitleaks
+          key: gitleaks-v8.30.1
+      - name: Install gitleaks
+        if: steps.cache-gitleaks.outputs.cache-hit != 'true'
+        run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
       - name: Scan repository history with redacted output
-        run: |
-          go install github.com/zricethezav/gitleaks/v8@v8.30.1
-          gitleaks git --redact --no-banner .
+        run: gitleaks git --redact --no-banner .
