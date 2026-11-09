@@ -1,6 +1,12 @@
 name: Dependency review
 on:
   pull_request:
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/dependency-review.yml'
 permissions:
   contents: read
 concurrency:

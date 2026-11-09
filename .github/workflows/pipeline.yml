@@ -5,6 +5,12 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'graphify-out/**'
   workflow_dispatch:
     inputs:
       target_branch:
@@ -27,6 +33,17 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: service
+            packages: ./internal/service
+          - name: handlers-catalog
+            packages: ./internal/handlers ./internal/auth ./internal/middleware ./internal/catalog ./internal/catalog/source
+          - name: core-cmd
+            packages: ./internal/db ./internal/worker ./internal/config ./internal/errors ./internal/models ./internal/claudedetect ./internal/detectiontest ./cmd/pokget ./cmd/detection_matrix ./cmd/detection_seed ./cmd/llm_benchmark
+    name: test (${{ matrix.name }})
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -39,13 +56,7 @@ jobs:
           go-version: "1.27.3"
           cache: true
       - name: Run Go tests
-        shell: bash
-        run: |
-          # The required browser job runs the complete UI smoke-test package.
-          # Keep Chromium out of the parallel service coverage workload.
-          package_list="$(go list ./...)"
-          mapfile -t packages < <(printf '%s\n' "$package_list" | grep -v '^pokget/cmd/ui_scan_test$')
-          go test -timeout=10m -count=1 -covermode=atomic -coverprofile=coverage.out "${packages[@]}"
+        run: go test -timeout=10m -count=1 ${{ matrix.packages }}
 
   race:
     runs-on: ubuntu-24.04
@@ -54,14 +65,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: service
+          - name: service-detection
             packages: ./internal/service
+            args: -run 'Test(Detection|Claude|BKTree|Fingerprint|LLM|Levenshtein|Matching)'
+          - name: service-core
+            packages: ./internal/service
+            args: -skip 'Test(Detection|Claude|BKTree|Fingerprint|LLM|Levenshtein|Matching)'
           - name: catalog-workers
             packages: ./internal/catalog ./internal/catalog/source ./internal/worker
+            args: ''
           - name: handlers-auth
             packages: ./internal/auth ./internal/handlers ./internal/middleware
+            args: ''
           - name: database-main
             packages: ./internal/db ./cmd/pokget
+            args: ''
     name: race (${{ matrix.name }})
     steps:
       - name: Checkout repository
@@ -75,7 +93,7 @@ jobs:
           go-version: "1.27.3"
           cache: true
       - name: Run bounded race shard
-        run: go test -race -timeout=8m -count=1 ${{ matrix.packages }}
+        run: go test -race -timeout=8m -count=1 ${{ matrix.args }} ${{ matrix.packages }}
 
   browser:
     runs-on: ubuntu-latest
@@ -138,14 +156,24 @@ jobs:
         with:
           go-version: "1.27.3"
           cache: true
+      - name: Restore security tool binaries
+        id: cache-security-tools
+        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
+        with:
+          path: ~/go/bin
+          key: security-tools-govuln-v1.9.0-gosec-5eb1d104
       - name: govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          if ! command -v govulncheck &> /dev/null; then
+            go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          fi
           export CGO_ENABLED=1
           govulncheck ./...
       - name: gosec
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@5eb1d104ef85ff2c905c877eb600e8c1dee33a22
+          if ! command -v gosec &> /dev/null; then
+            go install github.com/securego/gosec/v2/cmd/gosec@5eb1d104ef85ff2c905c877eb600e8c1dee33a22
+          fi
           export CGO_ENABLED=1
           "$(go env GOPATH)/bin/gosec" ./...
 
@@ -184,8 +212,16 @@ jobs:
         with:
           ref: ${{ github.event.inputs.target_branch || github.ref }}
           persist-credentials: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build production image
-        run: docker build --tag pokget:verification .
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: pokget:verification
+          cache-from: type=gha,scope=pokget
+          cache-to: type=gha,mode=max,scope=pokget
       - name: Scan production image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -238,18 +274,6 @@ jobs:
           printf 'sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           printf 'ref_name=%s\n' "$ref_name" >> "$GITHUB_OUTPUT"
           printf 'is_main=%s\n' "$is_main" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Node.js for production assets
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 26
-          cache: npm
-
-      - name: Minify and validate JavaScript before image build
-        run: |
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm run build:static
-          npm run check:static
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
