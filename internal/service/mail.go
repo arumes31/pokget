@@ -180,6 +180,12 @@ func (s *MailService) SendConfirmationEmail(to, token string) error {
 }
 
 func (s *MailService) sendMail(to, subject, body string) error {
+	// Prevent Email Header/CRLF injection by sanitizing user inputs.
+	to = strings.ReplaceAll(to, "\r", "")
+	to = strings.ReplaceAll(to, "\n", "")
+	subject = strings.ReplaceAll(subject, "\r", "")
+	subject = strings.ReplaceAll(subject, "\n", "")
+
 	// Ensure we don't send credentials over unencrypted connections
 	// PlainAuth will refuse to send credentials unless the connection is TLS
 	// or the server supports STARTTLS (Go's smtp package handles this for port 587)
