@@ -96,7 +96,10 @@ func TestAddCardToPortfolioDerivesSyntheticIDForUnknownCardID(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{"card_id": {"attacker-chosen"}, "card_name": {"Mew"}, "set_name": {"Promo"}}
-	derived := generateSyntheticCardID(models.Card{Name: "Mew", Set: "Promo"})
+	derived := generateSyntheticCardID(models.Card{Name: "Mew\x00attacker-chosen", Set: "Promo"})
+	if derived == generateSyntheticCardID(models.Card{Name: "Mew\x00other-printing", Set: "Promo"}) {
+		t.Fatal("different missing catalog ids collapse into one synthetic card")
+	}
 
 	mock.ExpectQuery("SELECT EXISTS").WithArgs("attacker-chosen").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
@@ -110,5 +113,23 @@ func TestAddCardToPortfolioDerivesSyntheticIDForUnknownCardID(t *testing.T) {
 	h.AddCardToPortfolio(rr, authedRequest(t, http.MethodPost, "/portfolio/add", form.Encode()))
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("synthetic card was not persisted under its derived id: %v", err)
+	}
+}
+
+func TestAddCardToPortfolioRejectsOversizedFallbackCardID(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	long := strings.Repeat("i", maxSyntheticCardIDRunes+1)
+	mock.ExpectQuery("SELECT EXISTS").WithArgs(long).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	rr := httptest.NewRecorder()
+	form := url.Values{"card_id": {long}, "card_name": {"Mew"}}
+	h.AddCardToPortfolio(rr, authedRequest(t, http.MethodPost, "/portfolio/add", form.Encode()))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rr.Code)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

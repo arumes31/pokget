@@ -42,6 +42,9 @@ const (
 	maxSyntheticNumberRunes = 32
 	maxSyntheticLangRunes   = 16
 	maxSyntheticGameRunes   = 32
+	// maxSyntheticCardIDRunes bounds a submitted catalog id that only feeds the
+	// synthetic id hash (see AddCardToPortfolio).
+	maxSyntheticCardIDRunes = 128
 )
 
 // maxSyntheticCacheAppends caps how many synthetic cards persistSyntheticCard
@@ -59,6 +62,7 @@ func validateSyntheticCardFields(card models.Card) string {
 	}{
 		{"card_name", card.Name, maxSyntheticNameRunes},
 		{"set_name", card.Set, maxSyntheticSetRunes},
+		{"set_code", card.SetCode, maxSyntheticSetRunes},
 		{"collector_number", card.CollectorNumber, maxSyntheticNumberRunes},
 		{"language", card.Language, maxSyntheticLangRunes},
 		{"game", card.Game, maxSyntheticGameRunes},

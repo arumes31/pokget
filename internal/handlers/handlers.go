@@ -38,6 +38,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"pokget/internal/auth"
 	"pokget/internal/models"
@@ -671,8 +672,17 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 			}
 			// The id of a card this server mints is always derived from its
 			// fields; never let the client choose the primary key of a shared
-			// catalog row.
-			cardID = generateSyntheticCardID(c)
+			// catalog row. A submitted (missing) catalog id only feeds the hash,
+			// so two printings that share name/set/number stay distinct rows.
+			idCard := c
+			if submitted := r.FormValue("card_id"); submitted != "" {
+				if utf8.RuneCountInString(submitted) > maxSyntheticCardIDRunes {
+					http.Error(w, "card_id is too long", http.StatusBadRequest)
+					return
+				}
+				idCard.Name += "\x00" + submitted
+			}
+			cardID = generateSyntheticCardID(idCard)
 			c.ID = cardID
 			if h.DB != nil {
 				h.persistSyntheticCard(r.Context(), c)
@@ -1557,7 +1567,9 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 			}
 			detectedImage = best.ImageURL
 
-			if detectedID == "" && detectedCard != "" {
+			// An oversized detector result gets no synthetic id: it could not be
+			// persisted within the field limits, so it must not be offered.
+			if detectedID == "" && detectedCard != "" && validateSyntheticCardFields(*best) == "" {
 				synthID := generateSyntheticCardID(*best)
 				best.ID = synthID
 				detectedID = synthID
