@@ -27,10 +27,48 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"pokget/internal/catalog"
 	"pokget/internal/models"
 )
+
+// Limits for collector-supplied fields of a synthetic (uncataloged) card. The
+// row lands in the shared cards table and in the process-wide card cache every
+// scan reads, so its strings are bounded well below the 1 MB request cap.
+const (
+	maxSyntheticNameRunes   = 200
+	maxSyntheticSetRunes    = 200
+	maxSyntheticNumberRunes = 32
+	maxSyntheticLangRunes   = 16
+	maxSyntheticGameRunes   = 32
+)
+
+// maxSyntheticCacheAppends caps how many synthetic cards persistSyntheticCard
+// adds to the in-memory cache between two reloads. Past the cap the card is
+// still persisted (and picked up by the next reload); only the cache append is
+// skipped, so a collector cannot grow shared memory without bound.
+const maxSyntheticCacheAppends = 5000
+
+// validateSyntheticCardFields reports the first collector-supplied field of a
+// synthetic card that exceeds its limit, or "" when all fit.
+func validateSyntheticCardFields(card models.Card) string {
+	for _, f := range []struct {
+		name, value string
+		limit       int
+	}{
+		{"card_name", card.Name, maxSyntheticNameRunes},
+		{"set_name", card.Set, maxSyntheticSetRunes},
+		{"collector_number", card.CollectorNumber, maxSyntheticNumberRunes},
+		{"language", card.Language, maxSyntheticLangRunes},
+		{"game", card.Game, maxSyntheticGameRunes},
+	} {
+		if utf8.RuneCountInString(f.value) > f.limit {
+			return fmt.Sprintf("%s must be at most %d characters", f.name, f.limit)
+		}
+	}
+	return ""
+}
 
 // generateSyntheticCardID produces a deterministic canonical ID for an uncataloged card
 // recognized by multimodal detection.
@@ -106,10 +144,26 @@ func (h *Handler) persistSyntheticCard(ctx context.Context, card models.Card) {
 		return
 	}
 	active := true
-	h.CardsMu.Lock()
 	cardCopy := card
 	cardCopy.Set = setName
 	cardCopy.CatalogActive = &active
+	h.CardsMu.Lock()
+	defer h.CardsMu.Unlock()
+	// Append each synthetic id at most once per cache generation. The slice is
+	// append-only between reloads (executeScan reads its header without
+	// copying), so an existing entry is never rewritten in place; a renamed card
+	// shows its new name after the next reload.
+	if _, seen := h.syntheticCached[card.ID]; seen {
+		return
+	}
+	if len(h.syntheticCached) >= maxSyntheticCacheAppends {
+		slog.Warn("Synthetic card cache budget exhausted; card persisted but not cached until next reload",
+			"card_id", card.ID, "limit", maxSyntheticCacheAppends)
+		return
+	}
+	if h.syntheticCached == nil {
+		h.syntheticCached = make(map[string]struct{})
+	}
+	h.syntheticCached[card.ID] = struct{}{}
 	h.MockCards = append(h.MockCards, cardCopy)
-	h.CardsMu.Unlock()
 }

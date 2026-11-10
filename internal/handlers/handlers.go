@@ -67,7 +67,10 @@ type SetProgress struct {
 type Handler struct {
 	Templates      *template.Template
 	MockCards      []models.Card
-	CardsMu        sync.RWMutex // Protects concurrent access to MockCards
+	CardsMu        sync.RWMutex // Protects concurrent access to MockCards and syntheticCached
+	// syntheticCached holds the synthetic card ids appended to MockCards since
+	// the last reload (dedupe + budget, see persistSyntheticCard).
+	syntheticCached map[string]struct{}
 	setTotals      map[string]int
 	setTotalsMu    sync.RWMutex // Protects concurrent access to setTotals
 	Fingerprint    *service.FingerprintService
@@ -633,6 +636,10 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 				Language:        strings.TrimSpace(r.FormValue("language")),
 				Game:            strings.TrimSpace(r.FormValue("game")),
 			}
+			if msg := validateSyntheticCardFields(c); msg != "" {
+				http.Error(w, msg, http.StatusBadRequest)
+				return
+			}
 			cardID = generateSyntheticCardID(c)
 			c.ID = cardID
 			if h.DB != nil {
@@ -652,13 +659,21 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 		cardName := strings.TrimSpace(r.FormValue("card_name"))
 		if cardName != "" {
 			c := models.Card{
-				ID:              cardID,
 				Name:            cardName,
-				Set:             r.FormValue("set_name"),
-				CollectorNumber: r.FormValue("collector_number"),
-				Language:        r.FormValue("language"),
-				Game:            r.FormValue("game"),
+				Set:             strings.TrimSpace(r.FormValue("set_name")),
+				CollectorNumber: strings.TrimSpace(r.FormValue("collector_number")),
+				Language:        strings.TrimSpace(r.FormValue("language")),
+				Game:            strings.TrimSpace(r.FormValue("game")),
 			}
+			if msg := validateSyntheticCardFields(c); msg != "" {
+				http.Error(w, msg, http.StatusBadRequest)
+				return
+			}
+			// The id of a card this server mints is always derived from its
+			// fields; never let the client choose the primary key of a shared
+			// catalog row.
+			cardID = generateSyntheticCardID(c)
+			c.ID = cardID
 			if h.DB != nil {
 				h.persistSyntheticCard(r.Context(), c)
 			}
@@ -1316,6 +1331,7 @@ func (h *Handler) ReloadCardsOnly() (int, error) {
 
 	h.CardsMu.Lock()
 	h.MockCards = allCards
+	h.syntheticCached = nil
 	h.CardsMu.Unlock()
 	// The per-set totals are derived from the card cache, so drop them with it.
 	h.setTotalsMu.Lock()
