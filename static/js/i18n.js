@@ -42,6 +42,7 @@
     "binder_id is required": "Eine Ordner-ID ist erforderlich",
     "Card not found": "Karte nicht gefunden",
     "card_id is required": "Eine Karten-ID ist erforderlich",
+    "card_id is too long": "Die Karten-ID ist zu lang",
     "card_id, error_type and description are required": "Karten-ID, Fehlerart und Beschreibung sind erforderlich",
     "Current password is incorrect": "Das aktuelle Passwort ist falsch",
     "Detection failed": "Erkennung fehlgeschlagen",
