@@ -18,9 +18,9 @@ func TestMailHeaderInjectionPoC(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(captured)
-	if strings.Contains(s, "Bcc: victim@example.net\r\n") && strings.Contains(s, "X-Injected: yes") {
-		t.Logf("INJECTION CONFIRMED:\n%s", s)
+	if !strings.Contains(s, "\r\nBcc:") && !strings.Contains(s, "\r\nX-Injected:") {
+		t.Logf("mitigation confirmed:\n%s", s)
 	} else {
-		t.Fatalf("not injectable:\n%s", s)
+		t.Fatalf("INJECTION VULNERABLE:\n%s", s)
 	}
 }
