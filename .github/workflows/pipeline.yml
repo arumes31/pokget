@@ -3,8 +3,18 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
   workflow_dispatch:
     inputs:
       target_branch:
@@ -16,8 +26,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.inputs.target_branch || github.ref }}
-  cancel-in-progress: true
+  # ref_name so a dispatch for main and a push to main share one group and publish in order
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.target_branch || github.ref_name }}
+  # Only supersede PR runs; never cancel a main/dispatch run that publishes the image.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   REGISTRY: ghcr.io
@@ -31,7 +43,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -67,7 +79,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -84,7 +96,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -110,7 +122,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -131,7 +143,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -156,7 +168,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -182,7 +194,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Build production image
         run: docker build --tag pokget:verification .
@@ -211,7 +223,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.inputs.target_branch || github.ref }}
+          ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
 
       - name: Resolve checked-out source
@@ -219,6 +231,10 @@ jobs:
         shell: bash
         run: |
           ref_name="$(git branch --show-current)"
+          # push runs check out the exact tested commit (detached), not the moving branch tip
+          if [[ -z "$ref_name" && "$GITHUB_EVENT_NAME" == push ]]; then
+            ref_name="$GITHUB_REF_NAME"
+          fi
           if [[ -z "$ref_name" ]]; then
             echo "::error::target_branch must resolve to a branch"
             exit 1
