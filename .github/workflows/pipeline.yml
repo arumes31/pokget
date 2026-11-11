@@ -26,7 +26,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.target_branch || github.ref }}
+  # ref_name so a dispatch for main and a push to main share one group and publish in order
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.target_branch || github.ref_name }}
   # Only supersede PR runs; never cancel a main/dispatch run that publishes the image.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
