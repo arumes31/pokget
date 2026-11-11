@@ -21,7 +21,7 @@
     "tailwindcss": "4.3.3"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.3.3",
+    "@tailwindcss/cli": "^4.3.5",
     "acorn": "^8.19.0",
     "parse5": "^8.0.1",
     "terser": "5.51.2"
