@@ -23,6 +23,7 @@ package claudedetect
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -213,6 +214,69 @@ func TestDetectValidation(t *testing.T) {
 	_, err = client.Detect(ctx, []byte{1, 2, 3}, "", "")
 	if err != context.Canceled {
 		t.Errorf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestDetectImagesRejectsTrailingData(t *testing.T) {
+	// A valid API object followed by a second JSON value must be rejected rather
+	// than silently accepted.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		body := `{"model":"m","content":[{"type":"text","text":"{\"name\":\"X\",\"confidence\":0.9}"}],"usage":{}}` +
+			"\n{\"unexpected\":true}"
+		_, _ = io.WriteString(w, body)
+	}))
+	defer server.Close()
+
+	client, _ := New(Config{APIKey: "k", BaseURL: server.URL})
+	_, err := client.Detect(context.Background(), []byte{0xFF, 0xD8, 0xFF}, "", "")
+	if err == nil || !strings.Contains(err.Error(), "trailing") {
+		t.Fatalf("expected a trailing-data error, got %v", err)
+	}
+}
+
+func TestDetectImagesRejectsOversizeResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"model":"m","content":[{"type":"text","text":"`)
+		_, _ = io.WriteString(w, strings.Repeat("a", maxResponseBytes+10))
+		_, _ = io.WriteString(w, `"}],"usage":{}}`)
+	}))
+	defer server.Close()
+
+	client, _ := New(Config{APIKey: "k", BaseURL: server.URL})
+	_, err := client.Detect(context.Background(), []byte{0xFF, 0xD8, 0xFF}, "", "")
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("expected a 'response body too large' error, got %v", err)
+	}
+}
+
+func TestDetectImagesTypedStatusErrorAndPayloadClassification(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"error":"request too large"}`, http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	client, _ := New(Config{APIKey: "k", BaseURL: server.URL})
+	_, err := client.Detect(context.Background(), []byte{0xFF, 0xD8, 0xFF}, "", "")
+
+	var statusErr *APIStatusError
+	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected *APIStatusError with 400, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "API status 400") {
+		t.Errorf("error text should keep the 'API status 400' form, got %q", err.Error())
+	}
+	if !IsPayloadRejection(err) {
+		t.Error("a 400 must be classified as a payload rejection")
+	}
+	// Transient failures must NOT be payload rejections.
+	if IsPayloadRejection(&APIStatusError{StatusCode: http.StatusTooManyRequests}) {
+		t.Error("429 must not be a payload rejection")
+	}
+	if IsPayloadRejection(&APIStatusError{StatusCode: http.StatusInternalServerError}) {
+		t.Error("500 must not be a payload rejection")
+	}
+	if IsPayloadRejection(context.DeadlineExceeded) {
+		t.Error("a timeout must not be a payload rejection")
 	}
 }
 

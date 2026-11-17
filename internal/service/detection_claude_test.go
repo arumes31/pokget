@@ -1322,3 +1322,58 @@ func TestClaudeDetection_ParallelFinishFamilyMatches(t *testing.T) {
 		t.Errorf("the printed P suffix and the parallel family identify the printing")
 	}
 }
+
+func TestClaudeUniqueNamePromotionGatedByConfidence(t *testing.T) {
+	// A single candidate with a unique name, matched on name only (no collector
+	// number or set read from the card).
+	cards := []models.Card{
+		{ID: "c1", Name: "Zxqwertycard", CollectorNumber: "018", SetCode: "AAA", Language: "en", Game: "pokemon"},
+	}
+
+	// Confident read (>= 0.70): the unique name is promoted and auto-confirmed.
+	hi := matchCardsWithClaude(&claudedetect.DetectedCardInfo{Name: "Zxqwertycard", Confidence: 0.85}, cards)
+	if len(hi) == 0 {
+		t.Fatal("expected a match for a confident unique name")
+	}
+	if hi[0].NeedsReview {
+		t.Errorf("confident unique name should be auto-confirmed, got NeedsReview=true")
+	}
+	if hi[0].Confidence != 85.0 {
+		t.Errorf("expected promoted confidence 85, got %v", hi[0].Confidence)
+	}
+
+	// Low-confidence read (< 0.70) of the same unique name must stay in review.
+	lo := matchCardsWithClaude(&claudedetect.DetectedCardInfo{Name: "Zxqwertycard", Confidence: 0.60}, cards)
+	if len(lo) == 0 {
+		t.Fatal("expected a match for a low-confidence unique name")
+	}
+	if !lo[0].NeedsReview {
+		t.Error("low-confidence unique name must stay in review, not be auto-confirmed")
+	}
+
+	// Omitted/defaulted confidence (treated as unsure) must also stay in review.
+	def := matchCardsWithClaude(&claudedetect.DetectedCardInfo{Name: "Zxqwertycard"}, cards)
+	if len(def) == 0 {
+		t.Fatal("expected a match for a defaulted-confidence unique name")
+	}
+	if !def[0].NeedsReview {
+		t.Error("defaulted-confidence unique name must stay in review")
+	}
+}
+
+func TestClaudeUniqueNamePromotionIgnoresInactiveRows(t *testing.T) {
+	inactive := false
+	// A retired (inactive) catalog row shares the name, but must not count as a
+	// competing candidate: the active row's unique name is still promoted.
+	cards := []models.Card{
+		{ID: "active", Name: "Yybbccname", CollectorNumber: "018", SetCode: "AAA", Language: "en", Game: "pokemon"},
+		{ID: "retired", Name: "Yybbccname", CollectorNumber: "999", SetCode: "ZZZ", Language: "en", Game: "pokemon", CatalogActive: &inactive},
+	}
+	matches := matchCardsWithClaude(&claudedetect.DetectedCardInfo{Name: "Yybbccname", Confidence: 0.9}, cards)
+	if len(matches) == 0 {
+		t.Fatal("expected a match")
+	}
+	if matches[0].NeedsReview {
+		t.Error("an inactive duplicate-name row must not block the unique-name promotion")
+	}
+}
