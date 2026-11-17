@@ -287,11 +287,108 @@ func TestRegisterRejectsShortPassword(t *testing.T) {
 	}
 }
 
+func TestRegister_RejectsInvalidAndInjectionEmails(t *testing.T) {
+	cases := []struct{ name, email string }{
+		{"embedded CRLF", "attacker@example.com\r\nBcc: victim@example.net"},
+		{"embedded LF", "attacker@example.com\nX-Injected: yes"},
+		{"display name form", "Victim <victim@example.com>"},
+		{"address list", "a@example.com, b@example.com"},
+		{"not an address", "not-an-email"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h, mock, cleanup := setupTestHandler(t)
+			defer cleanup()
+
+			form := url.Values{
+				"email":            {tc.email},
+				"password":         {"long-enough-pass"},
+				"confirm_password": {"long-enough-pass"},
+			}
+			req := httptest.NewRequest(http.MethodPost, "/auth/register", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rr := httptest.NewRecorder()
+			h.Mailer = &service.MockMailer{}
+
+			h.Register(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 for %q", rr.Code, tc.email)
+			}
+			// Rejection happens before any DB lookup, hashing, or mailer call.
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("no DB query should run for an invalid email: %v", err)
+			}
+		})
+	}
+}
+
+func TestRegister_CanonicalizesEmailToLowercase(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	form := url.Values{
+		"email":            {" New@Example.COM "},
+		"password":         {"long-enough-pass"},
+		"confirm_password": {"long-enough-pass"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	// The query and insert must see the trimmed, lowercased form.
+	mock.ExpectQuery("SELECT is_verified FROM users WHERE email = \\$1").
+		WithArgs("new@example.com").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec("INSERT INTO users").
+		WithArgs("new@example.com", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO audit_logs").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	h.Mailer = &service.MockMailer{}
+
+	h.Register(rr, req)
+
+	// A 201 proves the SELECT and INSERT both matched their WithArgs expectation
+	// of the canonical "new@example.com": a mismatched arg would have errored the
+	// query and returned 500. The audit-log insert is asynchronous, so (as in
+	// TestRegister_Success_NewUser) its expectation is not verified here to avoid
+	// a race with the background writer.
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (canonicalized email must match the query args)", rr.Code)
+	}
+}
+
+func TestResendVerification_RejectsInjectionEmailUniformly(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	form := url.Values{"email": {"attacker@example.com\r\nBcc: victim@example.net"}}
+	req := httptest.NewRequest(http.MethodPost, "/auth/resend", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	h.ResendVerification(rr, req)
+
+	// Same empty 200 as an unknown address, and no DB query or mail.
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want uniform 200", rr.Code)
+	}
+	if rr.Body.Len() != 0 {
+		t.Fatalf("expected empty body, got %q", rr.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("no DB query should run for an invalid email: %v", err)
+	}
+}
+
 func TestLoginLocksAccountAfterRepeatedFailures(t *testing.T) {
 	h, mock, cleanup := setupTestHandler(t)
 	defer cleanup()
 	const email = "lockout@example.com"
-	t.Cleanup(func() { auth.ResetLoginFailures(email) })
+	// httptest.NewRequest sets RemoteAddr to 192.0.2.1:1234, so the lockout keys
+	// on that IP; clear the pair afterwards so other tests are not affected.
+	t.Cleanup(func() { auth.ResetLoginFailures(email, "192.0.2.1") })
 
 	hash := fastPasswordHash(t, "correct-password")
 	login := func() int {

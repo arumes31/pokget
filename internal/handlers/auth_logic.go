@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/mail"
 	"pokget/internal/auth"
 	"pokget/internal/models"
 	"pokget/internal/service"
@@ -41,6 +42,35 @@ import (
 
 const passwordTooShortMessage = "Password must be at least 12 characters"
 
+// canonicalEmail validates a submitted email address and returns its canonical
+// stored/queried form. It accepts only a single, bare address: display-name
+// forms ("Name <a@b.com>"), address lists, and anything carrying stray CR/LF
+// are rejected, which closes the SMTP header-injection vector at the handler.
+// The address is lowercased so storage and lookup stay consistent (the same
+// canonicalization loginFailureKey applies), and Register/ResendVerification/
+// Login all key off this form. ok is false when the input is not a valid single
+// bare address.
+func canonicalEmail(raw string) (email string, ok bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", false
+	}
+	// Reject control characters (CR, LF, NUL, ...) outright: ParseAddress would
+	// otherwise tolerate some of them inside quoted local parts.
+	if strings.ContainsAny(trimmed, "\r\n\x00") {
+		return "", false
+	}
+	addr, err := mail.ParseAddress(trimmed)
+	if err != nil {
+		return "", false
+	}
+	// Reject display-name forms: the parsed address must equal the bare input.
+	if addr.Name != "" || addr.Address != trimmed {
+		return "", false
+	}
+	return strings.ToLower(addr.Address), true
+}
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Register", "method", r.Method, "path", r.URL.Path)
 	email := r.FormValue("email")
@@ -49,6 +79,16 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	if email == "" || password == "" || confirmPassword == "" {
 		http.Error(w, "Email and password are required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate and canonicalize the email before any DB lookup or hashing, so a
+	// malformed/injection address never reaches the query, the mailer, or the
+	// timing-equalized path. Format rejection is independent of whether the
+	// account exists, so it preserves the anti-enumeration behavior below.
+	email, ok := canonicalEmail(email)
+	if !ok {
+		http.Error(w, "Invalid email address", http.StatusBadRequest)
 		return
 	}
 
@@ -141,6 +181,16 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A malformed or injection address can never match a stored account. Return
+	// the same empty 200 as an unknown address so the endpoint stays uniform and
+	// does not leak which emails are registered, and so a stray CR/LF never
+	// reaches the mailer.
+	email, ok := canonicalEmail(email)
+	if !ok {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	// Unknown, already verified, and recently mailed accounts all get the same
 	// empty 200 so the endpoint does not reveal which emails are registered.
 	var lastSent sql.NullTime
@@ -189,7 +239,11 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Login", "method", r.Method, "path", r.URL.Path)
-	email := r.FormValue("email")
+	// Normalize to the same canonical (trimmed, lowercased) form used at
+	// registration so a mixed-case or padded address still matches the stored
+	// row. No extra rejection path here: a malformed address simply fails to
+	// match and falls through to the uniform "invalid credentials" response.
+	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 	password := r.FormValue("password")
 
 	// ⚡ Bolt Optimization: Early return for empty credentials to avoid unnecessary DB query.
@@ -197,7 +251,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
-	if !auth.LoginAllowed(email) {
+	clientIP := auth.ClientIP(r)
+	if !auth.LoginAllowed(email, clientIP) {
 		http.Error(w, "Too many failed login attempts. Try again later.", http.StatusTooManyRequests)
 		return
 	}
@@ -213,7 +268,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			// Spend the same bcrypt work as a real check so timing does not
 			// reveal whether the email is registered.
 			auth.EqualizePasswordCheck(password)
-			auth.RecordLoginFailure(email)
+			auth.RecordLoginFailure(email, clientIP)
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		}
@@ -223,11 +278,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !auth.CheckPasswordHash(password, u.PasswordHash) {
-		auth.RecordLoginFailure(email)
+		auth.RecordLoginFailure(email, clientIP)
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
-	auth.ResetLoginFailures(email)
+	auth.ResetLoginFailures(email, clientIP)
 
 	if !u.IsVerified {
 		http.Error(w, "Please verify your email before logging in", http.StatusForbidden)

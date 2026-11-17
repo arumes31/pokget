@@ -68,9 +68,11 @@ func buildRouter(cfg *config.Config, database *sql.DB, h *handlers.Handler) *mux
 	// Public Web Routes
 	web.Handle("/", auth.Middleware(database)(http.HandlerFunc(h.Index))).Methods("GET", "HEAD")
 	web.HandleFunc("/auth", h.Auth).Methods("GET", "HEAD")
-	web.HandleFunc("/auth/register", h.Register).Methods("POST")
+	// Register and resend each send an email, so they carry a stricter per-IP
+	// limit on top of the global one to curb registration/verification spam.
+	web.Handle("/auth/register", auth.AuthRateLimitMiddleware(http.HandlerFunc(h.Register))).Methods("POST")
 	web.HandleFunc("/auth/login", h.Login).Methods("POST")
-	web.HandleFunc("/auth/resend", h.ResendVerification).Methods("POST")
+	web.Handle("/auth/resend", auth.AuthRateLimitMiddleware(http.HandlerFunc(h.ResendVerification))).Methods("POST")
 	web.HandleFunc("/auth/confirm", h.ConfirmEmail).Methods("GET")
 	web.HandleFunc("/auth/confirm", h.ProcessConfirmEmail).Methods("POST")
 	web.HandleFunc("/auth/logout", h.Logout).Methods("POST")

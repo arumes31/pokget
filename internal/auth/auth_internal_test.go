@@ -424,6 +424,15 @@ func TestEvictStaleLimiters(t *testing.T) {
 	scanLimiters["203.0.113.4"].lastSeen = now
 	scanMu.Unlock()
 
+	// Seed a stale and a fresh login-failure counter so eviction is exercised on
+	// the login limiter too, not only the request/scan limiters.
+	resetLoginLimiterForTest()
+	t.Cleanup(resetLoginLimiterForTest)
+	defaultLoginLimiter.now = func() time.Time { return stale }
+	RecordLoginFailure("stale@example.com", "203.0.113.5")
+	defaultLoginLimiter.now = func() time.Time { return now }
+	RecordLoginFailure("fresh@example.com", "203.0.113.6")
+
 	evictStaleLimiters(now)
 
 	mu.Lock()
@@ -443,6 +452,15 @@ func TestEvictStaleLimiters(t *testing.T) {
 		t.Error("Fresh scan limiter should have been kept")
 	}
 	scanMu.Unlock()
+
+	defaultLoginLimiter.mu.Lock()
+	if _, exists := defaultLoginLimiter.pair.entries[pairKey("203.0.113.5", "stale@example.com")]; exists {
+		t.Error("Stale login-failure entry should have been evicted")
+	}
+	if _, exists := defaultLoginLimiter.pair.entries[pairKey("203.0.113.6", "fresh@example.com")]; !exists {
+		t.Error("Fresh login-failure entry should have been kept")
+	}
+	defaultLoginLimiter.mu.Unlock()
 }
 
 func TestRateLimitMiddlewareStaticBypass(t *testing.T) {

@@ -180,6 +180,14 @@ func (s *MailService) SendConfirmationEmail(to, token string) error {
 }
 
 func (s *MailService) sendMail(to, subject, body string) error {
+	// Defense in depth against SMTP header / CRLF injection: strip CR and LF
+	// from the recipient and subject before they are placed in the message
+	// headers AND before `to` is used as the envelope recipient below. The
+	// handler layer already validates the submitted email, but a stray newline
+	// here must never be able to inject extra headers or SMTP commands.
+	to = stripCRLF(to)
+	subject = stripCRLF(subject)
+
 	// Ensure we don't send credentials over unencrypted connections
 	// PlainAuth will refuse to send credentials unless the connection is TLS
 	// or the server supports STARTTLS (Go's smtp package handles this for port 587)
@@ -201,6 +209,13 @@ func (s *MailService) sendMail(to, subject, body string) error {
 
 	addr := fmt.Sprintf("%s:%s", s.Host, s.Port)
 	return s.sendMailFunc(addr, auth, s.From, []string{to}, msg)
+}
+
+// stripCRLF removes carriage return and line feed characters so a value can be
+// safely embedded in SMTP headers or used as an envelope recipient without
+// allowing header or command injection.
+func stripCRLF(value string) string {
+	return strings.NewReplacer("\r", "", "\n", "").Replace(value)
 }
 
 const confirmEmailTemplate = `
