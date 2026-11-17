@@ -11,6 +11,7 @@ import (
 	"pokget/internal/models"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
@@ -488,24 +489,37 @@ func TestTemplatesVersionEveryStaticAsset(t *testing.T) {
 	}
 }
 
+var (
+	cachedAppTemplates     *template.Template
+	cachedAppTemplatesOnce sync.Once
+	cachedAppTemplatesErr  error
+)
+
 func parseApplicationTemplates(t *testing.T) *template.Template {
 	t.Helper()
 
-	templates, err := template.New("").Funcs(template.FuncMap{
-		"div": func(a, b float64) float64 {
-			if b == 0 {
-				return 0
-			}
-			return a / b
-		},
-		"mul": func(a, b float64) float64 {
-			return a * b
-		},
-	}).ParseGlob(filepath.Join("..", "..", "templates", "*.html"))
-	if err != nil {
-		t.Fatalf("parse application templates: %v", err)
+	cachedAppTemplatesOnce.Do(func() {
+		cachedAppTemplates, cachedAppTemplatesErr = template.New("").Funcs(template.FuncMap{
+			"div": func(a, b float64) float64 {
+				if b == 0 {
+					return 0
+				}
+				return a / b
+			},
+			"mul": func(a, b float64) float64 {
+				return a * b
+			},
+		}).ParseGlob(filepath.Join("..", "..", "templates", "*.html"))
+	})
+	if cachedAppTemplatesErr != nil {
+		t.Fatalf("parse application templates: %v", cachedAppTemplatesErr)
 	}
-	return templates
+
+	clone, err := cachedAppTemplates.Clone()
+	if err != nil {
+		t.Fatalf("clone application templates: %v", err)
+	}
+	return clone
 }
 
 func executeApplicationTemplate(t *testing.T, templates *template.Template, name string) string {
