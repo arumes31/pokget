@@ -177,6 +177,75 @@ func TestExportPortfolioCSV(t *testing.T) {
 		}
 	})
 
+	t.Run("NeutralizesFormulaInjection", func(t *testing.T) {
+		h, mock, cleanup := setupTestHandler(t)
+		defer cleanup()
+
+		req := httptest.NewRequest(http.MethodGet, "/portfolio/export", nil)
+		req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey{}, "user-123"))
+		rr := httptest.NewRecorder()
+
+		mock.ExpectQuery("SELECT currency FROM users").WithArgs("user-123").
+			WillReturnRows(sqlmock.NewRows([]string{"currency"}).AddRow("USD"))
+
+		addedTime := time.Date(2026, 10, 30, 1, 0, 0, 0, time.UTC)
+		rows := sqlmock.NewRows([]string{
+			"name", "game", "set_name", "set_code", "collector_number",
+			"condition", "grade", "grading_company",
+			"custom_price", "price_usd", "price_eur", "notes",
+			"binder_name", "is_public", "added_at",
+		}).AddRow(
+			"=HYPERLINK(\"http://evil\")", "pokemon", "151", "sv3pt5", "199",
+			"NM", "-5+3", "@SUM(A1:A9)",
+			sql.NullFloat64{Float64: 250.00, Valid: true},
+			decimal.NewFromFloat(180.50), decimal.NewFromFloat(165.25), "+1234567",
+			"=cmd|' /C calc'!A0", true, addedTime,
+		)
+
+		mock.ExpectQuery(`SELECT c.name, COALESCE\(c.game.*FROM portfolio p.*WHERE p.user_id = \$1`).
+			WithArgs("user-123").
+			WillReturnRows(rows)
+
+		h.ExportPortfolioCSV(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+
+		reader := csv.NewReader(rr.Body)
+		records, err := reader.ReadAll()
+		if err != nil {
+			t.Fatalf("failed to read CSV: %v", err)
+		}
+		if len(records) != 2 {
+			t.Fatalf("expected header + 1 row, got %d", len(records))
+		}
+		row := records[1]
+		// Every formula-leading user/catalog text cell is prefixed with a quote.
+		if row[0] != "'=HYPERLINK(\"http://evil\")" {
+			t.Errorf("name not neutralized: %q", row[0])
+		}
+		if row[6] != "'-5+3" {
+			t.Errorf("grade not neutralized: %q", row[6])
+		}
+		if row[7] != "'@SUM(A1:A9)" {
+			t.Errorf("grading company not neutralized: %q", row[7])
+		}
+		if row[11] != "'+1234567" {
+			t.Errorf("notes not neutralized: %q", row[11])
+		}
+		if row[12] != "'=cmd|' /C calc'!A0" {
+			t.Errorf("binder not neutralized: %q", row[12])
+		}
+		// The numeric market/custom-price columns must NOT be altered.
+		if row[8] != "250.00" {
+			t.Errorf("custom price column must not be altered: %q", row[8])
+		}
+		if row[9] != "180.50" {
+			t.Errorf("market price column must not be altered: %q", row[9])
+		}
+	})
+
 	t.Run("DatabaseError", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
