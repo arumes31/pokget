@@ -66,6 +66,7 @@
     "Invalid card_id: card not found": "Ungültige Karten-ID: Karte nicht gefunden",
     "Invalid currency": "Ungültige Währung",
     "Invalid custom price": "Ungültiger eigener Preis",
+    "Invalid email address": "Ungültige E-Mail-Adresse",
     "Invalid email or password": "Ungültige E-Mail-Adresse oder ungültiges Passwort",
     "Invalid or expired token. Your account might already be verified.": "Ungültiger oder abgelaufener Bestätigungscode. Dein Konto ist möglicherweise bereits bestätigt.",
     "Invalid target price": "Ungültiger Zielpreis",
