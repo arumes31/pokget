@@ -416,6 +416,78 @@ func TestLoginLocksAccountAfterRepeatedFailures(t *testing.T) {
 	}
 }
 
+func TestLogin_CanonicalizesEmail(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+	t.Cleanup(func() { auth.ResetLoginFailures("test@example.com", "192.0.2.1") })
+
+	form := url.Values{"email": {" Test@Example.COM "}, "password": {"pass"}}
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	passHash := fastPasswordHash(t, "pass")
+	// The lookup must receive the trimmed, lowercased email.
+	mock.ExpectQuery("SELECT id, email, password_hash, is_verified").
+		WithArgs("test@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("user-123", "test@example.com", passHash, true, 0))
+
+	h.Login(rr, req)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (canonicalized email must match the query args)", rr.Code)
+	}
+}
+
+// Finding 2(a) end to end: an attacker who locks the (IP, account) pair from
+// one IP must not lock the victim out from a different IP.
+func TestLoginLockoutIsScopedToClientIP(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+	const email = "cross-ip@example.com"
+	t.Cleanup(func() {
+		auth.ResetLoginFailures(email, "192.0.2.1")
+		auth.ResetLoginFailures(email, "198.51.100.23")
+	})
+	passHash := fastPasswordHash(t, "correct-password")
+
+	fail := func() int {
+		mock.ExpectQuery("SELECT id, email").WillReturnRows(
+			sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+				AddRow("u1", email, passHash, true, 0))
+		form := url.Values{"email": {email}, "password": {"wrong-password"}}
+		req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+		h.Login(rr, req) // default RemoteAddr 192.0.2.1 — the attacker IP
+		return rr.Code
+	}
+	for range 10 {
+		if code := fail(); code != http.StatusUnauthorized {
+			t.Fatalf("attacker failure status = %d, want 401", code)
+		}
+	}
+	// The attacker's IP is now locked for this account.
+	if code := fail(); code != http.StatusTooManyRequests {
+		t.Fatalf("attacker IP should be locked, got %d, want 429", code)
+	}
+
+	// The victim, from their OWN IP and with the correct password, is NOT locked.
+	mock.ExpectQuery("SELECT id, email").WillReturnRows(
+		sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("u1", email, passHash, true, 0))
+	form := url.Values{"email": {email}, "password": {"correct-password"}}
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "198.51.100.23:4000"
+	rr := httptest.NewRecorder()
+	h.Login(rr, req)
+	if rr.Code == http.StatusTooManyRequests {
+		t.Fatalf("victim locked out from their own IP (got 429); lockout is not IP-scoped")
+	}
+}
+
 func TestLogoutRevokesSessionServerSide(t *testing.T) {
 	h, mock, cleanup := setupTestHandler(t)
 	defer cleanup()

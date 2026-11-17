@@ -9,6 +9,8 @@ services:
       CATALOG_IMAGES_ENABLED: "false"
       RATE_LIMIT: "100"
       BURST_LIMIT: "200"
+      AUTH_RATE_LIMIT: "100"
+      AUTH_BURST_LIMIT: "200"
       SCAN_RATE_LIMIT: "100"
       SCAN_BURST_LIMIT: "200"
     volumes:

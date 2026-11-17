@@ -327,6 +327,45 @@ func TestScanRateLimitMiddleware(t *testing.T) {
 	}
 }
 
+func TestAuthRateLimitMiddleware(t *testing.T) {
+	// Fix the limits so the test does not depend on ambient env or defaults.
+	t.Setenv("AUTH_RATE_LIMIT", "0.001")
+	t.Setenv("AUTH_BURST_LIMIT", "3")
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	middleware := AuthRateLimitMiddleware(next)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", nil)
+	req.RemoteAddr = "198.51.100.201:5555"
+
+	for i := 0; i < 3; i++ { // the configured burst
+		rr := httptest.NewRecorder()
+		middleware.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("request %d: got %d, want 200", i+1, rr.Code)
+		}
+	}
+	rr := httptest.NewRecorder()
+	middleware.ServeHTTP(rr, req)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("burst exceeded: got %d, want 429", rr.Code)
+	}
+	if rr.Header().Get("Retry-After") == "" {
+		t.Error("expected a Retry-After header on the 429")
+	}
+
+	// A different IP has its own independent budget.
+	other := httptest.NewRequest(http.MethodPost, "/auth/register", nil)
+	other.RemoteAddr = "198.51.100.202:5555"
+	otherRR := httptest.NewRecorder()
+	middleware.ServeHTTP(otherRR, other)
+	if otherRR.Code != http.StatusOK {
+		t.Fatalf("a second IP must be unaffected, got %d", otherRR.Code)
+	}
+}
+
 func TestGetLimiterEnvConfig(t *testing.T) {
 	t.Run("ValidEnv", func(t *testing.T) {
 		t.Setenv("RATE_LIMIT", "0.001")
@@ -413,6 +452,8 @@ func TestEvictStaleLimiters(t *testing.T) {
 	getLimiter("203.0.113.2")
 	getScanLimiter("203.0.113.3")
 	getScanLimiter("203.0.113.4")
+	getAuthLimiter("203.0.113.7")
+	getAuthLimiter("203.0.113.8")
 
 	mu.Lock()
 	limiters["203.0.113.1"].lastSeen = stale
@@ -423,6 +464,11 @@ func TestEvictStaleLimiters(t *testing.T) {
 	scanLimiters["203.0.113.3"].lastSeen = stale
 	scanLimiters["203.0.113.4"].lastSeen = now
 	scanMu.Unlock()
+
+	authMu.Lock()
+	authLimiters["203.0.113.7"].lastSeen = stale
+	authLimiters["203.0.113.8"].lastSeen = now
+	authMu.Unlock()
 
 	// Seed a stale and a fresh login-failure counter so eviction is exercised on
 	// the login limiter too, not only the request/scan limiters.
@@ -452,6 +498,15 @@ func TestEvictStaleLimiters(t *testing.T) {
 		t.Error("Fresh scan limiter should have been kept")
 	}
 	scanMu.Unlock()
+
+	authMu.Lock()
+	if _, exists := authLimiters["203.0.113.7"]; exists {
+		t.Error("Stale auth limiter should have been evicted")
+	}
+	if _, exists := authLimiters["203.0.113.8"]; !exists {
+		t.Error("Fresh auth limiter should have been kept")
+	}
+	authMu.Unlock()
 
 	defaultLoginLimiter.mu.Lock()
 	if _, exists := defaultLoginLimiter.pair.entries[pairKey("203.0.113.5", "stale@example.com")]; exists {
