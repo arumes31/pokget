@@ -58,8 +58,7 @@ func fastPasswordHash(t testing.TB, password string) string {
 	return hash
 }
 
-func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
-	tmpl := template.Must(template.New("test").Parse(`
+var mockTestTemplates = template.Must(template.New("test").Parse(`
 		{{define "index.html"}}index{{end}}
 		{{define "dashboard.html"}}dashboard{{end}}
 		{{define "centering_tool.html"}}centering{{end}}
@@ -78,6 +77,12 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 		{{define "settings"}}settings_fragment{{end}}
 		{{define "binder_detail.html"}}binder_detail{{end}}
 	`))
+
+func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
+	tmpl, err := mockTestTemplates.Clone()
+	if err != nil {
+		t.Fatalf("clone mock templates: %v", err)
+	}
 
 	dbMock, mock, err := sqlmock.New()
 	if err != nil {
