@@ -29,8 +29,8 @@ import (
 // A third party must not be able to permanently lock a victim out of their own
 // IP by submitting bad logins for the victim's email from attacker-chosen IPs.
 func TestVictimNotLockableByThirdPartyFromDifferentIPs(t *testing.T) {
-	resetLoginLimiterForTest()
-	t.Cleanup(resetLoginLimiterForTest)
+	ResetLoginLimiter()
+	t.Cleanup(ResetLoginLimiter)
 
 	const victim = "victim@example.com"
 
@@ -56,8 +56,8 @@ func TestVictimNotLockableByThirdPartyFromDifferentIPs(t *testing.T) {
 // by the per-IP aggregate lock (credential stuffing), without affecting other
 // IPs.
 func TestSprayingIPLockedByAggregate(t *testing.T) {
-	resetLoginLimiterForTest()
-	t.Cleanup(resetLoginLimiterForTest)
+	ResetLoginLimiter()
+	t.Cleanup(ResetLoginLimiter)
 
 	const attackerIP = "198.51.100.9"
 	for i := 0; i < maxIPLoginFailures; i++ {
@@ -79,8 +79,8 @@ func TestSprayingIPLockedByAggregate(t *testing.T) {
 // aggregate, so an attacker who owns one valid account cannot wipe their spray
 // counter.
 func TestResetKeepsPerIPAggregate(t *testing.T) {
-	resetLoginLimiterForTest()
-	t.Cleanup(resetLoginLimiterForTest)
+	ResetLoginLimiter()
+	t.Cleanup(ResetLoginLimiter)
 
 	const ip = "198.51.100.42"
 	for i := 0; i < maxIPLoginFailures; i++ {
@@ -95,12 +95,51 @@ func TestResetKeepsPerIPAggregate(t *testing.T) {
 	}
 }
 
-// Under map saturation the limiter must keep tracking new keys (fail closed) by
-// evicting the entry closest to expiry, rather than silently dropping new keys
-// (the old fail-open bug an attacker could exploit by spraying distinct keys).
-func TestFailureTrackerFailsClosedUnderSaturation(t *testing.T) {
+// An in-window lock must survive saturation: a flood of distinct keys must never
+// evict an active lock (that would let a still-locked attacker back in).
+func TestSaturationNeverReleasesAnActiveLock(t *testing.T) {
 	now := time.Now()
 	tracker := newFailureTracker(3, 2, time.Minute) // limit 3, capacity 2
+
+	for range 3 { // lock "victim"
+		tracker.record("victim", now)
+	}
+	if !tracker.locked("victim", now) {
+		t.Fatal("victim should be locked")
+	}
+
+	// Flood far more distinct one-failure keys than the capacity.
+	for i := 0; i < 50; i++ {
+		tracker.record(fmt.Sprintf("flood-%d", i), now)
+	}
+	if !tracker.locked("victim", now) {
+		t.Fatal("an active lock must survive a flood of distinct keys")
+	}
+}
+
+// After a garbage flood of unlocked keys, a genuine attacker key must still be
+// able to reach a lock: unlocked garbage is evicted to make room, so tracking
+// does not silently turn off (fail closed).
+func TestSaturationStillLocksNewAttackerAfterGarbageFlood(t *testing.T) {
+	now := time.Now()
+	tracker := newFailureTracker(3, 3, time.Minute)
+
+	for i := 0; i < 3; i++ { // fill capacity with one-failure garbage
+		tracker.record(fmt.Sprintf("garbage-%d", i), now)
+	}
+	for range 3 { // a new attacker hammers one key
+		tracker.record("attacker", now)
+	}
+	if !tracker.locked("attacker", now) {
+		t.Fatal("a new attacker key must still reach a lock despite a garbage flood")
+	}
+}
+
+// When every entry is an in-window lock the new key is dropped rather than
+// evicting a lock; the map stays bounded and the locks remain.
+func TestSaturationDropsNewKeyWhenAllLocked(t *testing.T) {
+	now := time.Now()
+	tracker := newFailureTracker(3, 2, time.Minute)
 
 	for range 3 {
 		tracker.record("a", now)
@@ -109,16 +148,11 @@ func TestFailureTrackerFailsClosedUnderSaturation(t *testing.T) {
 		tracker.record("b", now)
 	}
 	if !tracker.locked("a", now) || !tracker.locked("b", now) {
-		t.Fatal("keys that reached the limit should be locked")
+		t.Fatal("both keys should be locked")
 	}
-
-	// A third distinct key arrives while the map is full. The oldest entry is
-	// evicted, but the new key is still tracked and still reaches the limit.
-	for range 3 {
-		tracker.record("c", now)
-	}
-	if !tracker.locked("c", now) {
-		t.Fatal("new key under saturation must still be tracked and lockable (fail closed)")
+	tracker.record("c", now) // all entries locked -> dropped
+	if _, ok := tracker.entries["c"]; ok {
+		t.Error("a new key must not evict an active lock; it is dropped instead")
 	}
 	if len(tracker.entries) != 2 {
 		t.Fatalf("capacity exceeded: %d entries, want 2", len(tracker.entries))

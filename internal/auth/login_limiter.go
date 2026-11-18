@@ -37,23 +37,28 @@ import (
 //     failures for the same account from the same IP within loginFailureWindow,
 //     that pair is blocked for the rest of the window. Because the lock is keyed
 //     on the attacker's own IP, a third party can NEVER lock a victim out of
-//     their own IP: the victim's (their-IP, account) pair is independent. This
-//     removes the account-enumeration/DoS that a pure per-email lock allowed.
+//     their own IP: the victim's (their-IP, account) pair is independent. One
+//     account is therefore limited to maxLoginFailures guesses per source IP per
+//     window, not maxLoginFailures in total.
 //
 //  2. Per IP (aggregate across all accounts) — a secondary, higher hard lock
 //     that stops credential stuffing (one IP spraying one bad password across
 //     many accounts), which the per-pair lock alone would miss. Its key space is
-//     bounded by the number of source IPs an attacker actually controls.
+//     bounded by the number of source IPs an attacker actually controls, so it is
+//     the fail-closed backstop when the per-pair map is under pressure.
 //
-// The per-account dimension therefore acts only as a softer signal: it tightens
-// the per-pair budget but never denies a login on its own. A successful login
-// clears only the (IP, account) pair, never the per-IP aggregate, so an attacker
-// who happens to own one valid account cannot wipe their own spray counter.
+// A successful login clears only the (IP, account) pair, never the per-IP
+// aggregate, so an attacker who happens to own one valid account cannot wipe
+// their own spray counter.
 //
-// Saturation fails CLOSED: each counter map is bounded by maxTrackedLogins and,
-// when full, evicts the entry closest to expiry (FIFO by window start) instead
-// of silently refusing to track new keys. Tracking never turns itself off, so an
-// attacker cannot bypass the limiter by flooding it with distinct keys.
+// Saturation fails CLOSED. Each counter map is bounded by maxTrackedLogins. Only
+// entries that are NOT currently locked are eligible for capacity eviction, in
+// FIFO order of their window start; an in-window lock is never evicted to make
+// room, so flooding the map with distinct keys cannot release an existing lock.
+// When every entry is an in-window lock the new key is simply not tracked at the
+// pair level — the per-IP aggregate (dimension 2) still counts it and locks the
+// attacker's IP. Locked entries are reclaimed by the periodic sweep once their
+// window ends.
 //
 // Deployment note: when the app runs behind a reverse proxy but TRUST_PROXY is
 // false, every request appears to come from the proxy's single IP, which
@@ -74,9 +79,8 @@ const (
 	maxIPLoginFailures = 100
 
 	// maxTrackedLogins bounds each counter map so memory stays bounded under a
-	// spray of distinct keys. On saturation the entry closest to expiry is
-	// evicted, so the limiter keeps limiting (fails closed) rather than dropping
-	// new keys untracked (which would fail open).
+	// spray of distinct keys. On saturation the oldest UNLOCKED entry is evicted;
+	// active locks are preserved and the limiter keeps limiting (fails closed).
 	maxTrackedLogins = 100000
 )
 
@@ -84,16 +88,18 @@ const (
 type loginFailureEntry struct {
 	failures    int
 	windowStart time.Time
-	elem        *list.Element // position in the owning tracker's FIFO order
+	// elem is this entry's position in the owning tracker's unlocked FIFO, or nil
+	// while the entry is locked (locked entries are not eligible for eviction).
+	elem *list.Element
 }
 
-// failureTracker is a bounded, window-based failure counter. Entries are held in
-// FIFO order of their window start (front = oldest = closest to expiry), so both
-// capacity eviction and stale eviction are O(1) per removed entry and never scan
-// the whole map under the lock.
+// failureTracker is a bounded, window-based failure counter. Unlocked entries
+// are held in a FIFO ordered by window start (front = oldest = closest to
+// expiry) and are the only ones eligible for capacity eviction; locked entries
+// live only in the map and are reclaimed by evictExpired.
 type failureTracker struct {
 	entries  map[string]*loginFailureEntry
-	order    *list.List // each element's Value is the key string
+	unlocked *list.List // values are key strings, oldest window start at the front
 	limit    int
 	capacity int
 	window   time.Duration
@@ -102,7 +108,7 @@ type failureTracker struct {
 func newFailureTracker(limit, capacity int, window time.Duration) *failureTracker {
 	return &failureTracker{
 		entries:  make(map[string]*loginFailureEntry),
-		order:    list.New(),
+		unlocked: list.New(),
 		limit:    limit,
 		capacity: capacity,
 		window:   window,
@@ -122,52 +128,68 @@ func (t *failureTracker) locked(key string, now time.Time) bool {
 func (t *failureTracker) record(key string, now time.Time) {
 	if entry, ok := t.entries[key]; ok {
 		if now.Sub(entry.windowStart) > t.window {
-			// Window expired: start a fresh one and move to the back (newest),
-			// keeping the list ordered by window start.
+			// Window expired: start a fresh one. A previously locked entry becomes
+			// eligible for eviction again (re-enters the FIFO at the back).
 			entry.failures = 1
 			entry.windowStart = now
-			t.order.MoveToBack(entry.elem)
-		} else {
-			entry.failures++
+			if entry.elem != nil {
+				t.unlocked.MoveToBack(entry.elem)
+			} else {
+				entry.elem = t.unlocked.PushBack(key)
+			}
+			return
+		}
+		entry.failures++
+		if entry.failures >= t.limit && entry.elem != nil {
+			// Just crossed into a lock: remove it from the eviction FIFO so a flood
+			// of new keys cannot evict an active lock.
+			t.unlocked.Remove(entry.elem)
+			entry.elem = nil
 		}
 		return
 	}
-	// New key. Evict the entry closest to expiry if at capacity so tracking
-	// cannot silently stop under saturation.
+
+	// New key. Keep the map bounded without ever evicting an active lock.
 	if t.capacity > 0 && len(t.entries) >= t.capacity {
-		if front := t.order.Front(); front != nil {
-			t.order.Remove(front)
-			delete(t.entries, front.Value.(string))
+		t.evictExpired(now)
+		if len(t.entries) >= t.capacity {
+			front := t.unlocked.Front()
+			if front == nil {
+				// Every tracked key is an in-window lock. Do not evict one — that
+				// would let a still-locked attacker back in. Drop this key; the
+				// per-IP aggregate tracker remains the fail-closed backstop.
+				return
+			}
+			oldKey := front.Value.(string)
+			t.unlocked.Remove(front)
+			delete(t.entries, oldKey)
 		}
 	}
 	entry := &loginFailureEntry{failures: 1, windowStart: now}
-	entry.elem = t.order.PushBack(key)
+	entry.elem = t.unlocked.PushBack(key)
 	t.entries[key] = entry
 }
 
 // reset removes any counter for key.
 func (t *failureTracker) reset(key string) {
 	if entry, ok := t.entries[key]; ok {
-		t.order.Remove(entry.elem)
+		if entry.elem != nil {
+			t.unlocked.Remove(entry.elem)
+		}
 		delete(t.entries, key)
 	}
 }
 
-// evictExpired removes every entry whose window has ended. Expired entries
-// cluster at the front because the list is ordered by window start.
+// evictExpired removes every entry whose window has ended. It scans the whole
+// map because locked entries are not held in the FIFO; it is run by the periodic
+// sweep, not on the hot path.
 func (t *failureTracker) evictExpired(now time.Time) {
-	for {
-		front := t.order.Front()
-		if front == nil {
-			return
-		}
-		entry := t.entries[front.Value.(string)]
-		if entry != nil && now.Sub(entry.windowStart) <= t.window {
-			return // front is the oldest; nothing after it can be expired
-		}
-		t.order.Remove(front)
-		if entry != nil {
-			delete(t.entries, front.Value.(string))
+	for key, entry := range t.entries {
+		if now.Sub(entry.windowStart) > t.window {
+			if entry.elem != nil {
+				t.unlocked.Remove(entry.elem)
+			}
+			delete(t.entries, key)
 		}
 	}
 }
@@ -239,6 +261,15 @@ func (l *loginLimiter) evictExpired(now time.Time) {
 	l.ip.evictExpired(now)
 }
 
+// clear drops all tracked state in place. The defaultLoginLimiter value itself
+// is kept stable because the background sweeper reads it without synchronization.
+func (l *loginLimiter) clear() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.pair = newFailureTracker(maxLoginFailures, maxTrackedLogins, loginFailureWindow)
+	l.ip = newFailureTracker(maxIPLoginFailures, maxTrackedLogins, loginFailureWindow)
+}
+
 // LoginAllowed reports whether a login attempt for the given account from the
 // given client IP is currently permitted by the lockout policy.
 func LoginAllowed(email, ip string) bool {
@@ -258,11 +289,12 @@ func ResetLoginFailures(email, ip string) {
 	defaultLoginLimiter.reset(email, ip)
 }
 
-// resetLoginLimiterForTest replaces the process-global login limiter with a
-// fresh one. Tests in this package share that global state; they call this to
-// isolate from each other.
-func resetLoginLimiterForTest() {
-	defaultLoginLimiter = newLoginLimiter()
+// ResetLoginLimiter drops all login-failure state. It is used by tests (which
+// share process-global limiter state) and is safe as an operational reset; it
+// clears the trackers in place rather than replacing the limiter the background
+// sweeper references.
+func ResetLoginLimiter() {
+	defaultLoginLimiter.clear()
 }
 
 // ClientIP returns the lockout/rate-limit identity for a request: the peer IP

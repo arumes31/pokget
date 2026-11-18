@@ -399,6 +399,15 @@ func formatClaudeText(info *claudedetect.DetectedCardInfo) string {
 }
 
 // matchCardsWithClaude scores and ranks cards in the catalog based on Claude's extraction.
+// unresolvedVariantConflict reports whether a scored match carries a finish
+// conflict that must keep it in review. It mirrors the scoring guard: a conflict
+// only matters when the catalog row records a specific finish ("normal" rows are
+// catch-alls that many sources use even for holo/parallel cards, so a conflict
+// against them is suppressed).
+func unresolvedVariantConflict(variantConflict bool, cardVariant string) bool {
+	return variantConflict && normalizeMatchText(cardVariant) != "normal"
+}
+
 func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Card) []CardMatch {
 	if info == nil {
 		return nil
@@ -724,7 +733,12 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 					related++
 				}
 			}
-			if related == 1 {
+			// Unique name identifies the card, but an unresolved finish conflict
+			// (the detector read a specific finish the catalog row does not record,
+			// and the row is not a catch-all "normal") still needs review: the name
+			// is decided, the printing is not. Mirror the scoring guard at the
+			// variantConflict branch above.
+			if related == 1 && !unresolvedVariantConflict(top.variantConflict, top.card.Variant) {
 				top.confidence = 85.0
 				top.needsReview = false
 			}
@@ -836,7 +850,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 					relatedInSet++
 				}
 			}
-			if relatedInSet == 1 {
+			if relatedInSet == 1 && !unresolvedVariantConflict(top.variantConflict, top.card.Variant) {
 				top.needsReview = false
 			}
 		}

@@ -332,6 +332,17 @@ func TestAuthRateLimitMiddleware(t *testing.T) {
 	t.Setenv("AUTH_RATE_LIMIT", "0.001")
 	t.Setenv("AUTH_BURST_LIMIT", "3")
 
+	// authLimiters is process-global; clear this test's IP entries before and
+	// after so repeated runs (go test -count=N) start from a fresh bucket.
+	clearAuthTestIPs := func() {
+		authMu.Lock()
+		delete(authLimiters, "198.51.100.201")
+		delete(authLimiters, "198.51.100.202")
+		authMu.Unlock()
+	}
+	clearAuthTestIPs()
+	t.Cleanup(clearAuthTestIPs)
+
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -472,8 +483,8 @@ func TestEvictStaleLimiters(t *testing.T) {
 
 	// Seed a stale and a fresh login-failure counter so eviction is exercised on
 	// the login limiter too, not only the request/scan limiters.
-	resetLoginLimiterForTest()
-	t.Cleanup(resetLoginLimiterForTest)
+	ResetLoginLimiter()
+	t.Cleanup(ResetLoginLimiter)
 	defaultLoginLimiter.now = func() time.Time { return stale }
 	RecordLoginFailure("stale@example.com", "203.0.113.5")
 	defaultLoginLimiter.now = func() time.Time { return now }

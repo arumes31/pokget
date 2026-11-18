@@ -111,7 +111,7 @@ With the GHCR stack, add `-f docker-compose.ghcr.yml` to every command and use
 | `WRITE_TIMEOUT` | 120 | General HTTP write timeout; long primary scan completions have separate cancellation behavior |
 | `TRUST_PROXY`, `TRUST_CLOUDFLARE` | false, false | Enable only for an intentionally trusted proxy topology |
 | `TRUSTED_PROXIES` | loopback + private ranges | Comma-separated CIDRs/IPs whose `X-Forwarded-For`/`X-Real-IP` headers are honoured when `TRUST_PROXY=true`; the right-most untrusted `X-Forwarded-For` hop is used. Configure the proxy to emit a single consolidated `X-Forwarded-For` header |
-| `RATE_LIMIT`, `BURST_LIMIT` | 20, 50 | Global per-IP request limiter (tokens/second, burst) for every non-static route |
+| `RATE_LIMIT`, `BURST_LIMIT` | 1, 5 | Global per-IP request limiter (tokens/second, burst) for every non-static route. 1, 5 is the native-process default when unset; the Compose files and `example.env` set 20, 50 |
 | `AUTH_RATE_LIMIT`, `AUTH_BURST_LIMIT` | 0.1, 5 | Stricter per-IP limiter for `/auth/register` and `/auth/resend` (each sends an email), applied on top of the global limiter to curb registration/verification spam |
 | `CATALOG_LANGUAGE` | en,de,ja,fr,zh-cn,zh-tw,ko | Requested import languages; upstream coverage still varies by game |
 | `CATALOG_WEISS_MAX_PAGES` | 0 | Weiss source pagination cap; zero means no cap |

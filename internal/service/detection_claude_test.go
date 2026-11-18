@@ -1377,3 +1377,38 @@ func TestClaudeUniqueNamePromotionIgnoresInactiveRows(t *testing.T) {
 		t.Error("an inactive duplicate-name row must not block the unique-name promotion")
 	}
 }
+
+func TestClaudeUniqueNamePromotionPreservesVariantConflict(t *testing.T) {
+	inactive := false
+	// One active row with a specific non-normal finish, plus an inactive twin that
+	// shares the name. The detected finish conflicts with the active row's finish.
+	cards := []models.Card{
+		{ID: "active", Name: "Qzvariantcard", Variant: "Etched", CollectorNumber: "018", SetCode: "AAA", Language: "en", Game: "pokemon"},
+		{ID: "twin", Name: "Qzvariantcard", Variant: "Normal", CollectorNumber: "777", SetCode: "ZZZ", Language: "en", Game: "pokemon", CatalogActive: &inactive},
+	}
+	m := matchCardsWithClaude(&claudedetect.DetectedCardInfo{Name: "Qzvariantcard", Variant: "Reverse Holo", Confidence: 0.9}, cards)
+	if len(m) == 0 {
+		t.Fatal("expected a match")
+	}
+	if m[0].Card.ID != "active" {
+		t.Fatalf("expected the active row, got %q", m[0].Card.ID)
+	}
+	if !m[0].NeedsReview {
+		t.Error("an unresolved finish conflict must keep the unique-name match in review")
+	}
+}
+
+func TestClaudeUniqueNamePromotionAllowedOnNormalRow(t *testing.T) {
+	// A specific read against a catch-all "Normal" catalog row is not a real finish
+	// conflict, so the unique-name promotion still applies.
+	cards := []models.Card{
+		{ID: "active", Name: "Qznormalcard", Variant: "Normal", CollectorNumber: "018", SetCode: "AAA", Language: "en", Game: "pokemon"},
+	}
+	m := matchCardsWithClaude(&claudedetect.DetectedCardInfo{Name: "Qznormalcard", Variant: "Reverse Holo", Confidence: 0.9}, cards)
+	if len(m) == 0 {
+		t.Fatal("expected a match")
+	}
+	if m[0].NeedsReview {
+		t.Error("a specific read on a Normal catalog row must still be promoted")
+	}
+}

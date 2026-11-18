@@ -165,8 +165,8 @@ func TestLimiterKeyGroupsIPv6ByPrefix(t *testing.T) {
 }
 
 func TestLoginFailureLimiter(t *testing.T) {
-	t.Cleanup(resetLoginLimiterForTest)
-	resetLoginLimiterForTest()
+	t.Cleanup(ResetLoginLimiter)
+	ResetLoginLimiter()
 
 	const email = "Limited@Example.com"
 	const ip = "203.0.113.50"

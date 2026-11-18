@@ -170,11 +170,13 @@ func TestResendVerification_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	lastSent := time.Now().Add(-10 * time.Minute)
-	rows := sqlmock.NewRows([]string{"last_email_sent_at", "is_verified"}).
-		AddRow(lastSent, false)
-	mock.ExpectQuery("SELECT last_email_sent_at").WillReturnRows(rows)
+	rows := sqlmock.NewRows([]string{"id", "last_email_sent_at", "is_verified"}).
+		AddRow("user-123", lastSent, false)
+	mock.ExpectQuery("SELECT id, last_email_sent_at").
+		WithArgs("test@example.com", "test@example.com").
+		WillReturnRows(rows)
 	mock.ExpectExec("UPDATE users SET verification_token").
-		WithArgs(sqlmock.AnyArg(), "test@example.com").
+		WithArgs(sqlmock.AnyArg(), "user-123").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	h.Mailer = &service.MockMailer{}
@@ -244,9 +246,9 @@ func TestResendVerification_RateLimited(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	lastSent := time.Now().Add(-1 * time.Minute)
-	rows := sqlmock.NewRows([]string{"last_email_sent_at", "is_verified"}).
-		AddRow(lastSent, false)
-	mock.ExpectQuery("SELECT last_email_sent_at").WillReturnRows(rows)
+	rows := sqlmock.NewRows([]string{"id", "last_email_sent_at", "is_verified"}).
+		AddRow("user-123", lastSent, false)
+	mock.ExpectQuery("SELECT id, last_email_sent_at").WillReturnRows(rows)
 
 	h.ResendVerification(rr, req)
 
@@ -427,9 +429,10 @@ func TestLogin_CanonicalizesEmail(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	passHash := fastPasswordHash(t, "pass")
-	// The lookup must receive the trimmed, lowercased email.
+	// The lookup receives the raw submitted value and its canonical (trimmed,
+	// lowercased) form; the canonical form matches the stored row.
 	mock.ExpectQuery("SELECT id, email, password_hash, is_verified").
-		WithArgs("test@example.com").
+		WithArgs(" Test@Example.COM ", "test@example.com").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
 			AddRow("user-123", "test@example.com", passHash, true, 0))
 
