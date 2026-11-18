@@ -159,6 +159,39 @@ func TestSaturationDropsNewKeyWhenAllLocked(t *testing.T) {
 	}
 }
 
+// When BOTH trackers are saturated with active locks, a new IP cannot be tracked
+// and is permitted at this layer (the global request limiter and network-layer
+// protection are the backstop). Active locks are still preserved. This documents
+// the deliberate trade-off against a self-inflicted lockout DoS.
+func TestLoginLimiterFullSaturationFallsBackToGlobalLimiter(t *testing.T) {
+	now := time.Now()
+	l := &loginLimiter{
+		pair: newFailureTracker(2, 1, time.Minute), // single slot, locks at 2
+		ip:   newFailureTracker(2, 1, time.Minute),
+		now:  func() time.Time { return now },
+	}
+
+	// Saturate the single slot of each tracker with an active lock from IP "A".
+	l.record("victim@example.com", "A")
+	l.record("victim@example.com", "A")
+	if l.allowed("victim@example.com", "A") {
+		t.Fatal("A/victim should be locked")
+	}
+
+	// A brand-new IP "B" cannot be tracked (both maps full of active locks), so it
+	// is permitted here; even repeated failures do not lock it while saturated.
+	for range 5 {
+		l.record("other@example.com", "B")
+	}
+	if !l.allowed("other@example.com", "B") {
+		t.Error("under full saturation a new IP stays untracked; lockout relies on the global limiter")
+	}
+	// The existing lock must still hold.
+	if l.allowed("victim@example.com", "A") {
+		t.Error("full saturation must not release the existing lock")
+	}
+}
+
 // evictExpired must drop entries whose window has ended and keep current ones.
 func TestFailureTrackerEvictsExpired(t *testing.T) {
 	start := time.Now()

@@ -252,7 +252,9 @@ func TestResendVerification_SendsToStoredAddress(t *testing.T) {
 		return nil
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/resend", strings.NewReader("email=user@example.com"))
+	// Submit the mixed-case spelling so the exact-submitted lookup argument
+	// matches the stored mixed-case row (the case-twin lookup path).
+	req := httptest.NewRequest(http.MethodPost, "/resend", strings.NewReader("email=User@Example.com"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
 
@@ -260,7 +262,7 @@ func TestResendVerification_SendsToStoredAddress(t *testing.T) {
 	// The matched account is stored with mixed case; the token must go to that
 	// stored address, not the lowercased lookup key.
 	mock.ExpectQuery("SELECT id, email, last_email_sent_at").
-		WithArgs("user@example.com", "user@example.com").
+		WithArgs("User@Example.com", "user@example.com").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "last_email_sent_at", "is_verified"}).
 			AddRow("u1", "User@Example.com", lastSent, false))
 	mock.ExpectExec("UPDATE users SET verification_token").
