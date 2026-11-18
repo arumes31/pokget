@@ -197,13 +197,14 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 	// mailed accounts all get the same empty 200 so the endpoint does not reveal
 	// which emails are registered.
 	var userID string
+	var storedEmail string
 	var lastSent sql.NullTime
 	var isVerified bool
 	err := h.DB.QueryRowContext(
 		r.Context(),
-		"SELECT id, last_email_sent_at, is_verified FROM users WHERE email = $1 OR email = $2 ORDER BY (email = $1) DESC LIMIT 1",
+		"SELECT id, email, last_email_sent_at, is_verified FROM users WHERE email = $1 OR email = $2 ORDER BY (email = $1) DESC LIMIT 1",
 		submittedEmail, email,
-	).Scan(&userID, &lastSent, &isVerified)
+	).Scan(&userID, &storedEmail, &lastSent, &isVerified)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			w.WriteHeader(http.StatusOK)
@@ -240,7 +241,7 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 		if err := svc.SendConfirmationEmail(to, tok); err != nil {
 			slog.Error("Failed to resend confirmation email", "error", err)
 		}
-	}(mailSvc, email, token)
+	}(mailSvc, storedEmail, token) // deliver to the account's stored address, not a case-folded form
 
 	w.WriteHeader(http.StatusOK)
 }

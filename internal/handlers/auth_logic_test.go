@@ -170,9 +170,9 @@ func TestResendVerification_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	lastSent := time.Now().Add(-10 * time.Minute)
-	rows := sqlmock.NewRows([]string{"id", "last_email_sent_at", "is_verified"}).
-		AddRow("user-123", lastSent, false)
-	mock.ExpectQuery("SELECT id, last_email_sent_at").
+	rows := sqlmock.NewRows([]string{"id", "email", "last_email_sent_at", "is_verified"}).
+		AddRow("user-123", "test@example.com", lastSent, false)
+	mock.ExpectQuery("SELECT id, email, last_email_sent_at").
 		WithArgs("test@example.com", "test@example.com").
 		WillReturnRows(rows)
 	mock.ExpectExec("UPDATE users SET verification_token").
@@ -237,6 +237,51 @@ func TestConfirmEmail_GET(t *testing.T) {
 	}
 }
 
+// mailerFunc adapts a function to the service.Mailer interface for tests.
+type mailerFunc func(to, token string) error
+
+func (f mailerFunc) SendConfirmationEmail(to, token string) error { return f(to, token) }
+
+func TestResendVerification_SendsToStoredAddress(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	deliveredTo := make(chan string, 1)
+	h.Mailer = mailerFunc(func(to, _ string) error {
+		deliveredTo <- to
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/resend", strings.NewReader("email=user@example.com"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	lastSent := time.Now().Add(-10 * time.Minute)
+	// The matched account is stored with mixed case; the token must go to that
+	// stored address, not the lowercased lookup key.
+	mock.ExpectQuery("SELECT id, email, last_email_sent_at").
+		WithArgs("user@example.com", "user@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "last_email_sent_at", "is_verified"}).
+			AddRow("u1", "User@Example.com", lastSent, false))
+	mock.ExpectExec("UPDATE users SET verification_token").
+		WithArgs(sqlmock.AnyArg(), "u1").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	h.ResendVerification(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	select {
+	case to := <-deliveredTo:
+		if to != "User@Example.com" {
+			t.Errorf("token delivered to %q, want the stored address User@Example.com", to)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("confirmation email was not sent")
+	}
+}
+
 func TestResendVerification_RateLimited(t *testing.T) {
 	h, mock, cleanup := setupTestHandler(t)
 	defer cleanup()
@@ -246,9 +291,9 @@ func TestResendVerification_RateLimited(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	lastSent := time.Now().Add(-1 * time.Minute)
-	rows := sqlmock.NewRows([]string{"id", "last_email_sent_at", "is_verified"}).
-		AddRow("user-123", lastSent, false)
-	mock.ExpectQuery("SELECT id, last_email_sent_at").WillReturnRows(rows)
+	rows := sqlmock.NewRows([]string{"id", "email", "last_email_sent_at", "is_verified"}).
+		AddRow("user-123", "test@example.com", lastSent, false)
+	mock.ExpectQuery("SELECT id, email, last_email_sent_at").WillReturnRows(rows)
 
 	h.ResendVerification(rr, req)
 

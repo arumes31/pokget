@@ -58,7 +58,13 @@ import (
 // When every entry is an in-window lock the new key is simply not tracked at the
 // pair level — the per-IP aggregate (dimension 2) still counts it and locks the
 // attacker's IP. Locked entries are reclaimed by the periodic sweep once their
-// window ends.
+// window ends. In the extreme where the per-IP tracker is itself fully saturated
+// with active locks (on the order of maxTrackedLogins distinct attacking IPs),
+// a new IP cannot be tracked either; at that scale the global per-IP request
+// limiter (RateLimitMiddleware, a separate bounded token bucket) throttles every
+// IP to a few requests per second and network-layer protection is the terminal
+// backstop. Denying all logins on saturation is deliberately NOT done — that
+// would let an attacker lock every user out just by flooding the map.
 //
 // Deployment note: when the app runs behind a reverse proxy but TRUST_PROXY is
 // false, every request appears to come from the proxy's single IP, which

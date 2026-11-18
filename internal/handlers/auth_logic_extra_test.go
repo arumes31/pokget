@@ -73,9 +73,9 @@ func TestResendVerification_Branches(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		rows := sqlmock.NewRows([]string{"id", "last_email_sent_at", "is_verified"}).
-			AddRow("user-123", nil, true)
-		mock.ExpectQuery("SELECT id, last_email_sent_at").WithArgs("test@example.com", "test@example.com").WillReturnRows(rows)
+		rows := sqlmock.NewRows([]string{"id", "email", "last_email_sent_at", "is_verified"}).
+			AddRow("user-123", "test@example.com", nil, true)
+		mock.ExpectQuery("SELECT id, email, last_email_sent_at").WithArgs("test@example.com", "test@example.com").WillReturnRows(rows)
 
 		h.ResendVerification(rr, req)
 
