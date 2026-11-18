@@ -55,6 +55,37 @@ var (
 	ErrAPIKeyRequired  = errors.New("claude detect: API key is required")
 )
 
+// APIStatusError is returned when the Claude API responds with a non-2xx
+// status. It carries the status code so callers can distinguish a payload the
+// API rejected (which a smaller request could fix) from a transient failure
+// (timeout, 429, 5xx) that must not be retried as if the payload were at fault.
+type APIStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *APIStatusError) Error() string {
+	return fmt.Sprintf("claude detect: API status %d: %s", e.StatusCode, e.Body)
+}
+
+// IsPayloadRejection reports whether err means the request itself was rejected
+// for being too large or otherwise malformed at the size level — the only case
+// where retrying with a smaller (single full-card) payload is worthwhile. A
+// timeout, cancellation, rate limit (429) or server error (5xx) returns false,
+// so the caller does not pay for a second Claude call that would fail the same
+// way or bill twice.
+func IsPayloadRejection(err error) bool {
+	if errors.Is(err, ErrImageTooLarge) || errors.Is(err, ErrTooManyImages) {
+		return true
+	}
+	var statusErr *APIStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.StatusCode == http.StatusBadRequest ||
+			statusErr.StatusCode == http.StatusRequestEntityTooLarge
+	}
+	return false
+}
+
 type Config struct {
 	APIKey        string
 	Model         string
@@ -251,9 +282,12 @@ func (c *Client) DetectImages(ctx context.Context, images [][]byte, gameHint, la
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("claude detect: API status %d: %s", resp.StatusCode, string(errBody))
+		return nil, &APIStatusError{StatusCode: resp.StatusCode, Body: string(errBody)}
 	}
 
+	// Bounded read: cap the response so a hostile or broken upstream cannot make
+	// the process allocate without limit, and keep the explicit "too large"
+	// signal when the body would exceed the cap.
 	respData, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("claude detect: read response: %w", err)
@@ -278,8 +312,16 @@ func (c *Client) DetectImages(ctx context.Context, images [][]byte, gameHint, la
 		} `json:"usage"`
 	}
 
-	if err := json.Unmarshal(respData, &apiResp); err != nil {
+	// Decode exactly one JSON value and reject any trailing bytes after it, so a
+	// response with a valid object followed by garbage is treated as invalid
+	// rather than silently accepted (mirrors the stricter pattern in llm.go).
+	decoder := json.NewDecoder(bytes.NewReader(respData))
+	if err := decoder.Decode(&apiResp); err != nil {
 		return nil, fmt.Errorf("claude detect: unmarshal response: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return nil, errors.New("claude detect: trailing response data")
 	}
 
 	// Extract the text block (skipping any thinking blocks)

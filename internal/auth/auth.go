@@ -292,23 +292,12 @@ var (
 	scanLimiters = make(map[string]*rateLimiterEntry)
 	scanMu       sync.Mutex
 
-	loginFailures   = make(map[string]*loginFailureEntry)
-	loginFailuresMu sync.Mutex
-)
-
-// loginFailureEntry counts failed logins for one account within a window.
-type loginFailureEntry struct {
-	failures    int
-	windowStart time.Time
-}
-
-const (
-	// maxLoginFailures failed attempts per account lock it for the rest of
-	// loginFailureWindow, independent of the client IP.
-	maxLoginFailures   = 10
-	loginFailureWindow = 15 * time.Minute
-	// maxTrackedLogins bounds memory when attackers spray random emails.
-	maxTrackedLogins = 100000
+	// authLimiters is a stricter, independent per-IP limiter for the account
+	// creation / verification-email endpoints (/auth/register, /auth/resend),
+	// which each trigger an outbound email and are the main spam amplification
+	// surface. It sits on top of the global RateLimitMiddleware.
+	authLimiters = make(map[string]*rateLimiterEntry)
+	authMu       sync.Mutex
 )
 
 // cleanupInterval controls how often the background cleanup runs.
@@ -351,54 +340,16 @@ func evictStaleLimiters(now time.Time) {
 	}
 	scanMu.Unlock()
 
-	loginFailuresMu.Lock()
-	for email, entry := range loginFailures {
-		if now.Sub(entry.windowStart) > loginFailureWindow {
-			delete(loginFailures, email)
+	authMu.Lock()
+	for ip, entry := range authLimiters {
+		if now.Sub(entry.lastSeen) > maxLimiterAge {
+			delete(authLimiters, ip)
 		}
 	}
-	loginFailuresMu.Unlock()
-}
+	authMu.Unlock()
 
-func loginFailureKey(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
-}
-
-// LoginAllowed reports whether the account is below the failed login limit.
-func LoginAllowed(email string) bool {
-	loginFailuresMu.Lock()
-	defer loginFailuresMu.Unlock()
-
-	entry, exists := loginFailures[loginFailureKey(email)]
-	if !exists || time.Since(entry.windowStart) > loginFailureWindow {
-		return true
-	}
-	return entry.failures < maxLoginFailures
-}
-
-// RecordLoginFailure counts a failed login for the account, whether or not
-// it exists, so the limiter does not reveal registered emails.
-func RecordLoginFailure(email string) {
-	loginFailuresMu.Lock()
-	defer loginFailuresMu.Unlock()
-
-	key := loginFailureKey(email)
-	entry, exists := loginFailures[key]
-	if !exists || time.Since(entry.windowStart) > loginFailureWindow {
-		if !exists && len(loginFailures) >= maxTrackedLogins {
-			return
-		}
-		loginFailures[key] = &loginFailureEntry{failures: 1, windowStart: time.Now()}
-		return
-	}
-	entry.failures++
-}
-
-// ResetLoginFailures clears the failure count after a successful login.
-func ResetLoginFailures(email string) {
-	loginFailuresMu.Lock()
-	delete(loginFailures, loginFailureKey(email))
-	loginFailuresMu.Unlock()
+	// Expire failed-login counters whose window has ended (see login_limiter.go).
+	defaultLoginLimiter.evictExpired(now)
 }
 
 func getLimiter(ip string) *rate.Limiter {
@@ -461,6 +412,37 @@ func getScanLimiter(ip string) *rate.Limiter {
 	return limiter
 }
 
+// getAuthLimiter returns the per-IP limiter for account creation / verification
+// email endpoints. Defaults allow a small burst of legitimate retries (e.g. a
+// mistyped confirm-password) while throttling bulk abuse; AUTH_RATE_LIMIT
+// (tokens/second) and AUTH_BURST_LIMIT override them.
+func getAuthLimiter(ip string) *rate.Limiter {
+	authMu.Lock()
+	defer authMu.Unlock()
+
+	if entry, exists := authLimiters[ip]; exists {
+		entry.lastSeen = time.Now()
+		return entry.limiter
+	}
+
+	requestsPerSecond := 0.1 // one sustained request every 10s
+	burst := 5
+	if value := os.Getenv("AUTH_RATE_LIMIT"); value != "" {
+		if parsed, err := strconv.ParseFloat(value, 64); err == nil && parsed > 0 {
+			requestsPerSecond = parsed
+		}
+	}
+	if value := os.Getenv("AUTH_BURST_LIMIT"); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+			burst = parsed
+		}
+	}
+
+	limiter := rate.NewLimiter(rate.Limit(requestsPerSecond), burst)
+	authLimiters[ip] = &rateLimiterEntry{limiter: limiter, lastSeen: time.Now()}
+	return limiter
+}
+
 func clientIP(r *http.Request) string {
 	ip := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(ip); err == nil {
@@ -508,6 +490,22 @@ func ScanRateLimitMiddleware(next http.Handler) http.Handler {
 		if !getScanLimiter(limiterKey(ip)).Allow() {
 			slog.Warn("auth: scan rate limit exceeded", "ip", ip)
 			w.Header().Set("Retry-After", "5")
+			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// AuthRateLimitMiddleware applies a stricter, independent per-IP rate limit to
+// the account creation / verification-email endpoints, which each send an email
+// and are the main registration/resend spam amplification surface.
+func AuthRateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := clientIP(r)
+		if !getAuthLimiter(limiterKey(ip)).Allow() {
+			slog.Warn("auth: auth endpoint rate limit exceeded", "ip", ip, "path", r.URL.Path)
+			w.Header().Set("Retry-After", "30")
 			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
 			return
 		}

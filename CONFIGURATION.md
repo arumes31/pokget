@@ -110,7 +110,9 @@ With the GHCR stack, add `-f docker-compose.ghcr.yml` to every command and use
 | `SECURE_COOKIES` | true | Keep enabled behind HTTPS; false only for local HTTP development |
 | `WRITE_TIMEOUT` | 120 | General HTTP write timeout; long primary scan completions have separate cancellation behavior |
 | `TRUST_PROXY`, `TRUST_CLOUDFLARE` | false, false | Enable only for an intentionally trusted proxy topology |
-| `TRUSTED_PROXIES` | loopback + private ranges | Comma-separated CIDRs/IPs whose `X-Forwarded-For`/`X-Real-IP` headers are honoured when `TRUST_PROXY=true`; the right-most untrusted `X-Forwarded-For` hop is used |
+| `TRUSTED_PROXIES` | loopback + private ranges | Comma-separated CIDRs/IPs whose `X-Forwarded-For`/`X-Real-IP` headers are honoured when `TRUST_PROXY=true`; the right-most untrusted `X-Forwarded-For` hop is used. Configure the proxy to emit a single consolidated `X-Forwarded-For` header |
+| `RATE_LIMIT`, `BURST_LIMIT` | 1, 5 | Global per-IP request limiter (tokens/second, burst) for every non-static route. 1, 5 is the native-process default when unset; the Compose files and `example.env` set 20, 50 |
+| `AUTH_RATE_LIMIT`, `AUTH_BURST_LIMIT` | 0.1, 5 | Stricter per-IP limiter for `/auth/register` and `/auth/resend` (each sends an email), applied on top of the global limiter to curb registration/verification spam |
 | `CATALOG_LANGUAGE` | en,de,ja,fr,zh-cn,zh-tw,ko | Requested import languages; upstream coverage still varies by game |
 | `CATALOG_WEISS_MAX_PAGES` | 0 | Weiss source pagination cap; zero means no cap |
 | `CATALOG_IMAGE_CONCURRENCY` | 4 | Parallel image downloads/hashing, 1–8; database writes remain serialized |
@@ -122,6 +124,12 @@ With the GHCR stack, add `-f docker-compose.ghcr.yml` to every command and use
 | `PRICE_TRACKED_LIMIT` | 100 | Cards per hourly per-card refresh for portfolio/wantlist/alerts; the budget is split across the collectors that track cards |
 | `PRICE_BULK_INTERVAL_HOURS` | 24 | Refresh cadence of the free bulk exports (Scryfall, YGOPRODeck, TCGCSV); they also run once at startup |
 | `PORTFOLIO_PHOTO_STORE` | `data/card-photos` | Directory that receives the scanned card photos; Compose mounts `/app/data/card-photos` |
+
+Failed logins are rate-limited per `(client IP, account)` pair and, as a higher
+secondary limit, per client IP across all accounts, so credential stuffing is
+stopped without letting a third party lock a victim out of their own IP. Behind
+a reverse proxy this relies on the real client IP: set `TRUST_PROXY=true` and
+`TRUSTED_PROXIES`, otherwise every client shares one IP and one lockout budget.
 
 Catalog scheduling, image batches, worker retry/rate/circuit settings and price
 retention defaults are annotated in the template. Compose fixes image storage

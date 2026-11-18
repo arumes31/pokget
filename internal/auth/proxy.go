@@ -137,6 +137,13 @@ func ProxyMiddleware(next http.Handler) http.Handler {
 
 		// Forwarding headers are only honoured from a trusted proxy peer;
 		// otherwise any client could pick its own rate-limit bucket.
+		//
+		// Deployment note: r.Header.Get returns only the FIRST X-Forwarded-For
+		// header value. This is safe only because the trusted proxy is expected
+		// to collapse the hop chain into a single X-Forwarded-For header (nginx,
+		// Traefik, Cloudflare and Caddy all do). Configure the proxy to overwrite
+		// / consolidate the header; do not let it pass through multiple client
+		// X-Forwarded-For headers, or a spoofed earlier header could be trusted.
 		if realIP == "" && trustProxy && isTrustedProxy(peerIP, trusted) {
 			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 				realIP = forwardedClientIP(xff, trusted)

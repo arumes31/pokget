@@ -585,20 +585,23 @@ func (h *Handler) ExportPortfolioCSV(w http.ResponseWriter, r *http.Request) {
 			publicStr = "Yes"
 		}
 
+		// Neutralize spreadsheet formula injection on every user-authored or
+		// catalog/synthetic text column (numeric and server-controlled columns
+		// are left untouched — see csvFormulaGuard).
 		_ = writer.Write([]string{
-			name,
-			game,
-			setName,
-			setCode,
-			collectorNum,
-			condition,
-			grade,
-			gradingCo,
+			csvFormulaGuard(name),
+			csvFormulaGuard(game),
+			csvFormulaGuard(setName),
+			csvFormulaGuard(setCode),
+			csvFormulaGuard(collectorNum),
+			csvFormulaGuard(condition),
+			csvFormulaGuard(grade),
+			csvFormulaGuard(gradingCo),
 			customPriceStr,
 			marketPriceStr,
 			currency,
-			notes,
-			binderName,
+			csvFormulaGuard(notes),
+			csvFormulaGuard(binderName),
 			publicStr,
 			addedAt.UTC().Format(time.RFC3339),
 		})
@@ -606,6 +609,23 @@ func (h *Handler) ExportPortfolioCSV(w http.ResponseWriter, r *http.Request) {
 	if err := rows.Err(); err != nil {
 		slog.Error("Failed during portfolio export streaming", "error", err)
 	}
+}
+
+// csvFormulaGuard neutralizes CSV/spreadsheet formula injection: a cell whose
+// first character is one that Excel/Sheets treat as the start of a formula
+// (= + - @) or a leading control character (TAB, CR) is prefixed with a single
+// quote so the spreadsheet renders it as literal text instead of evaluating it.
+// Apply only to free-text, user-authored columns — never to numeric columns,
+// where a leading '-' is a legitimate negative value.
+func csvFormulaGuard(value string) string {
+	if value == "" {
+		return value
+	}
+	switch value[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + value
+	}
+	return value
 }
 
 func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {

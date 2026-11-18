@@ -165,21 +165,27 @@ func TestLimiterKeyGroupsIPv6ByPrefix(t *testing.T) {
 }
 
 func TestLoginFailureLimiter(t *testing.T) {
-	email := "Limited@Example.com"
-	t.Cleanup(func() { ResetLoginFailures(email) })
+	t.Cleanup(ResetLoginLimiter)
+	ResetLoginLimiter()
+
+	const email = "Limited@Example.com"
+	const ip = "203.0.113.50"
 
 	for range maxLoginFailures {
-		if !LoginAllowed(email) {
+		if !LoginAllowed(email, ip) {
 			t.Fatal("account locked before reaching the failure limit")
 		}
-		RecordLoginFailure(email)
+		RecordLoginFailure(email, ip)
 	}
-	if LoginAllowed("limited@example.com") {
+	// The counter is case-insensitive: a differently-cased spelling shares the
+	// same (IP, account) bucket and is therefore also locked.
+	if LoginAllowed("limited@example.com", ip) {
 		t.Fatal("account not locked after repeated failures")
 	}
-	ResetLoginFailures(email)
-	if !LoginAllowed(email) {
-		t.Fatal("reset did not unlock the account")
+	// A successful login clears the pair and unlocks it.
+	ResetLoginFailures(email, ip)
+	if !LoginAllowed(email, ip) {
+		t.Fatal("reset did not unlock the (IP, account) pair")
 	}
 }
 

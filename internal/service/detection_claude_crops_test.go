@@ -23,7 +23,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -36,15 +35,17 @@ import (
 // multiImageClaudeDetector records the crops the pipeline hands to a detector
 // that supports magnified bands.
 type multiImageClaudeDetector struct {
-	info      *claudedetect.DetectedCardInfo
-	images    [][]byte
-	game      string
-	lang      string
-	imagesErr error
-	detectErr error
+	info        *claudedetect.DetectedCardInfo
+	images      [][]byte
+	game        string
+	lang        string
+	imagesErr   error
+	detectErr   error
+	detectCalls int
 }
 
 func (m *multiImageClaudeDetector) Detect(context.Context, []byte, string, string) (*claudedetect.DetectedCardInfo, error) {
+	m.detectCalls++
 	return m.info, m.detectErr
 }
 
@@ -117,9 +118,11 @@ func TestClaudeDetectionSendsMagnifiedCropsAndScopeHints(t *testing.T) {
 }
 
 func TestClaudeDetectionFallsBackToFullImageWhenCropsAreRejected(t *testing.T) {
+	// An oversize/400 rejection of the multi-image payload is the one case that
+	// should trigger a single full-card retry.
 	detector := &multiImageClaudeDetector{
 		info:      &claudedetect.DetectedCardInfo{Name: "Pikachu", CollectorNumber: "018", Confidence: 0.95},
-		imagesErr: errors.New("claude detect: too many images for one request"),
+		imagesErr: &claudedetect.APIStatusError{StatusCode: 400, Body: "request too large"},
 	}
 	pipeline := NewDetectionPipeline(nil, nil)
 	pipeline.Claude = detector
@@ -135,15 +138,49 @@ func TestClaudeDetectionFallsBackToFullImageWhenCropsAreRejected(t *testing.T) {
 	if result.BestMatchID() != "pika" {
 		t.Errorf("expected the full-card fallback to still match, got %q", result.BestMatchID())
 	}
+	if detector.detectCalls != 1 {
+		t.Fatalf("expected exactly one full-card retry, got %d", detector.detectCalls)
+	}
 
 	// A failing full-card retry must surface as a controlled detection error.
-	detector.detectErr = errors.New("claude detect: API status 529")
+	detector.detectErr = &claudedetect.APIStatusError{StatusCode: 529, Body: "overloaded"}
 	if _, err := pipeline.DetectScoped(context.Background(), DetectionRequest{
 		Image: testCardImage(t),
 		Cards: []models.Card{{ID: "pika", Name: "Pikachu", CollectorNumber: "018", Language: "ja", Game: "pokemon"}},
 		Scope: ScanScope{TCG: models.TCGPokemon, Language: models.LanguageJapanese},
 	}); err == nil {
 		t.Fatal("expected the detector error to surface")
+	}
+}
+
+// A timeout, cancellation, 429 or 5xx must NOT trigger the full-card retry: that
+// would double Claude billing and latency and mislabel the failure.
+func TestClaudeDetectionDoesNotRetryOnNonPayloadErrors(t *testing.T) {
+	cases := map[string]error{
+		"deadline exceeded": context.DeadlineExceeded,
+		"rate limited":      &claudedetect.APIStatusError{StatusCode: 429, Body: "rate limited"},
+		"server error":      &claudedetect.APIStatusError{StatusCode: 500, Body: "boom"},
+	}
+	for name, cropErr := range cases {
+		t.Run(name, func(t *testing.T) {
+			detector := &multiImageClaudeDetector{
+				info:      &claudedetect.DetectedCardInfo{Name: "Pikachu", CollectorNumber: "018", Confidence: 0.95},
+				imagesErr: cropErr,
+			}
+			pipeline := NewDetectionPipeline(nil, nil)
+			pipeline.Claude = detector
+
+			if _, err := pipeline.DetectScoped(context.Background(), DetectionRequest{
+				Image: testCardImage(t),
+				Cards: []models.Card{{ID: "pika", Name: "Pikachu", CollectorNumber: "018", Language: "ja", Game: "pokemon"}},
+				Scope: ScanScope{TCG: models.TCGPokemon, Language: models.LanguageJapanese},
+			}); err == nil {
+				t.Fatal("expected the crop error to surface without a retry")
+			}
+			if detector.detectCalls != 0 {
+				t.Fatalf("full-card retry must not fire for a non-payload error, got %d calls", detector.detectCalls)
+			}
+		})
 	}
 }
 

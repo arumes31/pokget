@@ -14,13 +14,17 @@ func TestMailHeaderInjectionPoC(t *testing.T) {
 		return nil
 	}
 	evil := "attacker@example.com\r\nBcc: victim@example.net\r\nX-Injected: yes"
-	if err := m.sendMail(evil, "subject", "body"); err != nil {
+	evilSubject := "subject\r\nX-Evil-Subject: yes"
+	if err := m.sendMail(evil, evilSubject, "body"); err != nil {
 		t.Fatal(err)
 	}
 	s := string(captured)
-	if strings.Contains(s, "Bcc: victim@example.net\r\n") && strings.Contains(s, "X-Injected: yes") {
-		t.Logf("INJECTION CONFIRMED:\n%s", s)
-	} else {
-		t.Fatalf("not injectable:\n%s", s)
+	// After the CRLF-stripping fix the attacker's newlines are removed, so no
+	// extra header LINE can be injected through the recipient or the subject.
+	// The payload text may survive inline on the To:/Subject: line (harmless);
+	// what must never appear is a new CRLF-delimited header.
+	if strings.Contains(s, "\r\nBcc:") || strings.Contains(s, "\r\nX-Injected:") || strings.Contains(s, "\r\nX-Evil-Subject:") {
+		t.Fatalf("INJECTION VULNERABLE:\n%s", s)
 	}
+	t.Logf("mitigation confirmed:\n%s", s)
 }

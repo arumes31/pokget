@@ -170,11 +170,13 @@ func TestResendVerification_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	lastSent := time.Now().Add(-10 * time.Minute)
-	rows := sqlmock.NewRows([]string{"last_email_sent_at", "is_verified"}).
-		AddRow(lastSent, false)
-	mock.ExpectQuery("SELECT last_email_sent_at").WillReturnRows(rows)
+	rows := sqlmock.NewRows([]string{"id", "email", "last_email_sent_at", "is_verified"}).
+		AddRow("user-123", "test@example.com", lastSent, false)
+	mock.ExpectQuery("SELECT id, email, last_email_sent_at").
+		WithArgs("test@example.com", "test@example.com").
+		WillReturnRows(rows)
 	mock.ExpectExec("UPDATE users SET verification_token").
-		WithArgs(sqlmock.AnyArg(), "test@example.com").
+		WithArgs(sqlmock.AnyArg(), "user-123").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	h.Mailer = &service.MockMailer{}
@@ -235,6 +237,53 @@ func TestConfirmEmail_GET(t *testing.T) {
 	}
 }
 
+// mailerFunc adapts a function to the service.Mailer interface for tests.
+type mailerFunc func(to, token string) error
+
+func (f mailerFunc) SendConfirmationEmail(to, token string) error { return f(to, token) }
+
+func TestResendVerification_SendsToStoredAddress(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	deliveredTo := make(chan string, 1)
+	h.Mailer = mailerFunc(func(to, _ string) error {
+		deliveredTo <- to
+		return nil
+	})
+
+	// Submit the mixed-case spelling so the exact-submitted lookup argument
+	// matches the stored mixed-case row (the case-twin lookup path).
+	req := httptest.NewRequest(http.MethodPost, "/resend", strings.NewReader("email=User@Example.com"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	lastSent := time.Now().Add(-10 * time.Minute)
+	// The matched account is stored with mixed case; the token must go to that
+	// stored address, not the lowercased lookup key.
+	mock.ExpectQuery("SELECT id, email, last_email_sent_at").
+		WithArgs("User@Example.com", "user@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "last_email_sent_at", "is_verified"}).
+			AddRow("u1", "User@Example.com", lastSent, false))
+	mock.ExpectExec("UPDATE users SET verification_token").
+		WithArgs(sqlmock.AnyArg(), "u1").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	h.ResendVerification(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	select {
+	case to := <-deliveredTo:
+		if to != "User@Example.com" {
+			t.Errorf("token delivered to %q, want the stored address User@Example.com", to)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("confirmation email was not sent")
+	}
+}
+
 func TestResendVerification_RateLimited(t *testing.T) {
 	h, mock, cleanup := setupTestHandler(t)
 	defer cleanup()
@@ -244,9 +293,9 @@ func TestResendVerification_RateLimited(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	lastSent := time.Now().Add(-1 * time.Minute)
-	rows := sqlmock.NewRows([]string{"last_email_sent_at", "is_verified"}).
-		AddRow(lastSent, false)
-	mock.ExpectQuery("SELECT last_email_sent_at").WillReturnRows(rows)
+	rows := sqlmock.NewRows([]string{"id", "email", "last_email_sent_at", "is_verified"}).
+		AddRow("user-123", "test@example.com", lastSent, false)
+	mock.ExpectQuery("SELECT id, email, last_email_sent_at").WillReturnRows(rows)
 
 	h.ResendVerification(rr, req)
 
@@ -287,11 +336,108 @@ func TestRegisterRejectsShortPassword(t *testing.T) {
 	}
 }
 
+func TestRegister_RejectsInvalidAndInjectionEmails(t *testing.T) {
+	cases := []struct{ name, email string }{
+		{"embedded CRLF", "attacker@example.com\r\nBcc: victim@example.net"},
+		{"embedded LF", "attacker@example.com\nX-Injected: yes"},
+		{"display name form", "Victim <victim@example.com>"},
+		{"address list", "a@example.com, b@example.com"},
+		{"not an address", "not-an-email"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h, mock, cleanup := setupTestHandler(t)
+			defer cleanup()
+
+			form := url.Values{
+				"email":            {tc.email},
+				"password":         {"long-enough-pass"},
+				"confirm_password": {"long-enough-pass"},
+			}
+			req := httptest.NewRequest(http.MethodPost, "/auth/register", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rr := httptest.NewRecorder()
+			h.Mailer = &service.MockMailer{}
+
+			h.Register(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 for %q", rr.Code, tc.email)
+			}
+			// Rejection happens before any DB lookup, hashing, or mailer call.
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("no DB query should run for an invalid email: %v", err)
+			}
+		})
+	}
+}
+
+func TestRegister_CanonicalizesEmailToLowercase(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	form := url.Values{
+		"email":            {" New@Example.COM "},
+		"password":         {"long-enough-pass"},
+		"confirm_password": {"long-enough-pass"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	// The query and insert must see the trimmed, lowercased form.
+	mock.ExpectQuery("SELECT is_verified FROM users WHERE email = \\$1").
+		WithArgs("new@example.com").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec("INSERT INTO users").
+		WithArgs("new@example.com", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO audit_logs").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	h.Mailer = &service.MockMailer{}
+
+	h.Register(rr, req)
+
+	// A 201 proves the SELECT and INSERT both matched their WithArgs expectation
+	// of the canonical "new@example.com": a mismatched arg would have errored the
+	// query and returned 500. The audit-log insert is asynchronous, so (as in
+	// TestRegister_Success_NewUser) its expectation is not verified here to avoid
+	// a race with the background writer.
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (canonicalized email must match the query args)", rr.Code)
+	}
+}
+
+func TestResendVerification_RejectsInjectionEmailUniformly(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	form := url.Values{"email": {"attacker@example.com\r\nBcc: victim@example.net"}}
+	req := httptest.NewRequest(http.MethodPost, "/auth/resend", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	h.ResendVerification(rr, req)
+
+	// Same empty 200 as an unknown address, and no DB query or mail.
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want uniform 200", rr.Code)
+	}
+	if rr.Body.Len() != 0 {
+		t.Fatalf("expected empty body, got %q", rr.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("no DB query should run for an invalid email: %v", err)
+	}
+}
+
 func TestLoginLocksAccountAfterRepeatedFailures(t *testing.T) {
 	h, mock, cleanup := setupTestHandler(t)
 	defer cleanup()
 	const email = "lockout@example.com"
-	t.Cleanup(func() { auth.ResetLoginFailures(email) })
+	// httptest.NewRequest sets RemoteAddr to 192.0.2.1:1234, so the lockout keys
+	// on that IP; clear the pair afterwards so other tests are not affected.
+	t.Cleanup(func() { auth.ResetLoginFailures(email, "192.0.2.1") })
 
 	hash := fastPasswordHash(t, "correct-password")
 	login := func() int {
@@ -316,6 +462,79 @@ func TestLoginLocksAccountAfterRepeatedFailures(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLogin_CanonicalizesEmail(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+	t.Cleanup(func() { auth.ResetLoginFailures("test@example.com", "192.0.2.1") })
+
+	form := url.Values{"email": {" Test@Example.COM "}, "password": {"pass"}}
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	passHash := fastPasswordHash(t, "pass")
+	// The lookup receives the raw submitted value and its canonical (trimmed,
+	// lowercased) form; the canonical form matches the stored row.
+	mock.ExpectQuery("SELECT id, email, password_hash, is_verified").
+		WithArgs(" Test@Example.COM ", "test@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("user-123", "test@example.com", passHash, true, 0))
+
+	h.Login(rr, req)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (canonicalized email must match the query args)", rr.Code)
+	}
+}
+
+// Finding 2(a) end to end: an attacker who locks the (IP, account) pair from
+// one IP must not lock the victim out from a different IP.
+func TestLoginLockoutIsScopedToClientIP(t *testing.T) {
+	h, mock, cleanup := setupTestHandler(t)
+	defer cleanup()
+	const email = "cross-ip@example.com"
+	t.Cleanup(func() {
+		auth.ResetLoginFailures(email, "192.0.2.1")
+		auth.ResetLoginFailures(email, "198.51.100.23")
+	})
+	passHash := fastPasswordHash(t, "correct-password")
+
+	fail := func() int {
+		mock.ExpectQuery("SELECT id, email").WillReturnRows(
+			sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+				AddRow("u1", email, passHash, true, 0))
+		form := url.Values{"email": {email}, "password": {"wrong-password"}}
+		req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+		h.Login(rr, req) // default RemoteAddr 192.0.2.1 — the attacker IP
+		return rr.Code
+	}
+	for range 10 {
+		if code := fail(); code != http.StatusUnauthorized {
+			t.Fatalf("attacker failure status = %d, want 401", code)
+		}
+	}
+	// The attacker's IP is now locked for this account.
+	if code := fail(); code != http.StatusTooManyRequests {
+		t.Fatalf("attacker IP should be locked, got %d, want 429", code)
+	}
+
+	// The victim, from their OWN IP and with the correct password, is NOT locked.
+	mock.ExpectQuery("SELECT id, email").WillReturnRows(
+		sqlmock.NewRows([]string{"id", "email", "password_hash", "is_verified", "session_version"}).
+			AddRow("u1", email, passHash, true, 0))
+	form := url.Values{"email": {email}, "password": {"correct-password"}}
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "198.51.100.23:4000"
+	rr := httptest.NewRecorder()
+	h.Login(rr, req)
+	if rr.Code == http.StatusTooManyRequests {
+		t.Fatalf("victim locked out from their own IP (got 429); lockout is not IP-scoped")
 	}
 }
 

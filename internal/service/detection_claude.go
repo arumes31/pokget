@@ -34,6 +34,13 @@ import (
 	"pokget/internal/models"
 )
 
+// claudeMinConfidentRead is the confidence floor below which the model's read is
+// treated as unsure: the score is capped and the match kept in review, and a
+// unique-name promotion is not allowed to silently confirm it. The model is
+// instructed to report < 0.70 when the title crop is unreadable, and an omitted
+// confidence defaults to 0.50, so both fall below this floor.
+const claudeMinConfidentRead = 0.70
+
 // ClaudeDetector is the interface for Claude API vision card recognition.
 type ClaudeDetector interface {
 	Detect(ctx context.Context, imageBytes []byte, gameHint, langHint string) (*claudedetect.DetectedCardInfo, error)
@@ -75,10 +82,14 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 	var info *claudedetect.DetectedCardInfo
 	if multi, ok := p.Claude.(MultiImageClaudeDetector); ok && len(images) > 1 {
 		info, err = multi.DetectImages(ctx, images, gameHint, langHint)
-		if err != nil && ctx.Err() == nil {
-			// The crops are an enhancement: never let an oversized or rejected
-			// enhancement payload turn a readable card into a failed scan.
-			ScanLogger(ctx).Warn("Claude magnified crops rejected; retrying the full card only")
+		// The crops are an enhancement. Retry the full card alone ONLY when the
+		// multi-image payload was rejected for its size (oversize / HTTP 400 or
+		// 413): a readable card must not fail just because the crops made the
+		// request too big. A timeout, cancellation, rate limit (429) or server
+		// error (5xx) is NOT retried — that would bill Claude twice, roughly
+		// double latency, and mislabel the failure as a crop rejection.
+		if err != nil && ctx.Err() == nil && claudedetect.IsPayloadRejection(err) {
+			ScanLogger(ctx).Warn("Claude magnified crops rejected as too large; retrying the full card only")
 			info, err = p.Claude.Detect(ctx, full, gameHint, langHint)
 		}
 	} else {
@@ -388,6 +399,15 @@ func formatClaudeText(info *claudedetect.DetectedCardInfo) string {
 }
 
 // matchCardsWithClaude scores and ranks cards in the catalog based on Claude's extraction.
+// unresolvedVariantConflict reports whether a scored match carries a finish
+// conflict that must keep it in review. It mirrors the scoring guard: a conflict
+// only matters when the catalog row records a specific finish ("normal" rows are
+// catch-alls that many sources use even for holo/parallel cards, so a conflict
+// against them is suppressed).
+func unresolvedVariantConflict(variantConflict bool, cardVariant string) bool {
+	return variantConflict && normalizeMatchText(cardVariant) != "normal"
+}
+
 func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Card) []CardMatch {
 	if info == nil {
 		return nil
@@ -622,7 +642,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			continue // No meaningful match
 		}
 
-		if info.Confidence < 0.70 {
+		if info.Confidence < claudeMinConfidentRead {
 			needsReview = true
 			if score > 80.0 {
 				score = 80.0
@@ -693,18 +713,32 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	// bucket is a decision, not a guess. A name that only contains the detected
 	// name ("Blue Slushy Cookie SEC", "Sadistic Strategy Iconic Art") is a
 	// different printing, so those candidates count as related too.
-	if len(candidates) > 0 {
+	// The promotion only confirms a card the model read with enough confidence.
+	// An unsure read (confidence < claudeMinConfidentRead, which also covers the
+	// 0.50 default used when the model omits the field) must stay in review even
+	// when the name is unique, so a guessed name is never silently auto-matched.
+	if len(candidates) > 0 && info.Confidence >= claudeMinConfidentRead {
 		top := &candidates[0]
 		if (top.confidence == 75.0 || top.confidence == 92.0) && !top.collectorExact {
 			topName := compactMatchText(normalizeMatchText(top.card.Name))
 			related := 0
 			for index := range cards {
+				// Count only active catalog rows, consistent with the candidate
+				// filter above; a retired printing is not a competing match.
+				if !cards[index].IsCatalogActive() {
+					continue
+				}
 				otherName := compactMatchText(normalizeMatchText(cards[index].Name))
 				if otherName == topName || strings.Contains(otherName, topName) || strings.Contains(topName, otherName) {
 					related++
 				}
 			}
-			if related == 1 {
+			// Unique name identifies the card, but an unresolved finish conflict
+			// (the detector read a specific finish the catalog row does not record,
+			// and the row is not a catch-all "normal") still needs review: the name
+			// is decided, the printing is not. Mirror the scoring guard at the
+			// variantConflict branch above.
+			if related == 1 && !unresolvedVariantConflict(top.variantConflict, top.card.Variant) {
 				top.confidence = 85.0
 				top.needsReview = false
 			}
@@ -808,7 +842,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			topName := compactMatchText(normalizeMatchText(top.card.Name))
 			relatedInSet := 0
 			for index := range cards {
-				if !sameProduct(cards[index], top.card) {
+				if !cards[index].IsCatalogActive() || !sameProduct(cards[index], top.card) {
 					continue
 				}
 				otherName := compactMatchText(normalizeMatchText(cards[index].Name))
@@ -816,7 +850,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 					relatedInSet++
 				}
 			}
-			if relatedInSet == 1 {
+			if relatedInSet == 1 && !unresolvedVariantConflict(top.variantConflict, top.card.Variant) {
 				top.needsReview = false
 			}
 		}

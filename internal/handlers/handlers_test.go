@@ -90,6 +90,11 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 	}
 	db.DB = dbMock
 
+	// Login-failure counters are process-global; isolate each handler test from
+	// state (notably the per-IP aggregate for the shared 192.0.2.1 test IP) left
+	// by earlier tests, so results do not depend on test order or -count.
+	auth.ResetLoginLimiter()
+
 	h := &Handler{
 		Templates:      tmpl,
 		MockCards:      []models.Card{{ID: "test-id", Name: "Test Card"}},
@@ -395,7 +400,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT last_email_sent_at").WillReturnError(errors.New("db error"))
+		mock.ExpectQuery("SELECT id, email, last_email_sent_at").WillReturnError(errors.New("db error"))
 
 		h.ResendVerification(rr, req)
 
@@ -649,7 +654,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectQuery("SELECT last_email_sent_at").WithArgs("notfound@example.com").WillReturnError(sql.ErrNoRows)
+		mock.ExpectQuery("SELECT id, email, last_email_sent_at").WithArgs("notfound@example.com", "notfound@example.com").WillReturnError(sql.ErrNoRows)
 
 		h.ResendVerification(rr, req)
 
@@ -666,9 +671,9 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		rows := sqlmock.NewRows([]string{"last_email_sent_at", "is_verified"}).
-			AddRow(time.Now().Add(-10*time.Minute), false)
-		mock.ExpectQuery("SELECT last_email_sent_at").WithArgs("test@example.com").WillReturnRows(rows)
+		rows := sqlmock.NewRows([]string{"id", "email", "last_email_sent_at", "is_verified"}).
+			AddRow("user-123", "test@example.com", time.Now().Add(-10*time.Minute), false)
+		mock.ExpectQuery("SELECT id, email, last_email_sent_at").WithArgs("test@example.com", "test@example.com").WillReturnRows(rows)
 		mock.ExpectExec("UPDATE users").WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.Mailer = &service.MockMailer{Err: errors.New("mail fail")}

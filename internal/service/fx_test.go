@@ -119,6 +119,29 @@ func TestFrankfurterEURRateFallsBackToTheLastKnownRate(t *testing.T) {
 	}
 }
 
+func TestFrankfurterEURRateNegativeCacheLimitsProbing(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		http.Error(writer, "down", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	provider := &frankfurterEURRate{BaseURL: server.URL, HTTP: server.Client(), TTL: time.Hour, NegativeTTL: time.Hour}
+	// A cold-start failure must surface an error, never a silent (0, nil).
+	if _, err := provider.USDEUR(context.Background()); err == nil {
+		t.Fatal("cold-start failure must return an error")
+	}
+	// Within the negative-cache window the upstream is not re-probed, so a user
+	// request does not wait on the outage again; the cached error is returned.
+	if _, err := provider.USDEUR(context.Background()); err == nil {
+		t.Fatal("expected the cached error during the negative-cache window")
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1 (negative cache suppresses re-probing)", requests)
+	}
+}
+
 func TestFrankfurterEURRateWithoutAnyRateFails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		_, _ = writer.Write([]byte(`{"rates":{}}`))
