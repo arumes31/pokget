@@ -1412,3 +1412,58 @@ func TestClaudeUniqueNamePromotionAllowedOnNormalRow(t *testing.T) {
 		t.Error("a specific read on a Normal catalog row must still be promoted")
 	}
 }
+
+func setTotalCards(extra ...models.Card) []models.Card {
+	cards := []models.Card{
+		{ID: "swsh10-005", Name: "Insécateur", CollectorNumber: "005", Set: "Astres Radieux", SetCode: "swsh10", Language: "fr", Game: "pokemon"},
+		{ID: "swsh10-189", Name: "Arceus VSTAR", CollectorNumber: "189", Set: "Astres Radieux", SetCode: "swsh10", Language: "fr", Game: "pokemon"},
+		{ID: "sm115-5", Name: "Insécateur", CollectorNumber: "5", Set: "Destinées Occultes", SetCode: "sm115", Language: "fr", Game: "pokemon"},
+		{ID: "sm115-68", Name: "Lugia", CollectorNumber: "68", Set: "Destinées Occultes", SetCode: "sm115", Language: "fr", Game: "pokemon"},
+		{ID: "sm115-sv94", Name: "Mewtwo", CollectorNumber: "SV94", Set: "Destinées Occultes", SetCode: "sm115", Language: "fr", Game: "pokemon"},
+	}
+	return append(cards, extra...)
+}
+
+func setTotalInfo() *claudedetect.DetectedCardInfo {
+	// The model names the set in English while the catalog stores the French
+	// name, so only the printed fraction can tell the two printings apart.
+	return &claudedetect.DetectedCardInfo{
+		Game:            "pokemon",
+		Name:            "Insécateur",
+		CollectorNumber: "005/189",
+		Set:             "Astral Radiance",
+		Language:        "fr",
+		Confidence:      0.95,
+	}
+}
+
+func TestClaudeDetection_PrintedSetTotalResolvesCrossSetTie(t *testing.T) {
+	matches := matchCardsWithClaude(setTotalInfo(), setTotalCards())
+	if len(matches) < 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if matches[0].Card.ID != "swsh10-005" {
+		t.Fatalf("only Astres Radieux can print 005/189, got %q", matches[0].Card.ID)
+	}
+	if matches[0].NeedsReview || matches[0].Confidence != 99.0 {
+		t.Fatalf("printed total decides the set: review=%v confidence=%f", matches[0].NeedsReview, matches[0].Confidence)
+	}
+}
+
+func TestClaudeDetection_PrintedSetTotalUnknownSetStaysInReview(t *testing.T) {
+	// Destinées Occultes now has a number above 189 but no row 189: the catalog
+	// may simply miss that row, so the fraction proves nothing about it.
+	cards := setTotalCards(models.Card{ID: "sm115-200", Name: "Dracaufeu", CollectorNumber: "200", Set: "Destinées Occultes", SetCode: "sm115", Language: "fr", Game: "pokemon"})
+	matches := matchCardsWithClaude(setTotalInfo(), cards)
+	if len(matches) < 2 || !matches[0].NeedsReview {
+		t.Fatalf("an undecidable set total must keep the tie in review: %+v", matches)
+	}
+}
+
+func TestClaudeDetection_PrintedSetTotalBothConsistentStaysInReview(t *testing.T) {
+	cards := setTotalCards(models.Card{ID: "sm115-189", Name: "Dracaufeu", CollectorNumber: "189", Set: "Destinées Occultes", SetCode: "sm115", Language: "fr", Game: "pokemon"})
+	matches := matchCardsWithClaude(setTotalInfo(), cards)
+	if len(matches) < 2 || !matches[0].NeedsReview {
+		t.Fatalf("two sets that can both print 005/189 must stay in review: %+v", matches)
+	}
+}

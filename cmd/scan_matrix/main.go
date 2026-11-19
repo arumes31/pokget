@@ -73,6 +73,7 @@ type resultRow struct {
 	DurationMS      int64    `json:"duration_ms"`
 	Error           string   `json:"error,omitempty"`
 	TopAlternative  string   `json:"top_alternative,omitempty"`
+	Extracted       string   `json:"extracted,omitempty"`
 	Notes           []string `json:"notes,omitempty"`
 }
 
@@ -105,7 +106,9 @@ func main() {
 	expectedName := flag.String("expected-name", "", "expected card name for -image")
 	expectedNumber := flag.String("expected-number", "", "expected collector number for -image")
 	expectedLanguage := flag.String("expected-language", "", "expected language code for -image")
+	idsFlag := flag.String("ids", "", "comma-separated catalog card IDs to scan instead of a random sample (reruns earlier misses)")
 	flag.Parse()
+	sampleIDs = splitIDs(*idsFlag)
 
 	live := liveConfig{BaseURL: *baseURL, Email: *email, Password: *password}
 	if *imagePath != "" {
@@ -186,6 +189,9 @@ func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Durati
 		samples, err := sampleCards(database, combination.game, combination.language, per, seed)
 		if err != nil {
 			return fmt.Errorf("sample %s/%s cards: %w", combination.game, combination.language, err)
+		}
+		if len(samples) == 0 {
+			continue
 		}
 		combinationSummary := summary{Game: combination.game, Language: combination.language}
 		sentLanguage := combination.language
@@ -348,7 +354,24 @@ func scopeCards(database *sql.DB, game, language string) ([]models.Card, error) 
 	return cards, rows.Err()
 }
 
+// sampleIDs pins the sample to explicit catalog cards (-ids). A pinned card is
+// scanned in its own game/language scope, so earlier misses replay exactly.
+var sampleIDs []string
+
+func splitIDs(value string) []string {
+	var ids []string
+	for _, id := range strings.Split(value, ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 func sampleCards(database *sql.DB, game, language string, per int, seed int64) ([]sampleCard, error) {
+	if len(sampleIDs) > 0 {
+		return pinnedCards(database, game, language)
+	}
 	// md5(id|seed) is deterministic across pooled connections, unlike setseed
 	// (session-scoped) combined with ORDER BY random().
 	query := `SELECT ` + cardColumns + ` FROM cards
@@ -357,6 +380,26 @@ func sampleCards(database *sql.DB, game, language string, per int, seed int64) (
 		  AND coalesce(image_url,'') <> '' AND coalesce(name,'') <> ''
 		ORDER BY md5(id || '|' || $3) LIMIT $4`
 	rows, err := database.Query(query, game, language, strconv.FormatInt(seed, 10), per)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var samples []sampleCard
+	for rows.Next() {
+		scanned, err := scanCard(rows)
+		if err != nil {
+			return nil, err
+		}
+		samples = append(samples, scanned)
+	}
+	return samples, rows.Err()
+}
+
+func pinnedCards(database *sql.DB, game, language string) ([]sampleCard, error) {
+	query := `SELECT ` + cardColumns + ` FROM cards
+		WHERE game = $1 AND language = $2 AND id = ANY(string_to_array($3, ','))
+		ORDER BY id`
+	rows, err := database.Query(query, game, language, strings.Join(sampleIDs, ","))
 	if err != nil {
 		return nil, err
 	}
@@ -431,6 +474,7 @@ func scanOne(ctx context.Context, client *http.Client, pipeline *service.Detecti
 	}
 	if !row.Exact {
 		row.Notes = differenceNotes(sample.Card, result.OCRText)
+		row.Extracted = result.OCRText
 	}
 	return row
 }

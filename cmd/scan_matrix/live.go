@@ -264,6 +264,7 @@ func fillLiveRow(row *resultRow, result *liveScanResponse, sample sampleCard) {
 	}
 	if !row.Exact {
 		row.Notes = differenceNotes(sample.Card, result.Text)
+		row.Extracted = result.Text
 	}
 }
 

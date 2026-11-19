@@ -28,8 +28,20 @@ type tcgdexSet struct {
 	ID          string       `json:"id"`
 	Name        string       `json:"name"`
 	ReleaseDate string       `json:"releaseDate"`
+	Serie       tcgdexSerie  `json:"serie"`
 	Cards       []tcgdexCard `json:"cards"`
 }
+
+type tcgdexSerie struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// tcgdexDigitalSeries lists TCGdex series that exist only in a video game.
+// Pokémon TCG Pocket cards cannot be photographed or traded as physical cards,
+// so they would only compete with real printings of the same name in scans
+// (Pocket "Gloom" A1 012 vs a physical Gloom) and never carry market prices.
+var tcgdexDigitalSeries = map[string]bool{"tcgp": true}
 
 type tcgdexCard struct {
 	ID      string `json:"id"`
@@ -81,6 +93,9 @@ func (p *TCGdexProvider) Fetch(ctx context.Context, request catalog.FetchRequest
 				return result, ctx.Err()
 			}
 			slog.Warn("Catalog: skipping tcgdex set due to fetch error", "set", brief.ID, "language", language, "endpoint", endpoint, "error", err)
+			continue
+		}
+		if tcgdexDigitalSeries[strings.ToLower(set.Serie.ID)] {
 			continue
 		}
 		for _, card := range set.Cards {

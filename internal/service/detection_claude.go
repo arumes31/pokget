@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"context"
 	"image"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -692,7 +693,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	// plain printing wins over an alt-art row: One Piece stores the same name and
 	// collector number on the base card and on every `_pN`/`_rN` reprint, so
 	// without this the awarded row would depend on database heap order.
-	sort.SliceStable(candidates, func(i, j int) bool {
+	byEvidence := func(i, j int) bool {
 		if candidates[i].confidence != candidates[j].confidence {
 			return candidates[i].confidence > candidates[j].confidence
 		}
@@ -706,7 +707,38 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			return baseI
 		}
 		return candidates[i].card.ID < candidates[j].card.ID
-	})
+	}
+	sort.SliceStable(candidates, byEvidence)
+
+	// The printed set total ("005/189") is set evidence even when the model
+	// names the set in another language than the catalog ("Astral Radiance" for
+	// the French "Astres Radieux"). When name and number tie across products,
+	// the only product that can print that fraction is the card's set.
+	if setPrefix, setTotal, ok := printedSetTotal(claudeCollector); ok && len(candidates) > 1 && !candidates[0].setExact {
+		topScore := candidates[0].confidence
+		var tied []models.Card
+		for index := range candidates {
+			candidate := candidates[index]
+			if candidate.confidence != topScore {
+				break
+			}
+			if candidate.collectorExact && !candidate.setExact {
+				tied = append(tied, candidate.card)
+			}
+		}
+		if len(tied) > 1 {
+			if winner, decided := setTotalWinner(cards, tied, setPrefix, setTotal); decided {
+				for index := range candidates {
+					candidate := &candidates[index]
+					if candidate.confidence == topScore && candidate.collectorExact && sameProduct(candidate.card, winner) {
+						candidate.setExact = true
+						candidate.confidence = math.Min(topScore+1, 99.0)
+					}
+				}
+				sort.SliceStable(candidates, byEvidence)
+			}
+		}
+	}
 
 	// A unique name in this scan scope is enough to identify the card when the
 	// number was unreadable: no other candidate shares the name, so the name-only
