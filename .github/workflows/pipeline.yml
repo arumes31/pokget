@@ -59,7 +59,7 @@ jobs:
           ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.27.4"
           cache: true
@@ -96,7 +96,7 @@ jobs:
           ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.27.4"
           cache: true
@@ -113,7 +113,7 @@ jobs:
           ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.27.4"
           cache: true
@@ -139,7 +139,7 @@ jobs:
           ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.27.4"
           cache: true
@@ -160,7 +160,7 @@ jobs:
           ref: ${{ github.event.inputs.target_branch || github.sha }}
           persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.27.4"
           cache: true
@@ -169,11 +169,11 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/go/bin
-          key: security-tools-govuln-v1.9.0-gosec-5eb1d104
+          key: security-tools-govuln-v1.10.0-gosec-5eb1d104
       - name: govulncheck
         run: |
           if ! command -v govulncheck &> /dev/null; then
-            go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+            go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
           fi
           export CGO_ENABLED=1
           govulncheck ./...
