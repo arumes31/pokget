@@ -43,7 +43,7 @@ jobs:
 
       - name: Install addlicense
         if: steps.cache-addlicense.outputs.cache-hit != 'true'
-        run: go install github.com/google/addlicense@v1.1.1
+        run: go install github.com/google/addlicense@v1.2.0
 
       - name: Check License Headers
         run: |
