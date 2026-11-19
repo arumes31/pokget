@@ -63,8 +63,8 @@ jobs:
         continue-on-error: true
         timeout-minutes: 10
         env:
-          STRIX_VERSION: "1.7.0"
-          STRIX_SHA256: b8cd7e84d63cbeff6726301a9e08fddedf40fc6a4edcdb4edda8a853b3312de6
+          STRIX_VERSION: "1.7.1"
+          STRIX_SHA256: c8e836251578baa228afe9e65f4a901ef6ae1116c444f8f0a67f7ae7898c480f
         shell: bash
         run: |
           install_dir="$RUNNER_TEMP/strix-$STRIX_VERSION"

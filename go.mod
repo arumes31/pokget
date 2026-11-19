@@ -4,10 +4,10 @@ go 1.27.4
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/PuerkitoBio/goquery v1.13.0
+	github.com/PuerkitoBio/goquery v1.14.0
 	github.com/anthonynsimon/bild v0.17.1
-	github.com/chromedp/cdproto v0.160.2
-	github.com/chromedp/chromedp v0.23.1
+	github.com/chromedp/cdproto v0.160.6
+	github.com/chromedp/chromedp v0.24.0
 	github.com/corona10/goimagehash v1.1.0
 	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/gocolly/colly/v2 v2.3.0
@@ -21,20 +21,20 @@ require (
 	github.com/shopspring/decimal v1.6.0
 	golang.org/x/crypto v0.59.0
 	golang.org/x/image v0.48.0
-	golang.org/x/net v0.62.0
+	golang.org/x/net v0.63.0
 	golang.org/x/text v0.44.0
 	golang.org/x/time v0.16.0
 )
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
-	github.com/andybalholm/cascadia v1.3.4 // indirect
-	github.com/antchfx/htmlquery v1.3.6 // indirect
-	github.com/antchfx/xmlquery v1.5.1 // indirect
-	github.com/antchfx/xpath v1.3.6 // indirect
-	github.com/bits-and-blooms/bitset v1.24.4 // indirect
+	github.com/andybalholm/cascadia v1.3.5 // indirect
+	github.com/antchfx/htmlquery v1.3.7 // indirect
+	github.com/antchfx/xmlquery v1.5.2 // indirect
+	github.com/antchfx/xpath v1.3.9 // indirect
+	github.com/bits-and-blooms/bitset v1.30.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/go-json-experiment/json v0.0.0-20260623181947-01eb4420fa68 // indirect
+	github.com/go-json-experiment/json v1.27.2 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect

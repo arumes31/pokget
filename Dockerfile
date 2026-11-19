@@ -1,5 +1,5 @@
 # Static asset stage
-FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS static-assets
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS static-assets
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY templates ./templates
 RUN npm run build:static && npm run check:static
 
 # Go build stage
-FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS builder
+FROM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS builder
 
 # Pure-Go build: no CGO, no native OCR libraries.
 ENV CGO_ENABLED=0
