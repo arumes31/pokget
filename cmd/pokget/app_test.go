@@ -375,7 +375,7 @@ func TestStartBackgroundWorkersCatalogEnabled(t *testing.T) {
 		t.Fatalf("initServices() error = %v", err)
 	}
 
-	h := &handlers.Handler{DB: database, Fingerprint: services.fingerprintSvc}
+	h := &handlers.Handler{DB: database}
 	llmSvc := service.NewLLMService()
 
 	// Pre-cancel the worker context so every worker returns immediately

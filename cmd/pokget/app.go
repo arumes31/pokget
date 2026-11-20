@@ -192,7 +192,6 @@ func newHandler(
 	}
 	return &handlers.Handler{
 		Templates:         templates,
-		Fingerprint:       services.fingerprintSvc, // BUG-H01: Reuse fingerprintSvc instead of creating new one
 		Detection:         detectionPipeline,
 		Audit:             services.auditSvc,
 		Game:              service.NewGamificationService(database),

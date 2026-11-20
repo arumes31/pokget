@@ -248,7 +248,7 @@ so short-window ETA is an estimate, not a stable completion promise.
 
 The scanner captures the card within the Matrix HUD viewfinder and uploads the cropped image directly to the server. When Claude Vision is enabled, the request is dispatched immediately to the Claude API with prompt caching.
 
-On submission, server logs record `input=server_image` along with the unique `scan_id`. `Scan scope selected` logs the normalized game/language and eligible-card count. `Scan stage started` / `Scan stage finished` track the active stage (`claude_vision` or legacy stages), durations, and completion/timeout outcomes. `Scan request finished` records the HTTP status and total processing duration. Set `DEBUG=true` for detailed stage diagnostics; `LOG_FORMAT=json` enables structured log ingestion.
+On submission, server logs record `input=server_image` along with the unique `scan_id`. `Scan scope selected` logs the normalized game/language and eligible-card count. `Scan stage started` / `Scan stage finished` track the active stage (`detector_queue`, `claude_detection`), durations, and completion/timeout outcomes. `Scan request finished` records the HTTP status and total processing duration. Set `DEBUG=true` for detailed stage diagnostics; `LOG_FORMAT=json` enables structured log ingestion.
 
 ### 🤖 Claude AI Vision Engine (Recommended)
 

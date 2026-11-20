@@ -21,8 +21,8 @@ language/model setting removes that requirement or guarantees an exact physical
 printing.
 
 An optional primary provider configured by `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API`,
-and `LLM_MAX_TOKENS` receives card-name suggestion prompts only. Leave
-`LLM_BASE_URL` empty for local-only text suggestions. See the README's provider
+and `LLM_MAX_TOKENS` receives binder-name prompts only. Leave
+`LLM_BASE_URL` empty for local-only binder-name suggestions. See the README's provider
 section for retry and cancellation behavior.
 
 ### Claude AI Card Detection & Prompt Caching
@@ -107,7 +107,7 @@ With the GHCR stack, add `-f docker-compose.ghcr.yml` to every command and use
 | `OLLAMA_NUM_THREAD`, `OLLAMA_NUM_CTX`, `OLLAMA_NUM_PREDICT` | 4, 2048, 128 | Local text-model inference limits |
 | `OLLAMA_NUM_PARALLEL`, `OLLAMA_MAX_LOADED_MODELS` | 1, 1 | Ollama server concurrency/residency |
 | `SECURE_COOKIES` | true | Keep enabled behind HTTPS; false only for local HTTP development |
-| `WRITE_TIMEOUT` | 120 | General HTTP write timeout; long primary scan completions have separate cancellation behavior |
+| `WRITE_TIMEOUT` | 120 | General HTTP write timeout; scans are bounded separately by `SCAN_TIMEOUT_SECONDS` |
 | `TRUST_PROXY`, `TRUST_CLOUDFLARE` | false, false | Enable only for an intentionally trusted proxy topology |
 | `TRUSTED_PROXIES` | loopback + private ranges | Comma-separated CIDRs/IPs whose `X-Forwarded-For`/`X-Real-IP` headers are honoured when `TRUST_PROXY=true`; the right-most untrusted `X-Forwarded-For` hop is used. Configure the proxy to emit a single consolidated `X-Forwarded-For` header |
 | `RATE_LIMIT`, `BURST_LIMIT` | 1, 5 | Global per-IP request limiter (tokens/second, burst) for every non-static route. 1, 5 is the native-process default when unset; the Compose files and `example.env` set 20, 50 |
@@ -170,8 +170,8 @@ names such as `pokget_ollama` do not resolve outside the Compose network.
   Ollama (11434) on `127.0.0.1` only, for native tools on the same host. Do not
   widen these bindings; Ollama is not an authenticated API.
 - **Private scans:** every scan uploads the cropped photo; nothing is recognized
-  on the device. A configured remote primary endpoint or the Claude detector
-  receives its request data. Choose only trusted endpoints and keep API keys
+  on the device. The Claude detector receives the photo; a configured primary LLM
+  endpoint receives binder-name prompts. Choose only trusted endpoints and keep API keys
   server-side.
 
 Run `DB_PASSWORD=placeholder docker compose --env-file example.env config --quiet`

@@ -71,8 +71,7 @@ type Handler struct {
 	CardsMu      sync.RWMutex // Protects concurrent access to MockCards
 	reloadMu     sync.Mutex   // Serializes ReloadCardsOnly so an older snapshot never wins
 	setTotals    map[string]int
-	setTotalsMu  sync.RWMutex // Protects concurrent access to setTotals
-	Fingerprint  *service.FingerprintService
+	setTotalsMu  sync.RWMutex               // Protects concurrent access to setTotals
 	Detection    *service.DetectionPipeline // SCAN-07, SCAN-09, SCAN-16: Detection pipeline
 	Mailer       service.Mailer
 	Audit        *service.AuditService
