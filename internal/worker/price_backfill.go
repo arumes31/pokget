@@ -33,9 +33,9 @@ func backfillRate(configured float64) float64 {
 // Owned cards are included: the tracked-card sync only prices what it reaches
 // within its budget, and the backfill is the second chance.
 //
-// The pass is deliberately bounded: it walks `PRICE_BACKFILL_BATCH` cards per cycle
-// and orders by last_updated, so a card the source has no price for moves to the
-// back of the queue instead of blocking the rest.
+// The pass is deliberately bounded: it walks `PRICE_BACKFILL_BATCH` cards per cycle,
+// and a card the source has no price for moves to the back of the queue instead of
+// blocking the rest.
 func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 	if w.backfillBatch <= 0 {
 		return
@@ -54,23 +54,32 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 		return
 	}
 
+	// Two queues share the batch turn by turn. Cards without USD go least recently
+	// verified first: a miss stamps them and moves them to the back. Cards that only
+	// lack a Cardmarket EUR (none, or one converted from USD) already show a USD
+	// price, and stamping a miss on them would claim that USD was verified, so they
+	// rotate by id after a cursor instead.
 	rows, err := w.db.QueryContext(ctx, `
-		SELECT id, name, set_name, COALESCE(game, ''), COALESCE(language, ''),
-		       COALESCE(source_id, ''), COALESCE(source_card_id, ''), COALESCE(set_code, ''),
-		       COALESCE(collector_number, '')
-		FROM cards
-		WHERE superseded_by_card_id IS NULL
-		  AND game = 'pokemon'
-		  -- Either currency alone is enough to keep the card in the queue: TCGdex
-		  -- answers with TCGplayer USD and Cardmarket EUR separately, so a card with a
-		  -- EUR quote but no USD quote still needs the USD lookup.
-		  -- An EUR converted from USD is no Cardmarket quote, so it counts as missing.
-		  AND (COALESCE(price_usd, 0) <= 0 OR COALESCE(price_eur, 0) <= 0 OR price_eur_estimated)
-		  AND COALESCE(source_card_id, '') <> ''
-		-- Least recently verified first: a card a provider just had no price for moves
-		-- to the back instead of being retried every cycle.
-		ORDER BY price_checked_at ASC NULLS FIRST, id
-		LIMIT $1`, w.backfillBatch)
+		SELECT id, name, set_name, game, language, source_id, source_card_id, set_code,
+		       collector_number, has_usd
+		FROM (
+			SELECT id, name, set_name, COALESCE(game, '') AS game, COALESCE(language, '') AS language,
+			       COALESCE(source_id, '') AS source_id, COALESCE(source_card_id, '') AS source_card_id,
+			       COALESCE(set_code, '') AS set_code, COALESCE(collector_number, '') AS collector_number,
+			       COALESCE(price_usd, 0) > 0 AS has_usd,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY COALESCE(price_usd, 0) > 0
+			           ORDER BY CASE WHEN COALESCE(price_usd, 0) > 0 THEN id END,
+			                    price_checked_at ASC NULLS FIRST, id) AS turn
+			FROM cards
+			WHERE superseded_by_card_id IS NULL
+			  AND game = 'pokemon'
+			  AND (COALESCE(price_usd, 0) <= 0
+			       OR ((COALESCE(price_eur, 0) <= 0 OR price_eur_estimated) AND id > $2))
+			  AND COALESCE(source_card_id, '') <> ''
+		) AS queue
+		ORDER BY turn, has_usd
+		LIMIT $1`, w.backfillBatch, w.backfillCursor)
 	if err != nil {
 		slog.Warn("Price backfill: query failed", "error", err)
 		return
@@ -78,12 +87,18 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 	defer func() { _ = rows.Close() }()
 
 	cards := make([]models.Card, 0, w.backfillBatch)
+	cursor, withUSD := w.backfillCursor, 0
 	for rows.Next() {
 		var card models.Card
+		var hasUSD bool
 		if err := rows.Scan(&card.ID, &card.Name, &card.Set, &card.Game, &card.Language,
-			&card.SourceID, &card.SourceCardID, &card.SetCode, &card.CollectorNumber); err != nil {
+			&card.SourceID, &card.SourceCardID, &card.SetCode, &card.CollectorNumber, &hasUSD); err != nil {
 			slog.Warn("Price backfill: scan failed", "error", err)
 			continue
+		}
+		if hasUSD {
+			cursor = card.ID
+			withUSD++
 		}
 		cards = append(cards, card)
 	}
@@ -91,6 +106,12 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 		slog.Warn("Price backfill: read failed", "error", err)
 	}
 	_ = rows.Close()
+	// The USD queue ran short of its turns: it reached the end of the id range and
+	// the next pass starts over.
+	if len(cards) < w.backfillBatch || withUSD < len(cards)/2 {
+		cursor = ""
+	}
+	w.backfillCursor = cursor
 	if len(cards) == 0 {
 		return
 	}
@@ -143,10 +164,12 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 }
 
 // markBackfillMiss moves a card to the back of the queue after a successful lookup
-// that found no price, without touching its (empty) prices.
+// that found no price, without touching its (empty) prices. A card with a USD price
+// is skipped: the stamp would claim that USD was verified, and that queue rotates
+// through backfillCursor instead.
 func (w *DataSyncWorker) markBackfillMiss(ctx context.Context, cardID string) {
 	if _, err := w.db.ExecContext(ctx,
-		`UPDATE cards SET price_checked_at = NOW() WHERE id = $1`, cardID); err != nil {
+		`UPDATE cards SET price_checked_at = NOW() WHERE id = $1 AND COALESCE(price_usd, 0) <= 0`, cardID); err != nil {
 		slog.Debug("Price backfill: could not record the miss", "card_id", cardID, "error", err)
 	}
 }

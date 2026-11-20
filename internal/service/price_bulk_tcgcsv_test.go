@@ -116,6 +116,18 @@ func TestTCGCSVBulkSourceContinuesPastAFailingCategory(t *testing.T) {
 	}
 }
 
+// The worker reads the language-bound categories through this optional method, so
+// the default source must expose it even when its category fetch fails.
+func TestTCGCSVBulkSourceReportsBoundLanguages(t *testing.T) {
+	source, ok := NewTCGCSVBulkSource().(interface{ BoundLanguages() map[string][]string })
+	if !ok {
+		t.Fatal("the default TCGCSV source must report its bound languages")
+	}
+	if got := source.BoundLanguages()["pokemon"]; len(got) != 4 || got[0] != "ja" {
+		t.Fatalf("BoundLanguages()[pokemon] = %v, want the Asian Pokémon languages", got)
+	}
+}
+
 // A failed write is not a broken set: it must reach the caller even when other
 // groups of the category succeed.
 func TestTCGCSVBulkSourceSurfacesEmitErrors(t *testing.T) {

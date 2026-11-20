@@ -256,4 +256,3 @@ func TestFetchCardPriceWithoutSources(t *testing.T) {
 		t.Fatal("expected an error when no price source is configured")
 	}
 }
-

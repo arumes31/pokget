@@ -46,6 +46,9 @@ type DataSyncWorker struct {
 	backfillBatch    int
 	backfillLimiter  interface{ Wait(context.Context) error }
 	backfillRunning  atomic.Bool
+	// backfillCursor rotates the backfill through cards that already have a USD
+	// price; their misses must not stamp price_checked_at (see backfillPrices).
+	backfillCursor string
 	// trackedLimit caps the hourly per-card refresh; Config.PriceTrackedLimit
 	// overrides defaultTrackedLimit.
 	trackedLimit int

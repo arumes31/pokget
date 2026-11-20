@@ -53,7 +53,7 @@ func TestApplyEURFallbackRecomputesStaleEstimates(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	const stale = `OR \(price_eur_estimated AND price_eur IS DISTINCT FROM ROUND\(price_usd \* \$1, 2\)\)\)`
-	mock.ExpectExec(`UPDATE cards[\s\S]*` + stale + `[\s\S]*LIMIT \$2[\s\S]*` + stale).
+	mock.ExpectExec(`UPDATE cards[\s\S]*`+stale+`[\s\S]*LIMIT \$2[\s\S]*`+stale).
 		WithArgs(0.9, fxBatchSize).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 

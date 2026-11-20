@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -33,11 +34,11 @@ func TestBackfillPricesStoresMissingPokemonPrices(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
-		AddRow("card-1", "Bulbasaur", "151", "pokemon", "de", "tcgdex", "sv03.5-001", "sv03.5", "001")
+	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number", "has_usd"}).
+		AddRow("card-1", "Bulbasaur", "151", "pokemon", "de", "tcgdex", "sv03.5-001", "sv03.5", "001", false)
 	// A converted EUR is no Cardmarket quote, so the card stays in the queue and the
 	// native quote may replace it.
-	mock.ExpectQuery(`SELECT id, name, set_name[\s\S]*OR price_eur_estimated\)`).WithArgs(50).WillReturnRows(rows)
+	mock.ExpectQuery(`SELECT id, name, set_name[\s\S]*OR price_eur_estimated\)`).WithArgs(50, "").WillReturnRows(rows)
 	mock.ExpectBegin()
 	// Either missing currency is a reason to write, so a EUR-only card still gets its
 	// USD quote without losing the EUR one.
@@ -72,9 +73,9 @@ func TestBackfillPricesRecordsMisses(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
-		AddRow("card-2", "Unpriced", "Set", "pokemon", "ja", "tcgdex", "SV3-999", "SV3", "999")
-	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
+	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number", "has_usd"}).
+		AddRow("card-2", "Unpriced", "Set", "pokemon", "ja", "tcgdex", "SV3-999", "SV3", "999", false)
+	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50, "").WillReturnRows(rows)
 	// The empty answer is recorded as a check, not as a price change.
 	mock.ExpectExec("UPDATE cards SET price_checked_at = NOW\\(\\)").WithArgs("card-2").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -119,9 +120,9 @@ func TestBackfillPricesKeepsStampOnProviderError(t *testing.T) {
 			}
 			defer func() { _ = db.Close() }()
 
-			rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
-				AddRow("card-3", "Retry", "Set", "pokemon", "en", "tcgdex", "SV3-1", "SV3", "1")
-			mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
+			rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number", "has_usd"}).
+				AddRow("card-3", "Retry", "Set", "pokemon", "en", "tcgdex", "SV3-1", "SV3", "1", false)
+			mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50, "").WillReturnRows(rows)
 			if tc.wantStamp {
 				mock.ExpectExec("UPDATE cards SET price_checked_at = NOW\\(\\)").WithArgs("card-3").
 					WillReturnResult(sqlmock.NewResult(0, 1))
@@ -138,7 +139,47 @@ func TestBackfillPricesKeepsStampOnProviderError(t *testing.T) {
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Fatalf("unmet expectations: %v", err)
 			}
+			// An unexpected stamp only logs, so check the classification directly.
+			_, _, fetchErr := fetchCardPriceFrom(context.Background(), []service.PriceClient{client},
+				models.Card{ID: "card-3", Name: "Retry", SourceID: "tcgdex", SourceCardID: "SV3-1"})
+			if got := errors.Is(fetchErr, errNoBackfillPrice); got != tc.wantStamp {
+				t.Fatalf("no-price classification = %v (err %v), want %v", got, fetchErr, tc.wantStamp)
+			}
 		})
+	}
+}
+
+// A card that already shows a USD price and only lacks a Cardmarket EUR must not
+// get a "verified" stamp from a miss; that queue rotates through the id cursor.
+func TestBackfillPricesRotatesUSDPricedCardsByCursor(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number", "has_usd"}).
+		AddRow("card-a", "A", "Set", "pokemon", "ja", "tcgdex", "SV3-1", "SV3", "1", true).
+		AddRow("card-b", "B", "Set", "pokemon", "ja", "tcgdex", "SV3-2", "SV3", "2", true)
+	mock.ExpectQuery(`SELECT id, name, set_name[\s\S]*id > \$2`).WithArgs(2, "card-0").WillReturnRows(rows)
+	for _, id := range []string{"card-a", "card-b"} {
+		mock.ExpectExec(`UPDATE cards SET price_checked_at = NOW\(\) WHERE id = \$1 AND COALESCE\(price_usd, 0\) <= 0`).
+			WithArgs(id).WillReturnResult(sqlmock.NewResult(0, 0))
+	}
+
+	worker := &DataSyncWorker{
+		db:             db,
+		priceClients:   map[string][]service.PriceClient{"pokemon": {&stubPriceClient{err: service.ErrNoPrice}}},
+		backfillBatch:  2,
+		backfillCursor: "card-0",
+	}
+	worker.backfillPrices(context.Background())
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+	if worker.backfillCursor != "card-b" {
+		t.Fatalf("cursor = %q, want the last USD-priced card", worker.backfillCursor)
 	}
 }
 
@@ -151,9 +192,9 @@ func TestBackfillPricesRotatesWhenNothingIsFilled(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
-		AddRow("card-4", "EurOnly", "Set", "pokemon", "en", "tcgdex", "SV3-2", "SV3", "2")
-	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
+	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number", "has_usd"}).
+		AddRow("card-4", "EurOnly", "Set", "pokemon", "en", "tcgdex", "SV3-2", "SV3", "2", false)
+	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50, "").WillReturnRows(rows)
 	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE cards[\s\S]*COALESCE\(price_eur, 0\) <= 0 OR price_eur_estimated\) AND \$2`).
 		WithArgs(0.0, 0.9, "card-4").

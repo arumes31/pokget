@@ -288,6 +288,32 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		}
 	})
 
+	// A stored price no source verified for a week must not reject a real market
+	// move forever: the 6x jump is accepted instead of skipped.
+	t.Run("StaleReferencePriceDoesNotVetoAJump", func(t *testing.T) {
+		db, mock, _ := sqlmock.New()
+		defer db.Close()
+
+		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur", "game", "source_id", "source_card_id", "language", "price_checked_at"}).
+			AddRow(card.ID, card.Name, card.Set, decimal.NewFromInt(100), decimal.NewFromInt(100), card.Game, "", "", "", time.Now().Add(-8*24*time.Hour))
+		mock.ExpectQuery("count\\(DISTINCT tracked.user_id\\)").WillReturnRows(sqlmock.NewRows([]string{"users"}).AddRow(1))
+		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+		mock.ExpectBegin()
+		mock.ExpectExec("UPDATE cards").
+			WithArgs(decimal.NewFromInt(600), decimal.NewFromInt(600), true, card.ID).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		worker := NewDataSyncWorker(db, &service.MockPriceClient{FixedUSD: 600, FixedEUR: 600}, nil, nil, time.Hour)
+		worker.maxPriceRatio = 5
+		worker.syncPrices(context.Background())
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("stale reference price still vetoed the candidate: %v", err)
+		}
+	})
+
 	// Nothing creates or delivers price alerts, so the sync must neither rank nor
 	// evaluate them: any statement touching price_alerts fails the matcher.
 	t.Run("IgnoresPriceAlerts", func(t *testing.T) {
