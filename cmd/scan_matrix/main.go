@@ -169,6 +169,7 @@ func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Durati
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	rows := make([]resultRow, 0, len(combinations)*per)
+	pinnedFound := make(map[string]bool, len(sampleIDs))
 	summaries := make([]summary, 0, len(combinations))
 	for _, combination := range combinations {
 		var scope service.ScanScope
@@ -192,6 +193,9 @@ func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Durati
 		}
 		if len(samples) == 0 {
 			continue
+		}
+		for _, sample := range samples {
+			pinnedFound[sample.Card.ID] = true
 		}
 		combinationSummary := summary{Game: combination.game, Language: combination.language}
 		sentLanguage := combination.language
@@ -238,18 +242,36 @@ func run(gameFlag, languageFlag string, per int, seed int64, timeout time.Durati
 		summaries = append(summaries, combinationSummary)
 	}
 
+	var missing []string
+	for _, id := range sampleIDs {
+		if !pinnedFound[id] {
+			missing = append(missing, id)
+		}
+	}
 	if asJSON {
 		payload := map[string]any{"seed": seed, "rows": rows, "summary": summaries}
+		if len(missing) > 0 {
+			payload["missing_ids"] = missing
+		}
 		encoded, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
 			return err
 		}
 		fmt.Println(string(encoded))
-		return nil
+		return missingIDsError(missing)
 	}
 	fmt.Println()
 	printSummary(summaries)
-	return nil
+	return missingIDsError(missing)
+}
+
+// missingIDsError fails a replay whose -ids named cards outside the game,
+// language or catalog scope, so a mistyped ID is never a silent partial run.
+func missingIDsError(missing []string) error {
+	if len(missing) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%d requested card IDs were not found in the selected scope: %s", len(missing), strings.Join(missing, ", "))
 }
 
 func newDetector(timeout time.Duration) (*claudedetect.Client, error) {

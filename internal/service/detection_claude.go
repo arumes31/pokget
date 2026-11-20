@@ -714,7 +714,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	// names the set in another language than the catalog ("Astral Radiance" for
 	// the French "Astres Radieux"). When name and number tie across products,
 	// the only product that can print that fraction is the card's set.
-	if setPrefix, setTotal, ok := printedSetTotal(claudeCollector); ok && len(candidates) > 1 && !candidates[0].setExact {
+	if setTotal, ok := printedSetTotal(claudeCollector); ok && len(candidates) > 1 && !candidates[0].setExact {
 		topScore := candidates[0].confidence
 		var tied []models.Card
 		for index := range candidates {
@@ -727,7 +727,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			}
 		}
 		if len(tied) > 1 {
-			if winner, decided := setTotalWinner(cards, tied, setPrefix, setTotal); decided {
+			if winner, decided := setTotalWinner(cards, tied, setTotal); decided {
 				for index := range candidates {
 					candidate := &candidates[index]
 					if candidate.confidence == topScore && candidate.collectorExact && sameProduct(candidate.card, winner) {

@@ -158,12 +158,14 @@ an evidence score, not a measured probability of correctness.
 Scanner recognition is server-side only; there is no local OCR integration
 suite anymore.
 
-`go run ./cmd/scan_matrix -game pokemon -per 10 -seed <n>` samples random
-catalog cards per language and runs them through the Claude detector against
-the real catalog (it needs the server's `DB_*` and `CLAUDE_*` environment).
-Misses record the text the model read; `-ids <id,id,…>` replays chosen cards
-after a fix. When name and number tie across sets, a printed total
-(`005/189`) selects the only set that can print it. Pokémon TCG Pocket sets
+`go run ./cmd/scan_matrix -game pokemon -per 10 -seed <n> -json` samples
+random catalog cards per language and runs them through the Claude detector
+against the real catalog (it needs the server's `DB_*` and `CLAUDE_*`
+environment). In JSON output, non-exact rows include the text the model read
+in `rows[].extracted`; `-ids <id,id,…>` replays chosen cards after a fix and
+fails when an ID is not in scope. When name and number tie across sets, a
+printed total (`005/189`) selects the only set whose published official size
+matches it. Pokémon TCG Pocket sets
 are not imported: they are digital-only and would compete with physical
 printings of the same name.
 
