@@ -286,8 +286,7 @@ func TestSourceWorkerSkipsBusySource(t *testing.T) {
 	repository := &busyCatalogRepository{}
 	syncer := &catalog.Syncer{Repository: repository}
 	w := NewSourceWorker(repository, catalogWorkerProvider{}, syncer, time.Hour, nil)
-	w.executeSync(context.Background())
-	if w.lastError != nil {
-		t.Fatalf("a busy source is not a failed sync, lastError = %v", w.lastError)
+	if busy := w.executeSync(context.Background()); !busy || w.lastError != nil {
+		t.Fatalf("a busy source is skipped, not failed: busy=%v lastError=%v", busy, w.lastError)
 	}
 }

@@ -68,17 +68,24 @@ func (w *SourceWorker) Run(ctx context.Context, initialJitter time.Duration) {
 	defer ticker.Stop()
 
 	for {
-		w.executeSync(ctx)
+		next := ticker.C
+		if busy := w.executeSync(ctx); busy {
+			// The holder renews its lease or loses it within RunLeaseTTL (e.g. a
+			// killed process); retry then instead of one full interval later.
+			next = time.After(catalog.RunLeaseTTL)
+		}
 		select {
 		case <-ctx.Done():
 			slog.Debug("Source worker stopping", "source", w.provider.ID(), "game", w.provider.Game())
 			return
-		case <-ticker.C:
+		case <-next:
 		}
 	}
 }
 
-func (w *SourceWorker) executeSync(ctx context.Context) {
+// executeSync runs one sync and reports whether it was skipped because another
+// process holds the source.
+func (w *SourceWorker) executeSync(ctx context.Context) bool {
 	defer func() {
 		if r := recover(); r != nil {
 			w.mu.Lock()
@@ -94,7 +101,7 @@ func (w *SourceWorker) executeSync(ctx context.Context) {
 	}()
 
 	if ctx.Err() != nil {
-		return
+		return false
 	}
 
 	state, err := w.repo.SourceState(ctx, w.provider.ID())
@@ -104,7 +111,7 @@ func (w *SourceWorker) executeSync(ctx context.Context) {
 		w.lastCompletedAt = time.Now()
 		w.mu.Unlock()
 		slog.Error("Catalog: failed to load source state", "source", w.provider.ID(), "error", err)
-		return
+		return false
 	}
 
 	mode := catalog.SyncModeIncremental
@@ -129,7 +136,7 @@ func (w *SourceWorker) executeSync(ctx context.Context) {
 		// The catalog CLI (or another replica) is syncing this source right now.
 		slog.Info("Catalog: source sync skipped, another process holds it",
 			"source", w.provider.ID(), "game", w.provider.Game(), "mode", mode)
-		return
+		return true
 	}
 
 	w.mu.Lock()
@@ -146,7 +153,7 @@ func (w *SourceWorker) executeSync(ctx context.Context) {
 			"duration", time.Since(startedAt).Round(time.Millisecond),
 			"error", err,
 		)
-		return
+		return false
 	}
 
 	if completion.Changes.CardsInserted > 0 || completion.Changes.CardsUpdated > 0 ||
@@ -176,6 +183,7 @@ func (w *SourceWorker) executeSync(ctx context.Context) {
 		"cards_deactivated", completion.Changes.CardsDeactivated,
 		"printings_deactivated", completion.Changes.PrintingsDeactivated,
 	)
+	return false
 }
 
 // CatalogWorker coordinates per-TCG source workers, ensuring independent queues and execution.
