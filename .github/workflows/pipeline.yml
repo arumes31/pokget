@@ -50,7 +50,7 @@ jobs:
           - name: handlers-catalog
             packages: ./internal/handlers ./internal/auth ./internal/middleware ./internal/catalog ./internal/catalog/source
           - name: core-cmd
-            packages: ./internal/db ./internal/worker ./internal/config ./internal/errors ./internal/models ./internal/claudedetect ./internal/detectiontest ./cmd/pokget ./cmd/detection_matrix ./cmd/detection_seed ./cmd/llm_benchmark
+            packages: ./internal/db ./internal/worker ./internal/config ./internal/errors ./internal/models ./internal/claudedetect ./cmd/pokget
     name: test (${{ matrix.name }})
     steps:
       - name: Checkout repository
@@ -75,10 +75,10 @@ jobs:
         include:
           - name: service-detection
             packages: ./internal/service
-            args: -run 'Test(Detection|Claude|Fingerprint|LLM|Levenshtein|Matching)'
+            args: -run 'Test(Detection|Claude|Fingerprint|LLM|Matching)'
           - name: service-core
             packages: ./internal/service
-            args: -skip 'Test(Detection|Claude|Fingerprint|LLM|Levenshtein|Matching)'
+            args: -skip 'Test(Detection|Claude|Fingerprint|LLM|Matching)'
           - name: catalog-workers
             packages: ./internal/catalog ./internal/catalog/source ./internal/worker
             args: ''
@@ -203,9 +203,6 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Test static asset builder
         run: npm run test:static
-      - name: Validate text benchmark corpus
-        shell: pwsh
-        run: ./scripts/benchmark-ollama-text.test.ps1
       - name: Build and validate minified JavaScript
         run: |
           npm run build:static

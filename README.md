@@ -21,7 +21,7 @@
       |               |
       |   _________   |
       |  |         |  |
-      |  |  [PNG]  |  |  Pokget OCR Engine
+      |  |  [PNG]  |  |  Claude Vision Engine
       |  |_________|  |  Precision Fingerprinting
       |               |  Real-time Market Data
       |   CHARIZARD   |
@@ -126,37 +126,16 @@ temporary file is removed after success or failure.
 
 The first full import can take substantial time and disk space because it downloads large catalogs and reference images. Public sources can change or be temporarily unavailable, and no free public source can guarantee every language, promotional printing, or future physical variant. Sync history and verification commands make such gaps visible.
 
-### 🧪 Detection Acceptance Tests
+### 🧪 Scan accuracy
 
-The versioned acceptance pool contains four independently sourced cards for each supported TCG. A seed reproducibly selects one card per game, downloads and hash-verifies its reference image, then produces seven artifacts: source, clean, blur, resize, 3° rotation, brightness, and JPEG degradation. The resulting 42-case matrix requires the exact canonical card ID and name plus an explicit `needs_review: false` response.
+One captured image, end to end through the web UI:
 
 ```bash
-go run ./cmd/detection_fixtures
-go run ./cmd/detection_seed
-go run ./cmd/detection_matrix --base-url http://localhost:18066
 go run ./cmd/ui_scan_test --base-url http://localhost:18066 \
   --fixture <captured-card-image> \
   --expected-id <canonical-card-id> \
   --expected-name <exact-card-name>
 ```
-
-Use a different `--seed` to select a different card from each game's pool. “100%” refers specifically to a reproducible seeded 42-case acceptance matrix; it is not a claim that every possible camera, blur level, crop, language, or newly released card will always match. Add captured failure cases to the pool before changing thresholds.
-
-The normal Go suite also exercises a fixed 600-card matching cohort: 100
-unique printing IDs for each supported TCG. Every card is ranked against only
-its 100-card game scope using exact and OCR-normalized text. Same-name
-printings remain explicit ties unless set or collector evidence distinguishes
-them.
-
-Close visual matches now wait for OCR before selecting a printing. Name-only
-OCR keeps same-name printings available for review; a readable printing ID or
-set-and-collector pair takes priority, while disagreement with the artwork
-still requires review. Collector numbers match complete tokens, and photo
-fingerprints honor EXIF orientation and the selected card crop. Confidence is
-an evidence score, not a measured probability of correctness.
-
-Scanner recognition is server-side only; there is no local OCR integration
-suite anymore.
 
 `go run ./cmd/scan_matrix -game pokemon -per 10 -seed <n> -json` samples
 random catalog cards per language and runs them through the Claude detector
@@ -273,7 +252,7 @@ so short-window ETA is an estimate, not a stable completion promise.
 
 #### Scan diagnostics
 
-The scanner captures the card within the Matrix HUD viewfinder and uploads the cropped image directly to the server. When Claude Vision is enabled, the request is dispatched immediately to the Claude API with prompt caching, bypassing secondary pHash and OCR passes for maximum speed and accuracy.
+The scanner captures the card within the Matrix HUD viewfinder and uploads the cropped image directly to the server. When Claude Vision is enabled, the request is dispatched immediately to the Claude API with prompt caching.
 
 On submission, server logs record `input=server_image` along with the unique `scan_id`. `Scan scope selected` logs the normalized game/language and eligible-card count. `Scan stage started` / `Scan stage finished` track the active stage (`claude_vision` or legacy stages), durations, and completion/timeout outcomes. `Scan request finished` records the HTTP status and total processing duration. Set `DEBUG=true` for detailed stage diagnostics; `LOG_FORMAT=json` enables structured log ingestion.
 
@@ -295,8 +274,6 @@ CLAUDE_MODEL=claude-sonnet-5-5
 CLAUDE_PROMPT_CACHING=true
 CLAUDE_TIMEOUT_SECONDS=30
 ```
-
-When `CLAUDE_ENABLED=true` is active, secondary fallback stages (pHash and native OCR) are bypassed, providing clean, direct AI recognition without noisy fallbacks.
 
 ### 📱 Full-Screen Mobile HUD & PWA Standalone Mode
 
@@ -333,18 +310,13 @@ between failed attempts. Canceling the request cancels the completion and any pe
 retry. After three failures, the existing `OLLAMA_*` provider receives its own bounded
 request budget.
 `SCAN_TIMEOUT_SECONDS` bounds a whole scan: detector queueing, local image analysis
-and any primary completion. `SCAN_MAX_CONCURRENT` sizes the detector slots, and
+and the detector call. `SCAN_MAX_CONCURRENT` sizes the detector slots, and
 each account runs one scan at a time. Every scan names its TCG (`game`). Scan and
 binder-name requests remain cancellable when their caller disconnects. Leave `LLM_BASE_URL` empty for
 Ollama-only operation. Keep the key in `.env`, never in source or logs.
 
-For Ollama-only scans, optional text disambiguation takes at most five seconds
-and at most half the remaining scan budget. If it times out, completed local
-matches remain available for review instead of being discarded.
-
-Ollama defaults to 128 output tokens so canonical printing IDs fit in structured
-responses. Card-name suggestions use the local text model; scan recognition does
-not wait for it.
+Ollama defaults to 128 output tokens. Binder-name suggestions use the local text
+model; scan recognition does not wait for it.
 
 Scanner recognition happens only on the server. The earlier browser OCR,
 native Tesseract fallback and Ollama image-OCR stage were removed: a deployment

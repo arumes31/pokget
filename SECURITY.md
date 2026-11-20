@@ -20,7 +20,7 @@ not expose an unauthenticated Ollama endpoint to the public internet. Enable pro
 trust flags only when that topology is trusted, and list your proxy addresses in
 `TRUSTED_PROXIES` if they are not on loopback or a private network.
 
-Server-side OCR/LLM requests may send text, images, or approved catalog
+Server-side detector and LLM requests may send text, images, or approved catalog
 references to the configured provider. Use trusted endpoints, keep keys on the
 server, and review uncertain printing selections. The scanner always uploads the
 cropped photo because the phone no longer runs OCR; nothing is recognized on the

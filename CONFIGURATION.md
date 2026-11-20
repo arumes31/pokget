@@ -176,6 +176,4 @@ names such as `pokget_ollama` do not resolve outside the Compose network.
 
 Run `DB_PASSWORD=placeholder docker compose --env-file example.env config --quiet`
 (and the GHCR variant) to validate syntax without printing resolved secrets. This does not validate
-credentials or start services. See [SECURITY.md](SECURITY.md) for reporting issues
-and [the phone scan report](benchmarks/phone-ocr-20260909.md) for historical
-server-side limitations.
+credentials or start services. See [SECURITY.md](SECURITY.md) for reporting issues.
