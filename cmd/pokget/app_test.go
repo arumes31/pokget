@@ -200,10 +200,8 @@ func TestInitServicesNilDatabase(t *testing.T) {
 }
 
 // expectServiceInitQueries registers the sqlmock expectations for the queries
-// run while building services: fingerprint loading and the seeding guard.
+// run while building services: the seeding guard.
 func expectServiceInitQueries(mock sqlmock.Sqlmock) {
-	mock.ExpectQuery("SELECT id, name, set_name").
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectQuery("SELECT EXISTS").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 }
@@ -419,10 +417,8 @@ func TestStartBackgroundWorkersCatalogEnabled(t *testing.T) {
 	}
 
 	// Invoke the wired change callbacks to exercise the cache reload path.
-	// Each reload runs the cards query and then the fingerprint reload query.
+	// Each reload runs the cards query.
 	expectReload := func() {
-		mock.ExpectQuery("SELECT id, name, set_name").
-			WillReturnRows(sqlmock.NewRows([]string{"id"}))
 		mock.ExpectQuery("SELECT id, name, set_name").
 			WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	}

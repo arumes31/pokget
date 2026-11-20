@@ -49,13 +49,7 @@ func createDefaultTestImage() image.Image {
 }
 
 func TestFingerprintService(t *testing.T) {
-	db, _, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Failed to open mock db: %v", err)
-	}
-	defer db.Close()
-
-	s := NewFingerprintService(db)
+	s := NewFingerprintService()
 
 	t.Run("CalculateHash", func(t *testing.T) {
 		img := createDefaultTestImage()
@@ -73,33 +67,6 @@ func TestFingerprintService(t *testing.T) {
 		_, err := s.CalculateHash(nil)
 		if err == nil {
 			t.Error("Expected error for nil image")
-		}
-	})
-
-	t.Run("MatchFingerprint", func(t *testing.T) {
-		img := createDefaultTestImage()
-		hash, _ := s.CalculateHash(img)
-
-		cards := []models.Card{
-			{ID: "test-id", Name: "Test Card", Set: "Test Set", ImageURL: "http://example.com/img.png", Phash: &hash},
-		}
-
-		card, distance, err := s.MatchFingerprint(hash, cards)
-		if err != nil {
-			t.Errorf("MatchFingerprint failed: %v", err)
-		}
-		if card == nil {
-			t.Error("Expected to find a match")
-		}
-		if distance != 0 {
-			t.Errorf("Expected distance 0, got %d", distance)
-		}
-	})
-
-	t.Run("MatchFingerprint_NoMatch", func(t *testing.T) {
-		_, _, err := s.MatchFingerprint(0, []models.Card{})
-		if err != nil {
-			t.Errorf("MatchFingerprint should not return error on empty list: %v", err)
 		}
 	})
 }

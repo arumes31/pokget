@@ -55,7 +55,7 @@ func main() {
 		log.Fatal("DB connection failed")
 	}
 
-	fingerprint := service.NewFingerprintService(db.DB)
+	fingerprint := service.NewFingerprintService()
 
 	fmt.Printf("Processing %d cards for fingerprinting...\n", len(metadata))
 

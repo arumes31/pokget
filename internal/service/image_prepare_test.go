@@ -121,7 +121,7 @@ func TestScanPixelLimitBoundsDecodedBytes(t *testing.T) {
 }
 
 func TestFingerprintTieBreakHashesTheOrientedImage(t *testing.T) {
-	fingerprints := NewFingerprintService(nil)
+	fingerprints := NewFingerprintService()
 	upright := uprightTestCard(600, 840)
 	uprightJPEG := exifJPEG(t, upright, 1)
 	decoded, _, err := decodeScanImage(uprightJPEG, ImagePrepareConfig{})

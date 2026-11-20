@@ -100,7 +100,7 @@ func setupTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 		MockCards:      []models.Card{{ID: "test-id", Name: "Test Card"}},
 		Audit:          service.NewAuditService(dbMock),
 		Game:           service.NewGamificationService(dbMock),
-		Fingerprint:    service.NewFingerprintService(dbMock),
+		Fingerprint:    service.NewFingerprintService(),
 		DB:             dbMock,
 		passwordHasher: fastPasswordHasher,
 	}

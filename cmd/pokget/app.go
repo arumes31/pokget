@@ -68,7 +68,7 @@ func initServices(cfg *config.Config, database *sql.DB, fingerprintIndexDirty *a
 		return services, nil
 	}
 
-	fingerprintSvc := service.NewFingerprintService(database)
+	fingerprintSvc := service.NewFingerprintService()
 	// SCAN-02: Apply configurable pHash thresholds from config
 	fingerprintSvc.PhashHighConf = cfg.Scan.PhashHighConf
 	fingerprintSvc.PhashPotential = cfg.Scan.PhashPotential
@@ -234,10 +234,10 @@ func startBackgroundWorkers(
 		llmSvc.AutoSetupContext(workerCtx)
 	}()
 
-	// Wire up background sync callbacks to reload cache and rebuild the BK-tree dynamically.
+	// Wire up background sync callbacks to reload the card cache dynamically.
 	reloadCards := func(source string) {
 		slog.Info("Worker: catalog changed, reloading cards cache", "source", source)
-		if count, err := h.ReloadCardsCache(); err != nil {
+		if count, err := h.ReloadCardsOnly(); err != nil {
 			slog.Error("Worker: Failed to reload cards cache", "source", source, "error", err)
 		} else {
 			slog.Info("Worker: Successfully reloaded cache", "source", source, "count", count)
@@ -285,8 +285,12 @@ func startBackgroundWorkers(
 				case <-ticker.C:
 					if fingerprintIndexDirty.Swap(false) {
 						reloadStarted := time.Now()
-						services.fingerprintSvc.RebuildTree()
-						slog.Info("Catalog image fingerprints reloaded", "duration_ms", time.Since(reloadStarted).Milliseconds())
+						// The tie-break reads card.Phash from the card cache.
+						if _, err := h.ReloadCardsOnly(); err != nil {
+							slog.Error("Catalog image fingerprints reload failed", "error", err)
+						} else {
+							slog.Info("Catalog image fingerprints reloaded", "duration_ms", time.Since(reloadStarted).Milliseconds())
+						}
 						if err := progressReporter.Report(workerCtx); err != nil {
 							slog.Warn("Catalog fingerprint progress unavailable", "error", err)
 						}

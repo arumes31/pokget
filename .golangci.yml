@@ -23,7 +23,7 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
-      - path: ^cmd/(detection_fixtures|detection_matrix|detection_seed|fingerprint_diagnostics|generate_crops|llm_benchmark|populate_fingerprints|ui_scan_test)/
+      - path: ^cmd/(detection_fixtures|detection_matrix|detection_seed|generate_crops|llm_benchmark|populate_fingerprints|ui_scan_test)/
         linters:
           - staticcheck
           - unused

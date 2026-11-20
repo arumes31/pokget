@@ -37,7 +37,7 @@ func main() {
 	}
 	defer rows.Close()
 
-	fingerprint := service.NewFingerprintService(nil)
+	fingerprint := service.NewFingerprintService()
 	client := &http.Client{Timeout: 30 * time.Second}
 	distances := make([]int, 0, *limit)
 	for rows.Next() {

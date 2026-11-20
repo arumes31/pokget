@@ -75,10 +75,10 @@ jobs:
         include:
           - name: service-detection
             packages: ./internal/service
-            args: -run 'Test(Detection|Claude|BKTree|Fingerprint|LLM|Levenshtein|Matching)'
+            args: -run 'Test(Detection|Claude|Fingerprint|LLM|Levenshtein|Matching)'
           - name: service-core
             packages: ./internal/service
-            args: -skip 'Test(Detection|Claude|BKTree|Fingerprint|LLM|Levenshtein|Matching)'
+            args: -skip 'Test(Detection|Claude|Fingerprint|LLM|Levenshtein|Matching)'
           - name: catalog-workers
             packages: ./internal/catalog ./internal/catalog/source ./internal/worker
             args: ''

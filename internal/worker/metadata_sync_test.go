@@ -45,7 +45,7 @@ func newTestImageServer(t *testing.T, status int) *httptest.Server {
 }
 
 func newTestMetadataService() *service.MetadataService {
-	return service.NewMetadataService(service.NewFingerprintService(nil))
+	return service.NewMetadataService(service.NewFingerprintService())
 }
 
 type metadataClientStub struct {

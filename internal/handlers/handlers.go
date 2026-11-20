@@ -1366,7 +1366,7 @@ func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Action: RefreshCache", "user", r.Context().Value(auth.UserContextKey{}))
 
-	count, err := h.ReloadCardsCache()
+	count, err := h.ReloadCardsOnly()
 	if err != nil {
 		slog.Error("Failed to refresh cache", "error", err)
 		http.Error(w, "Failed to refresh cache", http.StatusInternalServerError)
@@ -1379,7 +1379,7 @@ func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(fmt.Sprintf("Successfully reloaded %d cards", count)))
 }
 
-// ReloadCardsOnly updates the in-memory card cache without rebuilding the BK-tree index.
+// ReloadCardsOnly updates the in-memory card cache.
 func (h *Handler) ReloadCardsOnly() (int, error) {
 	// Overlapping reloads could otherwise publish an older snapshot last.
 	h.reloadMu.Lock()
@@ -1427,22 +1427,6 @@ func (h *Handler) ReloadCardsOnly() (int, error) {
 	h.setTotalsMu.Unlock()
 	slog.Info("Database: Reloaded cards into cache", "count", len(allCards))
 	return len(allCards), nil
-}
-
-// ReloadCardsCache updates the in-memory card cache and rebuilds the BK-tree index.
-func (h *Handler) ReloadCardsCache() (int, error) {
-	count, err := h.ReloadCardsOnly()
-	if err != nil {
-		return 0, err
-	}
-
-	// Rebuild BK-tree index for fingerprint matching
-	if h.Fingerprint != nil {
-		h.Fingerprint.RebuildTree()
-		slog.Info("Fingerprint: Rebuilt BK-tree index after cache reload")
-	}
-
-	return count, nil
 }
 
 func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
