@@ -76,7 +76,6 @@ type Handler struct {
 	Detection    *service.DetectionPipeline // SCAN-07, SCAN-09, SCAN-16: Detection pipeline
 	Mailer       service.Mailer
 	Audit        *service.AuditService
-	Crypto       *service.CryptoService
 	Game         *service.GamificationService
 	LLM          *service.LLMService
 	PriceClient  *service.ScraperPriceClient

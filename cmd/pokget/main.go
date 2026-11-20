@@ -223,12 +223,6 @@ func main() {
 	// Load Templates
 	templates := template.Must(template.New("").Funcs(templateFuncMap()).ParseGlob("templates/*.html"))
 
-	cryptoSvc, err := newCryptoService(cfg.Auth.SessionKey)
-	if err != nil {
-		slog.Error("Failed to initialize crypto service", "error", err)
-		os.Exit(1)
-	}
-
 	// Versioning for assets
 	buildVersion := detectBuildVersion()
 
@@ -243,7 +237,7 @@ func main() {
 	}
 
 	// Initialize Handlers
-	h := newHandler(cfg, database, templates, services, detectionPipeline, cryptoSvc, llmSvc, buildVersion)
+	h := newHandler(cfg, database, templates, services, detectionPipeline, llmSvc, buildVersion)
 	warmCardsCache(h)
 
 	var backgroundWorkers sync.WaitGroup

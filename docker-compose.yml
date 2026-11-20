@@ -5,7 +5,6 @@ services:
     ports:
       - "${APP_PORT:-18066}:${APP_PORT:-18066}"
     environment:
-      - APP_NAME=${APP_NAME:-Pokget}
       - APP_PORT=${APP_PORT:-18066}
       - DEBUG=${DEBUG:-false}
       - SECURE_COOKIES=${SECURE_COOKIES:-false}

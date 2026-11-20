@@ -9,7 +9,6 @@ require (
 	github.com/chromedp/cdproto v0.160.6
 	github.com/chromedp/chromedp v0.24.0
 	github.com/corona10/goimagehash v1.1.0
-	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/gocolly/colly/v2 v2.3.0
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/gorilla/csrf v1.7.3
@@ -17,7 +16,6 @@ require (
 	github.com/gorilla/sessions v1.4.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/lib/pq v1.12.3
-	github.com/redis/go-redis/v9 v9.23.0
 	github.com/shopspring/decimal v1.6.0
 	golang.org/x/crypto v0.59.0
 	golang.org/x/image v0.48.0
@@ -33,7 +31,6 @@ require (
 	github.com/antchfx/xmlquery v1.5.2 // indirect
 	github.com/antchfx/xpath v1.3.9 // indirect
 	github.com/bits-and-blooms/bitset v1.30.0 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-json-experiment/json v1.27.2 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
@@ -44,9 +41,8 @@ require (
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/nlnwa/whatwg-url v0.6.2 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
+	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/temoto/robotstxt v1.1.2 // indirect
-	go.uber.org/atomic v1.12.0 // indirect
-	golang.org/x/sys v0.50.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

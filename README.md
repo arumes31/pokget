@@ -77,7 +77,7 @@ The Pokget vault is hardened using industry standards:
 | Package | Responsibility |
 | :--- | :--- |
 | `internal/auth` | Middleware, Hashing, Rate Limiting, Session Management. |
-| `internal/service` | OCR Engine, pHash matching, LLM integration, Mailer, Crypto. |
+| `internal/service` | Claude card detection, pHash tie-break, prices, LLM binder naming, Mailer. |
 | `internal/handlers` | HTMX-driven logic for Dashboard, APIScan, and Sharing. |
 | `internal/catalog` | Versioned multi-TCG catalog, reference-image storage, and fingerprints. |
 | `internal/worker` | Background catalog, image, and price synchronization. |

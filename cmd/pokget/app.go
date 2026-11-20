@@ -167,13 +167,6 @@ func templateFuncMap() template.FuncMap {
 	}
 }
 
-// newCryptoService derives the AES-256 key from the session key and builds
-// the crypto service used for encrypting sensitive fields.
-func newCryptoService(sessionKey string) (*service.CryptoService, error) {
-	cryptoKey := deriveKey(sessionKey, "pokget:crypto:aes256")
-	return service.NewCryptoService(string(cryptoKey))
-}
-
 // detectBuildVersion versions static assets from the compiled CSS mtime.
 func detectBuildVersion() string {
 	buildVersion := "1"
@@ -190,7 +183,6 @@ func newHandler(
 	templates *template.Template,
 	services *appServices,
 	detectionPipeline *service.DetectionPipeline,
-	cryptoSvc *service.CryptoService,
 	llmSvc *service.LLMService,
 	buildVersion string,
 ) *handlers.Handler {
@@ -203,7 +195,6 @@ func newHandler(
 		Fingerprint:       services.fingerprintSvc, // BUG-H01: Reuse fingerprintSvc instead of creating new one
 		Detection:         detectionPipeline,
 		Audit:             services.auditSvc,
-		Crypto:            cryptoSvc,
 		Game:              service.NewGamificationService(database),
 		LLM:               llmSvc,
 		PriceClient:       service.NewScraperPriceClient(),

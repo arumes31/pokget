@@ -21,9 +21,7 @@
 package service
 
 import (
-	"context"
 	"database/sql"
-	"encoding/json"
 	"image"
 	"image/color"
 	"image/draw"
@@ -31,15 +29,10 @@ import (
 	"net/http/httptest"
 	"net/smtp"
 	"os"
-	"path/filepath"
 	"pokget/internal/models"
-	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/go-redis/redismock/v9"
 )
 
 func createDefaultTestImage() image.Image {
@@ -69,95 +62,6 @@ func TestFingerprintService(t *testing.T) {
 			t.Error("Expected error for nil image")
 		}
 	})
-}
-
-func TestImageCacheService_Error(t *testing.T) {
-	t.Run("InvalidDir", func(t *testing.T) {
-		// Try to create in a path that should fail (e.g. nested in non-existent)
-		// Or just a very long path/invalid characters on windows
-		s := NewImageCacheService("Z:\\invalid\\path\\that\\does\\not\\exist")
-		defer s.Close()
-		if s == nil {
-			t.Error("Expected service instance even if mkdir fails")
-		}
-	})
-}
-
-func TestImageCacheService(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "pokget-cache-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	s := NewImageCacheService(tempDir)
-	defer s.Close()
-
-	t.Run("DownloadAndCache", func(t *testing.T) {
-		// SSRF validation: non-https scheme rejected
-		_, err := s.GetImagePath("test-card", "http://example.com/image.png")
-		if err == nil || !strings.Contains(err.Error(), "insecure protocol") {
-			t.Errorf("Expected insecure protocol error, got: %v", err)
-		}
-
-		// SSRF validation: untrusted host rejected
-		_, err = s.GetImagePath("test-card", "https://malicious.com/image.png")
-		if err == nil || !strings.Contains(err.Error(), "untrusted host") {
-			t.Errorf("Expected untrusted host error, got: %v", err)
-		}
-
-		// To test success, we create a file manually as if it was cached
-		safeID := filepath.Base("test-card")
-		path := filepath.Join(tempDir, safeID+".png")
-		_ = os.WriteFile(path, []byte("fake-image-data"), 0600)
-
-		// Call should hit cache (validation skipped for cached files)
-		path2, err := s.GetImagePath("test-card", "https://example.com/any")
-		if err != nil {
-			t.Errorf("GetImagePath (cached) failed: %v", err)
-		}
-		if path != path2 {
-			t.Error("Paths should be identical")
-		}
-	})
-
-	t.Run("HTTPError", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
-		}))
-		defer server.Close()
-
-		_, err := s.GetImagePath("not-found", server.URL)
-		if err == nil {
-			t.Error("Expected error for 404 response")
-		}
-	})
-}
-
-func TestImageCacheServiceConcurrentClose(t *testing.T) {
-	t.Parallel()
-
-	service := NewImageCacheService(t.TempDir())
-	const callers = 32
-	var callersWG sync.WaitGroup
-	callersWG.Add(callers)
-	for range callers {
-		go func() {
-			defer callersWG.Done()
-			service.Close()
-		}()
-	}
-
-	done := make(chan struct{})
-	go func() {
-		callersWG.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("concurrent Close calls did not join the cleanup goroutine")
-	}
 }
 
 func TestMailService(t *testing.T) {
@@ -339,51 +243,6 @@ func TestScraperPriceClient(t *testing.T) {
 	})
 }
 
-func TestCryptoService(t *testing.T) {
-	key := "12345678901234567890123456789012" // 32 bytes
-	s, err := NewCryptoService(key)
-	if err != nil {
-		t.Fatalf("Failed to create CryptoService: %v", err)
-	}
-
-	t.Run("Encrypt_Error", func(t *testing.T) {
-		// Mocking cipher.AEAD is hard, but we can hit some branches
-		_, err := s.Encrypt("") // empty string is fine
-		if err != nil {
-			t.Errorf("Encrypt failed for empty string: %v", err)
-		}
-	})
-
-	t.Run("EncryptDecrypt", func(t *testing.T) {
-		plaintext := "Secret Data"
-		ciphertext, err := s.Encrypt(plaintext)
-		if err != nil {
-			t.Fatalf("Encrypt failed: %v", err)
-		}
-
-		decrypted, err := s.Decrypt(ciphertext)
-		if err != nil {
-			t.Fatalf("Decrypt failed: %v", err)
-		}
-
-		if decrypted != plaintext {
-			t.Errorf("Expected %s, got %s", plaintext, decrypted)
-		}
-	})
-
-	t.Run("Decrypt_Invalid", func(t *testing.T) {
-		_, err := s.Decrypt("invalid-base64")
-		if err == nil {
-			t.Error("Expected error for invalid base64")
-		}
-
-		_, err = s.Decrypt("YWJjZA==") // "abcd" in base64, too short for AES-GCM nonce
-		if err == nil {
-			t.Error("Expected error for too short ciphertext")
-		}
-	})
-}
-
 func TestGamificationService(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -500,55 +359,6 @@ func TestGamificationService(t *testing.T) {
 	})
 }
 
-func TestCacheService(t *testing.T) {
-	ctx := context.Background()
-	db, mock := redismock.NewClientMock()
-
-	s := &CacheService{client: db}
-
-	t.Run("SetGet", func(t *testing.T) {
-		val := map[string]string{"foo": "bar"}
-		data, _ := json.Marshal(val)
-
-		mock.ExpectSet("test-key", data, 0).SetVal("OK")
-		err := s.Set(ctx, "test-key", val, 0)
-		if err != nil {
-			t.Errorf("Set failed: %v", err)
-		}
-
-		mock.ExpectGet("test-key").SetVal(string(data))
-		var got map[string]string
-		err = s.Get(ctx, "test-key", &got)
-		if err != nil {
-			t.Errorf("Get failed: %v", err)
-		}
-		if got["foo"] != "bar" {
-			t.Errorf("Expected bar, got %s", got["foo"])
-		}
-	})
-
-	t.Run("Delete", func(t *testing.T) {
-		mock.ExpectDel("test-key").SetVal(1)
-		err := s.Delete(ctx, "test-key")
-		if err != nil {
-			t.Errorf("Delete failed: %v", err)
-		}
-	})
-
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Error(err)
-	}
-
-	t.Run("NewCacheService", func(t *testing.T) {
-		os.Setenv("REDIS_URL", "localhost:6379")
-		defer os.Unsetenv("REDIS_URL")
-		s := NewCacheService()
-		if s == nil {
-			t.Error("Expected CacheService instance")
-		}
-	})
-}
-
 func TestLevenshtein(t *testing.T) {
 	tests := []struct {
 		s1, s2 string
@@ -567,24 +377,4 @@ func TestLevenshtein(t *testing.T) {
 			t.Errorf("levenshtein(%q, %q) = %d, want %d", tt.s1, tt.s2, got, tt.want)
 		}
 	}
-}
-
-func TestEventBus(t *testing.T) {
-	bus := NewEventBus()
-
-	t.Run("SubscribePublish", func(t *testing.T) {
-		ch, unsubscribe := bus.Subscribe("test-event")
-		defer unsubscribe()
-
-		bus.Publish(Event{Type: "test-event", Payload: "hello"})
-
-		select {
-		case ev := <-ch:
-			if ev.Payload != "hello" {
-				t.Errorf("Expected hello, got %v", ev.Payload)
-			}
-		case <-time.After(100 * time.Millisecond):
-			t.Error("Timed out waiting for event")
-		}
-	})
 }
