@@ -104,6 +104,10 @@ func (p *TCGdexProvider) Fetch(ctx context.Context, request catalog.FetchRequest
 				return result, ctx.Err()
 			}
 			slog.Warn("Catalog: skipping tcgdex set due to fetch error", "set", brief.ID, "language", language, "endpoint", endpoint, "error", err)
+			// A skipped set is missing from this run, not retired upstream. A
+			// complete snapshot would deactivate every card of it (a transient
+			// 503 once retired 4,722 physical cards), so the run is partial.
+			result.CompleteSnapshot = false
 			continue
 		}
 		if tcgdexDigitalSeries[strings.ToLower(set.Serie.ID)] {
