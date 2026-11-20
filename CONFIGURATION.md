@@ -4,14 +4,14 @@ Start with [example.env](example.env). It contains non-secret defaults, empty
 credential fields, and all variables interpolated by both Compose files. Keep
 the populated `.env` private. Existing installations should copy individual
 settings, not replace their working configuration or rotate their session key
-accidentally. The session key also derives the application's encryption key.
+accidentally. The session key also derives the CSRF key.
 
 ## Choose the scan path
 
 | Stage | Runs on | Default / activation | Data sent to server/provider |
 | --- | --- | --- | --- |
 | **Claude AI Vision Detector** | Anthropic Claude API (`claude-sonnet-5-5` / `claude-opus-5-5` / `claude-haiku-5-5`) | `CLAUDE_ENABLED=true` (Requires `CLAUDE_API_KEY`; default `false`); uses Anthropic Prompt Caching | Card image to Anthropic API |
-| Local text selector | Ollama CPU, `qwen2.5:1.5b` | `OLLAMA_MODEL`; card-name suggestions only | Text and bounded shortlist to Ollama |
+| Local text model | Ollama CPU, `qwen2.5:1.5b` | `OLLAMA_MODEL`; binder-name suggestions only | Card names of the binder to Ollama |
 
 The phone never runs OCR: the cropped image is always uploaded, and only the
 server performs recognition. Card recognition requires the Claude detector; a
@@ -21,8 +21,9 @@ language/model setting removes that requirement or guarantees an exact physical
 printing.
 
 An optional primary provider configured by `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API`,
-and `LLM_MAX_TOKENS` receives card-name suggestion prompts only. Leave
-`LLM_BASE_URL` empty for local-only text suggestions. See the README's provider
+and `LLM_MAX_TOKENS` receives binder-name prompts only. Leave
+`LLM_BASE_URL` empty and point `OLLAMA_HOST` at an Ollama instance on the same
+machine to keep binder-name prompts local; a remote `OLLAMA_HOST` receives them too. See the README's provider
 section for retry and cancellation behavior.
 
 ### Claude AI Card Detection & Prompt Caching
@@ -93,7 +94,7 @@ docker compose up -d --build pokget_app
 
 The app also attempts background setup of its configured text model, but an
 explicit pull makes download errors visible before scanning. The text model only
-suggests card names; card recognition itself runs through the Claude detector.
+suggests binder names; card recognition itself runs through the Claude detector.
 With the GHCR stack, add `-f docker-compose.ghcr.yml` to every command and use
 `pull`/`up -d` instead of `--build` when updating the app.
 
@@ -105,15 +106,14 @@ With the GHCR stack, add `-f docker-compose.ghcr.yml` to every command and use
 | `SCAN_MAX_CONCURRENT` | 3 | Concurrent scan requests per instance |
 | `SCAN_PHASH_HIGH_CONF`, `SCAN_PHASH_POTENTIAL` | 5, 10 | Hash-distance thresholds; do not tune to hide bad matches |
 | `OLLAMA_NUM_THREAD`, `OLLAMA_NUM_CTX`, `OLLAMA_NUM_PREDICT` | 4, 2048, 128 | Local text-model inference limits |
-| `OLLAMA_MAX_CANDIDATES`, `OLLAMA_MIN_EVIDENCE`, `OLLAMA_MIN_CONFIDENCE` | 20, 180, 0.55 | Text shortlist eligibility and response checks, not accuracy probabilities |
 | `OLLAMA_NUM_PARALLEL`, `OLLAMA_MAX_LOADED_MODELS` | 1, 1 | Ollama server concurrency/residency |
 | `SECURE_COOKIES` | true | Keep enabled behind HTTPS; false only for local HTTP development |
-| `WRITE_TIMEOUT` | 120 | General HTTP write timeout; long primary scan completions have separate cancellation behavior |
+| `WRITE_TIMEOUT` | 120 | General HTTP write timeout; scans are bounded separately by `SCAN_TIMEOUT_SECONDS` |
 | `TRUST_PROXY`, `TRUST_CLOUDFLARE` | false, false | Enable only for an intentionally trusted proxy topology |
 | `TRUSTED_PROXIES` | loopback + private ranges | Comma-separated CIDRs/IPs whose `X-Forwarded-For`/`X-Real-IP` headers are honoured when `TRUST_PROXY=true`; the right-most untrusted `X-Forwarded-For` hop is used. Configure the proxy to emit a single consolidated `X-Forwarded-For` header |
 | `RATE_LIMIT`, `BURST_LIMIT` | 1, 5 | Global per-IP request limiter (tokens/second, burst) for every non-static route. 1, 5 is the native-process default when unset; the Compose files and `example.env` set 20, 50 |
 | `AUTH_RATE_LIMIT`, `AUTH_BURST_LIMIT` | 0.1, 5 | Stricter per-IP limiter for `/auth/register` and `/auth/resend` (each sends an email), applied on top of the global limiter to curb registration/verification spam |
-| `CATALOG_LANGUAGE` | en,de,ja,fr,zh-cn,zh-tw,ko | Requested import languages; upstream coverage still varies by game |
+| `CATALOG_LANGUAGE` | en,de,ja,fr,zh-cn,zh-tw,ko,es | Requested import languages; upstream coverage still varies by game |
 | `CATALOG_WEISS_MAX_PAGES` | 0 | Weiss source pagination cap; zero means no cap |
 | `CATALOG_IMAGE_CONCURRENCY` | 4 | Parallel image downloads/hashing, 1–8; database writes remain serialized |
 | `CATALOG_IMAGE_BATCH_SIZE` | 8 | Maximum leased batch, capped at twice concurrency to limit waiting leases |
@@ -171,12 +171,10 @@ names such as `pokget_ollama` do not resolve outside the Compose network.
   Ollama (11434) on `127.0.0.1` only, for native tools on the same host. Do not
   widen these bindings; Ollama is not an authenticated API.
 - **Private scans:** every scan uploads the cropped photo; nothing is recognized
-  on the device. A configured remote primary endpoint or the Claude detector
-  receives its request data. Choose only trusted endpoints and keep API keys
+  on the device. The Claude detector receives the photo; a configured primary LLM
+  endpoint receives binder-name prompts. Choose only trusted endpoints and keep API keys
   server-side.
 
 Run `DB_PASSWORD=placeholder docker compose --env-file example.env config --quiet`
 (and the GHCR variant) to validate syntax without printing resolved secrets. This does not validate
-credentials or start services. See [SECURITY.md](SECURITY.md) for reporting issues
-and [the phone scan report](benchmarks/phone-ocr-20260909.md) for historical
-server-side limitations.
+credentials or start services. See [SECURITY.md](SECURITY.md) for reporting issues.

@@ -28,7 +28,6 @@ import (
 
 type Config struct {
 	App struct {
-		Name          string `env:"APP_NAME" env-default:"Pokget"`
 		Port          string `env:"APP_PORT" env-default:"18066"`
 		Debug         bool   `env:"DEBUG" env-default:"false"`
 		LogFormat     string `env:"LOG_FORMAT" env-default:"text"`
@@ -44,18 +43,6 @@ type Config struct {
 		SSLMode        string `env:"DB_SSLMODE" env-default:"prefer"`
 		MigrationsPath string `env:"MIGRATIONS_PATH" env-default:"migrations"`
 	} `yaml:"db"`
-	Redis struct {
-		Host     string `env:"REDIS_HOST" env-default:"localhost"`
-		Port     string `env:"REDIS_PORT" env-default:"6379"`
-		Password string `env:"REDIS_PASSWORD"`
-	} `yaml:"redis"`
-	SMTP struct {
-		Host string `env:"SMTP_HOST"`
-		Port string `env:"SMTP_PORT"`
-		User string `env:"SMTP_USER"`
-		Pass string `env:"SMTP_PASS"`
-		From string `env:"SMTP_FROM"`
-	} `yaml:"smtp"`
 	Auth struct {
 		SessionKey string `env:"SESSION_KEY" env-required:"true"`
 	} `yaml:"auth"`
@@ -76,7 +63,7 @@ type Config struct {
 	Catalog struct {
 		Enabled             bool   `env:"CATALOG_ENABLED" env-default:"true"`
 		LegacyMetadataSync  bool   `env:"LEGACY_METADATA_SYNC_ENABLED" env-default:"false"`
-		Language            string `env:"CATALOG_LANGUAGE" env-default:"en,de,ja,fr,zh-cn,zh-tw,ko"`
+		Language            string `env:"CATALOG_LANGUAGE" env-default:"en,de,ja,fr,zh-cn,zh-tw,ko,es"`
 		SyncIntervalMins    int    `env:"CATALOG_SYNC_INTERVAL_MINUTES" env-default:"360"`
 		BatchSize           int    `env:"CATALOG_BATCH_SIZE" env-default:"500"`
 		RequestDelayMS      int    `env:"CATALOG_REQUEST_DELAY_MS" env-default:"100"`

@@ -312,7 +312,6 @@ func TestRefreshCache(t *testing.T) {
 	t.Run("QueryError", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
-		h.Fingerprint = nil // skip BK-tree rebuild against the mock DB
 
 		req := httptest.NewRequest(http.MethodPost, "/cache/refresh", nil)
 		rr := httptest.NewRecorder()
@@ -329,7 +328,6 @@ func TestRefreshCache(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
-		h.Fingerprint = nil
 
 		req := httptest.NewRequest(http.MethodPost, "/cache/refresh", nil)
 		rr := httptest.NewRecorder()
@@ -367,7 +365,6 @@ func TestRefreshCache(t *testing.T) {
 	t.Run("SkipsUnscannableRows", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
-		h.Fingerprint = nil
 
 		req := httptest.NewRequest(http.MethodPost, "/cache/refresh", nil)
 		rr := httptest.NewRecorder()
@@ -391,7 +388,6 @@ func TestRefreshCache(t *testing.T) {
 	t.Run("RowsError", func(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
-		h.Fingerprint = nil
 
 		req := httptest.NewRequest(http.MethodPost, "/cache/refresh", nil)
 		rr := httptest.NewRecorder()

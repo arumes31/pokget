@@ -21,7 +21,7 @@
       |               |
       |   _________   |
       |  |         |  |
-      |  |  [PNG]  |  |  Pokget OCR Engine
+      |  |  [PNG]  |  |  Claude Vision Engine
       |  |_________|  |  Precision Fingerprinting
       |               |  Real-time Market Data
       |   CHARIZARD   |
@@ -77,7 +77,7 @@ The Pokget vault is hardened using industry standards:
 | Package | Responsibility |
 | :--- | :--- |
 | `internal/auth` | Middleware, Hashing, Rate Limiting, Session Management. |
-| `internal/service` | OCR Engine, pHash matching, LLM integration, Mailer, Crypto. |
+| `internal/service` | Claude card detection, pHash tie-break, prices, LLM binder naming, Mailer. |
 | `internal/handlers` | HTMX-driven logic for Dashboard, APIScan, and Sharing. |
 | `internal/catalog` | Versioned multi-TCG catalog, reference-image storage, and fingerprints. |
 | `internal/worker` | Background catalog, image, and price synchronization. |
@@ -110,8 +110,8 @@ go run ./cmd/catalog images
 ```
 
 `CATALOG_LANGUAGE` accepts a comma-separated list and defaults to
-`en,de,ja,fr,zh-cn,zh-tw,ko`: English, German, Japanese, French, both Chinese
-scripts, and Korean. Existing installations with `CATALOG_LANGUAGE=en` in their
+`en,de,ja,fr,zh-cn,zh-tw,ko,es`: English, German, Japanese, French, both Chinese
+scripts, Korean and Spanish. Existing installations with `CATALOG_LANGUAGE=en` in their
 deployment environment must update that value and recreate the application
 container. The next catalog sync imports the selected languages. The catalog CLI
 accepts the same list through `--lang`. TCGdex imports all selected languages in
@@ -126,37 +126,16 @@ temporary file is removed after success or failure.
 
 The first full import can take substantial time and disk space because it downloads large catalogs and reference images. Public sources can change or be temporarily unavailable, and no free public source can guarantee every language, promotional printing, or future physical variant. Sync history and verification commands make such gaps visible.
 
-### 🧪 Detection Acceptance Tests
+### 🧪 Scan accuracy
 
-The versioned acceptance pool contains four independently sourced cards for each supported TCG. A seed reproducibly selects one card per game, downloads and hash-verifies its reference image, then produces seven artifacts: source, clean, blur, resize, 3° rotation, brightness, and JPEG degradation. The resulting 42-case matrix requires the exact canonical card ID and name plus an explicit `needs_review: false` response.
+One captured image, end to end through the web UI:
 
 ```bash
-go run ./cmd/detection_fixtures
-go run ./cmd/detection_seed
-go run ./cmd/detection_matrix --base-url http://localhost:18066
 go run ./cmd/ui_scan_test --base-url http://localhost:18066 \
   --fixture <captured-card-image> \
   --expected-id <canonical-card-id> \
   --expected-name <exact-card-name>
 ```
-
-Use a different `--seed` to select a different card from each game's pool. “100%” refers specifically to a reproducible seeded 42-case acceptance matrix; it is not a claim that every possible camera, blur level, crop, language, or newly released card will always match. Add captured failure cases to the pool before changing thresholds.
-
-The normal Go suite also exercises a fixed 600-card matching cohort: 100
-unique printing IDs for each supported TCG. Every card is ranked against only
-its 100-card game scope using exact and OCR-normalized text. Same-name
-printings remain explicit ties unless set or collector evidence distinguishes
-them.
-
-Close visual matches now wait for OCR before selecting a printing. Name-only
-OCR keeps same-name printings available for review; a readable printing ID or
-set-and-collector pair takes priority, while disagreement with the artwork
-still requires review. Collector numbers match complete tokens, and photo
-fingerprints honor EXIF orientation and the selected card crop. Confidence is
-an evidence score, not a measured probability of correctness.
-
-Scanner recognition is server-side only; there is no local OCR integration
-suite anymore.
 
 `go run ./cmd/scan_matrix -game pokemon -per 10 -seed <n> -json` samples
 random catalog cards per language and runs them through the Claude detector
@@ -188,12 +167,6 @@ go test -timeout=3m -count=1 -v ./cmd/ui_scan_test
 docker build -t pokget:verification .
 bash scripts/container-smoke.sh pokget:verification
 ```
-
-The Ubuntu 24.04 CI jobs install system packages through
-`scripts/ci-apt-install.sh`. It uses only the runner's signed Ubuntu sources, so
-an unrelated Chrome repository outage cannot block Go checks. Ubuntu index or
-package failures still fail the job; signature/hash verification is not disabled.
-
 
 ---
 
@@ -273,9 +246,9 @@ so short-window ETA is an estimate, not a stable completion promise.
 
 #### Scan diagnostics
 
-The scanner captures the card within the Matrix HUD viewfinder and uploads the cropped image directly to the server. When Claude Vision is enabled, the request is dispatched immediately to the Claude API with prompt caching, bypassing secondary pHash and OCR passes for maximum speed and accuracy.
+The scanner captures the card within the Matrix HUD viewfinder and uploads the cropped image directly to the server. When Claude Vision is enabled, the request is dispatched immediately to the Claude API with prompt caching.
 
-On submission, server logs record `input=server_image` along with the unique `scan_id`. `Scan scope selected` logs the normalized game/language and eligible-card count. `Scan stage started` / `Scan stage finished` track the active stage (`claude_vision` or legacy stages), durations, and completion/timeout outcomes. `Scan request finished` records the HTTP status and total processing duration. Set `DEBUG=true` for detailed stage diagnostics; `LOG_FORMAT=json` enables structured log ingestion.
+On submission, server logs record `input=server_image` along with the unique `scan_id`. `Scan scope selected` logs the normalized game/language and eligible-card count. `Scan stage started` / `Scan stage finished` track the active stage (`detector_queue`, `claude_detection`), durations, and completion/timeout outcomes. `Scan request finished` records the HTTP status and total processing duration. Set `DEBUG=true` for detailed stage diagnostics; `LOG_FORMAT=json` enables structured log ingestion.
 
 ### 🤖 Claude AI Vision Engine (Recommended)
 
@@ -296,8 +269,6 @@ CLAUDE_PROMPT_CACHING=true
 CLAUDE_TIMEOUT_SECONDS=30
 ```
 
-When `CLAUDE_ENABLED=true` is active, secondary fallback stages (pHash and native OCR) are bypassed, providing clean, direct AI recognition without noisy fallbacks.
-
 ### 📱 Full-Screen Mobile HUD & PWA Standalone Mode
 
 The scanner is engineered for single-screen mobile ergonomics:
@@ -317,8 +288,8 @@ Pokget includes `<meta name="mobile-web-app-capable" content="yes">`, `<meta nam
 
 ### Primary LLM with Ollama fallback
 
-Set these variables in `.env` to use an OpenAI-compatible gateway for LLM-assisted
-card matching and binder names:
+Set these variables in `.env` to use an OpenAI-compatible gateway for binder-name
+suggestions:
 
 ```env
 LLM_BASE_URL=https://your-gateway.example/v1
@@ -327,29 +298,20 @@ LLM_API=your-api-key
 LLM_MAX_TOKENS=1024
 ```
 
-The primary model can inspect the cropped card image when a scan needs help.
-When shortlisted printings share identical text metadata, it can compare labeled
-reference artwork from approved catalog image hosts. References are limited to
-eight images in complete groups; incomplete groups are omitted.
-Its answer must still identify a card from the evidence-backed catalog shortlist;
-uncertain printings require confirmation. Provider failures and invalid answers
-are retried up to three total primary attempts, with five seconds between failed
-attempts. Canceling the request cancels the completion and any pending retry. After three
-failures, the existing `OLLAMA_*` provider receives its own bounded request budget.
-A valid abstention is a completed answer and does not trigger retries or fallback.
+Card recognition does not use this model; it runs through the Claude detector.
+Provider failures are retried up to three total primary attempts, with five seconds
+between failed attempts. Canceling the request cancels the completion and any pending
+retry. After three failures, the existing `OLLAMA_*` provider receives its own bounded
+request budget.
 `SCAN_TIMEOUT_SECONDS` bounds a whole scan: detector queueing, local image analysis
-and any primary completion. `SCAN_MAX_CONCURRENT` sizes the detector slots, and
+and the detector call. `SCAN_MAX_CONCURRENT` sizes the detector slots, and
 each account runs one scan at a time. Every scan names its TCG (`game`). Scan and
 binder-name requests remain cancellable when their caller disconnects. Leave `LLM_BASE_URL` empty for
 Ollama-only operation. Keep the key in `.env`, never in source or logs.
 
-For Ollama-only scans, optional text disambiguation takes at most five seconds
-and at most half the remaining scan budget. If it times out, completed local
-matches remain available for review instead of being discarded.
-
-Ollama defaults to 128 output tokens so canonical printing IDs fit in structured
-responses. Card-name suggestions use the local text model; scan recognition does
-not wait for it.
+Ollama defaults to 128 output tokens. Binder-name suggestions use the primary provider when one is
+configured and fall back to the Ollama model when it is unavailable or fails;
+scan recognition does not wait for either.
 
 Scanner recognition happens only on the server. The earlier browser OCR,
 native Tesseract fallback and Ollama image-OCR stage were removed: a deployment

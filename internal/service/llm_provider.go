@@ -43,9 +43,8 @@ func normalizePrimaryLLMBaseURL(raw string) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
-// queryLLMWithFallback validates each provider before accepting its response.
-// An explicit abstention is a successful result, never a reason to ask another model.
-func (s *LLMService) queryLLMWithFallback(ctx context.Context, prompt string, format any, validate func(string, bool) error) (string, error) {
+// queryLLMContext asks the primary provider (with retries), then Ollama.
+func (s *LLMService) queryLLMContext(ctx context.Context, prompt string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -53,10 +52,7 @@ func (s *LLMService) queryLLMWithFallback(ctx context.Context, prompt string, fo
 		for attempt := 1; attempt <= primaryLLMAttempts; attempt++ {
 			// A slow completion is still a live attempt. Only the caller's
 			// cancellation or an actual provider failure ends it.
-			response, err := s.queryPrimaryLLM(ctx, prompt, format)
-			if err == nil && validate != nil {
-				err = validate(response, true)
-			}
+			response, err := s.queryPrimaryLLM(ctx, prompt)
 			if ctx.Err() != nil {
 				return "", ctx.Err()
 			}
@@ -85,17 +81,14 @@ func (s *LLMService) queryLLMWithFallback(ctx context.Context, prompt string, fo
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	response, err := s.queryOllamaRequest(ctx, prompt, format)
-	if err == nil && validate != nil {
-		err = validate(response, false)
-	}
+	response, err := s.queryOllamaRequest(ctx, prompt)
 	if s.PrimaryBaseURL != "" && err == nil {
 		slog.Info("LLM: fallback request succeeded", "provider", "ollama", "model", s.Model)
 	}
 	return response, err
 }
 
-func (s *LLMService) queryPrimaryLLM(ctx context.Context, prompt string, format any) (string, error) {
+func (s *LLMService) queryPrimaryLLM(ctx context.Context, prompt string) (string, error) {
 	maxTokens := s.PrimaryMaxTokens
 	if maxTokens <= 0 {
 		maxTokens = defaultLLMPrimaryMaxTokens
@@ -106,9 +99,6 @@ func (s *LLMService) queryPrimaryLLM(ctx context.Context, prompt string, format 
 		"temperature": s.Temperature,
 		"max_tokens":  maxTokens,
 		"stream":      false,
-	}
-	if format != nil {
-		payload["response_format"] = map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "card_selection", "strict": true, "schema": format}}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

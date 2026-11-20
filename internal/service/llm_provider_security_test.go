@@ -56,13 +56,13 @@ func TestLLMPrimaryRedirectNeverForwardsCredentialsOrPrompt(t *testing.T) {
 		if r.Header.Get("Authorization") != "" || strings.Contains(string(body), "primary-secret-marker") {
 			t.Error("primary credentials were forwarded to fallback")
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"response": `{"card_id":"pikachu"}`})
+		_ = json.NewEncoder(w).Encode(map[string]string{"response": "Electric binder"})
 	}))
 	defer fallback.Close()
 	service := primarySecurityService(t, primary.URL, fallback.URL, nil)
-	result, err := service.FuzzyMatchCardWithValidationContext(context.Background(), "Pikachu", []models.Card{{ID: "pikachu", Name: "Pikachu"}})
-	if err != nil || result == nil || result.CardID != "pikachu" || redirectedCalls.Load() != 0 || fallbackCalls.Load() != 1 {
-		t.Fatalf("result=%+v error=%v redirected=%d fallback=%d", result, err, redirectedCalls.Load(), fallbackCalls.Load())
+	name, err := service.GenerateBinderNameContext(context.Background(), []models.Card{{ID: "pikachu", Name: "Pikachu"}})
+	if err != nil || name != "Electric binder" || redirectedCalls.Load() != 0 || fallbackCalls.Load() != 1 {
+		t.Fatalf("name=%q error=%v redirected=%d fallback=%d", name, err, redirectedCalls.Load(), fallbackCalls.Load())
 	}
 }
 
@@ -73,7 +73,7 @@ func TestLLMPrimaryNetworkFailureUsesFallback(t *testing.T) {
 		if r.Header.Get("Authorization") != "" {
 			t.Error("primary credential leaked to fallback")
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"response": `{"card_id":"pikachu"}`})
+		_ = json.NewEncoder(w).Encode(map[string]string{"response": "Electric binder"})
 	}))
 	defer fallback.Close()
 	client := &http.Client{Transport: primarySecurityTransport(func(r *http.Request) (*http.Response, error) {
@@ -83,9 +83,9 @@ func TestLLMPrimaryNetworkFailureUsesFallback(t *testing.T) {
 		return http.DefaultTransport.RoundTrip(r)
 	})}
 	service := primarySecurityService(t, "https://primary.invalid/v1", fallback.URL, client)
-	result, err := service.FuzzyMatchCardWithValidationContext(context.Background(), "Pikachu", []models.Card{{ID: "pikachu", Name: "Pikachu"}})
-	if err != nil || result == nil || result.CardID != "pikachu" || fallbackCalls.Load() != 1 {
-		t.Fatalf("result=%+v error=%v fallback=%d", result, err, fallbackCalls.Load())
+	name, err := service.GenerateBinderNameContext(context.Background(), []models.Card{{ID: "pikachu", Name: "Pikachu"}})
+	if err != nil || name != "Electric binder" || fallbackCalls.Load() != 1 {
+		t.Fatalf("name=%q error=%v fallback=%d", name, err, fallbackCalls.Load())
 	}
 }
 
@@ -104,25 +104,5 @@ func TestLLMPrimaryInvalidURLDoesNotEchoCredentials(t *testing.T) {
 		if strings.Contains(err.Error(), "primary-secret-marker") || strings.Contains(err.Error(), rawURL) {
 			t.Fatal("invalid primary URL error disclosed its raw URL or credentials")
 		}
-	}
-}
-
-func TestLLMProviderSelectionErrorsDoNotEchoModelOutput(t *testing.T) {
-	const rawResponse = `{"model-output-private-marker":"arbitrary response payload"}`
-	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		writePrimaryLLMResponse(w, rawResponse)
-	}))
-	defer primary.Close()
-	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{"response": rawResponse})
-	}))
-	defer fallback.Close()
-	service := primarySecurityService(t, primary.URL, fallback.URL, nil)
-	_, err := service.FuzzyMatchCardWithValidationContext(context.Background(), "Pikachu", []models.Card{{ID: "pikachu", Name: "Pikachu"}})
-	if !errors.Is(err, ErrInvalidLLMResponse) {
-		t.Fatalf("error=%v, want invalid model response", err)
-	}
-	if strings.Contains(err.Error(), "model-output-private-marker") || strings.Contains(err.Error(), "arbitrary response payload") {
-		t.Fatal("selection validation exposed raw model response data")
 	}
 }

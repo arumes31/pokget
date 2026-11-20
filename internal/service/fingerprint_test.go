@@ -25,10 +25,6 @@ import (
 	"image/color"
 	"image/draw"
 	"testing"
-
-	"pokget/internal/models"
-
-	"github.com/DATA-DOG/go-sqlmock"
 )
 
 func createTestImage(c color.Color, pattern string) image.Image {
@@ -48,7 +44,7 @@ func createTestImage(c color.Color, pattern string) image.Image {
 }
 
 func TestFingerprintCalculationAndMatching(t *testing.T) {
-	svc := NewFingerprintService(nil)
+	svc := NewFingerprintService()
 
 	// Create two different patterned images
 	imgRed := createTestImage(color.RGBA{255, 0, 0, 255}, "circle")
@@ -67,37 +63,11 @@ func TestFingerprintCalculationAndMatching(t *testing.T) {
 	if hashRed == hashBlue {
 		t.Errorf("Expected different hashes for red and blue images, got both %d", hashRed)
 	}
-
-	// Test Matching
-	cards := []models.Card{
-		{ID: "red", Name: "Red Card", Phash: &hashRed},
-		{ID: "blue", Name: "Blue Card", Phash: &hashBlue},
-	}
-
-	// Match red image against cards
-	match, distance, err := svc.MatchFingerprint(hashRed, cards)
-	if err != nil {
-		t.Fatalf("MatchFingerprint failed: %v", err)
-	}
-
-	if match == nil || match.ID != "red" {
-		t.Errorf("Expected match for 'red', got %v (distance %d)", match, distance)
-	}
-
-	if distance != 0 {
-		t.Errorf("Expected distance 0 for exact match, got %d", distance)
-	}
-
-	// Test distance threshold
-	matchFail, distanceFail, _ := svc.MatchFingerprint(hashRed, []models.Card{{ID: "blue", Name: "Blue", Phash: &hashBlue}})
-	if matchFail != nil {
-		t.Errorf("Expected no match for very different images, got %v (distance %d)", matchFail, distanceFail)
-	}
 }
 
 func TestMetadataServiceProcessing(t *testing.T) {
 	// MetadataService depends on FingerprintService
-	fSvc := NewFingerprintService(nil)
+	fSvc := NewFingerprintService()
 	mSvc := NewMetadataService(fSvc)
 
 	// We can't easily test the network download part without mocking http.Client
@@ -105,35 +75,5 @@ func TestMetadataServiceProcessing(t *testing.T) {
 	// For now, let's just ensure NewMetadataService works.
 	if mSvc == nil {
 		t.Fatal("Expected MetadataService to be initialized")
-	}
-}
-
-func TestFingerprintServiceLoadsLegacyAndCatalogFingerprints(t *testing.T) {
-	t.Parallel()
-
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	mock.ExpectQuery("FROM card_fingerprints AS fingerprint").
-		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "name", "set_name", "price_usd", "price_eur", "image_url",
-			"variant", "change_24h", "phash", "game", "language", "rarity",
-			"set_code", "collector_number", "catalog_active",
-		}).
-			AddRow("legacy", "Legacy", "Set", "1.00", "2.00", "", "Normal", 0.0, int64(11), "pokemon", "en", "Rare", "base", "1", true).
-			AddRow("catalog", "Catalog", "Set", "1.00", "2.00", "", "Normal", 0.0, int64(22), "magic", "en", "Mythic", "vma", "4", true))
-
-	service := NewFingerprintService(db)
-	if service.tree.count != 2 {
-		t.Fatalf("loaded fingerprint count = %d, want 2", service.tree.count)
-	}
-	match := service.SearchByHash(22)
-	if match == nil || match.HighConfidence == nil || match.HighConfidence.ID != "catalog" {
-		t.Fatalf("catalog fingerprint match = %+v", match)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
 	}
 }

@@ -604,7 +604,7 @@ func TestClaudeDetection_FingerprintResolvesIdenticalPrintings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode test image: %v", err)
 	}
-	fingerprint := NewFingerprintService(nil)
+	fingerprint := NewFingerprintService()
 	hash, err := fingerprint.CalculateHash(decoded)
 	if err != nil {
 		t.Fatalf("hash test image: %v", err)
@@ -696,7 +696,7 @@ func TestClaudeDetection_FingerprintOverridesSetEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode test image: %v", err)
 	}
-	fingerprint := NewFingerprintService(nil)
+	fingerprint := NewFingerprintService()
 	hash, err := fingerprint.CalculateHash(decoded)
 	if err != nil {
 		t.Fatalf("hash test image: %v", err)
@@ -850,7 +850,7 @@ func TestClaudeDetection_FingerprintResolvesDroppedVariantSuffix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode test image: %v", err)
 	}
-	fingerprint := NewFingerprintService(nil)
+	fingerprint := NewFingerprintService()
 	hash, err := fingerprint.CalculateHash(decoded)
 	if err != nil {
 		t.Fatalf("hash test image: %v", err)
@@ -897,7 +897,7 @@ func TestClaudeDetection_ArtworkMismatchForcesReview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode test image: %v", err)
 	}
-	fingerprint := NewFingerprintService(nil)
+	fingerprint := NewFingerprintService()
 	hash, err := fingerprint.CalculateHash(decoded)
 	if err != nil {
 		t.Fatalf("hash test image: %v", err)
@@ -934,7 +934,7 @@ func TestClaudeDetection_ArtworkMatchKeepsAutoMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode test image: %v", err)
 	}
-	fingerprint := NewFingerprintService(nil)
+	fingerprint := NewFingerprintService()
 	hash, err := fingerprint.CalculateHash(decoded)
 	if err != nil {
 		t.Fatalf("hash test image: %v", err)
@@ -1185,7 +1185,7 @@ func TestClaudeDetection_IdenticalArtworkDuplicatesKeepTextMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode test image: %v", err)
 	}
-	fingerprint := NewFingerprintService(nil)
+	fingerprint := NewFingerprintService()
 	hash, err := fingerprint.CalculateHash(decoded)
 	if err != nil {
 		t.Fatalf("hash test image: %v", err)
@@ -1230,7 +1230,7 @@ func TestClaudeDetection_ArtworkResolvesNameOnlyPrinting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode test image: %v", err)
 	}
-	fingerprint := NewFingerprintService(nil)
+	fingerprint := NewFingerprintService()
 	hash, err := fingerprint.CalculateHash(decoded)
 	if err != nil {
 		t.Fatalf("hash test image: %v", err)

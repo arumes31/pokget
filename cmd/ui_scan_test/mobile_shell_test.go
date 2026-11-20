@@ -159,7 +159,7 @@ func newMobileShellServer(t *testing.T) *httptest.Server {
 	fragments := map[string]previewPage{
 		"/dashboard": {"dashboard.html", map[string]any{
 			"TotalValuation": 0.0, "CurrencySymbol": "€", "Change24h": 0.0,
-			"RankIcon": "/static/img/logo.png", "Rank": "Novice collector", "XPPercent": 6,
+			"Rank": "Novice collector", "XPPercent": 6,
 			"Portfolio": []any{}, "BinderCount": 0, "UserCurrency": "EUR",
 		}},
 		"/wantlist":     {"wantlist.html", map[string]any{"Items": []any{}, "CSRFToken": "test", "CurrencySymbol": "€", "UserCurrency": "EUR"}},
@@ -175,7 +175,7 @@ func newMobileShellServer(t *testing.T) *httptest.Server {
 	card := models.Card{ID: "test-card", Name: "Pikachu — collector's edition", Set: "Scarlet & Violet", Game: "Pokemon", Language: "en", ImageURL: "/static/img/logo.png", PriceEUR: decimal.RequireFromString("24.95"), PriceUSD: decimal.RequireFromString("27.50"), PriceEURValid: true, PriceUSDValid: true}
 	portfolio := []models.PortfolioItem{{ID: "test-item", BinderID: "test", Card: card, Condition: "NM", IsPublic: true}}
 	populated := map[string]map[string]any{
-		"/dashboard":    {"TotalValuation": 24.95, "CurrencySymbol": "€", "Change24h": 0.0, "RankIcon": "/static/img/ranks/novice.png", "Rank": "Novice collector", "XPPercent": 6, "Portfolio": portfolio, "BinderCount": 1, "UserCurrency": "EUR"},
+		"/dashboard":    {"TotalValuation": 24.95, "CurrencySymbol": "€", "Change24h": 0.0, "Rank": "Novice collector", "XPPercent": 6, "Portfolio": portfolio, "BinderCount": 1, "UserCurrency": "EUR"},
 		"/wantlist":     {"Items": []map[string]any{{"ID": "test-grail", "Card": card, "TargetPrice": 20.0, "PriceEUR": 24.95, "PriceUSD": 27.50, "ProgressEUR": 124.75, "ProgressUSD": 137.5}}, "CSRFToken": "test", "CurrencySymbol": "€", "UserCurrency": "EUR"},
 		"/binders":      {"Binders": []map[string]any{{"ID": "test", "Name": "Base set", "Description": "My first collection", "CardCount": 1}}, "CSRFToken": "test"},
 		"/binders/test": {"Binder": map[string]any{"ID": "test", "Name": "Base set", "Description": "My first collection"}, "Cards": portfolio, "CurrencySymbol": "€", "UserCurrency": "EUR"},

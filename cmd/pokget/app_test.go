@@ -59,18 +59,6 @@ func TestTemplateFuncMap(t *testing.T) {
 	}
 }
 
-func TestNewCryptoService(t *testing.T) {
-	t.Parallel()
-
-	cryptoSvc, err := newCryptoService("0123456789abcdef0123456789abcdef")
-	if err != nil {
-		t.Fatalf("newCryptoService() error = %v", err)
-	}
-	if cryptoSvc == nil {
-		t.Fatal("newCryptoService() returned nil service")
-	}
-}
-
 func TestDetectBuildVersion(t *testing.T) {
 	t.Run("missing asset falls back to 1", func(t *testing.T) {
 		t.Chdir(t.TempDir())
@@ -142,13 +130,9 @@ func TestNewHandler(t *testing.T) {
 	cfg := newTestConfig(t)
 	cfg.App.SecureCookies = false
 	services := &appServices{}
-	cryptoSvc, err := newCryptoService(cfg.Auth.SessionKey)
-	if err != nil {
-		t.Fatal(err)
-	}
 	llmSvc := service.NewLLMService()
 	templates := template.Must(template.New("").Parse(`{{define "index"}}{{end}}`))
-	h := newHandler(cfg, database, templates, services, nil, cryptoSvc, llmSvc, "42")
+	h := newHandler(cfg, database, templates, services, nil, llmSvc, "42")
 	if h == nil {
 		t.Fatal("newHandler() returned nil")
 	}
@@ -157,9 +141,6 @@ func TestNewHandler(t *testing.T) {
 	}
 	if h.DB != database {
 		t.Error("handler DB not wired")
-	}
-	if h.Crypto != cryptoSvc {
-		t.Error("handler Crypto not wired")
 	}
 	if h.LLM != llmSvc {
 		t.Error("handler LLM not wired")
@@ -200,10 +181,8 @@ func TestInitServicesNilDatabase(t *testing.T) {
 }
 
 // expectServiceInitQueries registers the sqlmock expectations for the queries
-// run while building services: fingerprint loading and the seeding guard.
+// run while building services: the seeding guard.
 func expectServiceInitQueries(mock sqlmock.Sqlmock) {
-	mock.ExpectQuery("SELECT id, name, set_name").
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectQuery("SELECT EXISTS").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 }
@@ -396,7 +375,7 @@ func TestStartBackgroundWorkersCatalogEnabled(t *testing.T) {
 		t.Fatalf("initServices() error = %v", err)
 	}
 
-	h := &handlers.Handler{DB: database, Fingerprint: services.fingerprintSvc}
+	h := &handlers.Handler{DB: database}
 	llmSvc := service.NewLLMService()
 
 	// Pre-cancel the worker context so every worker returns immediately
@@ -419,10 +398,8 @@ func TestStartBackgroundWorkersCatalogEnabled(t *testing.T) {
 	}
 
 	// Invoke the wired change callbacks to exercise the cache reload path.
-	// Each reload runs the cards query and then the fingerprint reload query.
+	// Each reload runs the cards query.
 	expectReload := func() {
-		mock.ExpectQuery("SELECT id, name, set_name").
-			WillReturnRows(sqlmock.NewRows([]string{"id"}))
 		mock.ExpectQuery("SELECT id, name, set_name").
 			WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	}

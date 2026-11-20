@@ -29,22 +29,21 @@ import (
 )
 
 type Rank struct {
-	Title   string
-	MinXP   int
-	IconURL string
+	Title string
+	MinXP int
 }
 
 var Ranks = []Rank{
-	{"Novice Collector", 0, "/static/img/ranks/novice.png"},
-	{"Card Scout", 500, "/static/img/ranks/scout.png"},
-	{"Hobbyist", 1500, "/static/img/ranks/hobbyist.png"},
-	{"Portfolio Manager", 3500, "/static/img/ranks/manager.png"},
-	{"Elite Collector", 7500, "/static/img/ranks/elite.png"},
-	{"Vault Guardian", 15000, "/static/img/ranks/guardian.png"},
-	{"Set Master", 30000, "/static/img/ranks/master.png"},
-	{"TCG Legend", 60000, "/static/img/ranks/legend.png"},
-	{"Prestige Collector", 120000, "/static/img/ranks/prestige.png"},
-	{"Apex Collector", 250000, "/static/img/ranks/apex.png"},
+	{"Novice Collector", 0},
+	{"Card Scout", 500},
+	{"Hobbyist", 1500},
+	{"Portfolio Manager", 3500},
+	{"Elite Collector", 7500},
+	{"Vault Guardian", 15000},
+	{"Set Master", 30000},
+	{"TCG Legend", 60000},
+	{"Prestige Collector", 120000},
+	{"Apex Collector", 250000},
 }
 
 type GamificationService struct {

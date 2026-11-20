@@ -8,7 +8,7 @@ import (
 
 // printedSetTotal returns the denominator of a printed collector fraction
 // ("005/189" -> 189). Small fractions are rules text, not set sizes, so totals
-// below 10 are ignored like in printedCollectorFractions. Prefixed subset
+// below 10 are ignored. Prefixed subset
 // totals ("TG05/TG30", "SV1/SV94") are not reported: sources do not publish
 // those subset sizes, so they cannot be checked.
 func printedSetTotal(collector string) (int, bool) {
