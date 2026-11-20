@@ -24,7 +24,7 @@ func TestBulkCheckStampKeepsPlaceholdersContiguous(t *testing.T) {
 
 	// The stamp also carries the EUR quote: a native quote equal to the stored value
 	// confirms it, so the "estimated" flag is cleared (USD-only quotes keep it).
-	mock.ExpectExec(`price_eur_estimated = CASE WHEN v.eur > 0 AND c.price_eur = v.eur THEN FALSE ELSE c.price_eur_estimated END\s+` +
+	mock.ExpectExec(`price_eur_estimated = CASE WHEN v.eur > 0 AND c.price_eur = v.eur THEN FALSE ELSE c.price_eur_estimated END\s+`+
 		`FROM \(VALUES \(\$1, \$2, \$3::numeric, \$4::numeric, \$5\), \(\$6, \$7, \$8::numeric, \$9::numeric, \$10\)\)`).
 		WithArgs("scryfall", "card-a", 1.25, 0.0, "foil", "ygoprodeck", "1234", 0.33, 0.29, "normal").
 		WillReturnResult(sqlmock.NewResult(0, 2))
@@ -351,8 +351,8 @@ func TestApplyFuzzyPricesReplacesStalePrices(t *testing.T) {
 			AddRow("card-old", "SV3", "Obsidian Flames", "089", "Nazonokusa"))
 	// An unchanged match is still a verification: price_checked_at is always stamped,
 	// last_updated only moves with the price, and no "price differs" filter remains.
-	mock.ExpectExec(`UPDATE cards AS c\s+SET price_usd = v.usd, price_checked_at = NOW\(\),\s+` +
-		`last_updated = CASE WHEN c.price_usd IS DISTINCT FROM v.usd THEN NOW\(\) ELSE c.last_updated END[\s\S]*` +
+	mock.ExpectExec(`UPDATE cards AS c\s+SET price_usd = v.usd, price_checked_at = NOW\(\),\s+`+
+		`last_updated = CASE WHEN c.price_usd IS DISTINCT FROM v.usd THEN NOW\(\) ELSE c.last_updated END[\s\S]*`+
 		`WHERE c.id = v.id\s+--[^\n]*\s+AND \(c.price_usd IS NULL[\s\S]*OR c.price_checked_at < NOW\(\) - INTERVAL '2 days'\)`).
 		WithArgs("card-old", 3.0).
 		WillReturnResult(sqlmock.NewResult(0, 1))

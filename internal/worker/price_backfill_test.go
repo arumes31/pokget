@@ -43,8 +43,8 @@ func TestBackfillPricesStoresMissingPokemonPrices(t *testing.T) {
 	// Either missing currency is a reason to write, so a EUR-only card still gets its
 	// USD quote without losing the EUR one. last_updated only moves with an amount
 	// (a native quote equal to the estimate confirms it but changes nothing).
-	mock.ExpectExec(`UPDATE cards[\s\S]*last_updated = CASE WHEN \(\$1::numeric > 0 AND price_usd IS DISTINCT FROM \$1::numeric\)\s+` +
-		`OR \(\$2::numeric > 0 AND price_eur IS DISTINCT FROM \$2::numeric\)\s+THEN NOW\(\) ELSE last_updated END,\s+price_checked_at = NOW\(\)` +
+	mock.ExpectExec(`UPDATE cards[\s\S]*last_updated = CASE WHEN \(\$1::numeric > 0 AND price_usd IS DISTINCT FROM \$1::numeric\)\s+`+
+		`OR \(\$2::numeric > 0 AND price_eur IS DISTINCT FROM \$2::numeric\)\s+THEN NOW\(\) ELSE last_updated END,\s+price_checked_at = NOW\(\)`+
 		`[\s\S]*COALESCE\(price_eur, 0\) <= 0 OR price_eur_estimated\) AND \$2`).
 		WithArgs(0.12, 0.17, "card-1").
 		WillReturnResult(sqlmock.NewResult(0, 1))
