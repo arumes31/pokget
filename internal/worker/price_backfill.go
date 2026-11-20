@@ -121,9 +121,9 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 		return
 	}
 
-	// The cursor only passes USD-priced cards that were actually answered (priced or
-	// "no price"). A provider error or a card the pass never reached stops it, so the
-	// next pass retries from there.
+	// The cursor stops at the first USD-priced card the pass never reached
+	// (cancellation, limiter failure) or could not store, so the next pass retries
+	// from there. A provider error is passed and revisited on wraparound.
 	cursor, blocked, completed := w.backfillCursor, false, false
 	advance := func(index int, ok bool) {
 		if !hasUSD[index] || blocked {
@@ -170,7 +170,10 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 			if answered {
 				w.markBackfillMiss(ctx, card.ID)
 			}
-			advance(index, answered)
+			// A provider error is passed (the card comes back on wraparound), so one
+			// card that always fails cannot stall the queue; a fetch cut off by
+			// cancellation was never really reached and stops the cursor.
+			advance(index, answered || ctx.Err() == nil)
 			missing++
 			continue
 		}

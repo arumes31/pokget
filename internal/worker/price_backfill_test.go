@@ -208,8 +208,9 @@ func (f *failAfter) Wait(context.Context) error {
 	return nil
 }
 
-// The cursor must not pass a USD-priced card that hit a provider error or that the
-// pass never reached; the next pass retries from there.
+// The cursor must not pass a USD-priced card the pass never reached; the next pass
+// retries from there. A card that always errors is passed (revisited on
+// wraparound), otherwise it would stall the queue forever.
 func TestBackfillCursorStopsAtUnansweredCards(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -217,7 +218,7 @@ func TestBackfillCursorStopsAtUnansweredCards(t *testing.T) {
 		limiter    *failAfter
 		wantCursor string
 	}{
-		{name: "provider error", client: perCardClient{"card-a": errors.New("HTTP 500"), "card-b": service.ErrNoPrice}, wantCursor: "card-0"},
+		{name: "always erroring card does not block", client: perCardClient{"card-a": errors.New("HTTP 500"), "card-b": service.ErrNoPrice}, wantCursor: "card-b"},
 		{name: "not reached", client: perCardClient{"card-a": service.ErrNoPrice, "card-b": service.ErrNoPrice}, limiter: &failAfter{n: 1}, wantCursor: "card-a"},
 	}
 	for _, tc := range cases {
