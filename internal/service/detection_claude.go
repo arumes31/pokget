@@ -785,6 +785,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		top := &candidates[0]
 		topName := compactMatchText(normalizeMatchText(top.card.Name))
 		topCollector := collectorCanonicalKey(top.card.CollectorNumber)
+		printedTotal, totalRead := printedSetTotal(claudeCollector)
 		for index := 1; index < len(candidates); index++ {
 			other := &candidates[index]
 			otherFull := collectorCanonicalKey(other.card.CollectorNumber)
@@ -798,6 +799,16 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				top.needsReview = true
 				other.needsReview = true
 				break
+			}
+			// The guards below suspect a row of another product (a lettered
+			// reprint, a name-extending card with the same number). A printed
+			// total that only the top row's set can print rules that row out:
+			// "006/073" is Champion's Path, never Platinum's SH6 (set of 127),
+			// and Marill #068 of a 191-card set is not the 068/128 Azumarill.
+			if totalRead && !sameProduct(other.card, top.card) &&
+				setTotalEvidence(cards, top.card, printedTotal) == setTotalConsistent &&
+				setTotalEvidence(cards, other.card, printedTotal) == setTotalInconsistent {
+				continue
 			}
 			// A reprint whose catalog number wraps the same digits in letters
 			// ("cr124sb" for a card that prints 124) belongs to a different

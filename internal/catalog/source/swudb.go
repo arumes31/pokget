@@ -86,6 +86,9 @@ func (p *SWUDBProvider) Fetch(ctx context.Context, request catalog.FetchRequest,
 				return result, ctx.Err()
 			}
 			slog.Warn("Catalog: skipping swudb set due to fetch error", "set", set.SetID, "endpoint", endpoint, "error", err)
+			// The set is missing from this run, not retired upstream: a complete
+			// snapshot would deactivate all of its cards.
+			result.CompleteSnapshot = false
 			continue
 		}
 

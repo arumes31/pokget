@@ -140,3 +140,31 @@ func validSyncRecord(id string) CardRecord {
 		Language:     "en",
 	}
 }
+
+func TestSyncerRejectsEmptyPartialFullRun(t *testing.T) {
+	// Every set failed: the provider reports a partial snapshot with no
+	// records. A full run must fail so the source keeps retrying full syncs.
+	repository := &syncTestRepository{}
+	_, err := (&Syncer{Repository: repository}).Sync(
+		context.Background(),
+		syncTestProvider{fetchResult: &FetchResult{CompleteSnapshot: false}},
+		SyncModeFull,
+		FetchRequest{},
+	)
+	if !errors.Is(err, ErrEmptySnapshot) || !repository.failed || repository.completed {
+		t.Fatalf("error=%v repository=%+v", err, repository)
+	}
+}
+
+func TestSyncerAcceptsEmptyPartialIncrementalRun(t *testing.T) {
+	repository := &syncTestRepository{}
+	_, err := (&Syncer{Repository: repository}).Sync(
+		context.Background(),
+		syncTestProvider{fetchResult: &FetchResult{CompleteSnapshot: false}},
+		SyncModeIncremental,
+		FetchRequest{},
+	)
+	if err != nil || repository.failed || !repository.completed {
+		t.Fatalf("an incremental run without changes is a success: error=%v repository=%+v", err, repository)
+	}
+}

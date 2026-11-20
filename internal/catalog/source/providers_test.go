@@ -575,3 +575,28 @@ func TestTCGdexProviderSkipsDigitalOnlySeries(t *testing.T) {
 		t.Fatalf("the official set size must reach the card metadata: %s", records[0].Metadata)
 	}
 }
+
+func TestTCGdexProviderSetFetchErrorMakesSnapshotPartial(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/en/sets":
+			_, _ = w.Write([]byte(`[{"id":"xy3","name":"Furious Fists"},{"id":"swsh10","name":"Astral Radiance"}]`))
+		case "/en/sets/xy3":
+			http.Error(w, "unavailable", http.StatusNotFound)
+		case "/en/sets/swsh10":
+			_, _ = w.Write([]byte(`{"id":"swsh10","name":"Astral Radiance","cards":[{"id":"swsh10-005","localId":"005","name":"Scyther"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := &TCGdexProvider{HTTP: testHTTP(server), BaseURL: server.URL, Language: "en"}
+	records, result := fetchRecords(t, provider)
+	if len(records) != 1 {
+		t.Fatalf("the readable set must still be imported, got %d records", len(records))
+	}
+	if result.CompleteSnapshot {
+		t.Fatal("a skipped set must not complete the snapshot, or a full sync retires all of its cards")
+	}
+}
