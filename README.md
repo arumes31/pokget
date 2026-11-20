@@ -309,8 +309,9 @@ each account runs one scan at a time. Every scan names its TCG (`game`). Scan an
 binder-name requests remain cancellable when their caller disconnects. Leave `LLM_BASE_URL` empty for
 Ollama-only operation. Keep the key in `.env`, never in source or logs.
 
-Ollama defaults to 128 output tokens. Binder-name suggestions use the local text
-model; scan recognition does not wait for it.
+Ollama defaults to 128 output tokens. Binder-name suggestions use the primary provider when one is
+configured and fall back to the Ollama model when it is unavailable or fails;
+scan recognition does not wait for either.
 
 Scanner recognition happens only on the server. The earlier browser OCR,
 native Tesseract fallback and Ollama image-OCR stage were removed: a deployment

@@ -22,7 +22,8 @@ printing.
 
 An optional primary provider configured by `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API`,
 and `LLM_MAX_TOKENS` receives binder-name prompts only. Leave
-`LLM_BASE_URL` empty for local-only binder-name suggestions. See the README's provider
+`LLM_BASE_URL` empty and point `OLLAMA_HOST` at an Ollama instance on the same
+machine to keep binder-name prompts local; a remote `OLLAMA_HOST` receives them too. See the README's provider
 section for retry and cancellation behavior.
 
 ### Claude AI Card Detection & Prompt Caching
