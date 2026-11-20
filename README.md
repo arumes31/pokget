@@ -110,8 +110,8 @@ go run ./cmd/catalog images
 ```
 
 `CATALOG_LANGUAGE` accepts a comma-separated list and defaults to
-`en,de,ja,fr,zh-cn,zh-tw,ko`: English, German, Japanese, French, both Chinese
-scripts, and Korean. Existing installations with `CATALOG_LANGUAGE=en` in their
+`en,de,ja,fr,zh-cn,zh-tw,ko,es`: English, German, Japanese, French, both Chinese
+scripts, Korean and Spanish. Existing installations with `CATALOG_LANGUAGE=en` in their
 deployment environment must update that value and recreate the application
 container. The next catalog sync imports the selected languages. The catalog CLI
 accepts the same list through `--lang`. TCGdex imports all selected languages in

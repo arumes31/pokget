@@ -63,7 +63,7 @@ type Config struct {
 	Catalog struct {
 		Enabled             bool   `env:"CATALOG_ENABLED" env-default:"true"`
 		LegacyMetadataSync  bool   `env:"LEGACY_METADATA_SYNC_ENABLED" env-default:"false"`
-		Language            string `env:"CATALOG_LANGUAGE" env-default:"en,de,ja,fr,zh-cn,zh-tw,ko"`
+		Language            string `env:"CATALOG_LANGUAGE" env-default:"en,de,ja,fr,zh-cn,zh-tw,ko,es"`
 		SyncIntervalMins    int    `env:"CATALOG_SYNC_INTERVAL_MINUTES" env-default:"360"`
 		BatchSize           int    `env:"CATALOG_BATCH_SIZE" env-default:"500"`
 		RequestDelayMS      int    `env:"CATALOG_REQUEST_DELAY_MS" env-default:"100"`
