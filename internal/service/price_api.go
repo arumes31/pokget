@@ -152,9 +152,14 @@ func (c *TCGdexPriceClient) FetchPriceContext(ctx context.Context, card models.C
 	if err != nil && language != fallbackLanguage {
 		// A card catalogued in another language may still be listed in the
 		// fallback catalog; try it before reporting a missing price.
-		if fallbackID, fallbackErr := c.resolveCardID(ctx, base, fallbackLanguage, card); fallbackErr == nil {
+		fallbackID, fallbackErr := c.resolveCardID(ctx, base, fallbackLanguage, card)
+		switch {
+		case fallbackErr == nil:
 			id, err = fallbackID, nil
 			language = fallbackLanguage
+		case errors.Is(err, ErrNoPrice) && !errors.Is(fallbackErr, ErrNoPrice):
+			// The fallback catalog failed, so "no price" is not established yet.
+			err = fallbackErr
 		}
 	}
 	if err != nil {

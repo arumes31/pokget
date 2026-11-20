@@ -53,7 +53,8 @@ func TestApplyEURFallbackRecomputesStaleEstimates(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	const stale = `OR \(price_eur_estimated AND price_eur IS DISTINCT FROM ROUND\(price_usd \* \$1, 2\)\)\)`
-	mock.ExpectExec(`UPDATE cards[\s\S]*`+stale+`[\s\S]*LIMIT \$2[\s\S]*`+stale).
+	// The changed estimate is a price change (last_updated), not a verification.
+	mock.ExpectExec(`UPDATE cards\s+(--[^\n]*\s+)*SET price_eur = ROUND\(price_usd \* \$1, 2\), price_eur_estimated = TRUE, last_updated = NOW\(\)\s[\s\S]*`+stale+`[\s\S]*LIMIT \$2[\s\S]*`+stale).
 		WithArgs(0.9, fxBatchSize).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
@@ -118,7 +119,7 @@ func TestApplyBulkSourceKeepsTheMissingCurrency(t *testing.T) {
 		WithArgs("scryfall", "abc", 0.0, 4.5, "").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_checked_at").
-		WithArgs("scryfall", "abc", 0.0, "").
+		WithArgs("scryfall", "abc", 0.0, 4.5, "").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	worker := &DataSyncWorker{db: db}

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -120,6 +121,25 @@ func TestTCGdexPriceClientQueriesTheCardLanguage(t *testing.T) {
 	}
 	if len(requested) != 1 || requested[0] != "/ja/cards/S9a-001" {
 		t.Fatalf("requested %v, want the ja catalog", requested)
+	}
+}
+
+// A Japanese catalog without the card plus a failing English fallback is a provider
+// error, not "no price": the backfill must retry the card instead of rotating it.
+func TestTCGdexPriceClientKeepsTheFallbackProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if strings.HasPrefix(request.URL.Path, "/ja/") {
+			_, _ = writer.Write([]byte(`[]`))
+			return
+		}
+		http.Error(writer, "broken", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := &TCGdexPriceClient{BaseURL: server.URL, Language: "en", HTTP: server.Client()}
+	_, _, err := client.FetchPrice(models.Card{Name: "Nazonokusa", Language: "ja"})
+	if err == nil || errors.Is(err, ErrNoPrice) {
+		t.Fatalf("err = %v, want the fallback provider error", err)
 	}
 }
 

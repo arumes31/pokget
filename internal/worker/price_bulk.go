@@ -225,7 +225,7 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		return errors.Join(fetchErr, err)
 	}
 
-	var fuzzyUpdated int64
+	var fuzzyMatched int64
 	// The fallback keeps every normalized key in memory until the batch is done.
 	// Log the footprint so a growing catalog can be watched instead of guessed.
 	slog.Debug("Bulk prices: fallback index built", "source", source.Name(),
@@ -262,7 +262,7 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 			slog.Warn("Bulk prices: fallback match failed", "source", source.Name(), "game", scope.game, "languages", scope.languages, "error", err)
 			continue
 		}
-		fuzzyUpdated += changed
+		fuzzyMatched += changed
 	}
 
 	var rarityUpdated int64
@@ -283,13 +283,13 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		rarityUpdated += changed
 	}
 
-	// The fallback only writes cards that had no (or a stale) price, so every
-	// fallback row was a match as well.
-	slog.Info("Bulk prices applied", "source", source.Name(), "rows", rows, "matched", matched+fuzzyUpdated,
-		"updated", updated, "fallback_updated", fuzzyUpdated, "rarity_updated", rarityUpdated)
+	// fallback_matched counts every card the fallback verified (stamped), whether or
+	// not its price moved; price changes of the exact matches are in "updated".
+	slog.Info("Bulk prices applied", "source", source.Name(), "rows", rows, "matched", matched+fuzzyMatched,
+		"updated", updated, "fallback_matched", fuzzyMatched, "rarity_updated", rarityUpdated)
 	// A source that delivers rows but matches none of them is either listing a
 	// catalog we cannot map or is broken; both deserve an operator's attention.
-	if rows > 0 && matched+fuzzyUpdated+rarityUpdated == 0 {
+	if rows > 0 && matched+fuzzyMatched+rarityUpdated == 0 {
 		slog.Warn("Bulk prices: source matched nothing",
 			"source", source.Name(), "rows", rows,
 			"hint", "check the set abbreviations and collector numbers of this source")
@@ -518,7 +518,9 @@ func (w *DataSyncWorker) applyEURBatch(ctx context.Context, rate float64, size i
 	// locked row version, the subquery alone would overwrite it.
 	result, err := w.db.ExecContext(ctx, `
 		UPDATE cards
-		SET price_eur = ROUND(price_usd * $1, 2), price_eur_estimated = TRUE
+		-- Every selected row gets a different EUR value, so the price changed; it was
+		-- derived, not verified, so price_checked_at stays.
+		SET price_eur = ROUND(price_usd * $1, 2), price_eur_estimated = TRUE, last_updated = NOW()
 		WHERE id IN (
 			SELECT id FROM cards
 			WHERE superseded_by_card_id IS NULL
@@ -769,14 +771,17 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(
 	return total, nil
 }
 
-// applyPriceByCardID writes prices for explicit card ids.
+// applyPriceByCardID writes prices for explicit card ids. Every eligible match is
+// stamped as verified, including one whose price did not move; last_updated only
+// changes with the price. It returns the number of matched (stamped) cards.
 func (w *DataSyncWorker) applyPriceByCardID(ctx context.Context, batch []service.BulkPriceUpdate) (int64, error) {
 	if len(batch) == 0 {
 		return 0, nil
 	}
 	var query strings.Builder
 	query.WriteString(`UPDATE cards AS c
-SET price_usd = v.usd, last_updated = NOW(), price_checked_at = NOW()
+SET price_usd = v.usd, price_checked_at = NOW(),
+    last_updated = CASE WHEN c.price_usd IS DISTINCT FROM v.usd THEN NOW() ELSE c.last_updated END
 FROM (VALUES `)
 	args := make([]any, 0, len(batch)*2)
 	for index, update := range batch {
@@ -788,7 +793,7 @@ FROM (VALUES `)
 		args = append(args, update.SourceCardID, update.USD)
 	}
 	query.WriteString(`) AS v(id, usd)
-WHERE c.id = v.id AND (c.price_usd IS NULL OR c.price_usd IS DISTINCT FROM v.usd)
+WHERE c.id = v.id
   -- Rechecked on the locked row: the sync may have priced the card since the SELECT.
   AND ` + fallbackEligibleC)
 	result, err := w.db.ExecContext(ctx, query.String(), args...)
@@ -919,20 +924,23 @@ func (w *DataSyncWorker) touchBulkChecks(ctx context.Context, batch []service.Bu
 	var query strings.Builder
 	query.WriteString(`UPDATE cards AS c
 SET price_checked_at = NOW(),
-    price_variant = CASE WHEN v.usd > 0 AND v.variant <> '' THEN v.variant ELSE c.price_variant END
+    price_variant = CASE WHEN v.usd > 0 AND v.variant <> '' THEN v.variant ELSE c.price_variant END,
+    -- A native EUR quote that equals the stored value confirms it: it is no longer
+    -- an estimate. A USD-only quote leaves the flag alone.
+    price_eur_estimated = CASE WHEN v.eur > 0 AND c.price_eur = v.eur THEN FALSE ELSE c.price_eur_estimated END
 FROM (VALUES `)
-	// Four placeholders per row: the offset must match, otherwise PostgreSQL sees a
+	// Five placeholders per row: the offset must match, otherwise PostgreSQL sees a
 	// gap in the parameter list and rejects the statement with 42P18.
-	args := make([]any, 0, len(batch)*4)
+	args := make([]any, 0, len(batch)*5)
 	for index, update := range batch {
 		if index > 0 {
 			query.WriteString(", ")
 		}
-		base := index * 4
-		fmt.Fprintf(&query, "($%d, $%d, $%d::numeric, $%d)", base+1, base+2, base+3, base+4)
-		args = append(args, update.SourceID, update.SourceCardID, update.USD, update.Variant)
+		base := index * 5
+		fmt.Fprintf(&query, "($%d, $%d, $%d::numeric, $%d::numeric, $%d)", base+1, base+2, base+3, base+4, base+5)
+		args = append(args, update.SourceID, update.SourceCardID, update.USD, update.EUR, update.Variant)
 	}
-	query.WriteString(`) AS v(source_id, source_card_id, usd, variant)
+	query.WriteString(`) AS v(source_id, source_card_id, usd, eur, variant)
 WHERE c.source_id = v.source_id
   AND c.source_card_id = v.source_card_id`)
 
