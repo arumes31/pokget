@@ -1336,7 +1336,8 @@ func (h *Handler) ReloadCardsOnly() (int, error) {
 		COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash,
 		COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, ''), COALESCE(set_code, ''),
 		COALESCE(collector_number, ''), catalog_active,
-		COALESCE(NULLIF(source_metadata->>'printed_name', ''), ''), COALESCE(source_card_id, '')
+		COALESCE(NULLIF(source_metadata->>'printed_name', ''), ''), COALESCE(source_card_id, ''),
+		COALESCE(substring(source_metadata->>'set_total' from '^[0-9]{1,5}$')::int, 0)
 		FROM cards WHERE superseded_by_card_id IS NULL AND (source_id IS NULL OR catalog_active = TRUE)`)
 	if err != nil {
 		return 0, err
@@ -1347,7 +1348,7 @@ func (h *Handler) ReloadCardsOnly() (int, error) {
 	for rows.Next() {
 		var c models.Card
 		var printedName string
-		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash, &c.Game, &c.Language, &c.Rarity, &c.SetCode, &c.CollectorNumber, &c.CatalogActive, &printedName, &c.SourceCardID); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash, &c.Game, &c.Language, &c.Rarity, &c.SetCode, &c.CollectorNumber, &c.CatalogActive, &printedName, &c.SourceCardID, &c.SetTotal); err != nil {
 			continue
 		}
 		if printedName != "" && !strings.EqualFold(printedName, c.Name) {

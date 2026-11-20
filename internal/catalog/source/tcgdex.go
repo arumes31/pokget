@@ -29,7 +29,18 @@ type tcgdexSet struct {
 	Name        string       `json:"name"`
 	ReleaseDate string       `json:"releaseDate"`
 	Serie       tcgdexSerie  `json:"serie"`
-	Cards       []tcgdexCard `json:"cards"`
+	CardCount   struct {
+		Official int `json:"official"`
+	} `json:"cardCount"`
+	Cards []tcgdexCard `json:"cards"`
+}
+
+// tcgdexCardMetadata keeps the upstream card brief and adds the official set
+// size, which Pokémon cards print after the slash ("005/189"). The scanner
+// uses it to tell same-name, same-number printings of different sets apart.
+type tcgdexCardMetadata struct {
+	tcgdexCard
+	SetTotal int `json:"set_total,omitempty"`
 }
 
 type tcgdexSerie struct {
@@ -107,7 +118,7 @@ func (p *TCGdexProvider) Fetch(ctx context.Context, request catalog.FetchRequest
 				CollectorNumber: card.LocalID,
 				Language:        language,
 				ReleasedAt:      parseDate(set.ReleaseDate),
-				Metadata:        rawMetadata(card),
+				Metadata:        rawMetadata(tcgdexCardMetadata{tcgdexCard: card, SetTotal: set.CardCount.Official}),
 			}
 			if card.Image != "" {
 				record.Images = []catalog.ImageRecord{{SourceImageID: card.ID + ":front", Kind: "front", URL: card.Image + "/high.webp"}}

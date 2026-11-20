@@ -556,7 +556,7 @@ func TestTCGdexProviderSkipsDigitalOnlySeries(t *testing.T) {
 		case "/en/sets/A1":
 			_, _ = w.Write([]byte(`{"id":"A1","name":"Genetic Apex","serie":{"id":"tcgp","name":"Pokémon TCG Pocket"},"cards":[{"id":"A1-012","localId":"012","name":"Gloom"}]}`))
 		case "/en/sets/swsh10":
-			_, _ = w.Write([]byte(`{"id":"swsh10","name":"Astral Radiance","serie":{"id":"swsh","name":"Sword & Shield"},"cards":[{"id":"swsh10-005","localId":"005","name":"Scyther"}]}`))
+			_, _ = w.Write([]byte(`{"id":"swsh10","name":"Astral Radiance","serie":{"id":"swsh","name":"Sword & Shield"},"cardCount":{"official":189,"total":216},"cards":[{"id":"swsh10-005","localId":"005","name":"Scyther"}]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -570,5 +570,8 @@ func TestTCGdexProviderSkipsDigitalOnlySeries(t *testing.T) {
 	}
 	if !result.CompleteSnapshot {
 		t.Fatal("skipping a digital set is deliberate, the snapshot stays complete so old Pocket rows retire")
+	}
+	if !strings.Contains(string(records[0].Metadata), `"set_total":189`) {
+		t.Fatalf("the official set size must reach the card metadata: %s", records[0].Metadata)
 	}
 }

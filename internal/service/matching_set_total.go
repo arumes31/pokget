@@ -36,6 +36,22 @@ const (
 )
 
 func setTotalEvidence(cards []models.Card, product models.Card, prefix string, total int) setTotalVerdict {
+	// The published official size is exact: a set prints exactly one total
+	// (Stellar Crown 142, Brilliant Stars 172) even though both contain a #142,
+	// and promo sets, which print no fraction at all, never equal it by chance
+	// in practice. Prefixed totals (TG30, SV94) are subset sizes the source does
+	// not publish, so they use the catalog numbers below.
+	if prefix == "" {
+		for index := range cards {
+			card := cards[index]
+			if card.SetTotal > 0 && card.IsCatalogActive() && sameProduct(card, product) {
+				if card.SetTotal == total {
+					return setTotalConsistent
+				}
+				return setTotalInconsistent
+			}
+		}
+	}
 	highest := -1
 	for index := range cards {
 		card := cards[index]

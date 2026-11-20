@@ -323,12 +323,13 @@ func parseScope(game, language string) (service.ScanScope, error) {
 }
 
 const cardColumns = `id, name, set_name, coalesce(set_code,''), coalesce(collector_number,''),
-	language, game, coalesce(variant,''), coalesce(image_url,'')`
+	language, game, coalesce(variant,''), coalesce(image_url,''),
+	coalesce(substring(source_metadata->>'set_total' from '^[0-9]{1,5}$')::int, 0)`
 
 func scanCard(rows *sql.Rows) (sampleCard, error) {
 	var card models.Card
 	if err := rows.Scan(&card.ID, &card.Name, &card.Set, &card.SetCode, &card.CollectorNumber,
-		&card.Language, &card.Game, &card.Variant, &card.ImageURL); err != nil {
+		&card.Language, &card.Game, &card.Variant, &card.ImageURL, &card.SetTotal); err != nil {
 		return sampleCard{}, err
 	}
 	return sampleCard{Card: card}, nil
