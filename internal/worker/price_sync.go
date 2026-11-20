@@ -264,7 +264,6 @@ func (w *DataSyncWorker) trackedBatchLimit() trackedBudget {
 		SELECT count(DISTINCT tracked.user_id) FROM (
 			SELECT card_id, user_id::text AS user_id FROM portfolio
 			UNION ALL SELECT card_id, user_id::text FROM wantlist
-			UNION ALL SELECT card_id, user_id::text FROM price_alerts WHERE is_active = TRUE
 		) AS tracked
 		JOIN cards c ON c.id = tracked.card_id
 		WHERE c.superseded_by_card_id IS NULL`).Scan(&users); err != nil || users < 1 {
@@ -554,17 +553,13 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 	// global limit one collector with 2,000 cards would starve everybody else.
 	budget := w.trackedBatchLimit()
 	rows, err := w.db.QueryContext(ctx, `
-		-- price_alerts.user_id is text while portfolio and wantlist use uuid, so the
-		-- union needs one common type.
 		WITH tracked AS (
 			SELECT card_id, user_id::text AS user_id, 1 AS priority FROM portfolio
 			UNION ALL
-			SELECT card_id, user_id::text, 0 FROM price_alerts WHERE is_active = TRUE
-			UNION ALL
 			SELECT card_id, user_id::text, 2 FROM wantlist
 		), deduped AS (
-			-- One card can sit in a portfolio, a wantlist and an alert at once; it must
-			-- consume one slot, not three.
+			-- One card can sit in a portfolio and a wantlist at once; it must consume
+			-- one slot, not two.
 			SELECT card_id, user_id, MIN(priority) AS priority
 			FROM tracked
 			GROUP BY card_id, user_id
@@ -676,11 +671,6 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 		}
 		slog.Debug("Sync: Updated card price", "card", c.Name, "usd", usd, "eur", eur)
 		updated = true
-
-		// 3. Check Price Alerts (Improvement #38)
-		if validUSD {
-			w.checkPriceAlerts(ctx, c, usd)
-		}
 	}
 	if err := rows.Err(); err != nil {
 		slog.Error("Sync: Failed while reading cards", "error", err)
@@ -865,61 +855,4 @@ func (w *DataSyncWorker) priceAnomalous(current decimal.Decimal, candidate float
 	currentValue, _ := current.Float64()
 	ratio := candidate / currentValue
 	return ratio > w.maxPriceRatio || ratio < 1/w.maxPriceRatio
-}
-
-// checkPriceAlerts evaluates active price alerts for a card against its current
-// USD price. It is a dedicated method so the result set is closed when this call
-// returns rather than accumulating open cursors for the duration of syncPrices
-// (a `defer` inside the per-card loop would leak connections across all cards).
-func (w *DataSyncWorker) checkPriceAlerts(ctx context.Context, c models.Card, usd float64) {
-	rowsAlerts, err := w.db.QueryContext(ctx, "SELECT id, user_id, target_price FROM price_alerts WHERE card_id = $1 AND is_active = TRUE", c.ID)
-	if err != nil {
-		slog.Warn("Failed to query price alerts", "card_id", c.ID, "error", err)
-		return
-	}
-	type priceAlert struct {
-		id          int
-		userID      string
-		targetPrice decimal.Decimal
-	}
-	alerts := make([]priceAlert, 0)
-	currentPrice := decimal.NewFromFloat(usd)
-	for rowsAlerts.Next() {
-		var alert priceAlert
-		if err := rowsAlerts.Scan(&alert.id, &alert.userID, &alert.targetPrice); err != nil {
-			slog.Warn("Failed to scan price alert row", "error", err)
-			continue
-		}
-		alerts = append(alerts, alert)
-	}
-	rowErr := rowsAlerts.Err()
-	closeErr := rowsAlerts.Close()
-	if rowErr != nil {
-		slog.Warn("Failed while reading price alerts", "card_id", c.ID, "error", rowErr)
-		return
-	}
-	if closeErr != nil {
-		slog.Warn("Failed to close price alert rows", "card_id", c.ID, "error", closeErr)
-	}
-
-	for _, alert := range alerts {
-		if !currentPrice.LessThanOrEqual(alert.targetPrice) {
-			continue
-		}
-		result, err := w.db.ExecContext(ctx, `
-			UPDATE price_alerts
-			SET is_active = FALSE
-			WHERE id = $1 AND is_active = TRUE`, alert.id)
-		if err != nil {
-			slog.Warn("Failed to claim triggered price alert", "alert_id", alert.id, "error", err)
-			continue
-		}
-		claimed, err := result.RowsAffected()
-		if err != nil || claimed != 1 {
-			continue
-		}
-		slog.Info("ALERT: Price target hit!", "user", alert.userID, "card", c.Name, "target", alert.targetPrice, "current", currentPrice)
-		// Delivery can now be retried independently without sending this alert
-		// twice from overlapping worker replicas.
-	}
 }

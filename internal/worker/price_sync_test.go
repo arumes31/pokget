@@ -23,8 +23,10 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"pokget/internal/models"
 	"pokget/internal/service"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,9 +68,6 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectCommit()
-		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").
-			WithArgs(card.ID).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "target_price"}))
 
 		client := &recordingPriceClient{usd: 150.0, eur: 140.0}
 		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
@@ -289,8 +288,16 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		}
 	})
 
-	t.Run("PriceAlerts_Triggered", func(t *testing.T) {
-		db, mock, _ := sqlmock.New()
+	// Nothing creates or delivers price alerts, so the sync must neither rank nor
+	// evaluate them: any statement touching price_alerts fails the matcher.
+	t.Run("IgnoresPriceAlerts", func(t *testing.T) {
+		noAlerts := sqlmock.QueryMatcherFunc(func(expected, actual string) error {
+			if strings.Contains(actual, "price_alerts") {
+				return fmt.Errorf("statement touches price_alerts: %s", actual)
+			}
+			return sqlmock.QueryMatcherRegexp.Match(expected, actual)
+		})
+		db, mock, _ := sqlmock.New(sqlmock.QueryMatcherOption(noAlerts))
 		defer db.Close()
 
 		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur", "game", "source_id", "source_card_id", "language", "price_checked_at"}).
@@ -303,14 +310,6 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectCommit()
-
-		// Alert trigger
-		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price"}).
-			AddRow(1, "user-1", decimal.NewFromFloat(200.0))
-		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").WithArgs(card.ID).
-			WillReturnRows(alertRows)
-		mock.ExpectExec("UPDATE price_alerts").WithArgs(1).
-			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
 		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
