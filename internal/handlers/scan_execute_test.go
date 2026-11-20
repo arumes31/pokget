@@ -83,7 +83,7 @@ func (d stubScanDetector) DetectImages(context.Context, [][]byte, string, string
 	return d.Detect(context.Background(), nil, "", "")
 }
 
-func (stubScanDetector) Model() string             { return "claude-sonnet-5-5" }
+func (stubScanDetector) Model() string              { return "claude-sonnet-5-5" }
 func (stubScanDetector) PromptCachingEnabled() bool { return true }
 
 func TestExecuteScanWithoutDetectionPipelineFailsClearly(t *testing.T) {
@@ -92,7 +92,7 @@ func TestExecuteScanWithoutDetectionPipelineFailsClearly(t *testing.T) {
 	h := &Handler{MockCards: []models.Card{{ID: "card-1", Name: "Pikachu", Game: "pokemon", Language: "en"}}}
 	rr := httptest.NewRecorder()
 
-	h.executeScan(rr, scanRequest(t, testCardPNG(t), nil))
+	h.executeScan(rr, scanRequest(t, testCardPNG(t), map[string]string{"game": "pokemon", "lang": "en"}))
 
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d; body=%q", rr.Code, http.StatusServiceUnavailable, rr.Body.String())
@@ -162,7 +162,7 @@ func TestExecuteScan_RequestValidation(t *testing.T) {
 
 	t.Run("EmptyImage", func(t *testing.T) {
 		h := &Handler{MockCards: []models.Card{pokemonCard}}
-		req := scanRequest(t, []byte{}, nil)
+		req := scanRequest(t, []byte{}, map[string]string{"game": "pokemon", "lang": "en"})
 		rr := httptest.NewRecorder()
 
 		h.executeScan(rr, req)
@@ -207,7 +207,7 @@ func TestExecuteScan_RequestValidation(t *testing.T) {
 
 	t.Run("CanceledContext", func(t *testing.T) {
 		h := &Handler{MockCards: []models.Card{pokemonCard}}
-		req := scanRequest(t, imgBytes, nil)
+		req := scanRequest(t, imgBytes, map[string]string{"game": "pokemon", "lang": "en"})
 		ctx, cancel := context.WithCancel(req.Context())
 		cancel()
 		req = req.WithContext(ctx)

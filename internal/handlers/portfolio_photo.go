@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -163,7 +162,7 @@ func (h *Handler) PortfolioCard(w http.ResponseWriter, r *http.Request) {
 			&item.Card.CollectorNumber, &item.Card.Language, &item.Card.Game, &item.Card.Rarity,
 			&item.Card.ImageURL, &usd, &eur, &eurViaRate, &item.Card.PriceVariant, &priceCheckedAt)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if isMissingRow(err) {
 			http.Error(w, "Card not found", http.StatusNotFound)
 			return
 		}

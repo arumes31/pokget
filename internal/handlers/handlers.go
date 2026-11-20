@@ -66,29 +66,33 @@ type SetProgress struct {
 }
 
 type Handler struct {
-	Templates      *template.Template
-	MockCards      []models.Card
-	CardsMu        sync.RWMutex // Protects concurrent access to MockCards and syntheticCached
-	// syntheticCached holds the synthetic card ids appended to MockCards since
-	// the last reload (dedupe + budget, see persistSyntheticCard).
-	syntheticCached map[string]struct{}
-	setTotals      map[string]int
-	setTotalsMu    sync.RWMutex // Protects concurrent access to setTotals
-	Fingerprint    *service.FingerprintService
-	Detection      *service.DetectionPipeline // SCAN-07, SCAN-09, SCAN-16: Detection pipeline
-	Mailer         service.Mailer
-	Audit          *service.AuditService
-	Crypto         *service.CryptoService
-	Game           *service.GamificationService
-	LLM            *service.LLMService
-	PriceClient    *service.ScraperPriceClient
-	Prices         *service.PriceService
-	Photos         *service.PhotoStore
-	DB             *sql.DB
-	BuildVersion   string
-	ScanTimeout    time.Duration
-	SecureCookies  bool // BUG-C03: Configurable Secure flag for session cookies
-	passwordHasher func(string) (string, error)
+	Templates    *template.Template
+	MockCards    []models.Card
+	CardsMu      sync.RWMutex // Protects concurrent access to MockCards
+	reloadMu     sync.Mutex   // Serializes ReloadCardsOnly so an older snapshot never wins
+	setTotals    map[string]int
+	setTotalsMu  sync.RWMutex // Protects concurrent access to setTotals
+	Fingerprint  *service.FingerprintService
+	Detection    *service.DetectionPipeline // SCAN-07, SCAN-09, SCAN-16: Detection pipeline
+	Mailer       service.Mailer
+	Audit        *service.AuditService
+	Crypto       *service.CryptoService
+	Game         *service.GamificationService
+	LLM          *service.LLMService
+	PriceClient  *service.ScraperPriceClient
+	Prices       *service.PriceService
+	Photos       *service.PhotoStore
+	DB           *sql.DB
+	BuildVersion string
+	ScanTimeout  time.Duration
+	// ScanMaxConcurrent bounds concurrent detector work (SCAN_MAX_CONCURRENT).
+	ScanMaxConcurrent int
+	SecureCookies     bool // BUG-C03: Configurable Secure flag for session cookies
+	passwordHasher    func(string) (string, error)
+
+	scanSlotsOnce sync.Once
+	scanSlots     chan struct{}
+	scansInFlight sync.Map // user id -> struct{}: one scan per collector at a time
 }
 
 func (h *Handler) hashPassword(password string) (string, error) {
@@ -98,9 +102,22 @@ func (h *Handler) hashPassword(password string) (string, error) {
 	return auth.HashPassword(password)
 }
 
-// scanDetectionSlots bounds concurrent detector work so a slow provider cannot
+// detectionSlots bounds concurrent detector work so a slow provider cannot
 // exhaust the server.
-var scanDetectionSlots = make(chan struct{}, 3)
+func (h *Handler) detectionSlots() chan struct{} {
+	h.scanSlotsOnce.Do(func() {
+		h.scanSlots = make(chan struct{}, max(h.ScanMaxConcurrent, 1))
+	})
+	return h.scanSlots
+}
+
+// currencySymbol is the display symbol for a user's currency setting.
+func currencySymbol(currency string) string {
+	if currency == "USD" {
+		return "$"
+	}
+	return "€"
+}
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
 	// Pages embed the build-versioned asset URLs, so they must be revalidated
@@ -141,10 +158,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 		data["UserXPPercent"] = xpPercent
 		data["UserRankIcon"] = rank.IconURL
 		data["UserCurrency"] = currency
-		data["CurrencySymbol"] = "â‚¬"
-		if currency == "USD" {
-			data["CurrencySymbol"] = "$"
-		}
+		data["CurrencySymbol"] = currencySymbol(currency)
 	}
 
 	var output bytes.Buffer
@@ -641,6 +655,12 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	notes := r.FormValue("notes")
+	if msg := textTooLong(textField{"notes", notes, maxNotesRunes}); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+
 	// BUG-H01 FIX: Validate required fields before inserting.
 	cardID := r.FormValue("card_id")
 	if cardID == "" {
@@ -713,7 +733,6 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	notes := r.FormValue("notes")
 	customPriceStr := r.FormValue("custom_price")
 	customPrice, err := parseOptionalPrice(customPriceStr)
 	if err != nil {
@@ -730,6 +749,10 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 			binderID,
 			userID,
 		).Scan(&ownsBinder)
+		if isMissingRow(err) {
+			http.Error(w, "Binder not found", http.StatusNotFound)
+			return
+		}
 		if err != nil {
 			slog.Error("Failed to validate portfolio binder", "error", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -772,7 +795,7 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 	// Portfolio changes are the badge trigger. Heartbeats and badge rewards only
 	// update XP, avoiding recursive or unbounded background badge checks.
 	if h.Game != nil {
-		if _, _, xpErr := h.Game.AddXP(userID, 100); xpErr != nil {
+		if _, _, xpErr := h.Game.AddXP(userID, portfolioAddXP); xpErr != nil {
 			slog.Warn("Failed to award portfolio XP", "user_id", userID, "error", xpErr)
 		}
 		h.Game.CheckForBadges(userID)
@@ -781,6 +804,9 @@ func (h *Handler) AddCardToPortfolio(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("HX-Trigger", `{"notify": {"msg": "Asset Secured: Card added to Vault (+100 XP)", "type": "success"}}`)
 	w.WriteHeader(http.StatusOK)
 }
+
+// portfolioAddXP is granted per added card and taken back when it is deleted.
+const portfolioAddXP = 100
 
 func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Action: Heartbeat", "method", r.Method)
@@ -835,6 +861,10 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 
 	notes := r.FormValue("notes")
 	grade := r.FormValue("grade")
+	if msg := textTooLong(textField{"notes", notes, maxNotesRunes}, textField{"grade", grade, maxGradeRunes}); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
 	customPriceStr := r.FormValue("custom_price")
 	customPrice, err := parseOptionalPrice(customPriceStr)
 	if err != nil {
@@ -848,6 +878,10 @@ func (h *Handler) EditPortfolioItem(w http.ResponseWriter, r *http.Request) {
 		SET notes = $1, grade = $2, custom_price = $3, is_public = $4
 		WHERE id = $5 AND user_id = $6`,
 		notes, grade, customPrice, isPublic, itemID, userID)
+	if isMissingRow(err) {
+		http.Error(w, "Portfolio item not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		slog.Error("Failed to edit portfolio item", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -902,6 +936,10 @@ func (h *Handler) DeletePortfolioItem(w http.ResponseWriter, r *http.Request) {
 	_ = h.DB.QueryRowContext(r.Context(), "SELECT COALESCE(photo_path, '') FROM portfolio WHERE id = $1 AND user_id = $2", itemID, userID).Scan(&storedPhoto)
 
 	result, err := h.DB.ExecContext(r.Context(), "DELETE FROM portfolio WHERE id = $1 AND user_id = $2", itemID, userID)
+	if isMissingRow(err) {
+		http.Error(w, "Portfolio item not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		slog.Error("Failed to delete portfolio item", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -910,6 +948,12 @@ func (h *Handler) DeletePortfolioItem(w http.ResponseWriter, r *http.Request) {
 	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
 		http.Error(w, "Portfolio item not found", http.StatusNotFound)
 		return
+	}
+	// Take back the XP the add granted, so add/delete loops cannot farm rank.
+	if h.Game != nil {
+		if _, _, xpErr := h.Game.RevokeXP(userID, portfolioAddXP); xpErr != nil {
+			slog.Warn("Failed to revoke portfolio XP", "user_id", userID, "error", xpErr)
+		}
 	}
 	if storedPhoto != "" && h.Photos != nil {
 		if err := h.Photos.Remove(storedPhoto); err != nil {
@@ -971,6 +1015,10 @@ func (h *Handler) UpdatePortfolioBinder(w http.ResponseWriter, r *http.Request) 
 		itemID,
 		userID,
 	)
+	if isMissingRow(err) {
+		http.Error(w, "Portfolio item not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		slog.Error("Failed to update portfolio binder", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -1170,6 +1218,10 @@ func (h *Handler) CreateBinder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Name is required", http.StatusBadRequest)
 		return
 	}
+	if msg := textTooLong(textField{"name", name, maxBinderNameRunes}, textField{"description", description, maxBinderDescriptionRunes}); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
 
 	_, err := h.DB.ExecContext(r.Context(), "INSERT INTO binders (user_id, name, description) VALUES ($1, $2, $3)", userID, name, description)
 	if err != nil {
@@ -1202,7 +1254,7 @@ func (h *Handler) BinderDetail(w http.ResponseWriter, r *http.Request) {
 		userID,
 	).Scan(&binder.ID, &binder.Name, &binder.Description)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if isMissingRow(err) {
 			http.Error(w, "Binder not found", http.StatusNotFound)
 			return
 		}
@@ -1329,6 +1381,11 @@ func (h *Handler) RefreshCache(w http.ResponseWriter, r *http.Request) {
 
 // ReloadCardsOnly updates the in-memory card cache without rebuilding the BK-tree index.
 func (h *Handler) ReloadCardsOnly() (int, error) {
+	// Overlapping reloads could otherwise publish an older snapshot last.
+	h.reloadMu.Lock()
+	defer h.reloadMu.Unlock()
+	// Collector-added cards (source 'claude') back only their owner's
+	// portfolio; they never become scan candidates for anyone.
 	// The scan uses the printed name for non-English printings: Magic keeps the
 	// English name in `name` and the localized one in source_metadata, so without
 	// this the detector reads the card correctly and still finds no candidate.
@@ -1338,7 +1395,8 @@ func (h *Handler) ReloadCardsOnly() (int, error) {
 		COALESCE(collector_number, ''), catalog_active,
 		COALESCE(NULLIF(source_metadata->>'printed_name', ''), ''), COALESCE(source_card_id, ''),
 		COALESCE(substring(source_metadata->>'set_total' from '^[0-9]{1,5}$')::int, 0)
-		FROM cards WHERE superseded_by_card_id IS NULL AND (source_id IS NULL OR catalog_active = TRUE)`)
+		FROM cards WHERE superseded_by_card_id IS NULL AND (source_id IS NULL OR catalog_active = TRUE)
+		AND source_id IS DISTINCT FROM 'claude'`)
 	if err != nil {
 		return 0, err
 	}
@@ -1362,7 +1420,6 @@ func (h *Handler) ReloadCardsOnly() (int, error) {
 
 	h.CardsMu.Lock()
 	h.MockCards = allCards
-	h.syntheticCached = nil
 	h.CardsMu.Unlock()
 	// The per-set totals are derived from the card cache, so drop them with it.
 	h.setTotalsMu.Lock()
@@ -1391,10 +1448,9 @@ func (h *Handler) ReloadCardsCache() (int, error) {
 func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	logger := service.ScanLogger(r.Context())
 
-	// Snapshot MockCards under the read lock. The slice is publish-on-reload and
-	// append-only (synthetic cards), so taking the header is enough: copying 869k
-	// cards here cost ~257 MB per request. Reload assigns a fresh slice; append
-	// writes past len and never mutates the entries a scan reads.
+	// Snapshot MockCards under the read lock. Reload publishes a fresh slice and
+	// never mutates a published one, so taking the header is enough: copying
+	// 869k cards here cost ~257 MB per request.
 	h.CardsMu.RLock()
 	cards := h.MockCards
 	h.CardsMu.RUnlock()
@@ -1430,32 +1486,25 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	lang := r.FormValue("lang")
 	game := models.NormalizeGame(r.FormValue("game"))
 	diagnostics := strings.EqualFold(r.FormValue("diagnostics"), "true")
-	var scanScope *service.ScanScope
-	if game != "" {
-		tcg, parseErr := models.ParseTCG(game)
-		if parseErr != nil {
-			http.Error(w, "Unsupported TCG", http.StatusBadRequest)
-			return
-		}
-		var valid bool
-		cards, valid = filterCardsByGame(cards, game)
-		if !valid {
-			http.Error(w, "Unsupported TCG", http.StatusBadRequest)
-			return
-		}
-		if len(cards) == 0 {
-			logger.Warn("Scan scope empty", "game", tcg, "eligible_cards", 0)
-			http.Error(w, "No cards are available for the selected TCG", http.StatusUnprocessableEntity)
-			return
-		}
-		language, parseErr := models.ParseLanguage(lang)
-		if parseErr != nil {
-			http.Error(w, "Unsupported card language", http.StatusBadRequest)
-			return
-		}
-		scanScope = &service.ScanScope{TCG: tcg, Language: language}
-		logger.Info("Image scan scope", "game", tcg, "language", language)
+	// Every scan is scoped to one TCG: an unscoped scan would hand the detector
+	// the whole catalog.
+	tcg, parseErr := models.ParseTCG(game)
+	if parseErr != nil {
+		http.Error(w, "Unsupported TCG", http.StatusBadRequest)
+		return
 	}
+	if !gameHasCards(cards, tcg) {
+		logger.Warn("Scan scope empty", "game", tcg, "eligible_cards", 0)
+		http.Error(w, "No cards are available for the selected TCG", http.StatusUnprocessableEntity)
+		return
+	}
+	language, parseErr := models.ParseLanguage(lang)
+	if parseErr != nil {
+		http.Error(w, "Unsupported card language", http.StatusBadRequest)
+		return
+	}
+	scanScope := service.ScanScope{TCG: tcg, Language: language}
+	logger.Info("Image scan scope", "game", tcg, "language", language)
 
 	imgBytes, err := io.ReadAll(file)
 	if err != nil {
@@ -1489,29 +1538,16 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		userCurrency = "EUR"
 	}
 
-	// Bound local analysis separately so a configured primary request can finish
-	// while the caller remains connected.
+	// One deadline covers queueing, local analysis and any provider request.
 	scanTimeout := h.ScanTimeout
 	if scanTimeout <= 0 {
 		scanTimeout = 75 * time.Second
 	}
-	ctx := service.WithDetectionStageTimeout(r.Context(), scanTimeout)
-	var cancel context.CancelFunc
-	primaryConfigured := h.LLM != nil && h.LLM.PrimaryBaseURL != ""
-	if h.Detection != nil {
-		primaryConfigured = h.Detection.LLM != nil && h.Detection.LLM.PrimaryBaseURL != ""
-	}
-	if primaryConfigured {
-		ctx, cancel = context.WithCancel(ctx)
-	} else {
-		ctx, cancel = context.WithTimeout(ctx, scanTimeout)
-	}
+	ctx, cancel := context.WithTimeout(r.Context(), scanTimeout)
 	defer cancel()
-	if game != "" {
-		ctx = service.WithImagePrepareConfig(ctx, service.ImagePrepareConfig{
-			MaxInputBytes: int(maxScanRequestBytes),
-		})
-	}
+	ctx = service.WithImagePrepareConfig(ctx, service.ImagePrepareConfig{
+		MaxInputBytes: int(maxScanRequestBytes),
+	})
 
 	// Check context before starting
 	if ctx.Err() != nil {
@@ -1528,15 +1564,13 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 
 	// SCAN-07, SCAN-09, SCAN-16: Use detection pipeline if available
 	if h.Detection != nil {
-		capacityCtx, capacityCancel := context.WithTimeout(ctx, scanTimeout)
-		finishQueue := service.LogScanStage(capacityCtx, "detector_queue")
+		slots := h.detectionSlots()
+		finishQueue := service.LogScanStage(ctx, "detector_queue")
 		select {
-		case scanDetectionSlots <- struct{}{}:
+		case slots <- struct{}{}:
 			finishQueue(nil)
-			capacityCancel()
-		case <-capacityCtx.Done():
-			finishQueue(capacityCtx.Err())
-			capacityCancel()
+		case <-ctx.Done():
+			finishQueue(ctx.Err())
 			http.Error(w, "Scan timed out while waiting for detector capacity", http.StatusRequestTimeout)
 			return
 		}
@@ -1546,17 +1580,13 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		}
 		resultCh := make(chan detectionOutcome, 1)
 		go func() {
-			defer func() { <-scanDetectionSlots }()
-			if scanScope != nil {
-				result, detectErr := h.Detection.DetectScoped(ctx, service.DetectionRequest{
-					Image: imgBytes,
-					Cards: cards,
-					Scope: *scanScope,
-				})
-				resultCh <- detectionOutcome{result: result, err: detectErr}
-				return
-			}
-			resultCh <- detectionOutcome{result: h.Detection.DetectContext(ctx, imgBytes, cards, lang)}
+			defer func() { <-slots }()
+			result, detectErr := h.Detection.DetectScoped(ctx, service.DetectionRequest{
+				Image: imgBytes,
+				Cards: cards,
+				Scope: scanScope,
+			})
+			resultCh <- detectionOutcome{result: result, err: detectErr}
 		}()
 		var outcome detectionOutcome
 		select {
@@ -1586,23 +1616,9 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 			} else {
 				detectedPrice, _ = best.PriceUSD.Float64()
 			}
+			// An uncataloged result keeps an empty id and writes nothing: adding
+			// it to the collection mints the row (AddCardToPortfolio).
 			detectedImage = best.ImageURL
-
-			// An oversized detector result gets no synthetic id: it could not be
-			// persisted within the field limits, so it must not be offered.
-			if detectedID == "" && detectedCard != "" && validateSyntheticCardFields(*best) == "" {
-				synthID := generateSyntheticCardID(*best)
-				best.ID = synthID
-				detectedID = synthID
-				if h.DB != nil {
-					h.persistSyntheticCard(r.Context(), *best)
-				}
-				for i := range result.TopMatches {
-					if result.TopMatches[i].Card != nil && result.TopMatches[i].Card.ID == "" {
-						result.TopMatches[i].Card.ID = synthID
-					}
-				}
-			}
 		}
 
 		// Build top matches for API response (SCAN-09)
@@ -1672,25 +1688,13 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Card recognition is not configured on this server", http.StatusServiceUnavailable)
 }
 
-func filterCardsByGame(cards []models.Card, game string) ([]models.Card, bool) {
-	validGames := map[string]struct{}{
-		"pokemon": {}, "magic": {}, "one_piece": {}, "lorcana": {}, "weiss_schwarz": {}, "yugioh": {}, "star_wars_unlimited": {},
-		"flesh_and_blood": {}, "digimon": {}, "grand_archive": {}, "altered": {}, "sorcery": {},
-		"dragon_ball_super": {}, "dbs_fusion_world": {}, "union_arena": {}, "gundam": {}, "battlespirits_saga": {},
-		"world_of_warcraft": {}, "fftcg": {}, "godzilla": {}, "shadowverse_evolve": {}, "universus": {},
-		"vanguard": {}, "hololive": {}, "duel_masters": {}, "cookie_run": {}, "force_of_will": {}, "wixoss": {},
-		"alpha_clash": {}, "riftbound": {},
-	}
-	game = models.NormalizeGame(game)
-	if _, ok := validGames[game]; !ok {
-		return nil, false
-	}
-
-	filtered := make([]models.Card, 0, len(cards))
-	for _, card := range cards {
-		if models.NormalizeGame(card.Game) == game {
-			filtered = append(filtered, card)
+// gameHasCards reports whether the cache holds a card of tcg. It does not
+// copy: the detector narrows the snapshot to its scope itself.
+func gameHasCards(cards []models.Card, tcg models.TCG) bool {
+	for i := range cards {
+		if models.NormalizeGame(cards[i].Game) == string(tcg) {
+			return true
 		}
 	}
-	return filtered, true
+	return false
 }

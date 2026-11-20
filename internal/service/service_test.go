@@ -429,7 +429,7 @@ func TestGamificationService(t *testing.T) {
 	t.Run("AddXP_Success", func(t *testing.T) {
 		mock.ExpectBegin()
 		rows := sqlmock.NewRows([]string{"xp"}).AddRow(500)
-		mock.ExpectQuery("UPDATE users SET xp = xp \\+ \\$1 WHERE id = \\$2 RETURNING xp").
+		mock.ExpectQuery("UPDATE users SET xp = GREATEST\\(xp \\+ \\$1, 0\\) WHERE id = \\$2 RETURNING xp").
 			WithArgs(400, "user-1").WillReturnRows(rows)
 		mock.ExpectExec("UPDATE users SET rank_title = \\$1 WHERE id = \\$2 AND xp = \\$3").
 			WithArgs("Card Scout", "user-1", 500).WillReturnResult(sqlmock.NewResult(1, 1))
@@ -449,7 +449,7 @@ func TestGamificationService(t *testing.T) {
 
 	t.Run("AddXP_QueryError", func(t *testing.T) {
 		mock.ExpectBegin()
-		mock.ExpectQuery("UPDATE users SET xp = xp \\+ \\$1 WHERE id = \\$2 RETURNING xp").
+		mock.ExpectQuery("UPDATE users SET xp = GREATEST\\(xp \\+ \\$1, 0\\) WHERE id = \\$2 RETURNING xp").
 			WithArgs(100, "user-2").WillReturnError(sql.ErrNoRows)
 		mock.ExpectRollback()
 

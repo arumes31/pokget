@@ -56,10 +56,26 @@ func NewGamificationService(db *sql.DB) *GamificationService {
 }
 
 func (s *GamificationService) AddXP(userID string, amount int) (int, string, error) {
+	if amount <= 0 {
+		return 0, "", errors.New("gamification: user ID and positive XP amount are required")
+	}
+	return s.applyXP(userID, amount)
+}
+
+// RevokeXP takes back XP granted for an action that was undone; XP never
+// drops below zero.
+func (s *GamificationService) RevokeXP(userID string, amount int) (int, string, error) {
+	if amount <= 0 {
+		return 0, "", errors.New("gamification: user ID and positive XP amount are required")
+	}
+	return s.applyXP(userID, -amount)
+}
+
+func (s *GamificationService) applyXP(userID string, delta int) (int, string, error) {
 	if s == nil || s.DB == nil {
 		return 0, "", errors.New("gamification: database is unavailable")
 	}
-	if userID == "" || amount <= 0 {
+	if userID == "" {
 		return 0, "", errors.New("gamification: user ID and positive XP amount are required")
 	}
 
@@ -71,8 +87,8 @@ func (s *GamificationService) AddXP(userID string, amount int) (int, string, err
 
 	var newXP int
 	err = tx.QueryRow(
-		"UPDATE users SET xp = xp + $1 WHERE id = $2 RETURNING xp",
-		amount, userID,
+		"UPDATE users SET xp = GREATEST(xp + $1, 0) WHERE id = $2 RETURNING xp",
+		delta, userID,
 	).Scan(&newXP)
 	if err != nil {
 		return 0, "", fmt.Errorf("gamification: increment XP: %w", err)
@@ -158,7 +174,7 @@ func (s *GamificationService) CheckForBadges(userID string) {
 	// 2. Check for "High Roller" badge
 	var totalValue float64
 	if err := s.DB.QueryRow(`
-		SELECT COALESCE(SUM(COALESCE(p.custom_price, c.price_usd)), 0)
+		SELECT COALESCE(SUM(COALESCE(c.price_usd, 0)), 0)
 		FROM portfolio p
 		JOIN cards c ON p.card_id = c.id
 		WHERE p.user_id = $1`, userID).Scan(&totalValue); err != nil {

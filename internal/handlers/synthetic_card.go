@@ -27,15 +27,14 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"unicode/utf8"
 
 	"pokget/internal/catalog"
 	"pokget/internal/models"
 )
 
 // Limits for collector-supplied fields of a synthetic (uncataloged) card. The
-// row lands in the shared cards table and in the process-wide card cache every
-// scan reads, so its strings are bounded well below the 1 MB request cap.
+// row lands in the shared cards table, so its strings are bounded well below
+// the 1 MB request cap.
 const (
 	maxSyntheticNameRunes   = 200
 	maxSyntheticSetRunes    = 200
@@ -47,31 +46,17 @@ const (
 	maxSyntheticCardIDRunes = 128
 )
 
-// maxSyntheticCacheAppends caps how many synthetic cards persistSyntheticCard
-// adds to the in-memory cache between two reloads. Past the cap the card is
-// still persisted (and picked up by the next reload); only the cache append is
-// skipped, so a collector cannot grow shared memory without bound.
-const maxSyntheticCacheAppends = 5000
-
 // validateSyntheticCardFields reports the first collector-supplied field of a
 // synthetic card that exceeds its limit, or "" when all fit.
 func validateSyntheticCardFields(card models.Card) string {
-	for _, f := range []struct {
-		name, value string
-		limit       int
-	}{
-		{"card_name", card.Name, maxSyntheticNameRunes},
-		{"set_name", card.Set, maxSyntheticSetRunes},
-		{"set_code", card.SetCode, maxSyntheticSetRunes},
-		{"collector_number", card.CollectorNumber, maxSyntheticNumberRunes},
-		{"language", card.Language, maxSyntheticLangRunes},
-		{"game", card.Game, maxSyntheticGameRunes},
-	} {
-		if utf8.RuneCountInString(f.value) > f.limit {
-			return fmt.Sprintf("%s must be at most %d characters", f.name, f.limit)
-		}
-	}
-	return ""
+	return textTooLong(
+		textField{"card_name", card.Name, maxSyntheticNameRunes},
+		textField{"set_name", card.Set, maxSyntheticSetRunes},
+		textField{"set_code", card.SetCode, maxSyntheticSetRunes},
+		textField{"collector_number", card.CollectorNumber, maxSyntheticNumberRunes},
+		textField{"language", card.Language, maxSyntheticLangRunes},
+		textField{"game", card.Game, maxSyntheticGameRunes},
+	)
 }
 
 // generateSyntheticCardID produces a deterministic canonical ID for an uncataloged card
@@ -106,9 +91,8 @@ func generateSyntheticCardID(card models.Card) string {
 	return "card_" + hex.EncodeToString(h[:])
 }
 
-// persistSyntheticCard inserts the synthetic card into the database cards table
-// and updates the handler's in-memory MockCards cache so it can be added to
-// user collections and binders.
+// persistSyntheticCard inserts the synthetic card into the cards table so the
+// collector can add it to a collection or binder.
 func (h *Handler) persistSyntheticCard(ctx context.Context, card models.Card) {
 	if h.DB == nil || card.ID == "" || card.Name == "" {
 		return
@@ -132,42 +116,18 @@ func (h *Handler) persistSyntheticCard(ctx context.Context, card models.Card) {
 		slog.Warn("Failed to ensure synthetic card source", "error", err)
 		return
 	}
+	// Inactive and never renamed: the row only backs the collector's own
+	// portfolio entry and stays out of every scan's candidates (ReloadCardsOnly
+	// also skips the 'claude' source for rows written before this rule).
 	_, err := h.DB.ExecContext(ctx, `
 		INSERT INTO cards (
 			id, name, set_name, set_code, collector_number, language, game, variant,
 			source_id, source_card_id, catalog_active, source_metadata
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'claude', $1, true, '{}')
-		ON CONFLICT (id) DO UPDATE SET
-			name = EXCLUDED.name,
-			set_name = EXCLUDED.set_name,
-			catalog_active = true
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'claude', $1, false, '{}')
+		ON CONFLICT (id) DO NOTHING
 	`, card.ID, card.Name, setName, card.SetCode, card.CollectorNumber, card.Language, card.Game, card.Variant)
 	if err != nil {
 		slog.Warn("Failed to persist synthetic card", "card_id", card.ID, "name", card.Name, "error", err)
-		return
 	}
-	active := true
-	cardCopy := card
-	cardCopy.Set = setName
-	cardCopy.CatalogActive = &active
-	h.CardsMu.Lock()
-	defer h.CardsMu.Unlock()
-	// Append each synthetic id at most once per cache generation. The slice is
-	// append-only between reloads (executeScan reads its header without
-	// copying), so an existing entry is never rewritten in place; a renamed card
-	// shows its new name after the next reload.
-	if _, seen := h.syntheticCached[card.ID]; seen {
-		return
-	}
-	if len(h.syntheticCached) >= maxSyntheticCacheAppends {
-		slog.Warn("Synthetic card cache budget exhausted; card persisted but not cached until next reload",
-			"card_id", card.ID, "limit", maxSyntheticCacheAppends)
-		return
-	}
-	if h.syntheticCached == nil {
-		h.syntheticCached = make(map[string]struct{})
-	}
-	h.syntheticCached[card.ID] = struct{}{}
-	h.MockCards = append(h.MockCards, cardCopy)
 }

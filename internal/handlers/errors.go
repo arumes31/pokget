@@ -163,6 +163,11 @@ func (h *Handler) SubmitError(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "card_id, error_type and description are required", http.StatusBadRequest)
 		return
 	}
+	// Reports are public, so their text is bounded like any shared field.
+	if msg := textTooLong(textField{"error_type", errorType, maxErrorTypeRunes}, textField{"description", description, maxErrorDescriptionRunes}); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
 	multiplier, err := parseFiniteFloat(r.FormValue("multiplier"), 0, 100)
 	if err != nil || multiplier <= 0 {
 		http.Error(w, "multiplier must be a number between 0 and 100", http.StatusBadRequest)

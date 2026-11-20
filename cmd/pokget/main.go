@@ -220,9 +220,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Fetch all cards from DB for handlers (caching in memory for fast scanning)
-	allCards := loadCardsCache(database)
-
 	// Load Templates
 	templates := template.Must(template.New("").Funcs(templateFuncMap()).ParseGlob("templates/*.html"))
 
@@ -246,7 +243,8 @@ func main() {
 	}
 
 	// Initialize Handlers
-	h := newHandler(cfg, database, templates, allCards, services, detectionPipeline, cryptoSvc, llmSvc, buildVersion)
+	h := newHandler(cfg, database, templates, services, detectionPipeline, cryptoSvc, llmSvc, buildVersion)
+	warmCardsCache(h)
 
 	var backgroundWorkers sync.WaitGroup
 	startBackgroundWorkers(workerCtx, llmSvc, services, h, &backgroundWorkers, &fingerprintIndexDirty)

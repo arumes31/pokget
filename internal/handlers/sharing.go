@@ -118,10 +118,6 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 	// The owner-chosen slug is already public in the URL; the email address,
 	// including its local part, is never shown on the public page.
 	username := slug
-	currencySymbol := "€"
-	if currency == "USD" {
-		currencySymbol = "$"
-	}
 
 	h.render(w, r, "public_vault.html", map[string]interface{}{
 		"Username":       username,
@@ -132,7 +128,7 @@ func (h *Handler) PublicVault(w http.ResponseWriter, r *http.Request) {
 		"XP":             xp,
 		"IsPublic":       true,
 		"UserCurrency":   currency,
-		"CurrencySymbol": currencySymbol,
+		"CurrencySymbol": currencySymbol(currency),
 	})
 }
 
@@ -156,6 +152,10 @@ func (h *Handler) ToggleVisibility(w http.ResponseWriter, r *http.Request) {
 	isPublic := r.FormValue("is_public") == "true"
 
 	result, err := h.DB.ExecContext(r.Context(), "UPDATE portfolio SET is_public = $1 WHERE id = $2 AND user_id = $3", isPublic, itemID, userID)
+	if isMissingRow(err) {
+		http.Error(w, "Portfolio item not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		http.Error(w, "Failed to update visibility", http.StatusInternalServerError)
 		return
