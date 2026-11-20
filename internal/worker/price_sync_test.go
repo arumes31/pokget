@@ -272,7 +272,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
 		mock.ExpectBegin()
 		mock.ExpectExec("UPDATE cards").
-			WithArgs(decimal.NewFromInt(150), decimal.NewFromInt(110), true, card.ID).
+			WithArgs(decimal.NewFromInt(150), decimal.NewFromInt(110), true, card.ID, false).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").
 			WithArgs(card.ID, decimal.NewFromInt(150), decimal.NewFromInt(110)).
@@ -300,7 +300,7 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		mock.ExpectQuery("SELECT").WillReturnRows(rows)
 		mock.ExpectBegin()
 		mock.ExpectExec("UPDATE cards").
-			WithArgs(decimal.NewFromInt(600), decimal.NewFromInt(600), true, card.ID).
+			WithArgs(decimal.NewFromInt(600), decimal.NewFromInt(600), true, card.ID, false).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectCommit()
@@ -314,17 +314,52 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		}
 	})
 
+	// A rejected USD keeps the reference age: the accepted EUR is written, but
+	// price_checked_at stays so the USD waiver still ages out after a week.
+	t.Run("RejectedCurrencyKeepsTheCheckStamp", func(t *testing.T) {
+		db, mock, _ := sqlmock.New()
+		defer db.Close()
+
+		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur", "game", "source_id", "source_card_id", "language", "price_checked_at"}).
+			AddRow(card.ID, card.Name, card.Set, decimal.NewFromInt(100), decimal.NewFromInt(100), card.Game, "", "", "", time.Now().Add(-time.Hour))
+		mock.ExpectQuery("count\\(DISTINCT tracked.user_id\\)").WillReturnRows(sqlmock.NewRows([]string{"users"}).AddRow(1))
+		mock.ExpectQuery("SELECT").WillReturnRows(rows)
+		mock.ExpectBegin()
+		mock.ExpectExec(`UPDATE cards[\s\S]*price_checked_at = CASE WHEN \$5 THEN price_checked_at ELSE NOW\(\) END`).
+			WithArgs(decimal.NewFromInt(100), decimal.NewFromInt(110), true, card.ID, true).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		worker := NewDataSyncWorker(db, &service.MockPriceClient{FixedUSD: 600, FixedEUR: 110}, nil, nil, time.Hour)
+		worker.maxPriceRatio = 5
+		worker.syncPrices(context.Background())
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("the rejected USD must not refresh the check stamp: %v", err)
+		}
+	})
+
 	// Nothing creates or delivers price alerts, so the sync must neither rank nor
-	// evaluate them: any statement touching price_alerts fails the matcher.
+	// evaluate them. The matcher records every statement independently: two
+	// never-matching sentinels stay pending in unordered mode, so even a statement
+	// issued after the real expectations are used up still reaches the matcher.
 	t.Run("IgnoresPriceAlerts", func(t *testing.T) {
+		const sentinel = "sentinel: never matches"
+		var alertSQL []string
 		noAlerts := sqlmock.QueryMatcherFunc(func(expected, actual string) error {
 			if strings.Contains(actual, "price_alerts") {
+				alertSQL = append(alertSQL, actual)
 				return fmt.Errorf("statement touches price_alerts: %s", actual)
+			}
+			if expected == sentinel {
+				return errors.New(sentinel)
 			}
 			return sqlmock.QueryMatcherRegexp.Match(expected, actual)
 		})
 		db, mock, _ := sqlmock.New(sqlmock.QueryMatcherOption(noAlerts))
 		defer db.Close()
+		mock.MatchExpectationsInOrder(false)
 
 		rows := sqlmock.NewRows([]string{"id", "name", "set_name", "price_usd", "price_eur", "game", "source_id", "source_card_id", "language", "price_checked_at"}).
 			AddRow(card.ID, card.Name, card.Set, decimal.Zero, decimal.Zero, card.Game, "", "", "", time.Now())
@@ -336,13 +371,21 @@ func TestPriceSyncWorker_SyncPrices(t *testing.T) {
 		mock.ExpectExec("UPDATE cards").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec("INSERT INTO price_history").WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectCommit()
+		// Registered last: ExpectationsWereMet reports the first unmet expectation, so
+		// a real one still pending would be named before the sentinels.
+		mock.ExpectQuery(sentinel)
+		mock.ExpectExec(sentinel)
 
 		client := &service.MockPriceClient{FixedUSD: 150.0, FixedEUR: 140.0}
 		worker := NewDataSyncWorker(db, client, nil, nil, time.Hour)
 		worker.syncPrices(context.Background())
 
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("Expectations not met: %v", err)
+		if len(alertSQL) > 0 {
+			t.Fatalf("the sync issued price_alerts statements: %q", alertSQL)
+		}
+		// Only the sentinels may remain unmet.
+		if err := mock.ExpectationsWereMet(); err == nil || !strings.Contains(err.Error(), sentinel) {
+			t.Fatalf("unexpected unmet expectations: %v", err)
 		}
 	})
 }

@@ -805,6 +805,27 @@ func TestClaudeDetection_LetteredFractionMatchesVariantRow(t *testing.T) {
 	}
 }
 
+func TestClaudeDetection_LetteredFractionIgnoresLeadingZeros(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "riftbound", Name: "Rumble Hotheaded", CollectorNumber: "26a/221",
+		Set: "Origins", SetCode: "OGN", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "Rumble Hotheaded", CollectorNumber: "026/221", Set: "Origins", SetCode: "OGN", Language: "en", Game: "riftbound"},
+		{ID: "alt-b", Name: "Rumble Hotheaded Signature", CollectorNumber: "026b/221", Set: "Origins", SetCode: "OGN", Language: "en", Game: "riftbound"},
+		{ID: "alt", Name: "Rumble Hotheaded Alternate Art", CollectorNumber: "026a/221", Set: "Origins", SetCode: "OGN", Language: "en", Game: "riftbound"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 || matches[0].Card.ID != "alt" {
+		t.Fatalf("the printed 26a/221 must pick the 026a row, got %+v", matches)
+	}
+	for _, match := range matches[1:] {
+		if match.Card.ID == "alt-b" && match.Confidence >= matches[0].Confidence {
+			t.Errorf("26a must not match the 026b printing (confidence %v)", match.Confidence)
+		}
+	}
+}
+
 func TestClaudeDetection_NameSuffixWithSameNumberRequiresReview(t *testing.T) {
 	info := &claudedetect.DetectedCardInfo{
 		Game: "cookie_run", Name: "Blue Slushy Cookie", CollectorNumber: "BS6-007",

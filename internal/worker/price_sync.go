@@ -49,6 +49,9 @@ type DataSyncWorker struct {
 	// backfillCursor rotates the backfill through cards that already have a USD
 	// price; their misses must not stamp price_checked_at (see backfillPrices).
 	backfillCursor string
+	// backfillUSDFirst alternates which queue takes the first turn, so both progress
+	// even with a batch of one.
+	backfillUSDFirst bool
 	// trackedLimit caps the hourly per-card refresh; Config.PriceTrackedLimit
 	// overrides defaultTrackedLimit.
 	trackedLimit int
@@ -617,13 +620,17 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 
 		validUSD := usd > 0 && !math.IsNaN(usd) && !math.IsInf(usd, 0)
 		validEUR := eur > 0 && !math.IsNaN(eur) && !math.IsInf(eur, 0)
+		// rejected keeps price_checked_at: one shared stamp is the reference age of
+		// both currencies, and an accepted EUR must not reset the 7-day waiver of a
+		// rejected USD (or vice versa).
+		rejected := false
 		if validUSD && w.priceAnomalous(c.PriceUSD, usd, checkedAt) {
 			slog.Warn("Sync: Rejected anomalous USD price", "card", c.Name, "current", c.PriceUSD, "candidate", usd)
-			validUSD = false
+			validUSD, rejected = false, true
 		}
 		if validEUR && w.priceAnomalous(c.PriceEUR, eur, checkedAt) {
 			slog.Warn("Sync: Rejected anomalous EUR price", "card", c.Name, "current", c.PriceEUR, "candidate", eur)
-			validEUR = false
+			validEUR, rejected = false, true
 		}
 		// A source can fail independently. Preserve its existing currency value
 		// instead of replacing it with zero or a non-finite number.
@@ -648,10 +655,11 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 		}
 		// A native EUR quote clears the "converted from USD" marker.
 		_, err = tx.ExecContext(ctx, `UPDATE cards
-			SET price_usd = $1, price_eur = $2, last_updated = NOW(), price_checked_at = NOW(),
+			SET price_usd = $1, price_eur = $2, last_updated = NOW(),
+			    price_checked_at = CASE WHEN $5 THEN price_checked_at ELSE NOW() END,
 			    price_eur_estimated = CASE WHEN $3 THEN FALSE ELSE price_eur_estimated END
 			WHERE id = $4`,
-			nextUSD, nextEUR, validEUR, c.ID)
+			nextUSD, nextEUR, validEUR, c.ID, rejected)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				slog.Warn("Failed to roll back card price update", "card", c.Name, "error", rollbackErr)

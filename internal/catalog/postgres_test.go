@@ -366,12 +366,7 @@ func TestPostgresRepositoryCompleteRun_DeactivatesOnlyCompleteFullSnapshot(t *te
 	}
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT source_id, mode")).
-		WithArgs(testRunID).
-		WillReturnRows(sqlmock.NewRows([]string{"source_id", "mode"}).AddRow("tcgdex", "full"))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT last_record_count")).
-		WithArgs("tcgdex").
-		WillReturnRows(sqlmock.NewRows([]string{"last_record_count"}).AddRow(12))
+	expectLockSourceAndRun(mock, "full", 12)
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE cards")).
 		WithArgs("tcgdex", testRunID).
 		WillReturnResult(sqlmock.NewResult(0, 2))
@@ -400,6 +395,49 @@ func TestPostgresRepositoryCompleteRun_DeactivatesOnlyCompleteFullSnapshot(t *te
 	}
 }
 
+// expectLockSourceAndRun expects the source state row to be locked before the
+// run row, the order BeginRun uses; the reverse order could deadlock a takeover
+// against a completion.
+func expectLockSourceAndRun(mock sqlmock.Sqlmock, mode string, previous int64) {
+	mock.ExpectQuery(regexp.QuoteMeta("FROM catalog_source_state")).
+		WithArgs(testRunID).
+		WillReturnRows(sqlmock.NewRows([]string{"source_id", "last_record_count"}).AddRow("tcgdex", previous))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT source_id, mode")).
+		WithArgs(testRunID).
+		WillReturnRows(sqlmock.NewRows([]string{"source_id", "mode"}).AddRow("tcgdex", mode))
+}
+
+func TestPostgresRepositoryFailRun_LocksSourceBeforeRun(t *testing.T) {
+	t.Parallel()
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	repository, err := NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mock.ExpectBegin()
+	expectLockSourceAndRun(mock, "incremental", 0)
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_sync_runs")).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_source_state")).
+		WithArgs("tcgdex", "boom", testRunID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	if err := repository.FailRun(context.Background(), testRunID, errors.New("boom")); err != nil {
+		t.Fatalf("FailRun() error = %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // A full snapshot that lost more than half of the previous complete count is
 // not trusted: nothing is deactivated and the run is recorded as partial.
 func TestPostgresRepositoryCompleteRun_ShrunkSnapshotSkipsDeactivation(t *testing.T) {
@@ -417,12 +455,7 @@ func TestPostgresRepositoryCompleteRun_ShrunkSnapshotSkipsDeactivation(t *testin
 	}
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT source_id, mode")).
-		WithArgs(testRunID).
-		WillReturnRows(sqlmock.NewRows([]string{"source_id", "mode"}).AddRow("tcgdex", "full"))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT last_record_count")).
-		WithArgs("tcgdex").
-		WillReturnRows(sqlmock.NewRows([]string{"last_record_count"}).AddRow(100))
+	expectLockSourceAndRun(mock, "full", 100)
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_sync_runs")).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_source_state")).

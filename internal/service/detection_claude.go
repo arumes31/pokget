@@ -512,7 +512,11 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				den1 := collectorNumberKey(parts1[1])
 				den2 := collectorNumberKey(parts2[1])
 				// A lettered numerator ("026a/221") has no numeric key, so an
-				// identical printed fraction must still count as a match.
+				// identical printed fraction must still count as a match, and
+				// so must one that differs only in leading zeros ("26a").
+				if num1 == "" {
+					num1, num2 = collectorLetteredKey(parts1[0]), collectorLetteredKey(parts2[0])
+				}
 				if (num1 != "" && num1 == num2 && den1 != "" && den1 == den2) || claudeCollector == cardCollector ||
 					(claudeCollectorCanonical != "" && claudeCollectorCanonical == cardCollectorCanonical) {
 					collectorMatched = true
@@ -1074,6 +1078,17 @@ func collectorCanonicalKey(value string) string {
 // suffix Magic uses for alternate printings (`254p`, `254s`). It still keeps the
 // numeric identity of the card, so a scan that reads only "254" can match it as
 // partial evidence instead of finding no candidate at all.
+// collectorLetteredKey normalizes a lettered number without losing the letter:
+// "026a" and "26a" share "26a", while "26b" stays a different printing. Plain
+// numbers return "" because collectorNumberKey already handles them.
+func collectorLetteredKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if collectorNumberKey(value) != "" || !collectorVariantSuffixPattern.MatchString(value) {
+		return ""
+	}
+	return collectorBaseKey(value) + value[len(value)-1:]
+}
+
 func collectorBaseKey(value string) string {
 	if key := collectorNumberKey(value); key != "" {
 		return key

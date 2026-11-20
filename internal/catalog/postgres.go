@@ -313,7 +313,7 @@ func (r *PostgresRepository) CompleteRun(
 		return counts, fmt.Errorf("catalog: beginning completion transaction: %w", err)
 	}
 
-	sourceID, mode, err := lockRun(ctx, tx, runID)
+	sourceID, mode, previous, err := lockSourceAndRun(ctx, tx, runID)
 	if err != nil {
 		return counts, rollback(tx, err)
 	}
@@ -322,14 +322,6 @@ func (r *PostgresRepository) CompleteRun(
 	// Checked for incremental runs too: they set the baseline the next full run is
 	// compared with.
 	if complete && !completion.Fetch.NotModified {
-		var previous int64
-		err := tx.QueryRowContext(ctx,
-			`SELECT last_record_count FROM catalog_source_state WHERE source_id = $1 FOR UPDATE`,
-			sourceID,
-		).Scan(&previous)
-		if err != nil {
-			return counts, rollback(tx, fmt.Errorf("catalog: loading previous record count: %w", err))
-		}
 		complete = !shrunkSnapshot(completion.Fetch.Count, previous)
 		if !complete {
 			// A source that claims completeness after losing half its catalog
@@ -430,7 +422,7 @@ func (r *PostgresRepository) FailRun(ctx context.Context, runID string, cause er
 	if err != nil {
 		return fmt.Errorf("catalog: beginning failure transaction: %w", err)
 	}
-	sourceID, _, err := lockRun(ctx, tx, runID)
+	sourceID, _, _, err := lockSourceAndRun(ctx, tx, runID)
 	if err != nil {
 		return rollback(tx, err)
 	}
@@ -772,6 +764,37 @@ func verifyRun(ctx context.Context, tx *sql.Tx, batch Batch) error {
 		return fmt.Errorf("catalog: source game %q does not match batch game %q", game, batch.Game)
 	}
 	return nil
+}
+
+// lockSourceAndRun locks the source state row before the run row, the same
+// order BeginRun uses (state lease, then abandoned runs); the opposite order
+// let a takeover and a completion deadlock. It also returns last_record_count.
+func lockSourceAndRun(ctx context.Context, tx *sql.Tx, runID string) (string, SyncMode, int64, error) {
+	var stateSourceID string
+	var previous int64
+	err := tx.QueryRowContext(
+		ctx,
+		`SELECT source_id, last_record_count
+		 FROM catalog_source_state
+		 WHERE source_id = (SELECT source_id FROM catalog_sync_runs WHERE id = $1)
+		 FOR UPDATE`,
+		runID,
+	).Scan(&stateSourceID, &previous)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", 0, fmt.Errorf("%w: %q", ErrRunNotRunning, runID)
+	}
+	if err != nil {
+		return "", "", 0, fmt.Errorf("catalog: locking source state: %w", err)
+	}
+	// lockRun still requires status 'running', so a displaced run cannot write.
+	sourceID, mode, err := lockRun(ctx, tx, runID)
+	if err != nil {
+		return "", "", 0, err
+	}
+	if sourceID != stateSourceID {
+		return "", "", 0, fmt.Errorf("catalog: run %q changed source", runID)
+	}
+	return sourceID, mode, previous, nil
 }
 
 func lockRun(ctx context.Context, tx *sql.Tx, runID string) (string, SyncMode, error) {
