@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -74,6 +76,80 @@ func TestTCGCSVBulkSourceReportsGroupErrors(t *testing.T) {
 	source.Concurrency = 1
 	if err := source.FetchPrices(context.Background(), func(BulkPriceUpdate) error { return nil }); err == nil {
 		t.Fatal("expected an error for a broken group endpoint")
+	}
+}
+
+// One broken category must not cost the others their prices: the good category's
+// rows are delivered and the failure is still returned.
+func TestTCGCSVBulkSourceContinuesPastAFailingCategory(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/85/groups":
+			_, _ = writer.Write([]byte(`{"results":[{"groupId":7,"abbreviation":"SV3"}]}`))
+		case "/85/7/products":
+			_, _ = writer.Write([]byte(`{"results":[{"productId":1,"extendedData":[{"name":"Number","value":"001"}]}]}`))
+		case "/85/7/prices":
+			_, _ = writer.Write([]byte(`{"results":[{"productId":1,"marketPrice":0.4}]}`))
+		default:
+			http.Error(writer, "broken", http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	source := NewTCGCSVBulkSource().(*tcgcsvBulkSource)
+	source.BaseURL = server.URL
+	source.HTTP = server.Client()
+	source.Categories = map[string]int{"one_piece": 1}
+	source.LanguageCategories = []tcgcsvLanguageCategory{{Game: "pokemon", Languages: []string{"ja"}, Category: 85}}
+	source.Concurrency = 1
+
+	var updates []BulkPriceUpdate
+	err := source.FetchPrices(context.Background(), func(update BulkPriceUpdate) error {
+		updates = append(updates, update)
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected the failing category to be reported")
+	}
+	if len(updates) != 1 || updates[0].Game != "pokemon" {
+		t.Fatalf("updates = %+v, want the healthy category's row", updates)
+	}
+}
+
+// A failed write is not a broken set: it must reach the caller even when other
+// groups of the category succeed.
+func TestTCGCSVBulkSourceSurfacesEmitErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/1/groups":
+			_, _ = writer.Write([]byte(`{"results":[{"groupId":7},{"groupId":8}]}`))
+		case "/1/7/products", "/1/8/products":
+			_, _ = writer.Write([]byte(`{"results":[{"productId":1}]}`))
+		case "/1/7/prices", "/1/8/prices":
+			_, _ = writer.Write([]byte(`{"results":[{"productId":1,"marketPrice":0.4}]}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	source := NewTCGCSVBulkSource().(*tcgcsvBulkSource)
+	source.BaseURL = server.URL
+	source.HTTP = server.Client()
+	source.Categories = map[string]int{"one_piece": 1}
+	source.LanguageCategories = nil
+	source.Concurrency = 1
+
+	calls := 0
+	err := source.FetchPrices(context.Background(), func(BulkPriceUpdate) error {
+		calls++
+		if calls == 1 {
+			return errors.New("database down")
+		}
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "database down") {
+		t.Fatalf("err = %v, want the emit error", err)
 	}
 }
 

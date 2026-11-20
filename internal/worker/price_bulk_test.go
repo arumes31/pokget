@@ -413,14 +413,52 @@ type stubBulkSource struct {
 
 func (s stubBulkSource) Name() string { return "stub" }
 
+// FetchPrices emits its updates and then fails with err, like a source whose
+// second marketplace category broke after the first one delivered.
 func (s stubBulkSource) FetchPrices(_ context.Context, emit func(service.BulkPriceUpdate) error) error {
-	if s.err != nil {
-		return s.err
-	}
 	for _, update := range s.updates {
 		if err := emit(update); err != nil {
 			return err
 		}
 	}
-	return nil
+	return s.err
+}
+
+type boundStubSource struct {
+	stubBulkSource
+	bound map[string][]string
+}
+
+func (s boundStubSource) BoundLanguages() map[string][]string { return s.bound }
+
+// A failed category must not cost the delivered rows their fallback match, and the
+// failed language-bound category still keeps the generic pass off its languages.
+func TestApplyBulkSourceRunsTheFallbackAfterAPartialFetch(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_variant").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_checked_at").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT id, COALESCE\\(set_code").
+		WithArgs("pokemon", emptyTextArray{}, textArray{`{"ja"}`}).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}))
+
+	worker := &DataSyncWorker{db: db}
+	err = worker.applyBulkSource(context.Background(), boundStubSource{
+		stubBulkSource: stubBulkSource{
+			updates: []service.BulkPriceUpdate{{SourceID: "tcgcsv", SourceCardID: "1", Game: "pokemon",
+				SetCode: "SV3", Number: "001/108", USD: 0.5}},
+			err: errors.New("tcgcsv groups pokemon: HTTP 500"),
+		},
+		bound: map[string][]string{"pokemon": {"ja"}},
+	})
+	if err == nil {
+		t.Fatal("expected the category error to be returned")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
 }

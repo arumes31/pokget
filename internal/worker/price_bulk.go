@@ -93,6 +93,18 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	// reuse English set codes for entirely different cards ("SV3" is "Ruler of the
 	// Black Flame" in Japan and "Obsidian Flames" in English).
 	boundLanguages := make(map[string]map[string]struct{})
+	// A source that knows its language-bound categories up front reports them, so a
+	// failed Japanese category still keeps the generic pass off those printings.
+	if bound, ok := source.(interface{ BoundLanguages() map[string][]string }); ok {
+		for game, languages := range bound.BoundLanguages() {
+			for _, language := range languages {
+				if boundLanguages[game] == nil {
+					boundLanguages[game] = make(map[string]struct{})
+				}
+				boundLanguages[game][language] = struct{}{}
+			}
+		}
+	}
 
 	rememberKeys := func(index map[fuzzyScope]map[string]float64, scope fuzzyScope, set, number string, usd float64) {
 		keys := priceMatchKeys(set, number)
@@ -143,7 +155,9 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		return nil
 	}
 
-	err := source.FetchPrices(ctx, func(update service.BulkPriceUpdate) error {
+	// A partial fetch (one failed marketplace category) still delivered good rows:
+	// they are flushed and matched below, and the error is returned at the end.
+	fetchErr := source.FetchPrices(ctx, func(update service.BulkPriceUpdate) error {
 		batch = append(batch, update)
 		if update.Game != "" && update.Number != "" && update.USD > 0 {
 			scope := newFuzzyScope(update.Game, update.Languages)
@@ -197,11 +211,8 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
 	if err := flush(); err != nil {
-		return err
+		return errors.Join(fetchErr, err)
 	}
 
 	var fuzzyUpdated int64
@@ -273,7 +284,7 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 			"source", source.Name(), "rows", rows,
 			"hint", "check the set abbreviations and collector numbers of this source")
 	}
-	return nil
+	return fetchErr
 }
 
 // applyFuzzyRarity fills cards.rarity for cards whose catalog source published no
