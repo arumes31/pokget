@@ -94,8 +94,10 @@ type SourceState struct {
 	UpstreamVersion string
 	LastSuccessAt   *time.Time
 	LastFullSyncAt  *time.Time
-	LastRecordCount int64
-	LastError       string
+	// LastFullAttemptAt is the start of the newest full run, whatever its outcome.
+	LastFullAttemptAt *time.Time
+	LastRecordCount   int64
+	LastError         string
 }
 
 func (s SourceState) FetchRequest(mode SyncMode) FetchRequest {
