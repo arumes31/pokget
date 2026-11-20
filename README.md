@@ -98,7 +98,7 @@ Pokget maintains a local, versioned card catalog without API keys or paid servic
 | Weiss Schwarz | [Official English card search](https://en.ws-tcg.com/cardlist/searchresults/) |
 | Yu-Gi-Oh! | [YGOPRODeck](https://ygoprodeck.com/api-guide/) |
 
-Imports retain source provenance and sync history. A successful full snapshot deactivates records no longer present; failed, incremental, and unchanged runs never remove active records. Reference images are downloaded through an exact hostname allowlist, content-addressed by SHA-256, and indexed with perceptual hashes for the original and small rotations.
+Imports retain source provenance and sync history. A successful full snapshot deactivates records no longer present; failed, incremental, and unchanged runs never remove active records. A run that skipped a set, page or language after an upstream error is partial and deactivates nothing, and so is a "complete" snapshot with less than half of the previous complete record count (after confirming a genuine shrink of that size, set `catalog_source_state.last_record_count` to 0 for the source and run a full sync). The application attempts a full sync per source when the last full attempt is older than seven days. The application worker and the catalog CLI share a per-source lease (renewed while a run is active, released on completion, failure or shutdown); a source that is already syncing elsewhere is skipped, not failed. Reference images are downloaded through an exact hostname allowlist, content-addressed by SHA-256, and indexed with perceptual hashes for the original and small rotations.
 
 The application performs scheduled updates automatically. Operators can also run:
 

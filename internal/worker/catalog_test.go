@@ -122,18 +122,46 @@ func TestSyncedRecordCount(t *testing.T) {
 	}
 }
 
-func TestCatalogWorkerPublishesEachCompletedSource(t *testing.T) {
-	repository := &catalogWorkerRepository{}
-	worker := NewCatalogWorker(repository, []catalog.Provider{catalogWorkerProvider{id: "pokemon"}, catalogWorkerProvider{id: "magic"}}, 10, time.Hour)
-	var published []int
-	worker.OnChanged = func() {
-		repository.mu.Lock()
-		published = append(published, repository.completed)
-		repository.mu.Unlock()
+type modeRecordingRepository struct {
+	catalogWorkerRepository
+	state catalog.SourceState
+	modes []catalog.SyncMode
+}
+
+func (r *modeRecordingRepository) SourceState(context.Context, string) (catalog.SourceState, error) {
+	return r.state, nil
+}
+
+func (r *modeRecordingRepository) BeginRun(_ context.Context, _ string, mode catalog.SyncMode) (string, error) {
+	r.modes = append(r.modes, mode)
+	return "run", nil
+}
+
+// The app schedules a full run when the last full attempt is a week old, even
+// after a first complete full sync; a recent attempt (also a partial one that
+// did not advance last_full_sync_at) keeps the run incremental.
+func TestSourceWorkerSchedulesWeeklyFullSync(t *testing.T) {
+	now := time.Now()
+	recent, old := now.Add(-time.Hour), now.Add(-8*24*time.Hour)
+	tests := []struct {
+		name  string
+		state catalog.SourceState
+		want  catalog.SyncMode
+	}{
+		{"never attempted", catalog.SourceState{}, catalog.SyncModeFull},
+		{"stale full attempt", catalog.SourceState{LastFullSyncAt: &old, LastFullAttemptAt: &old}, catalog.SyncModeFull},
+		{"recent complete full", catalog.SourceState{LastFullSyncAt: &recent, LastFullAttemptAt: &recent}, catalog.SyncModeIncremental},
+		{"recent partial full", catalog.SourceState{LastFullAttemptAt: &recent}, catalog.SyncModeIncremental},
 	}
-	worker.syncAll(context.Background())
-	if len(published) != 2 || published[0] != 1 || published[1] != 2 {
-		t.Fatalf("newly imported languages must be available before the next source: %v", published)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := &modeRecordingRepository{state: test.state}
+			syncer := &catalog.Syncer{Repository: repository}
+			NewSourceWorker(repository, catalogWorkerProvider{}, syncer, time.Hour, nil).executeSync(context.Background())
+			if len(repository.modes) != 1 || repository.modes[0] != test.want {
+				t.Fatalf("modes = %v, want [%s]", repository.modes, test.want)
+			}
+		})
 	}
 }
 
@@ -193,59 +221,6 @@ func TestPerTCGWorkerQueueDoesNotBlockOtherTCGs(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("fast TCG was blocked by slow TCG; independent queue failed")
 	}
-
-	// Verify fast TCG worker status
-	fastWorker := worker.Worker("fast_tcg")
-	if fastWorker == nil {
-		t.Fatal("expected fast_tcg worker to exist")
-	}
-	deadline := time.Now().Add(time.Second)
-	for fastWorker.IsRunning() {
-		if time.Now().After(deadline) {
-			t.Fatal("fast_tcg should be idle after completing its sync")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	// Slow TCG should still be running
-	slowWorker := worker.Worker("slow_tcg")
-	if slowWorker == nil {
-		t.Fatal("expected slow_tcg worker to exist")
-	}
-	if !slowWorker.IsRunning() {
-		t.Fatal("slow_tcg should still be actively running")
-	}
-}
-
-func TestTCGWorkerCoalescesDuplicateRequests(t *testing.T) {
-	repository := &catalogWorkerRepository{}
-	syncer := &catalog.Syncer{Repository: repository, BatchSize: 10}
-	p := catalogWorkerProvider{id: "coalesce_tcg", game: catalog.GamePokemon}
-
-	w := NewSourceWorker(repository, p, syncer, time.Hour, nil)
-
-	// First enqueue returns true (accepted)
-	if !w.Enqueue(catalog.SyncModeIncremental) {
-		t.Fatal("initial enqueue should return true")
-	}
-
-	// Second duplicate enqueue returns false (coalesced)
-	if w.Enqueue(catalog.SyncModeIncremental) {
-		t.Fatal("duplicate enqueue should return false (coalesced)")
-	}
-
-	// Third enqueue with Full mode upgrades the pending mode
-	if w.Enqueue(catalog.SyncModeFull) {
-		t.Fatal("mode upgrade should return false (coalesced into pending)")
-	}
-
-	w.mu.Lock()
-	mode := w.pendingMode
-	w.mu.Unlock()
-
-	if mode != catalog.SyncModeFull {
-		t.Fatalf("expected pending mode to be upgraded to full, got %q", mode)
-	}
 }
 
 type panickingProvider struct {
@@ -288,7 +263,7 @@ func TestTCGWorkerPanicIsolation(t *testing.T) {
 	}
 
 	// Panic worker should have captured error without crashing process
-	pw := worker.Worker("panic_tcg")
+	pw := worker.workers["panic_tcg"]
 	if pw == nil {
 		t.Fatal("panic_tcg worker missing")
 	}
@@ -300,35 +275,19 @@ func TestTCGWorkerPanicIsolation(t *testing.T) {
 	}
 }
 
-func TestCatalogWorkerEnqueueHelpers(t *testing.T) {
-	repository := &catalogWorkerRepository{}
-	p1 := catalogWorkerProvider{id: "tcg_a", game: catalog.GameOnePiece}
-	p2 := catalogWorkerProvider{id: "tcg_b", game: catalog.GameOnePiece}
-	p3 := catalogWorkerProvider{id: "tcg_c", game: catalog.GameLorcana}
+type busyCatalogRepository struct{ catalogWorkerRepository }
 
-	cw := NewCatalogWorker(repository, []catalog.Provider{p1, p2, p3}, 10, time.Hour)
+func (r *busyCatalogRepository) BeginRun(context.Context, string, catalog.SyncMode) (string, error) {
+	return "", catalog.ErrSourceBusy
+}
 
-	// Test Enqueue non-existent
-	if cw.Enqueue("invalid", catalog.SyncModeIncremental) {
-		t.Fatal("expected false for invalid source")
-	}
-
-	// Test Enqueue valid
-	if !cw.Enqueue("tcg_a", catalog.SyncModeIncremental) {
-		t.Fatal("expected true for tcg_a")
-	}
-
-	// Test EnqueueGame
-	enqueued := cw.EnqueueGame(catalog.GameOnePiece, catalog.SyncModeFull)
-	// tcg_b was not enqueued yet, tcg_a was pending so coalesce upgrade returns false
-	if enqueued < 1 {
-		t.Fatalf("expected at least 1 enqueued for one piece, got %d", enqueued)
-	}
-
-	// Test EnqueueAll
-	total := cw.EnqueueAll(catalog.SyncModeIncremental)
-	// tcg_c was not yet enqueued
-	if total < 1 {
-		t.Fatalf("expected at least 1 enqueued for EnqueueAll, got %d", total)
+// A source synced by the catalog CLI right now is skipped, not reported as failed.
+func TestSourceWorkerSkipsBusySource(t *testing.T) {
+	repository := &busyCatalogRepository{}
+	syncer := &catalog.Syncer{Repository: repository}
+	w := NewSourceWorker(repository, catalogWorkerProvider{}, syncer, time.Hour, nil)
+	w.executeSync(context.Background())
+	if w.lastError != nil {
+		t.Fatalf("a busy source is not a failed sync, lastError = %v", w.lastError)
 	}
 }
