@@ -28,6 +28,16 @@ const (
 	fxRetryLimit = 3
 )
 
+// fallbackEligible selects the cards the fuzzy fallback may price: unpriced ones,
+// and ones no source has verified for two days (a delisted exact match would
+// otherwise freeze the price forever). fallbackEligibleC is the same for alias c.
+const (
+	fallbackEligible = `(price_usd IS NULL OR price_usd <= 0
+		       OR price_checked_at IS NULL OR price_checked_at < NOW() - INTERVAL '2 days')`
+	fallbackEligibleC = `(c.price_usd IS NULL OR c.price_usd <= 0
+       OR c.price_checked_at IS NULL OR c.price_checked_at < NOW() - INTERVAL '2 days')`
+)
+
 // syncBulkPrices refreshes catalog prices from the free daily bulk exports
 // (Scryfall for Magic, YGOPRODeck for Yu-Gi-Oh). It runs once per day and is
 // coordinated through the same cycle lease as the other sync jobs.
@@ -93,6 +103,18 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 	// reuse English set codes for entirely different cards ("SV3" is "Ruler of the
 	// Black Flame" in Japan and "Obsidian Flames" in English).
 	boundLanguages := make(map[string]map[string]struct{})
+	// A source that knows its language-bound categories up front reports them, so a
+	// failed Japanese category still keeps the generic pass off those printings.
+	if bound, ok := source.(interface{ BoundLanguages() map[string][]string }); ok {
+		for game, languages := range bound.BoundLanguages() {
+			for _, language := range languages {
+				if boundLanguages[game] == nil {
+					boundLanguages[game] = make(map[string]struct{})
+				}
+				boundLanguages[game][language] = struct{}{}
+			}
+		}
+	}
 
 	rememberKeys := func(index map[fuzzyScope]map[string]float64, scope fuzzyScope, set, number string, usd float64) {
 		keys := priceMatchKeys(set, number)
@@ -143,7 +165,9 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		return nil
 	}
 
-	err := source.FetchPrices(ctx, func(update service.BulkPriceUpdate) error {
+	// A partial fetch (one failed marketplace category) still delivered good rows:
+	// they are flushed and matched below, and the error is returned at the end.
+	fetchErr := source.FetchPrices(ctx, func(update service.BulkPriceUpdate) error {
 		batch = append(batch, update)
 		if update.Game != "" && update.Number != "" && update.USD > 0 {
 			scope := newFuzzyScope(update.Game, update.Languages)
@@ -197,11 +221,8 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
 	if err := flush(); err != nil {
-		return err
+		return errors.Join(fetchErr, err)
 	}
 
 	var fuzzyUpdated int64
@@ -262,8 +283,8 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		rarityUpdated += changed
 	}
 
-	// The fallback only writes cards that had no price, so every fallback row was a
-	// match as well.
+	// The fallback only writes cards that had no (or a stale) price, so every
+	// fallback row was a match as well.
 	slog.Info("Bulk prices applied", "source", source.Name(), "rows", rows, "matched", matched+fuzzyUpdated,
 		"updated", updated, "fallback_updated", fuzzyUpdated, "rarity_updated", rarityUpdated)
 	// A source that delivers rows but matches none of them is either listing a
@@ -273,7 +294,7 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 			"source", source.Name(), "rows", rows,
 			"hint", "check the set abbreviations and collector numbers of this source")
 	}
-	return nil
+	return fetchErr
 }
 
 // applyFuzzyRarity fills cards.rarity for cards whose catalog source published no
@@ -489,7 +510,7 @@ func retryOnConflict(ctx context.Context, attempts int, run func() (int64, error
 	return 0, lastErr
 }
 
-// applyEURBatch converts one id-ordered slice of unpriced EUR values.
+// applyEURBatch converts one id-ordered slice of unpriced or estimated EUR values.
 func (w *DataSyncWorker) applyEURBatch(ctx context.Context, rate float64, size int) (int64, error) {
 	// The eligibility check is repeated on the target row: the per-card sync can
 	// write a native EUR quote between the subquery and the row lock, and that
@@ -502,13 +523,17 @@ func (w *DataSyncWorker) applyEURBatch(ctx context.Context, rate float64, size i
 			SELECT id FROM cards
 			WHERE superseded_by_card_id IS NULL
 			  AND price_usd > 0
-			  AND (price_eur IS NULL OR price_eur <= 0)
+			  AND (price_eur IS NULL OR price_eur <= 0
+			       OR (price_eur_estimated AND price_eur IS DISTINCT FROM ROUND(price_usd * $1, 2)))
 			ORDER BY id
 			LIMIT $2
 		)
 		  AND superseded_by_card_id IS NULL
 		  AND price_usd > 0
-		  AND (price_eur IS NULL OR price_eur <= 0)`, rate, size)
+		  -- An estimate follows the USD price; one that already matches is skipped so
+		  -- the batches drain.
+		  AND (price_eur IS NULL OR price_eur <= 0
+		       OR (price_eur_estimated AND price_eur IS DISTINCT FROM ROUND(price_usd * $1, 2)))`, rate, size)
 	if err != nil {
 		return 0, err
 	}
@@ -592,8 +617,9 @@ func orderedFuzzyScopes[V any](index map[fuzzyScope]V) []fuzzyScope {
 
 // applyFuzzyPrices fills prices for cards that have none yet by matching the
 // normalized set code and collector number, then the normalized set name and
-// number. Existing prices are never replaced, so dedicated sources (Scryfall,
-// YGOPRODeck) keep their values.
+// number. A price some source verified within two days is never
+// replaced, so dedicated sources (Scryfall, YGOPRODeck) keep their values; an
+// older one would otherwise stay frozen forever.
 func (w *DataSyncWorker) applyFuzzyPrices(ctx context.Context, game string, languages []string, prices, namePrices map[string]float64) (int64, error) {
 	return w.applyFuzzyPricesExcluding(ctx, game, languages, nil, prices, namePrices, nil, nil)
 }
@@ -622,7 +648,7 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(
 		FROM cards
 		WHERE game = $1
 		  AND superseded_by_card_id IS NULL
-		  AND (price_usd IS NULL OR price_usd <= 0)
+		  AND ` + fallbackEligible + `
 		  AND ($2::text[] = '{}' OR language = ANY($2::text[]))
 		  AND COALESCE(language, '') <> ALL($3::text[])`
 	// pq.Array(nil) encodes SQL NULL, and `<> ALL(NULL)` is NULL for every row, so
@@ -762,7 +788,9 @@ FROM (VALUES `)
 		args = append(args, update.SourceCardID, update.USD)
 	}
 	query.WriteString(`) AS v(id, usd)
-WHERE c.id = v.id AND (c.price_usd IS NULL OR c.price_usd IS DISTINCT FROM v.usd)`)
+WHERE c.id = v.id AND (c.price_usd IS NULL OR c.price_usd IS DISTINCT FROM v.usd)
+  -- Rechecked on the locked row: the sync may have priced the card since the SELECT.
+  AND ` + fallbackEligibleC)
 	result, err := w.db.ExecContext(ctx, query.String(), args...)
 	if err != nil {
 		return 0, fmt.Errorf("fallback price update: %w", err)

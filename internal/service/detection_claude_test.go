@@ -790,6 +790,21 @@ func TestClaudeDetection_VariantLetterBeforeSlashRequiresReview(t *testing.T) {
 	}
 }
 
+func TestClaudeDetection_LetteredFractionMatchesVariantRow(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game: "riftbound", Name: "Rumble Hotheaded", CollectorNumber: "026a/221",
+		Set: "Origins", SetCode: "OGN", Language: "eng", Confidence: 0.95,
+	}
+	cards := []models.Card{
+		{ID: "base", Name: "Rumble Hotheaded", CollectorNumber: "026/221", Set: "Origins", SetCode: "OGN", Language: "en", Game: "riftbound"},
+		{ID: "alt", Name: "Rumble Hotheaded Alternate Art", CollectorNumber: "026a/221", Set: "Origins", SetCode: "OGN", Language: "en", Game: "riftbound"},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 || matches[0].Card.ID != "alt" {
+		t.Fatalf("the printed 026a/221 must pick the lettered row, got %+v", matches)
+	}
+}
+
 func TestClaudeDetection_NameSuffixWithSameNumberRequiresReview(t *testing.T) {
 	info := &claudedetect.DetectedCardInfo{
 		Game: "cookie_run", Name: "Blue Slushy Cookie", CollectorNumber: "BS6-007",

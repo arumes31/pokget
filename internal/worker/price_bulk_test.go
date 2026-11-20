@@ -333,6 +333,32 @@ func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 	}
 }
 
+// A price no source verified for two days must not freeze: the fallback may replace
+// it, and the UPDATE rechecks that on the locked row so a fresh sync quote survives.
+func TestApplyFuzzyPricesReplacesStalePrices(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	const stale = `OR price_checked_at IS NULL OR price_checked_at < NOW\(\) - INTERVAL '2 days'\)`
+	mock.ExpectQuery(`SELECT id, COALESCE\(set_code[\s\S]*price_usd <= 0\s+` + stale).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}).
+			AddRow("card-old", "SV3", "Obsidian Flames", "089", "Nazonokusa"))
+	mock.ExpectExec(`UPDATE cards AS c[\s\S]*IS DISTINCT FROM v.usd\)[\s\S]*OR c.price_checked_at < NOW\(\) - INTERVAL '2 days'\)`).
+		WithArgs("card-old", 3.0).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	worker := &DataSyncWorker{db: db}
+	if _, err := worker.applyFuzzyPrices(context.Background(), "pokemon", nil, fuzzyIndex("SV3", "089/108", 3.0), nil); err != nil {
+		t.Fatalf("applyFuzzyPrices: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 // emptyTextArray matches the encoded empty Postgres array. A nil []string
 // encodes as SQL NULL and `<> ALL(NULL)` would filter every row, which silently
 // disabled the language-scoped (Japanese) fallback in production.
@@ -413,14 +439,52 @@ type stubBulkSource struct {
 
 func (s stubBulkSource) Name() string { return "stub" }
 
+// FetchPrices emits its updates and then fails with err, like a source whose
+// second marketplace category broke after the first one delivered.
 func (s stubBulkSource) FetchPrices(_ context.Context, emit func(service.BulkPriceUpdate) error) error {
-	if s.err != nil {
-		return s.err
-	}
 	for _, update := range s.updates {
 		if err := emit(update); err != nil {
 			return err
 		}
 	}
-	return nil
+	return s.err
+}
+
+type boundStubSource struct {
+	stubBulkSource
+	bound map[string][]string
+}
+
+func (s boundStubSource) BoundLanguages() map[string][]string { return s.bound }
+
+// A failed category must not cost the delivered rows their fallback match, and the
+// failed language-bound category still keeps the generic pass off its languages.
+func TestApplyBulkSourceRunsTheFallbackAfterAPartialFetch(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_variant").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_checked_at").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT id, COALESCE\\(set_code").
+		WithArgs("pokemon", emptyTextArray{}, textArray{`{"ja"}`}).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}))
+
+	worker := &DataSyncWorker{db: db}
+	err = worker.applyBulkSource(context.Background(), boundStubSource{
+		stubBulkSource: stubBulkSource{
+			updates: []service.BulkPriceUpdate{{SourceID: "tcgcsv", SourceCardID: "1", Game: "pokemon",
+				SetCode: "SV3", Number: "001/108", USD: 0.5}},
+			err: errors.New("tcgcsv groups pokemon: HTTP 500"),
+		},
+		bound: map[string][]string{"pokemon": {"ja"}},
+	})
+	if err == nil {
+		t.Fatal("expected the category error to be returned")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
 }

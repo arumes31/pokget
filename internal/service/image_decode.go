@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/color"
 	_ "image/gif"  // Register GIF decoding with image.Decode.
 	_ "image/jpeg" // Register JPEG decoding with image.Decode.
 	_ "image/png"  // Register PNG decoding with image.Decode.
@@ -54,10 +55,20 @@ func ValidateScanImage(imgBytes []byte) error {
 	if decodedConfig.Width <= 0 || decodedConfig.Height <= 0 {
 		return &ImageInputError{Reason: "image dimensions must be positive"}
 	}
-	if int64(decodedConfig.Width) > config.MaxPixels/int64(decodedConfig.Height) {
+	if int64(decodedConfig.Width) > scanPixelLimit(decodedConfig, config)/int64(decodedConfig.Height) {
 		return &ImageInputError{Reason: "image exceeds the pixel limit"}
 	}
 	return nil
+}
+
+// scanPixelLimit keeps the decoded buffer within the same byte budget for
+// 16-bit images, which decode to 8 bytes per pixel instead of 4.
+func scanPixelLimit(decoded image.Config, config ImagePrepareConfig) int64 {
+	switch decoded.ColorModel {
+	case color.RGBA64Model, color.NRGBA64Model:
+		return config.MaxPixels / 2
+	}
+	return config.MaxPixels
 }
 
 func decodeScanImage(imgBytes []byte, config ImagePrepareConfig) (image.Image, string, error) {
@@ -82,8 +93,8 @@ func decodeScanImage(imgBytes []byte, config ImagePrepareConfig) (image.Image, s
 	}
 	width := int64(decodedConfig.Width)
 	height := int64(decodedConfig.Height)
-	if width > config.MaxPixels/height {
-		return nil, "", &ImageInputError{Reason: fmt.Sprintf("image dimensions %dx%d exceed the %d pixel limit", decodedConfig.Width, decodedConfig.Height, config.MaxPixels)}
+	if limit := scanPixelLimit(decodedConfig, config); width > limit/height {
+		return nil, "", &ImageInputError{Reason: fmt.Sprintf("image dimensions %dx%d exceed the %d pixel limit", decodedConfig.Width, decodedConfig.Height, limit)}
 	}
 
 	img, decodedFormat, err := image.Decode(bytes.NewReader(imgBytes))

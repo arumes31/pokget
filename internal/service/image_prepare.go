@@ -37,7 +37,9 @@ import (
 
 const (
 	defaultScanImageMaxBytes  = 20 << 20
-	defaultScanImageMaxPixels = int64(40_000_000)
+	// The detector never sees more than claudeSourceMaxDimension, so 16 MiP
+	// (a 16 MP phone photo) is plenty and bounds the decoded buffer.
+	defaultScanImageMaxPixels = int64(16 << 20)
 )
 
 // GuideRect describes a crop using coordinates in the inclusive 0..1 range. It
@@ -128,14 +130,6 @@ func (e *ImageInputError) Unwrap() error {
 		return nil
 	}
 	return e.Err
-}
-
-func applyEXIFOrientation(imgBytes []byte, img image.Image) image.Image {
-	orientation := getEXIFOrientation(imgBytes)
-	if orientation < 2 || orientation > 8 {
-		return img
-	}
-	return applyImageOrientation(img, orientation)
 }
 
 func applyImageOrientation(src image.Image, orientation int) image.Image {
@@ -390,15 +384,22 @@ func flattenOnWhite(src image.Image) *image.RGBA {
 // prepareScanSource applies the shared orientation, guide-crop and content-trim
 // pipeline, then bounds the long side to maxDimension.
 func prepareScanSource(imgBytes []byte, src image.Image, config ImagePrepareConfig, maxDimension int) (image.Image, error) {
-	src = applyEXIFOrientation(imgBytes, src)
+	orientation := getEXIFOrientation(imgBytes)
 	if config.GuideCrop != nil {
+		// shortcut: the guide crop is defined on the upright frame, so it still
+		// orients the full-resolution image first; map the crop into sensor
+		// coordinates if a caller ever sets GuideCrop (none does today).
+		src = applyImageOrientation(src, orientation)
+		orientation = 1
 		cropped, err := cropNormalized(src, *config.GuideCrop)
 		if err != nil {
 			return nil, fmt.Errorf("apply guide crop: %w", err)
 		}
 		src = cropped
 	}
-	src = resizeToMaxDimension(src, maxDimension)
+	// Orienting copies every pixel, so rotate the bounded image: the long-side
+	// cap is the same in either orientation.
+	src = applyImageOrientation(resizeToMaxDimension(src, maxDimension), orientation)
 	return cropToContentEdges(src), nil
 }
 

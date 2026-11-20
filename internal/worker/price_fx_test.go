@@ -42,6 +42,29 @@ func TestApplyEURFallbackConvertsOnlyUnpricedEuros(t *testing.T) {
 	}
 }
 
+// An estimate must follow the USD price: a stale converted EUR is recomputed, but
+// only when it differs, otherwise the same rows re-qualify and the loop never drains.
+// A native EUR (price_eur_estimated = FALSE) stays out of both predicates.
+func TestApplyEURFallbackRecomputesStaleEstimates(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	const stale = `OR \(price_eur_estimated AND price_eur IS DISTINCT FROM ROUND\(price_usd \* \$1, 2\)\)\)`
+	mock.ExpectExec(`UPDATE cards[\s\S]*`+stale+`[\s\S]*LIMIT \$2[\s\S]*`+stale).
+		WithArgs(0.9, fxBatchSize).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	worker := &DataSyncWorker{db: db, eurRate: fixedEURRate{rate: 0.9}}
+	worker.applyEURFallback(context.Background())
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 // The conversion runs in id-ordered slices and retries a lost lock race instead
 // of abandoning the whole catalog.
 func TestApplyEURFallbackRetriesADeadlock(t *testing.T) {

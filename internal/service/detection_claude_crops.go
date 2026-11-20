@@ -67,25 +67,33 @@ const (
 // needs the original gradients, foil and anti-aliasing. An unreadable upload is
 // rejected here, before any provider sees it.
 func claudeImageVariants(ctx context.Context, imageData []byte) ([][]byte, error) {
+	variants, _, err := claudePreparedImageVariants(ctx, imageData)
+	return variants, err
+}
+
+// claudePreparedImageVariants also returns the oriented, cropped source the
+// variants were cut from, so the fingerprint tie-break hashes the same upright
+// card instead of decoding the raw upload again.
+func claudePreparedImageVariants(ctx context.Context, imageData []byte) ([][]byte, image.Image, error) {
 	config := imagePrepareConfigFromContext(ctx)
 	src, _, err := decodeScanImage(imageData, config)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	src, err = prepareScanSource(imageData, src, config, claudeSourceMaxDimension)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	full, err := encodeScanJPEG(resizeToMaxDimension(src, claudeFullImageMaxDimension))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	variants := make([][]byte, 0, 3)
 	variants = append(variants, full)
 	// A landscape frame means the card was captured sideways. The bands assume
 	// an upright card, so a rotated photo only gets the full-card image.
 	if bounds := src.Bounds(); bounds.Dx() > bounds.Dy() {
-		return variants, nil
+		return variants, src, nil
 	}
 	for _, band := range claudeBands(src) {
 		cropped, err := cropNormalized(src, band)
@@ -98,7 +106,7 @@ func claudeImageVariants(ctx context.Context, imageData []byte) ([][]byte, error
 		}
 		variants = append(variants, encoded)
 	}
-	return variants, nil
+	return variants, src, nil
 }
 
 // claudeBands places the title and information strips relative to the card

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,10 @@ import (
 // priceAPIUserAgent identifies the application to the public price APIs that
 // require a descriptive agent (Scryfall, TCGdex, YGOPRODeck).
 const priceAPIUserAgent = "pokget-price-sync/1.0 (+https://github.com/arumes31/pokget)"
+
+// ErrNoPrice reports that a provider answered but has no price for the card. It is
+// a verification, unlike a transport or provider error, which must be retried.
+var ErrNoPrice = errors.New("no price")
 
 var priceAPIHTTPClient = &http.Client{Timeout: 20 * time.Second}
 
@@ -90,12 +95,31 @@ func fetchPriceJSON(ctx context.Context, client *http.Client, endpoint string, t
 
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
-		return fmt.Errorf("price api %s: HTTP %d", endpoint, response.StatusCode)
+		return priceHTTPError{endpoint: endpoint, status: response.StatusCode}
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(target); err != nil {
 		return fmt.Errorf("price api %s: %w", endpoint, err)
 	}
 	return nil
+}
+
+// priceHTTPError is a non-200 answer of a price API.
+type priceHTTPError struct {
+	endpoint string
+	status   int
+}
+
+func (e priceHTTPError) Error() string {
+	return fmt.Sprintf("price api %s: HTTP %d", e.endpoint, e.status)
+}
+
+// tcgdexNotFound turns a TCGdex 404 (unknown card or language) into ErrNoPrice.
+func tcgdexNotFound(err error) error {
+	var httpErr priceHTTPError
+	if errors.As(err, &httpErr) && httpErr.status == http.StatusNotFound {
+		return fmt.Errorf("%w: %w", ErrNoPrice, err)
+	}
+	return err
 }
 
 // TCGdexPriceClient reads Cardmarket (EUR) and TCGplayer (USD) prices from the
@@ -140,13 +164,13 @@ func (c *TCGdexPriceClient) FetchPriceContext(ctx context.Context, card models.C
 	var payload tcgdexPricePayload
 	endpoint := fmt.Sprintf("%s/%s/cards/%s", base, url.PathEscape(language), url.PathEscape(id))
 	if err := fetchPriceJSON(ctx, c.HTTP, endpoint, &payload); err != nil {
-		return 0, 0, err
+		return 0, 0, tcgdexNotFound(err)
 	}
 
 	eur := payload.Pricing.Cardmarket.EUR()
 	usd := payload.Pricing.TCGplayer.USD()
 	if eur <= 0 && usd <= 0 {
-		return 0, 0, fmt.Errorf("tcgdex: no price for %s", id)
+		return 0, 0, fmt.Errorf("tcgdex: %w for %s", ErrNoPrice, id)
 	}
 	return usd, eur, nil
 }
@@ -221,7 +245,7 @@ func (c *TCGdexPriceClient) resolveCardID(ctx context.Context, base, language st
 	}
 	endpoint := fmt.Sprintf("%s/%s/cards?name=%s", base, url.PathEscape(language), url.QueryEscape(name))
 	if err := fetchPriceJSON(ctx, c.HTTP, endpoint, &results); err != nil {
-		return "", err
+		return "", tcgdexNotFound(err)
 	}
 
 	number := strings.TrimSpace(card.CollectorNumber)
@@ -247,7 +271,7 @@ func (c *TCGdexPriceClient) resolveCardID(ctx context.Context, base, language st
 			}
 		}
 	}
-	return "", fmt.Errorf("tcgdex: no card id for %q", name)
+	return "", fmt.Errorf("tcgdex: %w, no card id for %q", ErrNoPrice, name)
 }
 
 type tcgdexPricePayload struct {
@@ -360,7 +384,7 @@ func (c *ScryfallPriceClient) FetchPriceContext(ctx context.Context, card models
 	usd := parseOptionalPrice(payload.Prices.USD)
 	eur := parseOptionalPrice(payload.Prices.EUR)
 	if usd <= 0 && eur <= 0 {
-		return 0, 0, fmt.Errorf("scryfall: no price for %q", card.Name)
+		return 0, 0, fmt.Errorf("scryfall: %w for %q", ErrNoPrice, card.Name)
 	}
 	return usd, eur, nil
 }
@@ -444,13 +468,13 @@ func (c *YGOPRODeckPriceClient) FetchPriceContext(ctx context.Context, card mode
 		return 0, 0, err
 	}
 	if len(payload.Data) == 0 || len(payload.Data[0].CardPrices) == 0 {
-		return 0, 0, fmt.Errorf("ygoprodeck: no price for %q", card.Name)
+		return 0, 0, fmt.Errorf("ygoprodeck: %w for %q", ErrNoPrice, card.Name)
 	}
 	first := payload.Data[0].CardPrices[0]
 	usd := parseOptionalPrice(&first.TcgplayerPrice)
 	eur := parseOptionalPrice(&first.CardmarketPrice)
 	if usd <= 0 && eur <= 0 {
-		return 0, 0, fmt.Errorf("ygoprodeck: no price for %q", card.Name)
+		return 0, 0, fmt.Errorf("ygoprodeck: %w for %q", ErrNoPrice, card.Name)
 	}
 	return usd, eur, nil
 }
