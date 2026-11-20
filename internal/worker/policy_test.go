@@ -3,6 +3,7 @@ package worker
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -50,14 +51,24 @@ func TestMedian(t *testing.T) {
 
 func TestPriceAnomalyPolicy(t *testing.T) {
 	worker := &DataSyncWorker{maxPriceRatio: 5}
-	if worker.priceAnomalous(decimal.NewFromInt(100), 499) {
+	fresh := sql.NullTime{Time: time.Now().Add(-time.Hour), Valid: true}
+	if worker.priceAnomalous(decimal.NewFromInt(100), 499, fresh) {
 		t.Fatal("499 should be inside a 5x price envelope")
 	}
-	if !worker.priceAnomalous(decimal.NewFromInt(100), 501) {
+	if !worker.priceAnomalous(decimal.NewFromInt(100), 501, fresh) {
 		t.Fatal("501 should be outside a 5x price envelope")
 	}
-	if !worker.priceAnomalous(decimal.NewFromInt(100), 19) {
+	if !worker.priceAnomalous(decimal.NewFromInt(100), 19, fresh) {
 		t.Fatal("19 should be outside a 5x price envelope")
+	}
+	// A stored price nobody verified for a week no longer vetoes the market;
+	// otherwise a real move would be rejected forever.
+	stale := sql.NullTime{Time: time.Now().Add(-8 * 24 * time.Hour), Valid: true}
+	if worker.priceAnomalous(decimal.NewFromInt(100), 501, stale) {
+		t.Fatal("a week-old reference price must not reject the candidate")
+	}
+	if worker.priceAnomalous(decimal.NewFromInt(100), 501, sql.NullTime{}) {
+		t.Fatal("a never verified reference price must not reject the candidate")
 	}
 }
 

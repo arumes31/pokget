@@ -333,6 +333,32 @@ func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 	}
 }
 
+// A price no source verified for two days must not freeze: the fallback may replace
+// it, and the UPDATE rechecks that on the locked row so a fresh sync quote survives.
+func TestApplyFuzzyPricesReplacesStalePrices(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	const stale = `OR price_checked_at IS NULL OR price_checked_at < NOW\(\) - INTERVAL '2 days'\)`
+	mock.ExpectQuery(`SELECT id, COALESCE\(set_code[\s\S]*price_usd <= 0\s+` + stale).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}).
+			AddRow("card-old", "SV3", "Obsidian Flames", "089", "Nazonokusa"))
+	mock.ExpectExec(`UPDATE cards AS c[\s\S]*IS DISTINCT FROM v.usd\)[\s\S]*OR c.price_checked_at < NOW\(\) - INTERVAL '2 days'\)`).
+		WithArgs("card-old", 3.0).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	worker := &DataSyncWorker{db: db}
+	if _, err := worker.applyFuzzyPrices(context.Background(), "pokemon", nil, fuzzyIndex("SV3", "089/108", 3.0), nil); err != nil {
+		t.Fatalf("applyFuzzyPrices: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 // emptyTextArray matches the encoded empty Postgres array. A nil []string
 // encodes as SQL NULL and `<> ALL(NULL)` would filter every row, which silently
 // disabled the language-scoped (Japanese) fallback in production.

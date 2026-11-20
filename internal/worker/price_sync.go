@@ -585,7 +585,7 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 			WHERE c.superseded_by_card_id IS NULL
 		)
 		SELECT c.id, c.name, c.set_name, COALESCE(c.price_usd, 0), COALESCE(c.price_eur, 0), COALESCE(c.game, ''),
-		       COALESCE(c.source_id, ''), COALESCE(c.source_card_id, ''), COALESCE(c.language, '')
+		       COALESCE(c.source_id, ''), COALESCE(c.source_card_id, ''), COALESCE(c.language, ''), c.price_checked_at
 		FROM cards c
 		JOIN (SELECT DISTINCT card_id FROM ranked WHERE position <= $1) AS chosen ON chosen.card_id = c.id
 		ORDER BY c.price_checked_at ASC NULLS FIRST, c.id
@@ -604,7 +604,8 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 		}
 
 		var c models.Card
-		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.Game, &c.SourceID, &c.SourceCardID, &c.Language); err != nil {
+		var checkedAt sql.NullTime
+		if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.Game, &c.SourceID, &c.SourceCardID, &c.Language, &checkedAt); err != nil {
 			slog.Error("Sync: Failed to scan card", "error", err)
 			continue
 		}
@@ -618,11 +619,11 @@ func (w *DataSyncWorker) syncPrices(ctx context.Context) {
 
 		validUSD := usd > 0 && !math.IsNaN(usd) && !math.IsInf(usd, 0)
 		validEUR := eur > 0 && !math.IsNaN(eur) && !math.IsInf(eur, 0)
-		if validUSD && w.priceAnomalous(c.PriceUSD, usd) {
+		if validUSD && w.priceAnomalous(c.PriceUSD, usd, checkedAt) {
 			slog.Warn("Sync: Rejected anomalous USD price", "card", c.Name, "current", c.PriceUSD, "candidate", usd)
 			validUSD = false
 		}
-		if validEUR && w.priceAnomalous(c.PriceEUR, eur) {
+		if validEUR && w.priceAnomalous(c.PriceEUR, eur, checkedAt) {
 			slog.Warn("Sync: Rejected anomalous EUR price", "card", c.Name, "current", c.PriceEUR, "candidate", eur)
 			validEUR = false
 		}
@@ -849,8 +850,16 @@ func median(values []float64) float64 {
 	return (values[middle-1] + values[middle]) / 2
 }
 
-func (w *DataSyncWorker) priceAnomalous(current decimal.Decimal, candidate float64) bool {
+// staleAnomalyReference is the age after which a stored price no longer vetoes a
+// jump: a rejected candidate leaves price_checked_at untouched, so without it a
+// real market move would be rejected forever.
+const staleAnomalyReference = 7 * 24 * time.Hour
+
+func (w *DataSyncWorker) priceAnomalous(current decimal.Decimal, candidate float64, checkedAt sql.NullTime) bool {
 	if w.maxPriceRatio <= 1 || !current.IsPositive() || candidate <= 0 {
+		return false
+	}
+	if !checkedAt.Valid || time.Since(checkedAt.Time) > staleAnomalyReference {
 		return false
 	}
 	currentValue, _ := current.Float64()

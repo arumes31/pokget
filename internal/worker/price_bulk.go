@@ -28,6 +28,16 @@ const (
 	fxRetryLimit = 3
 )
 
+// fallbackEligible selects the cards the fuzzy fallback may price: unpriced ones,
+// and ones no source has verified for two days (a delisted exact match would
+// otherwise freeze the price forever). fallbackEligibleC is the same for alias c.
+const (
+	fallbackEligible = `(price_usd IS NULL OR price_usd <= 0
+		       OR price_checked_at IS NULL OR price_checked_at < NOW() - INTERVAL '2 days')`
+	fallbackEligibleC = `(c.price_usd IS NULL OR c.price_usd <= 0
+       OR c.price_checked_at IS NULL OR c.price_checked_at < NOW() - INTERVAL '2 days')`
+)
+
 // syncBulkPrices refreshes catalog prices from the free daily bulk exports
 // (Scryfall for Magic, YGOPRODeck for Yu-Gi-Oh). It runs once per day and is
 // coordinated through the same cycle lease as the other sync jobs.
@@ -273,8 +283,8 @@ func (w *DataSyncWorker) applyBulkSource(ctx context.Context, source service.Bul
 		rarityUpdated += changed
 	}
 
-	// The fallback only writes cards that had no price, so every fallback row was a
-	// match as well.
+	// The fallback only writes cards that had no (or a stale) price, so every
+	// fallback row was a match as well.
 	slog.Info("Bulk prices applied", "source", source.Name(), "rows", rows, "matched", matched+fuzzyUpdated,
 		"updated", updated, "fallback_updated", fuzzyUpdated, "rarity_updated", rarityUpdated)
 	// A source that delivers rows but matches none of them is either listing a
@@ -607,8 +617,9 @@ func orderedFuzzyScopes[V any](index map[fuzzyScope]V) []fuzzyScope {
 
 // applyFuzzyPrices fills prices for cards that have none yet by matching the
 // normalized set code and collector number, then the normalized set name and
-// number. Existing prices are never replaced, so dedicated sources (Scryfall,
-// YGOPRODeck) keep their values.
+// number. A price some source verified within two days is never
+// replaced, so dedicated sources (Scryfall, YGOPRODeck) keep their values; an
+// older one would otherwise stay frozen forever.
 func (w *DataSyncWorker) applyFuzzyPrices(ctx context.Context, game string, languages []string, prices, namePrices map[string]float64) (int64, error) {
 	return w.applyFuzzyPricesExcluding(ctx, game, languages, nil, prices, namePrices, nil, nil)
 }
@@ -637,7 +648,7 @@ func (w *DataSyncWorker) applyFuzzyPricesExcluding(
 		FROM cards
 		WHERE game = $1
 		  AND superseded_by_card_id IS NULL
-		  AND (price_usd IS NULL OR price_usd <= 0)
+		  AND ` + fallbackEligible + `
 		  AND ($2::text[] = '{}' OR language = ANY($2::text[]))
 		  AND COALESCE(language, '') <> ALL($3::text[])`
 	// pq.Array(nil) encodes SQL NULL, and `<> ALL(NULL)` is NULL for every row, so
@@ -777,7 +788,9 @@ FROM (VALUES `)
 		args = append(args, update.SourceCardID, update.USD)
 	}
 	query.WriteString(`) AS v(id, usd)
-WHERE c.id = v.id AND (c.price_usd IS NULL OR c.price_usd IS DISTINCT FROM v.usd)`)
+WHERE c.id = v.id AND (c.price_usd IS NULL OR c.price_usd IS DISTINCT FROM v.usd)
+  -- Rechecked on the locked row: the sync may have priced the card since the SELECT.
+  AND ` + fallbackEligibleC)
 	result, err := w.db.ExecContext(ctx, query.String(), args...)
 	if err != nil {
 		return 0, fmt.Errorf("fallback price update: %w", err)
