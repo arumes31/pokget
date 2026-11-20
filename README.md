@@ -317,8 +317,8 @@ Pokget includes `<meta name="mobile-web-app-capable" content="yes">`, `<meta nam
 
 ### Primary LLM with Ollama fallback
 
-Set these variables in `.env` to use an OpenAI-compatible gateway for LLM-assisted
-card matching and binder names:
+Set these variables in `.env` to use an OpenAI-compatible gateway for binder-name
+suggestions:
 
 ```env
 LLM_BASE_URL=https://your-gateway.example/v1
@@ -327,16 +327,11 @@ LLM_API=your-api-key
 LLM_MAX_TOKENS=1024
 ```
 
-The primary model can inspect the cropped card image when a scan needs help.
-When shortlisted printings share identical text metadata, it can compare labeled
-reference artwork from approved catalog image hosts. References are limited to
-eight images in complete groups; incomplete groups are omitted.
-Its answer must still identify a card from the evidence-backed catalog shortlist;
-uncertain printings require confirmation. Provider failures and invalid answers
-are retried up to three total primary attempts, with five seconds between failed
-attempts. Canceling the request cancels the completion and any pending retry. After three
-failures, the existing `OLLAMA_*` provider receives its own bounded request budget.
-A valid abstention is a completed answer and does not trigger retries or fallback.
+Card recognition does not use this model; it runs through the Claude detector.
+Provider failures are retried up to three total primary attempts, with five seconds
+between failed attempts. Canceling the request cancels the completion and any pending
+retry. After three failures, the existing `OLLAMA_*` provider receives its own bounded
+request budget.
 `SCAN_TIMEOUT_SECONDS` bounds a whole scan: detector queueing, local image analysis
 and any primary completion. `SCAN_MAX_CONCURRENT` sizes the detector slots, and
 each account runs one scan at a time. Every scan names its TCG (`game`). Scan and

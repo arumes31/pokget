@@ -4,14 +4,14 @@ Start with [example.env](example.env). It contains non-secret defaults, empty
 credential fields, and all variables interpolated by both Compose files. Keep
 the populated `.env` private. Existing installations should copy individual
 settings, not replace their working configuration or rotate their session key
-accidentally. The session key also derives the application's encryption key.
+accidentally. The session key also derives the CSRF key.
 
 ## Choose the scan path
 
 | Stage | Runs on | Default / activation | Data sent to server/provider |
 | --- | --- | --- | --- |
 | **Claude AI Vision Detector** | Anthropic Claude API (`claude-sonnet-5-5` / `claude-opus-5-5` / `claude-haiku-5-5`) | `CLAUDE_ENABLED=true` (Requires `CLAUDE_API_KEY`; default `false`); uses Anthropic Prompt Caching | Card image to Anthropic API |
-| Local text selector | Ollama CPU, `qwen2.5:1.5b` | `OLLAMA_MODEL`; card-name suggestions only | Text and bounded shortlist to Ollama |
+| Local text model | Ollama CPU, `qwen2.5:1.5b` | `OLLAMA_MODEL`; binder-name suggestions only | Card names of the binder to Ollama |
 
 The phone never runs OCR: the cropped image is always uploaded, and only the
 server performs recognition. Card recognition requires the Claude detector; a
@@ -93,7 +93,7 @@ docker compose up -d --build pokget_app
 
 The app also attempts background setup of its configured text model, but an
 explicit pull makes download errors visible before scanning. The text model only
-suggests card names; card recognition itself runs through the Claude detector.
+suggests binder names; card recognition itself runs through the Claude detector.
 With the GHCR stack, add `-f docker-compose.ghcr.yml` to every command and use
 `pull`/`up -d` instead of `--build` when updating the app.
 
@@ -105,7 +105,6 @@ With the GHCR stack, add `-f docker-compose.ghcr.yml` to every command and use
 | `SCAN_MAX_CONCURRENT` | 3 | Concurrent scan requests per instance |
 | `SCAN_PHASH_HIGH_CONF`, `SCAN_PHASH_POTENTIAL` | 5, 10 | Hash-distance thresholds; do not tune to hide bad matches |
 | `OLLAMA_NUM_THREAD`, `OLLAMA_NUM_CTX`, `OLLAMA_NUM_PREDICT` | 4, 2048, 128 | Local text-model inference limits |
-| `OLLAMA_MAX_CANDIDATES`, `OLLAMA_MIN_EVIDENCE`, `OLLAMA_MIN_CONFIDENCE` | 20, 180, 0.55 | Text shortlist eligibility and response checks, not accuracy probabilities |
 | `OLLAMA_NUM_PARALLEL`, `OLLAMA_MAX_LOADED_MODELS` | 1, 1 | Ollama server concurrency/residency |
 | `SECURE_COOKIES` | true | Keep enabled behind HTTPS; false only for local HTTP development |
 | `WRITE_TIMEOUT` | 120 | General HTTP write timeout; long primary scan completions have separate cancellation behavior |

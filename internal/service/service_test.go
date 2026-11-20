@@ -98,60 +98,6 @@ func TestMailService(t *testing.T) {
 	})
 }
 
-func TestLLMService(t *testing.T) {
-	s := NewLLMService()
-
-	t.Run("FuzzyMatchCard_Success", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"response":"{\"card_id\":\"id-123\",\"confidence\":0.9,\"abstain\":false}"}`))
-		}))
-		defer server.Close()
-
-		s.BaseURL = server.URL
-		s.HTTPClient = server.Client()
-
-		match, err := s.FuzzyMatchCard("Chrizard", []models.Card{{ID: "id-123", Name: "Charizard"}})
-		if err != nil {
-			t.Errorf("FuzzyMatchCard failed: %v", err)
-		}
-		if match != "Charizard" {
-			t.Errorf("Expected Charizard, got %s", match)
-		}
-	})
-
-	t.Run("FuzzyMatchCard_HTTPError", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-		}))
-		defer server.Close()
-
-		s.BaseURL = server.URL
-		s.HTTPClient = server.Client()
-
-		_, err := s.FuzzyMatchCard("Chrizard", []models.Card{{ID: "charizard", Name: "Charizard"}})
-		if err == nil {
-			t.Error("Expected error for 500 response")
-		}
-	})
-
-	t.Run("FuzzyMatchCard_MalformedJSON", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{invalid-json`))
-		}))
-		defer server.Close()
-
-		s.BaseURL = server.URL
-		s.HTTPClient = server.Client()
-
-		_, err := s.FuzzyMatchCard("Chrizard", []models.Card{{ID: "charizard", Name: "Charizard"}})
-		if err == nil {
-			t.Error("Expected error for malformed JSON")
-		}
-	})
-}
-
 func TestScraperPriceClient(t *testing.T) {
 	t.Run("DefaultClient_Nil", func(t *testing.T) {
 		client := &DefaultPriceClient{Scraper: nil}
@@ -357,24 +303,4 @@ func TestGamificationService(t *testing.T) {
 			t.Errorf("Expected max rank behavior, got %d, %d, %f", relXP, reqXP, pct)
 		}
 	})
-}
-
-func TestLevenshtein(t *testing.T) {
-	tests := []struct {
-		s1, s2 string
-		want   int
-	}{
-		{"", "", 0},
-		{"a", "", 1},
-		{"", "a", 1},
-		{"abc", "abc", 0},
-		{"abc", "abd", 1},
-		{"kitten", "sitting", 3},
-	}
-	for _, tt := range tests {
-		got := levenshtein(tt.s1, tt.s2)
-		if got != tt.want {
-			t.Errorf("levenshtein(%q, %q) = %d, want %d", tt.s1, tt.s2, got, tt.want)
-		}
-	}
 }
