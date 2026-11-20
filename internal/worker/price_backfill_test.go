@@ -35,11 +35,13 @@ func TestBackfillPricesStoresMissingPokemonPrices(t *testing.T) {
 
 	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
 		AddRow("card-1", "Bulbasaur", "151", "pokemon", "de", "tcgdex", "sv03.5-001", "sv03.5", "001")
-	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
+	// A converted EUR is no Cardmarket quote, so the card stays in the queue and the
+	// native quote may replace it.
+	mock.ExpectQuery(`SELECT id, name, set_name[\s\S]*OR price_eur_estimated\)`).WithArgs(50).WillReturnRows(rows)
 	mock.ExpectBegin()
 	// Either missing currency is a reason to write, so a EUR-only card still gets its
 	// USD quote without losing the EUR one.
-	mock.ExpectExec("UPDATE cards[\\s\\S]*COALESCE\\(price_eur, 0\\) <= 0 AND \\$2").
+	mock.ExpectExec(`UPDATE cards[\s\S]*COALESCE\(price_eur, 0\) <= 0 OR price_eur_estimated\) AND \$2`).
 		WithArgs(0.12, 0.17, "card-1").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	// The backfill deliberately writes no price_history row.
@@ -153,7 +155,7 @@ func TestBackfillPricesRotatesWhenNothingIsFilled(t *testing.T) {
 		AddRow("card-4", "EurOnly", "Set", "pokemon", "en", "tcgdex", "SV3-2", "SV3", "2")
 	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
 	mock.ExpectBegin()
-	mock.ExpectExec("UPDATE cards[\\s\\S]*COALESCE\\(price_eur, 0\\) <= 0 AND \\$2").
+	mock.ExpectExec(`UPDATE cards[\s\S]*COALESCE\(price_eur, 0\) <= 0 OR price_eur_estimated\) AND \$2`).
 		WithArgs(0.0, 0.9, "card-4").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectRollback()

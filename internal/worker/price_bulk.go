@@ -489,7 +489,7 @@ func retryOnConflict(ctx context.Context, attempts int, run func() (int64, error
 	return 0, lastErr
 }
 
-// applyEURBatch converts one id-ordered slice of unpriced EUR values.
+// applyEURBatch converts one id-ordered slice of unpriced or estimated EUR values.
 func (w *DataSyncWorker) applyEURBatch(ctx context.Context, rate float64, size int) (int64, error) {
 	// The eligibility check is repeated on the target row: the per-card sync can
 	// write a native EUR quote between the subquery and the row lock, and that
@@ -502,13 +502,17 @@ func (w *DataSyncWorker) applyEURBatch(ctx context.Context, rate float64, size i
 			SELECT id FROM cards
 			WHERE superseded_by_card_id IS NULL
 			  AND price_usd > 0
-			  AND (price_eur IS NULL OR price_eur <= 0)
+			  AND (price_eur IS NULL OR price_eur <= 0
+			       OR (price_eur_estimated AND price_eur IS DISTINCT FROM ROUND(price_usd * $1, 2)))
 			ORDER BY id
 			LIMIT $2
 		)
 		  AND superseded_by_card_id IS NULL
 		  AND price_usd > 0
-		  AND (price_eur IS NULL OR price_eur <= 0)`, rate, size)
+		  -- An estimate follows the USD price; one that already matches is skipped so
+		  -- the batches drain.
+		  AND (price_eur IS NULL OR price_eur <= 0
+		       OR (price_eur_estimated AND price_eur IS DISTINCT FROM ROUND(price_usd * $1, 2)))`, rate, size)
 	if err != nil {
 		return 0, err
 	}

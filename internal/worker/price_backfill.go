@@ -64,7 +64,8 @@ func (w *DataSyncWorker) backfillPrices(ctx context.Context) {
 		  -- Either currency alone is enough to keep the card in the queue: TCGdex
 		  -- answers with TCGplayer USD and Cardmarket EUR separately, so a card with a
 		  -- EUR quote but no USD quote still needs the USD lookup.
-		  AND (COALESCE(price_usd, 0) <= 0 OR COALESCE(price_eur, 0) <= 0)
+		  -- An EUR converted from USD is no Cardmarket quote, so it counts as missing.
+		  AND (COALESCE(price_usd, 0) <= 0 OR COALESCE(price_eur, 0) <= 0 OR price_eur_estimated)
 		  AND COALESCE(source_card_id, '') <> ''
 		-- Least recently verified first: a card a provider just had no price for moves
 		-- to the back instead of being retried every cycle.
@@ -175,7 +176,7 @@ func (w *DataSyncWorker) storeBackfillPrice(ctx context.Context, cardID string, 
 		    last_updated = NOW(), price_checked_at = NOW()
 		WHERE id = $3
 		  AND ((COALESCE(price_usd, 0) <= 0 AND $1::numeric > 0)
-		    OR (COALESCE(price_eur, 0) <= 0 AND $2::numeric > 0))`, usd, eur, cardID)
+		    OR ((COALESCE(price_eur, 0) <= 0 OR price_eur_estimated) AND $2::numeric > 0))`, usd, eur, cardID)
 	if err != nil {
 		_ = tx.Rollback()
 		return false, err
