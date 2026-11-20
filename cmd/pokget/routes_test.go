@@ -24,52 +24,56 @@ func TestBuildRouterRegistersRoutes(t *testing.T) {
 		t.Fatal("buildRouter() returned nil")
 	}
 
+	// template is the matched route's path template; empty means the path itself.
 	routes := []struct {
-		method string
-		path   string
+		method   string
+		path     string
+		template string
 	}{
-		{http.MethodGet, "/health/live"},
-		{http.MethodGet, "/health/ready"},
-		{http.MethodGet, "/sw.js"},
-		{http.MethodGet, "/static/css/app.css"},
-		{http.MethodPost, "/api/scan"},
-		{http.MethodGet, "/"},
-		{http.MethodGet, "/auth"},
-		{http.MethodPost, "/auth/register"},
-		{http.MethodPost, "/auth/login"},
-		{http.MethodPost, "/auth/resend"},
-		{http.MethodGet, "/auth/confirm"},
-		{http.MethodPost, "/auth/confirm"},
-		{http.MethodPost, "/auth/logout"},
-		{http.MethodGet, "/vault/some-slug"},
-		{http.MethodGet, "/errors"},
-		{http.MethodGet, "/dashboard"},
-		{http.MethodGet, "/centering"},
-		{http.MethodGet, "/binders"},
-		{http.MethodPost, "/binders/create"},
-		{http.MethodPost, "/binders/auto-name"},
-		{http.MethodGet, "/binders/binder-1"},
-		{http.MethodGet, "/trade"},
-		{http.MethodGet, "/settings"},
-		{http.MethodPost, "/settings"},
-		{http.MethodPost, "/settings/change-password"},
-		{http.MethodPost, "/settings/public-profile"},
-		{http.MethodPost, "/portfolio/add"},
-		{http.MethodPost, "/portfolio/edit"},
-		{http.MethodPost, "/portfolio/delete"},
-		{http.MethodDelete, "/portfolio/delete"},
-		{http.MethodPost, "/portfolio/binder"},
-		{http.MethodPost, "/portfolio/toggle-visibility"},
-		{http.MethodGet, "/portfolio/export"},
-		{http.MethodGet, "/wantlist"},
-		{http.MethodPost, "/wantlist/add"},
-		{http.MethodPost, "/wantlist/edit"},
-		{http.MethodPost, "/wantlist/delete"},
-		{http.MethodDelete, "/wantlist/delete"},
-		{http.MethodPost, "/errors/submit"},
-		{http.MethodPost, "/api/gamification/heartbeat"},
-		{http.MethodPost, "/api/portfolio/add"},
-		{http.MethodPost, "/api/admin/refresh-cache"},
+		{http.MethodGet, "/health/live", ""},
+		{http.MethodGet, "/health/ready", ""},
+		{http.MethodGet, "/sw.js", ""},
+		{http.MethodGet, "/static/css/app.css", "/static/"},
+		{http.MethodPost, "/api/scan", ""},
+		{http.MethodGet, "/", ""},
+		{http.MethodGet, "/auth", ""},
+		{http.MethodPost, "/auth/register", ""},
+		{http.MethodPost, "/auth/login", ""},
+		{http.MethodPost, "/auth/resend", ""},
+		{http.MethodGet, "/auth/confirm", ""},
+		{http.MethodPost, "/auth/confirm", ""},
+		{http.MethodPost, "/auth/logout", ""},
+		{http.MethodGet, "/vault/some-slug", "/vault/{slug}"},
+		{http.MethodGet, "/errors", ""},
+		{http.MethodGet, "/dashboard", ""},
+		{http.MethodGet, "/centering", ""},
+		{http.MethodGet, "/binders", ""},
+		{http.MethodPost, "/binders/create", ""},
+		{http.MethodPost, "/binders/auto-name", ""},
+		{http.MethodGet, "/binders/binder-1", "/binders/{id}"},
+		{http.MethodGet, "/trade", ""},
+		{http.MethodGet, "/settings", ""},
+		{http.MethodPost, "/settings", ""},
+		{http.MethodPost, "/settings/change-password", ""},
+		{http.MethodPost, "/settings/public-profile", ""},
+		{http.MethodPost, "/portfolio/add", ""},
+		{http.MethodGet, "/portfolio/item-1", "/portfolio/{id}"},
+		{http.MethodGet, "/portfolio/item-1/photo", "/portfolio/{id}/photo"},
+		{http.MethodPost, "/portfolio/edit", ""},
+		{http.MethodPost, "/portfolio/delete", ""},
+		{http.MethodDelete, "/portfolio/delete", ""},
+		{http.MethodPost, "/portfolio/binder", ""},
+		{http.MethodPost, "/portfolio/toggle-visibility", ""},
+		{http.MethodGet, "/portfolio/export", ""},
+		{http.MethodGet, "/wantlist", ""},
+		{http.MethodPost, "/wantlist/add", ""},
+		{http.MethodPost, "/wantlist/edit", ""},
+		{http.MethodPost, "/wantlist/delete", ""},
+		{http.MethodDelete, "/wantlist/delete", ""},
+		{http.MethodPost, "/errors/submit", ""},
+		{http.MethodPost, "/api/gamification/heartbeat", ""},
+		{http.MethodPost, "/api/portfolio/add", ""},
+		{http.MethodPost, "/api/admin/refresh-cache", ""},
 	}
 
 	for _, route := range routes {
@@ -78,6 +82,13 @@ func TestBuildRouterRegistersRoutes(t *testing.T) {
 			match := &mux.RouteMatch{}
 			if !router.Match(request, match) {
 				t.Fatalf("no route registered for %s %s", route.method, route.path)
+			}
+			want := route.template
+			if want == "" {
+				want = route.path
+			}
+			if got, err := match.Route.GetPathTemplate(); err != nil || got != want {
+				t.Fatalf("%s %s matched %q (err %v), want %q", route.method, route.path, got, err, want)
 			}
 		})
 	}
