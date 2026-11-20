@@ -61,7 +61,8 @@ test('both Compose variants expose the same application configuration', () => {
   const appEnvironment = file => read(file).split('    environment:')[1].split('    depends_on:')[0];
   const source = appEnvironment('docker-compose.yml');
   assert.equal(appEnvironment('docker-compose.ghcr.yml'), source);
-  for (const key of ['SECURE_COOKIES', 'WRITE_TIMEOUT', 'SCAN_MAX_CONCURRENT', 'SCAN_PHASH_HIGH_CONF', 'SCAN_PHASH_POTENTIAL', 'CATALOG_WEISS_MAX_PAGES']) {
+  for (const key of ['SECURE_COOKIES', 'WRITE_TIMEOUT', 'SCAN_MAX_CONCURRENT', 'SCAN_PHASH_HIGH_CONF', 'SCAN_PHASH_POTENTIAL', 'CATALOG_WEISS_MAX_PAGES',
+    'PRICE_BULK_INTERVAL_HOURS', 'PRICE_TRACKED_LIMIT', 'PRICE_BACKFILL_BATCH', 'PRICE_BACKFILL_REQUESTS_PER_SECOND', 'PRICE_EUR_FALLBACK']) {
     assert.ok(source.includes(`${key}=\${${key}:-`), `${key} is not configurable through Compose`);
   }
 });
