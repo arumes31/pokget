@@ -289,10 +289,15 @@ func (r *PostgresRepository) CompleteRun(
 	_, err = tx.ExecContext(
 		ctx,
 		`UPDATE catalog_source_state
-		 SET cursor = $2, etag = $3, last_modified = $4, upstream_version = $5,
+		 SET cursor = $2,
+		     -- A partial snapshot skipped data: keeping its validators would
+		     -- answer the next run with "not modified" and never refetch it.
+		     etag = CASE WHEN $9 OR $7 THEN $3 ELSE NULL END,
+		     last_modified = CASE WHEN $9 OR $7 THEN $4 ELSE NULL END,
+		     upstream_version = $5,
 		     last_success_at = NOW(),
 		     last_full_sync_at = CASE
-		         WHEN $6 = 'full' AND NOT $7 THEN NOW()
+		         WHEN $6 = 'full' AND NOT $7 AND $9 THEN NOW()
 		         ELSE last_full_sync_at
 		     END,
 		     last_record_count = CASE WHEN $7 THEN last_record_count ELSE $8 END,
@@ -307,6 +312,7 @@ func (r *PostgresRepository) CompleteRun(
 		mode,
 		completion.Fetch.NotModified,
 		completion.Fetch.Count,
+		completion.Fetch.CompleteSnapshot,
 	)
 	if err != nil {
 		return counts, rollback(tx, fmt.Errorf("catalog: updating successful source state: %w", err))

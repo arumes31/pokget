@@ -73,7 +73,10 @@ func (s *Syncer) Sync(ctx context.Context, provider Provider, mode SyncMode, req
 	if err != nil {
 		return fail(err)
 	}
-	if fetch.CompleteSnapshot && !fetch.NotModified && emittedCount == 0 {
+	// A full run that read nothing failed, even when the provider marked the
+	// snapshot partial because every set errored: recording it as a
+	// successful full sync would stop the source from retrying a full run.
+	if !fetch.NotModified && emittedCount == 0 && (fetch.CompleteSnapshot || mode == SyncModeFull) {
 		return fail(fmt.Errorf("%w: %q", ErrEmptySnapshot, provider.ID()))
 	}
 	if fetch.NotModified && emittedCount != 0 {
