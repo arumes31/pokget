@@ -31,7 +31,7 @@ import (
 // A card photo carries the decisive information in two thin strips: the title
 // line (name, suffix, HP) and the bottom information line (collector number,
 // set code, rarity, copyright). Sending those strips magnified lets the model
-// read single kana instead of guessing a familiar PokÃ©mon name from a
+// read single kana instead of guessing a familiar Pokémon name from a
 // downscaled photo of the whole card.
 const (
 	// Title band: the top of the frame down to 30% of the card height.
