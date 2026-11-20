@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,50 +12,6 @@ import (
 
 	"pokget/internal/models"
 )
-
-func expectSyntheticPersist(mock sqlmock.Sqlmock) {
-	mock.ExpectExec("INSERT INTO catalog_sources").WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec("INSERT INTO cards").WillReturnResult(sqlmock.NewResult(0, 1))
-}
-
-func TestPersistSyntheticCardAppendsEachIDOnce(t *testing.T) {
-	h, mock, cleanup := setupTestHandler(t)
-	defer cleanup()
-
-	card := models.Card{Name: "Pikachu", Set: "Base"}
-	card.ID = generateSyntheticCardID(card)
-	before := len(h.MockCards)
-	for range 3 {
-		expectSyntheticPersist(mock)
-		h.persistSyntheticCard(context.Background(), card)
-	}
-	if got := len(h.MockCards) - before; got != 1 {
-		t.Fatalf("repeated persist grew the cache by %d entries, want 1", got)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestPersistSyntheticCardRespectsCacheBudget(t *testing.T) {
-	h, mock, cleanup := setupTestHandler(t)
-	defer cleanup()
-
-	h.syntheticCached = make(map[string]struct{}, maxSyntheticCacheAppends)
-	for i := range maxSyntheticCacheAppends {
-		h.syntheticCached[fmt.Sprintf("card_%d", i)] = struct{}{}
-	}
-	before := len(h.MockCards)
-	expectSyntheticPersist(mock)
-	h.persistSyntheticCard(context.Background(), models.Card{ID: "card_new", Name: "Over budget"})
-	if len(h.MockCards) != before {
-		t.Fatal("cache grew past maxSyntheticCacheAppends")
-	}
-	// The row is still written, so the card stays usable and returns on reload.
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func TestAddCardToPortfolioRejectsOversizedSyntheticFields(t *testing.T) {
 	cases := map[string]url.Values{

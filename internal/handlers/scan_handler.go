@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/http"
 
+	"pokget/internal/auth"
 	"pokget/internal/service"
 )
 
@@ -29,6 +30,17 @@ func (h *Handler) APIScan(writer http.ResponseWriter, request *http.Request) {
 	if err != nil || mediaType != "multipart/form-data" {
 		http.Error(writer, "Card scan requires multipart form data", http.StatusUnsupportedMediaType)
 		return
+	}
+
+	// One scan per collector at a time, so a single account cannot hold every
+	// detector slot.
+	if userID, ok := request.Context().Value(auth.UserContextKey{}).(string); ok && userID != "" {
+		if _, busy := h.scansInFlight.LoadOrStore(userID, struct{}{}); busy {
+			writer.Header().Set("Retry-After", "1")
+			http.Error(writer, "Scanner is busy; retry shortly", http.StatusTooManyRequests)
+			return
+		}
+		defer h.scansInFlight.Delete(userID)
 	}
 
 	request.Body = http.MaxBytesReader(writer, request.Body, maxScanRequestBytes)

@@ -65,7 +65,7 @@ Save named/tagged measurements on this device, reopen them from **Saved**, or ex
 The Pokget vault is hardened using industry standards:
 *   **Private Notes**: Card notes are never shown on public vault pages. They are stored unencrypted in PostgreSQL, so protect database access and backups.
 *   **Brute-Force Protection**: Token-bucket rate limiting per IP (IPv6 per /64), a per-account failed-login limit, and a cap on concurrent password hashing.
-*   **Accounts**: New passwords need at least 12 characters; email verification links expire after 24 hours and are stored hashed.
+*   **Accounts**: New passwords need at least 12 characters; email verification links expire after 24 hours and are stored hashed. Confirming the link asks for the account password; registering an unverified address again replaces its password, so only the inbox owner who knows the latest password can activate it.
 *   **Audit Logging**: Every sensitive action (Login, Register, Add Card) is immutable logged to the `audit_logs` table.
 *   **Session Integrity**: Signed and encrypted HttpOnly/Secure session cookies. Logging out or changing the password revokes the account's sessions on every device.
 *   **Validation**: Mandatory password confirmation during registration and CSRF protection on all POST methods.
@@ -334,13 +334,13 @@ eight images in complete groups; incomplete groups are omitted.
 Its answer must still identify a card from the evidence-backed catalog shortlist;
 uncertain printings require confirmation. Provider failures and invalid answers
 are retried up to three total primary attempts, with five seconds between failed
-attempts. A running primary completion has no application-imposed time limit;
-canceling the scan still cancels the request and any pending retry. After three
+attempts. Canceling the request cancels the completion and any pending retry. After three
 failures, the existing `OLLAMA_*` provider receives its own bounded request budget.
 A valid abstention is a completed answer and does not trigger retries or fallback.
-`SCAN_TIMEOUT_SECONDS` still bounds detector queueing and local image analysis;
-it does not terminate an active primary completion. Scan and binder-name requests
-remain cancellable when their caller disconnects. Leave `LLM_BASE_URL` empty for
+`SCAN_TIMEOUT_SECONDS` bounds a whole scan: detector queueing, local image analysis
+and any primary completion. `SCAN_MAX_CONCURRENT` sizes the detector slots, and
+each account runs one scan at a time. Every scan names its TCG (`game`). Scan and
+binder-name requests remain cancellable when their caller disconnects. Leave `LLM_BASE_URL` empty for
 Ollama-only operation. Keep the key in `.env`, never in source or logs.
 
 For Ollama-only scans, optional text disambiguation takes at most five seconds

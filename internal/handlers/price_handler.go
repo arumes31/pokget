@@ -51,7 +51,8 @@ func (h *Handler) APICardPrice(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Info("Price lookup: no market price", "card_id", cardID, "card", card.Name, "error", err)
 		quote = service.PriceQuote{USD: storedUSD, EUR: storedEUR}
-	} else {
+	} else if !quote.Cached {
+		// A cached quote was persisted when it was fetched.
 		h.persistResolvedPrice(r, card.ID, quote)
 	}
 
@@ -64,11 +65,21 @@ func (h *Handler) persistResolvedPrice(r *http.Request, cardID string, quote ser
 	if h.DB == nil || (quote.USD <= 0 && quote.EUR <= 0) {
 		return
 	}
+	// price_checked_at records that a source verified the price; last_updated
+	// moves only when a stored value actually changes (both DECIMAL(12,2)). A
+	// native EUR clears price_eur_estimated so the worker's FX pass keeps it.
 	_, err := h.DB.ExecContext(r.Context(), `
+		WITH quote AS (SELECT ROUND($1::numeric, 2) AS usd, ROUND($2::numeric, 2) AS eur)
 		UPDATE cards
-		SET price_usd = CASE WHEN $1 > 0 THEN $1 ELSE price_usd END,
-		    price_eur = CASE WHEN $2 > 0 THEN $2 ELSE price_eur END,
-		    last_updated = NOW()
+		SET price_usd = CASE WHEN quote.usd > 0 THEN quote.usd ELSE price_usd END,
+		    price_eur = CASE WHEN quote.eur > 0 THEN quote.eur ELSE price_eur END,
+		    price_eur_estimated = CASE WHEN quote.eur > 0 THEN FALSE ELSE price_eur_estimated END,
+		    last_updated = CASE
+		        WHEN (quote.usd > 0 AND price_usd IS DISTINCT FROM quote.usd)
+		          OR (quote.eur > 0 AND price_eur IS DISTINCT FROM quote.eur)
+		        THEN NOW() ELSE last_updated END,
+		    price_checked_at = NOW()
+		FROM quote
 		WHERE id = $3`, quote.USD, quote.EUR, cardID)
 	if err != nil {
 		slog.Warn("Price lookup: failed to persist resolved price", "card_id", cardID, "error", err)

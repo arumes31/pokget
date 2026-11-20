@@ -105,6 +105,11 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "card_id is required", http.StatusBadRequest)
 		return
 	}
+	notes := r.FormValue("notes")
+	if msg := textTooLong(textField{"notes", notes, maxNotesRunes}); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
 	var cardExists bool
 	if err := h.DB.QueryRowContext(r.Context(), "SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1)", cardID).Scan(&cardExists); err != nil {
 		slog.Error("Failed to validate wantlist card", "error", err)
@@ -125,8 +130,6 @@ func (h *Handler) AddToWantlist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid target price", http.StatusBadRequest)
 		return
 	}
-
-	notes := r.FormValue("notes")
 
 	_, err = h.DB.ExecContext(r.Context(), `
 		INSERT INTO wantlist (user_id, card_id, target_price, notes)
@@ -164,9 +167,18 @@ func (h *Handler) UpdateWantlistItem(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid target price", http.StatusBadRequest)
 		return
 	}
+	notes := r.FormValue("notes")
+	if msg := textTooLong(textField{"notes", notes, maxNotesRunes}); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
 	result, err := h.DB.ExecContext(r.Context(), `
 		UPDATE wantlist SET target_price = $1, notes = $2
-		WHERE id = $3 AND user_id = $4`, targetPrice, r.FormValue("notes"), itemID, userID)
+		WHERE id = $3 AND user_id = $4`, targetPrice, notes, itemID, userID)
+	if isMissingRow(err) {
+		http.Error(w, "Wantlist item not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		slog.Error("Failed to update wantlist item", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -196,6 +208,10 @@ func (h *Handler) DeleteWantlistItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.DB.ExecContext(r.Context(), "DELETE FROM wantlist WHERE id = $1 AND user_id = $2", itemID, userID)
+	if isMissingRow(err) {
+		http.Error(w, "Wantlist item not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		slog.Error("Failed to delete wantlist item", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)

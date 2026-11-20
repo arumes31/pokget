@@ -25,7 +25,7 @@ func TestRegisterRejectsPasswordBeyondBcryptLimit(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h, mock, cleanup := setupTestHandler(t)
 			defer cleanup()
-			mock.ExpectQuery("SELECT is_verified FROM users").
+			mock.ExpectQuery("SELECT is_verified, last_email_sent_at FROM users").
 				WithArgs("new@example.com").WillReturnError(sql.ErrNoRows)
 			form := url.Values{
 				"email": {"new@example.com"}, "password": {tc.password},
@@ -56,7 +56,7 @@ func TestRegister_Success_NewUser(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	// 1. Check if user exists
-	mock.ExpectQuery("SELECT is_verified FROM users WHERE email = \\$1").
+	mock.ExpectQuery("SELECT is_verified, last_email_sent_at FROM users WHERE email = \\$1").
 		WithArgs("new@example.com").
 		WillReturnError(sql.ErrNoRows)
 
@@ -192,12 +192,15 @@ func TestConfirmEmail_Full(t *testing.T) {
 	defer cleanup()
 
 	t.Run("ProcessSuccess", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/confirm", strings.NewReader("token=valid-token"))
+		req := httptest.NewRequest("POST", "/confirm", strings.NewReader("token=valid-token&password=long-enough-pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
+		hash := fastPasswordHash(t, "long-enough-pass")
+		mock.ExpectQuery("SELECT id, password_hash FROM users").WithArgs(hashVerificationToken("valid-token")).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "password_hash"}).AddRow("u1", hash))
 		mock.ExpectExec("UPDATE users SET is_verified = TRUE").
-			WithArgs(hashVerificationToken("valid-token")).
+			WithArgs("u1", hashVerificationToken("valid-token"), hash).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.ProcessConfirmEmail(rr, req)
@@ -212,8 +215,7 @@ func TestConfirmEmail_Full(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE users SET is_verified = TRUE").
-			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectQuery("SELECT id, password_hash FROM users").WillReturnError(sql.ErrNoRows)
 
 		h.ProcessConfirmEmail(rr, req)
 
@@ -386,7 +388,7 @@ func TestRegister_CanonicalizesEmailToLowercase(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	// The query and insert must see the trimmed, lowercased form.
-	mock.ExpectQuery("SELECT is_verified FROM users WHERE email = \\$1").
+	mock.ExpectQuery("SELECT is_verified, last_email_sent_at FROM users WHERE email = \\$1").
 		WithArgs("new@example.com").
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectExec("INSERT INTO users").
@@ -607,7 +609,7 @@ func TestRegister_ConcurrentConflict(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	// Initial check reports no rows
-	mock.ExpectQuery("SELECT is_verified FROM users WHERE email = \\$1").
+	mock.ExpectQuery("SELECT is_verified, last_email_sent_at FROM users WHERE email = \\$1").
 		WithArgs("conflict@example.com").
 		WillReturnError(sql.ErrNoRows)
 
