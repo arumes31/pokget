@@ -168,12 +168,6 @@ docker build -t pokget:verification .
 bash scripts/container-smoke.sh pokget:verification
 ```
 
-The Ubuntu 24.04 CI jobs install system packages through
-`scripts/ci-apt-install.sh`. It uses only the runner's signed Ubuntu sources, so
-an unrelated Chrome repository outage cannot block Go checks. Ubuntu index or
-package failures still fail the job; signature/hash verification is not disabled.
-
-
 ---
 
 ## 🛠️ Quick Start

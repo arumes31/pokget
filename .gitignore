@@ -17,7 +17,6 @@
 /tailwind.exe
 *.exe
 *.test
-!/Dockerfile.test
 *.out
 
 # Dependencies and generated frontend output
