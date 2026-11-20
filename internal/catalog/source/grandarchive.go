@@ -194,6 +194,9 @@ func (p *GATCGProvider) Fetch(ctx context.Context, request catalog.FetchRequest,
 		}
 
 		if !response.HasMore || (response.TotalPages > 0 && page >= response.TotalPages) || len(response.Data) == 0 {
+			if len(response.Data) == 0 && response.HasMore {
+				result.CompleteSnapshot = false // empty page while the API announces more
+			}
 			break
 		}
 		page++

@@ -626,6 +626,30 @@ func TestPagedProvidersWithoutPageCountArePartial(t *testing.T) {
 	}
 }
 
+// A paginated API that stops returning cards before its own total was reached
+// ends the loop early; that run must be partial, not a complete snapshot.
+func TestPaginatedProvidersStoppingEarlyArePartial(t *testing.T) {
+	godzilla := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"page":1,"per_page":100,"total":250,"items":[{"card_number":"ESC01-002","card_name":"Godzilla"}]}`))
+	}))
+	defer godzilla.Close()
+	if _, result := fetchRecords(t, &GodzillaProvider{HTTP: testHTTP(godzilla), BaseURL: godzilla.URL}); result.CompleteSnapshot {
+		t.Fatalf("godzilla short page below total: %+v", result)
+	}
+
+	gatcg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") == "1" {
+			_, _ = w.Write([]byte(`{"page":1,"total_pages":3,"has_more":true,"data":[{"uuid":"ga-c1","name":"Card","editions":[{"uuid":"ed-1","collector_number":"001","set":{"prefix":"DOA","name":"Dawn of Ashes","language":"EN"}}]}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"page":2,"total_pages":3,"has_more":true,"data":[]}`))
+	}))
+	defer gatcg.Close()
+	if _, result := fetchRecords(t, &GATCGProvider{HTTP: testHTTP(gatcg), BaseURL: gatcg.URL}); result.CompleteSnapshot {
+		t.Fatalf("grand archive empty page with more pages announced: %+v", result)
+	}
+}
+
 // Altered: a set missing in a translation (404) is skipped, any other failure
 // or missing set metadata makes the snapshot partial instead of complete.
 func TestAlteredSetErrorsMakeSnapshotPartial(t *testing.T) {
