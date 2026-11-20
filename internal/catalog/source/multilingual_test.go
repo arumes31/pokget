@@ -63,6 +63,41 @@ func TestTCGdexMultilingualFailureDoesNotCompleteSnapshot(t *testing.T) {
 	}
 }
 
+// A set that fails in one language makes that language partial. The later
+// languages must still sync, and the source snapshot must not count as complete.
+func TestTCGdexMultilingualPartialLanguageContinues(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		language := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/sets"):
+			_, _ = fmt.Fprint(w, `[{"id":"base"}]`)
+		case language == "de":
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		case language == "ko":
+			// An empty language proves nothing about its cards.
+			_, _ = fmt.Fprint(w, `{"id":"base","name":"Base","cards":[]}`)
+		default:
+			_, _ = fmt.Fprint(w, `{"id":"base","name":"Base","cards":[{"id":"base-1","localId":"1","name":"Example"}]}`)
+		}
+	}))
+	defer server.Close()
+	p := &TCGdexProvider{HTTP: testHTTP(server), BaseURL: server.URL, Language: "en,de,fr,ko"}
+	var languages []string
+	result, err := p.Fetch(context.Background(), catalog.FetchRequest{Mode: catalog.SyncModeFull}, func(r catalog.CardRecord) error {
+		languages = append(languages, r.Language)
+		return nil
+	})
+	if err != nil || result.CompleteSnapshot || result.Count != 2 || strings.Join(languages, ",") != "en,fr" {
+		t.Fatalf("result=%+v languages=%v err=%v", result, languages, err)
+	}
+
+	p.Language = "en,ko"
+	result, err = p.Fetch(context.Background(), catalog.FetchRequest{Mode: catalog.SyncModeFull}, func(catalog.CardRecord) error { return nil })
+	if err != nil || result.CompleteSnapshot || result.Count != 1 {
+		t.Fatalf("an empty language must leave the snapshot partial: result=%+v err=%v", result, err)
+	}
+}
+
 func TestLorcanaMultilingualSnapshotUsesPublishedLanguages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		language := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]
