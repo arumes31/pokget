@@ -1412,3 +1412,103 @@ func TestClaudeUniqueNamePromotionAllowedOnNormalRow(t *testing.T) {
 		t.Error("a specific read on a Normal catalog row must still be promoted")
 	}
 }
+
+func setTotalCards(extra ...models.Card) []models.Card {
+	cards := []models.Card{
+		{ID: "swsh10-005", Name: "Insécateur", CollectorNumber: "005", Set: "Astres Radieux", SetCode: "swsh10", Language: "fr", Game: "pokemon", SetTotal: 189},
+		{ID: "sm115-5", Name: "Insécateur", CollectorNumber: "5", Set: "Destinées Occultes", SetCode: "sm115", Language: "fr", Game: "pokemon", SetTotal: 68},
+	}
+	return append(cards, extra...)
+}
+
+func setTotalInfo() *claudedetect.DetectedCardInfo {
+	// The model names the set in English while the catalog stores the French
+	// name, so only the printed fraction can tell the two printings apart.
+	return &claudedetect.DetectedCardInfo{
+		Game:            "pokemon",
+		Name:            "Insécateur",
+		CollectorNumber: "005/189",
+		Set:             "Astral Radiance",
+		Language:        "fr",
+		Confidence:      0.95,
+	}
+}
+
+func TestClaudeDetection_PrintedSetTotalResolvesCrossSetTie(t *testing.T) {
+	matches := matchCardsWithClaude(setTotalInfo(), setTotalCards())
+	if len(matches) < 2 {
+		t.Fatalf("expected both printings, got %d", len(matches))
+	}
+	if matches[0].Card.ID != "swsh10-005" {
+		t.Fatalf("only Astres Radieux can print 005/189, got %q", matches[0].Card.ID)
+	}
+	if matches[0].NeedsReview || matches[0].Confidence != 99.0 {
+		t.Fatalf("printed total decides the set: review=%v confidence=%f", matches[0].NeedsReview, matches[0].Confidence)
+	}
+}
+
+func TestClaudeDetection_PrintedSetTotalUnknownSetStaysInReview(t *testing.T) {
+	// A product without a published size is unknown even when its catalog rows
+	// stop below the total: the missing rows could be the higher numbers.
+	cards := []models.Card{
+		{ID: "swsh10-005", Name: "Insécateur", CollectorNumber: "005", Set: "Astres Radieux", SetCode: "swsh10", Language: "fr", Game: "pokemon", SetTotal: 189},
+		{ID: "partial-5", Name: "Insécateur", CollectorNumber: "005", Set: "Partial", SetCode: "partial", Language: "fr", Game: "pokemon"},
+	}
+	matches := matchCardsWithClaude(setTotalInfo(), cards)
+	if len(matches) < 2 || !matches[0].NeedsReview {
+		t.Fatalf("an undecidable set total must keep the tie in review: %+v", matches)
+	}
+}
+
+func TestClaudeDetection_PrintedSetTotalBothConsistentStaysInReview(t *testing.T) {
+	cards := []models.Card{
+		{ID: "swsh10-005", Name: "Insécateur", CollectorNumber: "005", Set: "Astres Radieux", SetCode: "swsh10", Language: "fr", Game: "pokemon", SetTotal: 189},
+		{ID: "other-005", Name: "Insécateur", CollectorNumber: "005", Set: "Autre", SetCode: "other", Language: "fr", Game: "pokemon", SetTotal: 189},
+	}
+	matches := matchCardsWithClaude(setTotalInfo(), cards)
+	if len(matches) < 2 || !matches[0].NeedsReview {
+		t.Fatalf("two sets that can both print 005/189 must stay in review: %+v", matches)
+	}
+}
+
+func TestClaudeDetection_OfficialSetTotalSeparatesSetsThatShareTheNumber(t *testing.T) {
+	// Both Italian sets contain a #142, so only the published official size
+	// tells which one prints 046/142 (Stellar Crown 142, Brilliant Stars 172).
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "pokemon",
+		Name:            "Electabuzz",
+		CollectorNumber: "046/142",
+		Set:             "Stellar Crown",
+		Language:        "it",
+		Confidence:      0.95,
+	}
+	cards := []models.Card{
+		{ID: "sv07-046", Name: "Electabuzz", CollectorNumber: "046", Set: "Corona Astrale", SetCode: "sv07", Language: "it", Game: "pokemon", SetTotal: 142},
+		{ID: "sv07-142", Name: "Terapagos", CollectorNumber: "142", Set: "Corona Astrale", SetCode: "sv07", Language: "it", Game: "pokemon", SetTotal: 142},
+		{ID: "swsh9-046", Name: "Electabuzz", CollectorNumber: "046", Set: "Astri Lucenti", SetCode: "swsh9", Language: "it", Game: "pokemon", SetTotal: 172},
+		{ID: "swsh9-142", Name: "Bibarel", CollectorNumber: "142", Set: "Astri Lucenti", SetCode: "swsh9", Language: "it", Game: "pokemon", SetTotal: 172},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) < 2 || matches[0].Card.ID != "sv07-046" || matches[0].NeedsReview {
+		t.Fatalf("official size 142 identifies Stellar Crown: %+v", matches[0])
+	}
+}
+
+func TestClaudeDetection_OfficialSetTotalRejectsPromoTie(t *testing.T) {
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "pokemon",
+		Name:            "Metang",
+		CollectorNumber: "090/159",
+		Set:             "Crown Zenith",
+		Language:        "es",
+		Confidence:      0.95,
+	}
+	cards := []models.Card{
+		{ID: "svp-090", Name: "Metang", CollectorNumber: "090", Set: "SVP Black Star Promos", SetCode: "svp", Language: "es", Game: "pokemon", SetTotal: 225},
+		{ID: "swsh12.5-090", Name: "Metang", CollectorNumber: "090", Set: "Cenit Supremo", SetCode: "swsh12.5", Language: "es", Game: "pokemon", SetTotal: 159},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) < 2 || matches[0].Card.ID != "swsh12.5-090" || matches[0].NeedsReview {
+		t.Fatalf("a promo set cannot print 090/159: %+v", matches[0])
+	}
+}

@@ -50,6 +50,10 @@ type Card struct {
 	SourceCardID  string `json:"-"`
 	CatalogActive *bool  `json:"catalog_active,omitempty"`
 	Phash         *int64 `json:"phash"` // Perceptual hash for visual matching
+	// SetTotal is the official set size printed after the slash ("005/189"),
+	// or 0 when the source does not publish it. It separates same-name,
+	// same-number printings from different sets.
+	SetTotal int `json:"-"`
 }
 
 // IsCatalogActive treats missing activity metadata as active for compatibility

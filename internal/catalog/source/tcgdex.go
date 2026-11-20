@@ -28,8 +28,31 @@ type tcgdexSet struct {
 	ID          string       `json:"id"`
 	Name        string       `json:"name"`
 	ReleaseDate string       `json:"releaseDate"`
-	Cards       []tcgdexCard `json:"cards"`
+	Serie       tcgdexSerie  `json:"serie"`
+	CardCount   struct {
+		Official int `json:"official"`
+	} `json:"cardCount"`
+	Cards []tcgdexCard `json:"cards"`
 }
+
+// tcgdexCardMetadata keeps the upstream card brief and adds the official set
+// size, which Pokémon cards print after the slash ("005/189"). The scanner
+// uses it to tell same-name, same-number printings of different sets apart.
+type tcgdexCardMetadata struct {
+	tcgdexCard
+	SetTotal int `json:"set_total,omitempty"`
+}
+
+type tcgdexSerie struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// tcgdexDigitalSeries lists TCGdex series that exist only in a video game.
+// Pokémon TCG Pocket cards cannot be photographed or traded as physical cards,
+// so they would only compete with real printings of the same name in scans
+// (Pocket "Gloom" A1 012 vs a physical Gloom) and never carry market prices.
+var tcgdexDigitalSeries = map[string]bool{"tcgp": true}
 
 type tcgdexCard struct {
 	ID      string `json:"id"`
@@ -83,6 +106,9 @@ func (p *TCGdexProvider) Fetch(ctx context.Context, request catalog.FetchRequest
 			slog.Warn("Catalog: skipping tcgdex set due to fetch error", "set", brief.ID, "language", language, "endpoint", endpoint, "error", err)
 			continue
 		}
+		if tcgdexDigitalSeries[strings.ToLower(set.Serie.ID)] {
+			continue
+		}
 		for _, card := range set.Cards {
 			record := catalog.CardRecord{
 				SourceCardID:    card.ID,
@@ -92,7 +118,7 @@ func (p *TCGdexProvider) Fetch(ctx context.Context, request catalog.FetchRequest
 				CollectorNumber: card.LocalID,
 				Language:        language,
 				ReleasedAt:      parseDate(set.ReleaseDate),
-				Metadata:        rawMetadata(card),
+				Metadata:        rawMetadata(tcgdexCardMetadata{tcgdexCard: card, SetTotal: set.CardCount.Official}),
 			}
 			if card.Image != "" {
 				record.Images = []catalog.ImageRecord{{SourceImageID: card.ID + ":front", Kind: "front", URL: card.Image + "/high.webp"}}

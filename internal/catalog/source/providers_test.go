@@ -547,3 +547,31 @@ func TestSorceryProvider(t *testing.T) {
 		t.Fatalf("unexpected count: %d", result.Count)
 	}
 }
+
+func TestTCGdexProviderSkipsDigitalOnlySeries(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/en/sets":
+			_, _ = w.Write([]byte(`[{"id":"A1","name":"Genetic Apex"},{"id":"swsh10","name":"Astral Radiance"}]`))
+		case "/en/sets/A1":
+			_, _ = w.Write([]byte(`{"id":"A1","name":"Genetic Apex","serie":{"id":"tcgp","name":"Pokémon TCG Pocket"},"cards":[{"id":"A1-012","localId":"012","name":"Gloom"}]}`))
+		case "/en/sets/swsh10":
+			_, _ = w.Write([]byte(`{"id":"swsh10","name":"Astral Radiance","serie":{"id":"swsh","name":"Sword & Shield"},"cardCount":{"official":189,"total":216},"cards":[{"id":"swsh10-005","localId":"005","name":"Scyther"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := &TCGdexProvider{HTTP: testHTTP(server), BaseURL: server.URL, Language: "en"}
+	records, result := fetchRecords(t, provider)
+	if result.Count != 1 || len(records) != 1 || records[0].SourceCardID != "swsh10-005" {
+		t.Fatalf("Pocket cards must not enter the physical catalog: count=%d records=%+v", result.Count, records)
+	}
+	if !result.CompleteSnapshot {
+		t.Fatal("skipping a digital set is deliberate, the snapshot stays complete so old Pocket rows retire")
+	}
+	if !strings.Contains(string(records[0].Metadata), `"set_total":189`) {
+		t.Fatalf("the official set size must reach the card metadata: %s", records[0].Metadata)
+	}
+}
