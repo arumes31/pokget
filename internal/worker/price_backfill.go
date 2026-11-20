@@ -196,7 +196,9 @@ func (w *DataSyncWorker) storeBackfillPrice(ctx context.Context, cardID string, 
 	return true, tx.Commit()
 }
 
-// fetchCardPriceFrom walks a provider chain until one of them knows the card.
+// fetchCardPriceFrom walks a provider chain until one of them knows the card. It
+// reports errNoBackfillPrice only when every provider answered "no price"; any
+// transport or provider error wins so the card is retried.
 func fetchCardPriceFrom(ctx context.Context, clients []service.PriceClient, card models.Card) (float64, float64, error) {
 	var lastErr error
 	for _, client := range clients {
@@ -213,7 +215,9 @@ func fetchCardPriceFrom(ctx context.Context, clients []service.PriceClient, card
 			usd, eur, err = client.FetchPrice(card)
 		}
 		if err != nil {
-			lastErr = err
+			if !errors.Is(err, service.ErrNoPrice) {
+				lastErr = err
+			}
 			continue
 		}
 		if usd > 0 || eur > 0 {

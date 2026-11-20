@@ -2,7 +2,8 @@ package worker
 
 import (
 	"context"
-	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
@@ -89,27 +90,53 @@ func TestBackfillPricesRecordsMisses(t *testing.T) {
 }
 
 // A provider or transport error is not a verification: the card keeps its stamp so
-// the next cycle retries it instead of moving it to the back of the queue.
+// the next cycle retries it instead of moving it to the back of the queue. A real
+// "no price" answer of the TCGdex client (404, empty pricing) is one and rotates it.
 func TestBackfillPricesKeepsStampOnProviderError(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name      string
+		status    int
+		body      string
+		wantStamp bool
+	}{
+		{name: "server error", status: http.StatusInternalServerError, body: `broken`},
+		{name: "unknown card", status: http.StatusNotFound, body: `{"error":"not found"}`, wantStamp: true},
+		{name: "no pricing", status: http.StatusOK, body: `{"pricing":{}}`, wantStamp: true},
 	}
-	defer func() { _ = db.Close() }()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.WriteHeader(tc.status)
+				_, _ = writer.Write([]byte(tc.body))
+			}))
+			defer server.Close()
 
-	rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
-		AddRow("card-3", "Retry", "Set", "pokemon", "en", "tcgdex", "SV3-1", "SV3", "1")
-	mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
 
-	worker := &DataSyncWorker{
-		db:            db,
-		priceClients:  map[string][]service.PriceClient{"pokemon": {&stubPriceClient{err: errors.New("timeout")}}},
-		backfillBatch: 50,
-	}
-	worker.backfillPrices(context.Background())
+			rows := sqlmock.NewRows([]string{"id", "name", "set_name", "game", "language", "source_id", "source_card_id", "set_code", "collector_number"}).
+				AddRow("card-3", "Retry", "Set", "pokemon", "en", "tcgdex", "SV3-1", "SV3", "1")
+			mock.ExpectQuery("SELECT id, name, set_name").WithArgs(50).WillReturnRows(rows)
+			if tc.wantStamp {
+				mock.ExpectExec("UPDATE cards SET price_checked_at = NOW\\(\\)").WithArgs("card-3").
+					WillReturnResult(sqlmock.NewResult(0, 1))
+			}
 
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("unmet expectations (no stamp must be written): %v", err)
+			client := &service.TCGdexPriceClient{BaseURL: server.URL, HTTP: server.Client()}
+			worker := &DataSyncWorker{
+				db:            db,
+				priceClients:  map[string][]service.PriceClient{"pokemon": {client}},
+				backfillBatch: 50,
+			}
+			worker.backfillPrices(context.Background())
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("unmet expectations: %v", err)
+			}
+		})
 	}
 }
 
