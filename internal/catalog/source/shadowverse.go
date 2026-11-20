@@ -47,6 +47,8 @@ func (p *ShadowverseEvolveProvider) Fetch(ctx context.Context, request catalog.F
 	pageCount := 1
 	if match := svMaxPagePattern.FindStringSubmatch(html); len(match) == 2 {
 		pageCount, _ = strconv.Atoi(match[1])
+	} else {
+		result.CompleteSnapshot = false // unknown catalog size: the first page proves nothing
 	}
 	if pageCount < 1 {
 		return result, fmt.Errorf("shadowverse: invalid page count")

@@ -36,8 +36,11 @@ func TestPostgresRepositoryBeginRun(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_source_state")).
-		WithArgs("tcgdex").
+		WithArgs("tcgdex", leaseSeconds).
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_sync_runs")).
+		WithArgs("tcgdex").
+		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO catalog_sync_runs")).
 		WithArgs("tcgdex", SyncModeFull).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(testRunID))
@@ -71,13 +74,50 @@ func TestPostgresRepositoryBeginRun_SourceNotFound(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_source_state")).
-		WithArgs("missing").
+		WithArgs("missing", leaseSeconds).
 		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS")).
+		WithArgs("missing").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	mock.ExpectRollback()
 
 	_, err = repository.BeginRun(context.Background(), "missing", SyncModeFull)
 	if !errors.Is(err, ErrSourceNotFound) {
 		t.Fatalf("BeginRun() error = %v, want ErrSourceNotFound", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A source leased by another process (app worker vs catalog CLI) is busy: no
+// run is created and nothing counts as a failure.
+func TestPostgresRepositoryBeginRun_SourceBusy(t *testing.T) {
+	t.Parallel()
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	repository, err := NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_source_state")).
+		WithArgs("tcgdex", leaseSeconds).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS")).
+		WithArgs("tcgdex").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectRollback()
+
+	_, err = repository.BeginRun(context.Background(), "tcgdex", SyncModeFull)
+	if !errors.Is(err, ErrSourceBusy) {
+		t.Fatalf("BeginRun() error = %v, want ErrSourceBusy", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -115,10 +155,7 @@ func TestPostgresRepositoryUpsertBatch(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"inserted"}).AddRow(true))
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO card_images")).
 		WithArgs(cardID, "46986414", "front", "https://images.example/46986414.jpg").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "inserted"}).AddRow(42, true))
-	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM card_fingerprints")).
-		WithArgs(int64(42)).
-		WillReturnResult(sqlmock.NewResult(0, 0))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "inserted", "reset"}).AddRow(42, true, true))
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO catalog_printings")).
 		WillReturnRows(sqlmock.NewRows([]string{"inserted"}).AddRow(true))
 	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM catalog_printing_images")).
@@ -166,6 +203,57 @@ func TestPostgresRepositoryUpsertBatch(t *testing.T) {
 	}
 	if counts.CardsInserted != 1 || counts.ImagesInserted != 1 || counts.PrintingsInserted != 1 {
 		t.Fatalf("UpsertBatch() counts = %+v", counts)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Fingerprints are cleared only for an existing image the upsert reset to
+// pending (its URL changed); an unchanged, fingerprinted image costs no DELETE.
+func TestPostgresRepositoryUpsertBatch_ClearsFingerprintsOnlyForResetImages(t *testing.T) {
+	t.Parallel()
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	repository, err := NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT run.source_id, source.game")).
+		WithArgs(testRunID).
+		WillReturnRows(sqlmock.NewRows([]string{"source_id", "game"}).AddRow("ygoprodeck", "yugioh"))
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO cards")).
+		WillReturnRows(sqlmock.NewRows([]string{"inserted"}).AddRow(false))
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO card_images")).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "inserted", "reset"}).AddRow(1, false, false))
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO card_images")).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "inserted", "reset"}).AddRow(2, false, true))
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM card_fingerprints")).
+		WithArgs(int64(2)).
+		WillReturnResult(sqlmock.NewResult(0, 3))
+	mock.ExpectCommit()
+
+	_, err = repository.UpsertBatch(context.Background(), Batch{
+		RunID:    testRunID,
+		SourceID: "ygoprodeck",
+		Game:     GameYuGiOh,
+		Records: []CardRecord{{
+			SourceCardID: "46986414", Name: "Dark Magician", SetName: "LOB", Language: "en",
+			Images: []ImageRecord{
+				{SourceImageID: "same", URL: "https://images.example/same.jpg"},
+				{SourceImageID: "moved", URL: "https://images.example/new.jpg"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("UpsertBatch() error = %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -278,9 +366,7 @@ func TestPostgresRepositoryCompleteRun_DeactivatesOnlyCompleteFullSnapshot(t *te
 	}
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT source_id, mode")).
-		WithArgs(testRunID).
-		WillReturnRows(sqlmock.NewRows([]string{"source_id", "mode"}).AddRow("tcgdex", "full"))
+	expectLockSourceAndRun(mock, "full", 12)
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE cards")).
 		WithArgs("tcgdex", testRunID).
 		WillReturnResult(sqlmock.NewResult(0, 2))
@@ -302,6 +388,90 @@ func TestPostgresRepositoryCompleteRun_DeactivatesOnlyCompleteFullSnapshot(t *te
 		t.Fatalf("CompleteRun() error = %v", err)
 	}
 	if counts.CardsDeactivated != 2 || counts.PrintingsDeactivated != 3 {
+		t.Fatalf("CompleteRun() counts = %+v", counts)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// expectLockSourceAndRun expects the source state row to be locked before the
+// run row, the order BeginRun uses; the reverse order could deadlock a takeover
+// against a completion.
+func expectLockSourceAndRun(mock sqlmock.Sqlmock, mode string, previous int64) {
+	mock.ExpectQuery(regexp.QuoteMeta("FROM catalog_source_state")).
+		WithArgs(testRunID).
+		WillReturnRows(sqlmock.NewRows([]string{"source_id", "last_record_count"}).AddRow("tcgdex", previous))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT source_id, mode")).
+		WithArgs(testRunID).
+		WillReturnRows(sqlmock.NewRows([]string{"source_id", "mode"}).AddRow("tcgdex", mode))
+}
+
+func TestPostgresRepositoryFailRun_LocksSourceBeforeRun(t *testing.T) {
+	t.Parallel()
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	repository, err := NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mock.ExpectBegin()
+	expectLockSourceAndRun(mock, "incremental", 0)
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_sync_runs")).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_source_state")).
+		WithArgs("tcgdex", "boom", testRunID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	if err := repository.FailRun(context.Background(), testRunID, errors.New("boom")); err != nil {
+		t.Fatalf("FailRun() error = %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A full snapshot that lost more than half of the previous complete count is
+// not trusted: nothing is deactivated and the run is recorded as partial.
+func TestPostgresRepositoryCompleteRun_ShrunkSnapshotSkipsDeactivation(t *testing.T) {
+	t.Parallel()
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	repository, err := NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mock.ExpectBegin()
+	expectLockSourceAndRun(mock, "full", 100)
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_sync_runs")).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE catalog_source_state")).
+		WithArgs("tcgdex", "", "", "", "", SyncModeFull, false, int64(40), false, testRunID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	counts, err := repository.CompleteRun(
+		context.Background(),
+		testRunID,
+		Completion{Fetch: FetchResult{CompleteSnapshot: true, Count: 40}},
+	)
+	if err != nil {
+		t.Fatalf("CompleteRun() error = %v", err)
+	}
+	if counts.CardsDeactivated != 0 || counts.PrintingsDeactivated != 0 {
 		t.Fatalf("CompleteRun() counts = %+v", counts)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {

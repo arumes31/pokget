@@ -4,11 +4,45 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 )
 
 type Syncer struct {
 	Repository Repository
 	BatchSize  int
+}
+
+// leaseRenewer is implemented by repositories that lease a source per run.
+type leaseRenewer interface {
+	RenewLease(ctx context.Context, runID string) error
+}
+
+const failRunTimeout = 10 * time.Second
+
+// leaseRenewInterval is a variable so tests can renew quickly.
+var leaseRenewInterval = RunLeaseTTL / 5
+
+// renewLease keeps the run's lease alive until ctx ends. A lost lease cancels
+// the run; a transient error is retried on the next tick while the lease lasts.
+func renewLease(ctx context.Context, renewer leaseRenewer, runID string, interval time.Duration, stop context.CancelCauseFunc) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			err := renewer.RenewLease(ctx, runID)
+			switch {
+			case errors.Is(err, ErrLeaseLost):
+				stop(err)
+				return
+			case err != nil && ctx.Err() == nil:
+				slog.Warn("Catalog: renewing sync lease failed", "run", runID, "error", err)
+			}
+		}
+	}
 }
 
 func (s *Syncer) Sync(ctx context.Context, provider Provider, mode SyncMode, request FetchRequest) (Completion, error) {
@@ -31,12 +65,32 @@ func (s *Syncer) Sync(ctx context.Context, provider Provider, mode SyncMode, req
 	if err != nil {
 		return completion, err
 	}
+	parentCtx := ctx
+	ctx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
+	if renewer, ok := s.Repository.(leaseRenewer); ok {
+		go renewLease(ctx, renewer, runID, leaseRenewInterval, stop)
+	}
 	fail := func(cause error) (Completion, error) {
-		if failErr := s.Repository.FailRun(context.WithoutCancel(ctx), runID, cause); failErr != nil {
+		if lost := context.Cause(ctx); errors.Is(lost, ErrLeaseLost) && !errors.Is(cause, ErrLeaseLost) {
+			cause = errors.Join(cause, lost)
+		}
+		// A fresh, short context: on shutdown the run must still release its
+		// lease, but must not hold up the exit.
+		failCtx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), failRunTimeout)
+		defer cancel()
+		if failErr := s.Repository.FailRun(failCtx, runID, cause); failErr != nil {
 			return completion, errors.Join(cause, failErr)
 		}
 		return completion, cause
 	}
+	// A panicking provider must not leave the run open and the source leased.
+	defer func() {
+		if r := recover(); r != nil {
+			_, _ = fail(fmt.Errorf("catalog: source %q panicked: %v", provider.ID(), r))
+			panic(r)
+		}
+	}()
 
 	request.Mode = mode
 	records := make([]CardRecord, 0, batchSize)

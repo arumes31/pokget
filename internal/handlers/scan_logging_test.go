@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"pokget/internal/models"
 )
 
 func TestScanUploadErrorLogsIncludeRequestContext(t *testing.T) {
@@ -32,6 +34,12 @@ func TestScanUploadErrorLogsIncludeRequestContext(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if err := form.WriteField("game", "pokemon"); err != nil {
+				t.Fatal(err)
+			}
+			if err := form.WriteField("lang", "en"); err != nil {
+				t.Fatal(err)
+			}
 			if err := form.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -39,7 +47,7 @@ func TestScanUploadErrorLogsIncludeRequestContext(t *testing.T) {
 			request.Header.Set("Content-Type", form.FormDataContentType())
 			request.Header.Set("X-Scan-ID", "scan-upload-error-1234")
 			response := httptest.NewRecorder()
-			new(Handler).APIScan(response, request)
+			(&Handler{MockCards: []models.Card{{ID: "card-1", Game: "pokemon"}}}).APIScan(response, request)
 			if response.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d", response.Code)
 			}

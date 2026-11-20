@@ -21,7 +21,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"image"
 	"math"
@@ -71,7 +70,7 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 
 	// The full card plus magnified title and bottom-information strips. The strips
 	// are what make kana (ピ vs ビ) and collector numbers reliable.
-	images, err := claudeImageVariants(ctx, request.Image)
+	images, prepared, err := claudePreparedImageVariants(ctx, request.Image)
 	if err != nil {
 		finish(err)
 		result.Metrics.Stages = append(result.Metrics.Stages, DetectionStageMetrics{
@@ -115,7 +114,7 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 	// Match extracted card details against candidate catalog
 	matches := matchCardsWithClaude(info, request.Cards)
 	result.TopMatches = matches
-	p.applyFingerprintTieBreak(result, request.Cards, request.Image, normalizeCollectorNum(info.CollectorNumber) != "")
+	p.applyFingerprintTieBreak(result, request.Cards, prepared, normalizeCollectorNum(info.CollectorNumber) != "")
 	result.Metrics.TotalTime = time.Since(totalStart)
 
 	// A hint can be wrong. Do not silently answer in the selected language/game:
@@ -164,8 +163,8 @@ func (p *DetectionPipeline) detectClaude(ctx context.Context, request DetectionR
 // review choice instead of a silent guess. When the detector read no collector
 // number, every printing of that name competes on artwork, which is the only
 // evidence left for cards printed without a number.
-func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, cards []models.Card, imageBytes []byte, collectorKnown bool) {
-	if p == nil || p.Fingerprint == nil || result == nil || len(result.TopMatches) == 0 {
+func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, cards []models.Card, prepared image.Image, collectorKnown bool) {
+	if p == nil || p.Fingerprint == nil || result == nil || len(result.TopMatches) == 0 || prepared == nil {
 		return
 	}
 	top := result.TopMatches[0]
@@ -191,11 +190,7 @@ func (p *DetectionPipeline) applyFingerprintTieBreak(result *DetectionResult, ca
 	if len(group) == 0 {
 		return
 	}
-	decoded, _, err := image.Decode(bytes.NewReader(imageBytes))
-	if err != nil {
-		return
-	}
-	hash, err := p.Fingerprint.CalculateHash(decoded)
+	hash, err := p.Fingerprint.CalculateHash(prepared)
 	if err != nil {
 		return
 	}
@@ -434,8 +429,13 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 	claudeSet := normalizeMatchText(info.Set)
 	claudeSetCode := normalizeMatchText(info.SetCode)
 	claudeVariant := normalizeMatchText(info.Variant)
+	// Only a printed fraction consults the official set sizes.
+	var setTotals *setTotalIndex
+	if _, ok := printedSetTotal(claudeCollector); ok {
+		setTotals = newSetTotalIndex()
+	}
 
-	for _, card := range cards {
+	for cardIndex, card := range cards {
 		if !card.IsCatalogActive() {
 			continue
 		}
@@ -446,6 +446,9 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		cardCollectorCanonical := collectorCanonicalKey(card.CollectorNumber)
 		cardSet := normalizeMatchText(card.Set)
 		cardSetCode := normalizeMatchText(card.SetCode)
+		if setTotals != nil {
+			setTotals.add(cardIndex, cardSetCode, cardSet, card.SetTotal)
+		}
 		variantMatched, variantConflict := variantEvidence(claudeVariant, normalizeMatchText(card.Variant))
 
 		// Name matching (check primary and localized names). Whitespace is not
@@ -508,7 +511,14 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 				num2 := collectorNumberKey(parts2[0])
 				den1 := collectorNumberKey(parts1[1])
 				den2 := collectorNumberKey(parts2[1])
-				if num1 != "" && num1 == num2 && den1 != "" && den1 == den2 {
+				// A lettered numerator ("026a/221") has no numeric key, so an
+				// identical printed fraction must still count as a match, and
+				// so must one that differs only in leading zeros ("26a").
+				if num1 == "" {
+					num1, num2 = collectorLetteredKey(parts1[0]), collectorLetteredKey(parts2[0])
+				}
+				if (num1 != "" && num1 == num2 && den1 != "" && den1 == den2) || claudeCollector == cardCollector ||
+					(claudeCollectorCanonical != "" && claudeCollectorCanonical == cardCollectorCanonical) {
 					collectorMatched = true
 				} else if num1 != "" && num1 == num2 {
 					// Numerator matches but different denominator -> different printing/set!
@@ -727,7 +737,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			}
 		}
 		if len(tied) > 1 {
-			if winner, decided := setTotalWinner(cards, tied, setTotal); decided {
+			if winner, decided := setTotalWinner(setTotals, tied, setTotal); decided {
 				for index := range candidates {
 					candidate := &candidates[index]
 					if candidate.confidence == topScore && candidate.collectorExact && sameProduct(candidate.card, winner) {
@@ -786,6 +796,7 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 		topName := compactMatchText(normalizeMatchText(top.card.Name))
 		topCollector := collectorCanonicalKey(top.card.CollectorNumber)
 		printedTotal, totalRead := printedSetTotal(claudeCollector)
+		topTotalConsistent := totalRead && setTotals.evidence(top.card, printedTotal) == setTotalConsistent
 		for index := 1; index < len(candidates); index++ {
 			other := &candidates[index]
 			otherFull := collectorCanonicalKey(other.card.CollectorNumber)
@@ -805,9 +816,8 @@ func matchCardsWithClaude(info *claudedetect.DetectedCardInfo, cards []models.Ca
 			// total that only the top row's set can print rules that row out:
 			// "006/073" is Champion's Path, never Platinum's SH6 (set of 127),
 			// and Marill #068 of a 191-card set is not the 068/128 Azumarill.
-			if totalRead && !sameProduct(other.card, top.card) &&
-				setTotalEvidence(cards, top.card, printedTotal) == setTotalConsistent &&
-				setTotalEvidence(cards, other.card, printedTotal) == setTotalInconsistent {
+			if topTotalConsistent && !sameProduct(other.card, top.card) &&
+				setTotals.evidence(other.card, printedTotal) == setTotalInconsistent {
 				continue
 			}
 			// A reprint whose catalog number wraps the same digits in letters
@@ -1068,6 +1078,17 @@ func collectorCanonicalKey(value string) string {
 // suffix Magic uses for alternate printings (`254p`, `254s`). It still keeps the
 // numeric identity of the card, so a scan that reads only "254" can match it as
 // partial evidence instead of finding no candidate at all.
+// collectorLetteredKey normalizes a lettered number without losing the letter:
+// "026a" and "26a" share "26a", while "26b" stays a different printing. Plain
+// numbers return "" because collectorNumberKey already handles them.
+func collectorLetteredKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if collectorNumberKey(value) != "" || !collectorVariantSuffixPattern.MatchString(value) {
+		return ""
+	}
+	return collectorBaseKey(value) + value[len(value)-1:]
+}
+
 func collectorBaseKey(value string) string {
 	if key := collectorNumberKey(value); key != "" {
 		return key

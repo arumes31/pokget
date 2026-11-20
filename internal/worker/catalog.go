@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -24,11 +25,7 @@ type SourceWorker struct {
 	repo     CatalogStateRepository
 	interval time.Duration
 
-	mu          sync.Mutex
-	running     bool
-	pending     bool
-	pendingMode catalog.SyncMode
-	queue       chan struct{}
+	mu sync.Mutex
 
 	onChanged func()
 
@@ -53,52 +50,11 @@ func NewSourceWorker(
 		syncer:    syncer,
 		repo:      repo,
 		interval:  interval,
-		queue:     make(chan struct{}, 1),
 		onChanged: onChanged,
 	}
 }
 
-// Provider returns the underlying catalog provider for this worker.
-func (w *SourceWorker) Provider() catalog.Provider {
-	return w.provider
-}
-
-// IsRunning reports whether this TCG worker is currently actively syncing.
-func (w *SourceWorker) IsRunning() bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.running
-}
-
-// Enqueue requests a synchronization run for this specific TCG.
-// If the worker is currently syncing, the request is coalesced into a pending run.
-// If mode is SyncModeFull, it upgrades any pending incremental sync.
-func (w *SourceWorker) Enqueue(mode catalog.SyncMode) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if mode == "" {
-		mode = catalog.SyncModeIncremental
-	}
-
-	if w.pending {
-		if mode == catalog.SyncModeFull {
-			w.pendingMode = catalog.SyncModeFull
-		}
-		return false
-	}
-
-	w.pending = true
-	w.pendingMode = mode
-
-	select {
-	case w.queue <- struct{}{}:
-	default:
-	}
-	return true
-}
-
-// Run executes the dedicated worker loop for this TCG source until ctx is cancelled.
+// Run syncs this TCG source on startup and then every interval until ctx is cancelled.
 func (w *SourceWorker) Run(ctx context.Context, initialJitter time.Duration) {
 	if initialJitter > 0 {
 		select {
@@ -111,41 +67,25 @@ func (w *SourceWorker) Run(ctx context.Context, initialJitter time.Duration) {
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
-	// Enqueue initial sync on startup
-	w.Enqueue(catalog.SyncModeIncremental)
-
 	for {
+		next := ticker.C
+		if busy := w.executeSync(ctx); busy {
+			// The holder renews its lease or loses it within RunLeaseTTL (e.g. a
+			// killed process); retry then instead of one full interval later.
+			next = time.After(catalog.RunLeaseTTL)
+		}
 		select {
 		case <-ctx.Done():
 			slog.Debug("Source worker stopping", "source", w.provider.ID(), "game", w.provider.Game())
 			return
-		case <-ticker.C:
-			w.Enqueue(catalog.SyncModeIncremental)
-		case <-w.queue:
-			w.mu.Lock()
-			mode := w.pendingMode
-			w.pending = false
-			w.running = true
-			w.mu.Unlock()
-
-			w.executeSync(ctx, mode)
-
-			w.mu.Lock()
-			w.running = false
-			hasPending := w.pending
-			w.mu.Unlock()
-
-			if hasPending {
-				select {
-				case w.queue <- struct{}{}:
-				default:
-				}
-			}
+		case <-next:
 		}
 	}
 }
 
-func (w *SourceWorker) executeSync(ctx context.Context, requestedMode catalog.SyncMode) {
+// executeSync runs one sync and reports whether it was skipped because another
+// process holds the source.
+func (w *SourceWorker) executeSync(ctx context.Context) bool {
 	defer func() {
 		if r := recover(); r != nil {
 			w.mu.Lock()
@@ -161,7 +101,7 @@ func (w *SourceWorker) executeSync(ctx context.Context, requestedMode catalog.Sy
 	}()
 
 	if ctx.Err() != nil {
-		return
+		return false
 	}
 
 	state, err := w.repo.SourceState(ctx, w.provider.ID())
@@ -171,14 +111,11 @@ func (w *SourceWorker) executeSync(ctx context.Context, requestedMode catalog.Sy
 		w.lastCompletedAt = time.Now()
 		w.mu.Unlock()
 		slog.Error("Catalog: failed to load source state", "source", w.provider.ID(), "error", err)
-		return
+		return false
 	}
 
-	mode := requestedMode
-	if mode == "" {
-		mode = catalog.SyncModeIncremental
-	}
-	if state.LastFullSyncAt == nil {
+	mode := catalog.SyncModeIncremental
+	if fullSyncDue(state, time.Now()) {
 		mode = catalog.SyncModeFull
 	}
 
@@ -195,6 +132,12 @@ func (w *SourceWorker) executeSync(ctx context.Context, requestedMode catalog.Sy
 	)
 
 	completion, err := w.syncer.Sync(ctx, w.provider, mode, state.FetchRequest(mode))
+	if errors.Is(err, catalog.ErrSourceBusy) {
+		// The catalog CLI (or another replica) is syncing this source right now.
+		slog.Info("Catalog: source sync skipped, another process holds it",
+			"source", w.provider.ID(), "game", w.provider.Game(), "mode", mode)
+		return true
+	}
 
 	w.mu.Lock()
 	w.lastCompletedAt = time.Now()
@@ -210,7 +153,7 @@ func (w *SourceWorker) executeSync(ctx context.Context, requestedMode catalog.Sy
 			"duration", time.Since(startedAt).Round(time.Millisecond),
 			"error", err,
 		)
-		return
+		return false
 	}
 
 	if completion.Changes.CardsInserted > 0 || completion.Changes.CardsUpdated > 0 ||
@@ -240,6 +183,7 @@ func (w *SourceWorker) executeSync(ctx context.Context, requestedMode catalog.Sy
 		"cards_deactivated", completion.Changes.CardsDeactivated,
 		"printings_deactivated", completion.Changes.PrintingsDeactivated,
 	)
+	return false
 }
 
 // CatalogWorker coordinates per-TCG source workers, ensuring independent queues and execution.
@@ -319,69 +263,15 @@ func (w *CatalogWorker) Start(ctx context.Context) {
 	wg.Wait()
 }
 
-// Enqueue triggers a non-blocking sync on the queue of a specific TCG source.
-func (w *CatalogWorker) Enqueue(sourceID string, mode catalog.SyncMode) bool {
-	w.workersMu.RLock()
-	worker, exists := w.workers[sourceID]
-	w.workersMu.RUnlock()
+// fullSyncInterval: incremental runs never retire cards and some sources cap
+// them to the newest pages, so each source attempts a full run weekly.
+const fullSyncInterval = 7 * 24 * time.Hour
 
-	if !exists {
-		return false
-	}
-	return worker.Enqueue(mode)
-}
-
-// EnqueueGame triggers non-blocking syncs for all sources associated with the given game.
-func (w *CatalogWorker) EnqueueGame(game catalog.Game, mode catalog.SyncMode) int {
-	w.workersMu.RLock()
-	defer w.workersMu.RUnlock()
-
-	enqueued := 0
-	for _, worker := range w.workers {
-		if worker.provider.Game() == game {
-			if worker.Enqueue(mode) {
-				enqueued++
-			}
-		}
-	}
-	return enqueued
-}
-
-// EnqueueAll triggers non-blocking syncs on the queues of all registered TCG sources.
-func (w *CatalogWorker) EnqueueAll(mode catalog.SyncMode) int {
-	w.workersMu.RLock()
-	defer w.workersMu.RUnlock()
-
-	enqueued := 0
-	for _, worker := range w.workers {
-		if worker.Enqueue(mode) {
-			enqueued++
-		}
-	}
-	return enqueued
-}
-
-// Worker returns the SourceWorker for the given source ID, or nil if not found.
-func (w *CatalogWorker) Worker(sourceID string) *SourceWorker {
-	w.workersMu.RLock()
-	defer w.workersMu.RUnlock()
-	return w.workers[sourceID]
-}
-
-// syncAll executes syncs sequentially across all providers.
-// Retained for synchronous diagnostic runs and existing unit test suites.
-func (w *CatalogWorker) syncAll(ctx context.Context) {
-	for _, provider := range w.providers {
-		if ctx.Err() != nil {
-			return
-		}
-		w.workersMu.RLock()
-		worker := w.workers[provider.ID()]
-		w.workersMu.RUnlock()
-		if worker != nil {
-			worker.executeSync(ctx, catalog.SyncModeIncremental)
-		}
-	}
+// fullSyncDue measures from the last full attempt, not the last complete one:
+// a partial run does not advance last_full_sync_at, and a flaky source must not
+// run full every cycle.
+func fullSyncDue(state catalog.SourceState, now time.Time) bool {
+	return state.LastFullAttemptAt == nil || now.Sub(*state.LastFullAttemptAt) >= fullSyncInterval
 }
 
 func syncedRecordCount(state catalog.SourceState, completion catalog.Completion) int64 {

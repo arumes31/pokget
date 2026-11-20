@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"pokget/internal/catalog"
@@ -123,9 +124,13 @@ func (p *AlteredProvider) Fetch(ctx context.Context, request catalog.FetchReques
 				setRefs[s.Reference] = s.Name
 			}
 		}
+	} else if err != nil {
+		slog.Warn("Catalog: altered set metadata unavailable, using the built-in set list", "error", err)
 	}
 
 	if len(setRefs) == 0 {
+		// A hard-coded list misses newer sets, so it never proves a complete snapshot.
+		result.CompleteSnapshot = false
 		defaultSets := []string{
 			"CORE", "COREKS", "ALIZE", "BISE", "CYCLONE", "DUSTER", "DUSTERCB", "DUSTEROP",
 			"DUSTERTOP", "EOLE", "EOLECB", "EOLEOP", "EOLETOP", "FUGUE", "MUSUBI", "JUDGE",
@@ -146,11 +151,19 @@ func (p *AlteredProvider) Fetch(ctx context.Context, request catalog.FetchReques
 		var raw json.RawMessage
 		_, err := getJSON(ctx, p.HTTP, setFileURL, catalog.FetchRequest{}, &raw)
 		if err != nil {
-			// Some promotional or sub-sets may only exist in English
-			if language != "en" {
-				continue
+			if language == "en" {
+				return result, fmt.Errorf("altered: fetch set %s: %w", setRef, err)
 			}
-			return result, fmt.Errorf("altered: fetch set %s: %w", setRef, err)
+			if ctx.Err() != nil {
+				return result, ctx.Err()
+			}
+			// Some promotional or sub-sets only exist in English (404). Any other
+			// failure is missing data, so the run must not retire this set.
+			if !isNotFound(err) {
+				slog.Warn("Catalog: skipping altered set due to fetch error", "set", setRef, "language", language, "error", err)
+				result.CompleteSnapshot = false
+			}
+			continue
 		}
 
 		cards, err := parseAlteredCards(raw)

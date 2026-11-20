@@ -102,86 +102,32 @@ func TestDetectBuildVersion(t *testing.T) {
 	})
 }
 
-var cardCacheColumns = []string{
-	"id", "name", "set_name", "price_usd", "price_eur", "image_url", "variant",
-	"change_24h", "phash", "game", "language", "rarity", "set_code",
-	"collector_number", "catalog_active",
-}
+// Startup must use the full loader: printed names, source ids and set totals
+// feed localized matching and the printed-total sibling filter.
+func TestWarmCardsCacheLoadsScanColumns(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	mock.ExpectQuery("SELECT id, name, set_name").WillReturnRows(sqlmock.NewRows([]string{
+		"id", "name", "set_name", "price_usd", "price_eur", "image_url", "variant", "change_24h", "phash",
+		"game", "language", "rarity", "set_code", "collector_number", "catalog_active",
+		"printed_name", "source_card_id", "set_total",
+	}).AddRow("card-1", "Lightning Bolt", "Alpha", 1.0, 1.0, "", "", 0, nil, "magic", "de", "", "lea", "161", true,
+		"Blitzschlag", "src-1", 295))
 
-func TestLoadCardsCache(t *testing.T) {
-	t.Run("nil database returns no cards", func(t *testing.T) {
-		t.Parallel()
-		if cards := loadCardsCache(nil); len(cards) != 0 {
-			t.Fatalf("loadCardsCache(nil) returned %d cards, want 0", len(cards))
-		}
-	})
+	h := &handlers.Handler{DB: database}
+	warmCardsCache(h)
+	if len(h.MockCards) != 1 {
+		t.Fatalf("cache has %d cards, want 1", len(h.MockCards))
+	}
+	card := h.MockCards[0]
+	if len(card.LocalizedNames) != 1 || card.LocalizedNames[0] != "Blitzschlag" || card.SourceCardID != "src-1" || card.SetTotal != 295 {
+		t.Fatalf("startup cache dropped scan columns: %+v", card)
+	}
 
-	t.Run("loads rows into cache", func(t *testing.T) {
-		t.Parallel()
-		database, mock, err := sqlmock.New()
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = database.Close() })
-
-		rows := sqlmock.NewRows(cardCacheColumns).
-			AddRow("card-1", "Charizard", "Base Set", 120.5, 110.0, "https://img.test/1.png", "Holo", 1.5, int64(99), "pokemon", "en", "Rare", "BS", "4", true).
-			AddRow("card-2", "Nami", "Romance Dawn", 15.0, 14.0, "", "Parallel", 0, nil, "one_piece", "jp", "", "OP01", "016", false)
-		mock.ExpectQuery("SELECT id, name, set_name").WillReturnRows(rows)
-
-		cards := loadCardsCache(database)
-		if len(cards) != 2 {
-			t.Fatalf("loadCardsCache() returned %d cards, want 2", len(cards))
-		}
-		if cards[0].ID != "card-1" || cards[0].Name != "Charizard" || cards[0].Set != "Base Set" {
-			t.Fatalf("first card = %+v, want card-1 Charizard Base Set", cards[0])
-		}
-		if cards[0].Phash == nil || *cards[0].Phash != 99 {
-			t.Fatalf("first card phash = %v, want 99", cards[0].Phash)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	t.Run("query error returns no cards", func(t *testing.T) {
-		t.Parallel()
-		database, mock, err := sqlmock.New()
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = database.Close() })
-
-		mock.ExpectQuery("SELECT id, name, set_name").WillReturnError(errors.New("boom"))
-		if cards := loadCardsCache(database); len(cards) != 0 {
-			t.Fatalf("loadCardsCache() returned %d cards, want 0", len(cards))
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	t.Run("row iteration error is logged and tolerated", func(t *testing.T) {
-		t.Parallel()
-		database, mock, err := sqlmock.New()
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = database.Close() })
-
-		rows := sqlmock.NewRows(cardCacheColumns).
-			AddRow("card-1", "Charizard", "Base Set", 120.5, 110.0, "", "Holo", 0, nil, "pokemon", "en", "", "BS", "4", true).
-			RowError(1, errors.New("stream reset"))
-		mock.ExpectQuery("SELECT id, name, set_name").WillReturnRows(rows)
-
-		cards := loadCardsCache(database)
-		if len(cards) != 1 {
-			t.Fatalf("loadCardsCache() returned %d cards, want 1", len(cards))
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	warmCardsCache(&handlers.Handler{}) // nil database: logged, no panic
 }
 
 func TestNewHandler(t *testing.T) {
@@ -202,9 +148,7 @@ func TestNewHandler(t *testing.T) {
 	}
 	llmSvc := service.NewLLMService()
 	templates := template.Must(template.New("").Parse(`{{define "index"}}{{end}}`))
-	allCards := loadCardsCache(nil)
-
-	h := newHandler(cfg, database, templates, allCards, services, nil, cryptoSvc, llmSvc, "42")
+	h := newHandler(cfg, database, templates, services, nil, cryptoSvc, llmSvc, "42")
 	if h == nil {
 		t.Fatal("newHandler() returned nil")
 	}
@@ -222,6 +166,9 @@ func TestNewHandler(t *testing.T) {
 	}
 	if h.BuildVersion != "42" {
 		t.Errorf("handler BuildVersion = %q, want %q", h.BuildVersion, "42")
+	}
+	if h.ScanMaxConcurrent != cfg.Scan.MaxConcurrent || h.ScanMaxConcurrent == 0 {
+		t.Errorf("handler ScanMaxConcurrent = %d, want SCAN_MAX_CONCURRENT %d", h.ScanMaxConcurrent, cfg.Scan.MaxConcurrent)
 	}
 	if h.ScanTimeout != 75*time.Second {
 		t.Errorf("handler ScanTimeout = %v, want 75s", h.ScanTimeout)
@@ -256,7 +203,7 @@ func TestInitServicesNilDatabase(t *testing.T) {
 // run while building services: fingerprint loading and the seeding guard.
 func expectServiceInitQueries(mock sqlmock.Sqlmock) {
 	mock.ExpectQuery("SELECT id, name, set_name").
-		WillReturnRows(sqlmock.NewRows(cardCacheColumns))
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectQuery("SELECT EXISTS").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 }
@@ -475,9 +422,9 @@ func TestStartBackgroundWorkersCatalogEnabled(t *testing.T) {
 	// Each reload runs the cards query and then the fingerprint reload query.
 	expectReload := func() {
 		mock.ExpectQuery("SELECT id, name, set_name").
-			WillReturnRows(sqlmock.NewRows(cardCacheColumns))
+			WillReturnRows(sqlmock.NewRows([]string{"id"}))
 		mock.ExpectQuery("SELECT id, name, set_name").
-			WillReturnRows(sqlmock.NewRows(cardCacheColumns))
+			WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	}
 	expectReload()
 	services.dataWorker.OnSyncComplete()

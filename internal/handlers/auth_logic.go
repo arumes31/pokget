@@ -103,7 +103,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var existingVerified bool
-	err := h.DB.QueryRowContext(r.Context(), "SELECT is_verified FROM users WHERE email = $1", email).Scan(&existingVerified)
+	var lastSent sql.NullTime
+	err := h.DB.QueryRowContext(r.Context(), "SELECT is_verified, last_email_sent_at FROM users WHERE email = $1", email).Scan(&existingVerified, &lastSent)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		slog.Error("Failed to look up user for registration", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -129,9 +130,31 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Existing accounts (verified or not) keep their credentials and get the
-	// same response as a new registration, so the form cannot be used to
-	// enumerate emails. Unverified users can use "Resend email".
+	// Every branch gets the same response as a new registration, so the form
+	// cannot be used to enumerate emails. Verified accounts keep their
+	// credentials. An unverified account takes the latest registrant's password:
+	// confirming requires that password plus the mailed token, so pre-registering
+	// someone else's address gains nothing.
+	if err == nil && !existingVerified {
+		if lastSent.Valid && time.Since(lastSent.Time) < verificationResendInterval {
+			// Throttled: the token already mailed to this inbox stays valid.
+			if _, execErr := h.DB.ExecContext(r.Context(), "UPDATE users SET password_hash = $1 WHERE email = $2 AND is_verified = FALSE", hash, email); execErr != nil {
+				slog.Error("Failed to update unverified registration", "error", execErr)
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+		} else {
+			res, execErr := h.DB.ExecContext(r.Context(), "UPDATE users SET password_hash = $1, verification_token = $2, verification_expires_at = NOW() + INTERVAL '24 hours', last_email_sent_at = NOW() WHERE email = $3 AND is_verified = FALSE", hash, hashVerificationToken(token), email)
+			if execErr != nil {
+				slog.Error("Failed to update unverified registration", "error", execErr)
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+			if rowsAffected, _ := res.RowsAffected(); rowsAffected > 0 {
+				h.sendConfirmationEmail(email, token)
+			}
+		}
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		res, execErr := h.DB.ExecContext(r.Context(), "INSERT INTO users (email, password_hash, verification_token, verification_expires_at, last_email_sent_at) VALUES ($1, $2, $3, NOW() + INTERVAL '24 hours', NOW()) ON CONFLICT (email) DO NOTHING", email, hash, hashVerificationToken(token))
 		if execErr != nil {
@@ -146,16 +169,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		} else {
 			rowsAffected, _ := res.RowsAffected()
 			if rowsAffected > 0 {
-				mailSvc := h.Mailer
-				if mailSvc == nil {
-					mailSvc = service.NewMailService()
-				}
-				go func(svc service.Mailer, to, tok string) {
-					if err := svc.SendConfirmationEmail(to, tok); err != nil {
-						slog.Error("Failed to send confirmation email", "error", err)
-					}
-				}(mailSvc, email, token)
-
+				h.sendConfirmationEmail(email, token)
 				h.Audit.Log("", "USER_REGISTER", map[string]interface{}{"email": email})
 			}
 		}
@@ -214,8 +228,7 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5 minute rate limit
-	if isVerified || (lastSent.Valid && time.Since(lastSent.Time) < 5*time.Minute) {
+	if isVerified || (lastSent.Valid && time.Since(lastSent.Time) < verificationResendInterval) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -233,17 +246,25 @@ func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.sendConfirmationEmail(storedEmail, token) // deliver to the account's stored address, not a case-folded form
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// verificationResendInterval throttles confirmation mails per account, shared
+// by registration and resend.
+const verificationResendInterval = 5 * time.Minute
+
+func (h *Handler) sendConfirmationEmail(to, token string) {
 	mailSvc := h.Mailer
 	if mailSvc == nil {
 		mailSvc = service.NewMailService()
 	}
-	go func(svc service.Mailer, to, tok string) {
-		if err := svc.SendConfirmationEmail(to, tok); err != nil {
-			slog.Error("Failed to resend confirmation email", "error", err)
+	go func() {
+		if err := mailSvc.SendConfirmationEmail(to, token); err != nil {
+			slog.Error("Failed to send confirmation email", "error", err)
 		}
-	}(mailSvc, storedEmail, token) // deliver to the account's stored address, not a case-folded form
-
-	w.WriteHeader(http.StatusOK)
+	}()
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -367,15 +388,36 @@ func (h *Handler) ProcessConfirmEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.DB.ExecContext(r.Context(), "UPDATE users SET is_verified = TRUE, verification_token = NULL, verification_expires_at = NULL WHERE verification_token = $1 AND verification_expires_at > NOW()", hashVerificationToken(token))
+	// Confirmation needs the inbox (token) and the account password, so only
+	// the registrant whose password is stored can activate the account.
+	password := r.FormValue("password")
+	const rejected = "Invalid or expired link, or wrong password. Use the password of your latest registration."
+	tokenHash := hashVerificationToken(token)
+	var userID, passwordHash string
+	err := h.DB.QueryRowContext(r.Context(), "SELECT id, password_hash FROM users WHERE verification_token = $1 AND verification_expires_at > NOW() AND is_verified = FALSE", tokenHash).Scan(&userID, &passwordHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		auth.EqualizePasswordCheck(password)
+		http.Error(w, rejected, http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	if !auth.CheckPasswordHash(password, passwordHash) {
+		http.Error(w, rejected, http.StatusBadRequest)
+		return
+	}
 
-	rows, _ := res.RowsAffected()
-	if rows == 0 {
-		http.Error(w, "Invalid or expired token. Your account might already be verified.", http.StatusBadRequest)
+	// The hash guard fails the confirm if a re-registration replaced the
+	// password after the check above.
+	res, err := h.DB.ExecContext(r.Context(), "UPDATE users SET is_verified = TRUE, verification_token = NULL, verification_expires_at = NULL WHERE id = $1 AND verification_token = $2 AND password_hash = $3", userID, tokenHash, passwordHash)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		http.Error(w, rejected, http.StatusBadRequest)
 		return
 	}
 

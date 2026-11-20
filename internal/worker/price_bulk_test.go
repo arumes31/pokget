@@ -11,8 +11,8 @@ import (
 	"pokget/internal/service"
 )
 
-// The check-stamp statement writes four values per row, so the placeholder indices
-// must advance by four. A wrong stride leaves a gap in the parameter list and
+// The check-stamp statement writes five values per row, so the placeholder indices
+// must advance by five. A wrong stride leaves a gap in the parameter list and
 // PostgreSQL rejects the statement with 42P18 - which no unit test caught before
 // because sqlmock only compared the argument count.
 func TestBulkCheckStampKeepsPlaceholdersContiguous(t *testing.T) {
@@ -22,14 +22,17 @@ func TestBulkCheckStampKeepsPlaceholdersContiguous(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectExec(`\(VALUES \(\$1, \$2, \$3::numeric, \$4\), \(\$5, \$6, \$7::numeric, \$8\)\)`).
-		WithArgs("scryfall", "card-a", 1.25, "foil", "ygoprodeck", "1234", 0.33, "normal").
+	// The stamp also carries the EUR quote: a native quote equal to the stored value
+	// confirms it, so the "estimated" flag is cleared (USD-only quotes keep it).
+	mock.ExpectExec(`price_eur_estimated = CASE WHEN v.eur > 0 AND c.price_eur = v.eur THEN FALSE ELSE c.price_eur_estimated END\s+`+
+		`FROM \(VALUES \(\$1, \$2, \$3::numeric, \$4::numeric, \$5\), \(\$6, \$7, \$8::numeric, \$9::numeric, \$10\)\)`).
+		WithArgs("scryfall", "card-a", 1.25, 0.0, "foil", "ygoprodeck", "1234", 0.33, 0.29, "normal").
 		WillReturnResult(sqlmock.NewResult(0, 2))
 
 	worker := &DataSyncWorker{db: db}
 	verified, err := worker.touchBulkChecks(context.Background(), []service.BulkPriceUpdate{
 		{SourceID: "scryfall", SourceCardID: "card-a", USD: 1.25, Variant: "foil"},
-		{SourceID: "ygoprodeck", SourceCardID: "1234", USD: 0.33, Variant: "normal"},
+		{SourceID: "ygoprodeck", SourceCardID: "1234", USD: 0.33, EUR: 0.29, Variant: "normal"},
 	})
 	if err != nil {
 		t.Fatalf("touchBulkChecks: %v", err)
@@ -54,7 +57,7 @@ func TestApplyBulkBatchUpdatesChangedPrices(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	// Every matched card gets a fresh check stamp, changed or not.
 	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_checked_at").
-		WithArgs("scryfall", "card-a", 1.25, "foil", "ygoprodeck", "1234", 0.33, "normal").
+		WithArgs("scryfall", "card-a", 1.25, 1.10, "foil", "ygoprodeck", "1234", 0.33, 0.02, "normal").
 		WillReturnResult(sqlmock.NewResult(0, 2))
 
 	worker := &DataSyncWorker{db: db}
@@ -136,7 +139,7 @@ func TestPriceMatchKeysCoversMarketplaceSpellings(t *testing.T) {
 		{"AOT1", "001", "AOT1", "AOT1 1/246"},
 		// Weiss Schwarz abbreviations end with a slash
 		{"KNK", "001", "KNK/", "001"},
-		// Japanese PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon numbers keep the print run
+		// Japanese Pokémon numbers keep the print run
 		{"SV3", "089", "SV3", "089/108"},
 	}
 	for _, pair := range pairs {
@@ -194,7 +197,7 @@ func TestPriceMatchKeysKeepsAlphaNumericNumbers(t *testing.T) {
 	}
 }
 
-// Catalog PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon rows carry TCGdex set codes ("me1") while TCGCSV groups use
+// Catalog Pokémon rows carry TCGdex set codes ("me1") while TCGCSV groups use
 // TCGplayer abbreviations ("MEG"); matching the normalized set name bridges that
 // gap without a hand-maintained alias table.
 func TestApplyFuzzyPricesMatchesSetNameWhenCodeMisses(t *testing.T) {
@@ -268,7 +271,7 @@ func TestApplyFuzzyPricesPrefersTheSetCodeMatch(t *testing.T) {
 	}
 }
 
-// The Japanese PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon category prices only Japanese cards and runs before the
+// The Japanese Pokémon category prices only Japanese cards and runs before the
 // language-agnostic pass, so a Japanese collector keeps the Japanese quote.
 func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -300,7 +303,7 @@ func TestApplyFuzzyPricesScopesLanguageCategories(t *testing.T) {
 	}
 }
 
-// The English PokÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mon category must not price Japanese cards: Japanese sets reuse
+// The English Pokémon category must not price Japanese cards: Japanese sets reuse
 // English set codes for different cards. The Japanese category fills them instead.
 func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -327,6 +330,36 @@ func TestApplyFuzzyPricesSkipsLanguagesWithTheirOwnCategory(t *testing.T) {
 	}
 	if changed != 1 {
 		t.Fatalf("changed = %d, want 1", changed)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+// A price no source verified for two days must not freeze: the fallback may replace
+// it, and the UPDATE rechecks that on the locked row so a fresh sync quote survives.
+func TestApplyFuzzyPricesReplacesStalePrices(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	const stale = `OR price_checked_at IS NULL OR price_checked_at < NOW\(\) - INTERVAL '2 days'\)`
+	mock.ExpectQuery(`SELECT id, COALESCE\(set_code[\s\S]*price_usd <= 0\s+` + stale).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}).
+			AddRow("card-old", "SV3", "Obsidian Flames", "089", "Nazonokusa"))
+	// An unchanged match is still a verification: price_checked_at is always stamped,
+	// last_updated only moves with the price, and no "price differs" filter remains.
+	mock.ExpectExec(`UPDATE cards AS c\s+SET price_usd = v.usd, price_checked_at = NOW\(\),\s+`+
+		`last_updated = CASE WHEN c.price_usd IS DISTINCT FROM v.usd THEN NOW\(\) ELSE c.last_updated END[\s\S]*`+
+		`WHERE c.id = v.id\s+--[^\n]*\s+AND \(c.price_usd IS NULL[\s\S]*OR c.price_checked_at < NOW\(\) - INTERVAL '2 days'\)`).
+		WithArgs("card-old", 3.0).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	worker := &DataSyncWorker{db: db}
+	if _, err := worker.applyFuzzyPrices(context.Background(), "pokemon", nil, fuzzyIndex("SV3", "089/108", 3.0), nil); err != nil {
+		t.Fatalf("applyFuzzyPrices: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
@@ -413,14 +446,52 @@ type stubBulkSource struct {
 
 func (s stubBulkSource) Name() string { return "stub" }
 
+// FetchPrices emits its updates and then fails with err, like a source whose
+// second marketplace category broke after the first one delivered.
 func (s stubBulkSource) FetchPrices(_ context.Context, emit func(service.BulkPriceUpdate) error) error {
-	if s.err != nil {
-		return s.err
-	}
 	for _, update := range s.updates {
 		if err := emit(update); err != nil {
 			return err
 		}
 	}
-	return nil
+	return s.err
+}
+
+type boundStubSource struct {
+	stubBulkSource
+	bound map[string][]string
+}
+
+func (s boundStubSource) BoundLanguages() map[string][]string { return s.bound }
+
+// A failed category must not cost the delivered rows their fallback match, and the
+// failed language-bound category still keeps the generic pass off its languages.
+func TestApplyBulkSourceRunsTheFallbackAfterAPartialFetch(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_variant").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("UPDATE cards AS c[\\s\\S]*price_checked_at").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT id, COALESCE\\(set_code").
+		WithArgs("pokemon", emptyTextArray{}, textArray{`{"ja"}`}).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "set_code", "set_name", "collector_number", "name"}))
+
+	worker := &DataSyncWorker{db: db}
+	err = worker.applyBulkSource(context.Background(), boundStubSource{
+		stubBulkSource: stubBulkSource{
+			updates: []service.BulkPriceUpdate{{SourceID: "tcgcsv", SourceCardID: "1", Game: "pokemon",
+				SetCode: "SV3", Number: "001/108", USD: 0.5}},
+			err: errors.New("tcgcsv groups pokemon: HTTP 500"),
+		},
+		bound: map[string][]string{"pokemon": {"ja"}},
+	})
+	if err == nil {
+		t.Fatal("expected the category error to be returned")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
 }

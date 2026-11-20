@@ -91,6 +91,9 @@ func (p *GodzillaProvider) Fetch(ctx context.Context, request catalog.FetchReque
 		}
 
 		if len(resp.Items) == 0 {
+			if (page-1)*perPage < resp.Total {
+				result.CompleteSnapshot = false // ran out of cards before the announced total
+			}
 			break
 		}
 
@@ -164,6 +167,9 @@ func (p *GodzillaProvider) Fetch(ctx context.Context, request catalog.FetchReque
 		}
 
 		if page*perPage >= resp.Total || len(resp.Items) < perPage {
+			if page*perPage < resp.Total {
+				result.CompleteSnapshot = false // short page before the announced total
+			}
 			break
 		}
 		page++

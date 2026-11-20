@@ -65,7 +65,7 @@ Save named/tagged measurements on this device, reopen them from **Saved**, or ex
 The Pokget vault is hardened using industry standards:
 *   **Private Notes**: Card notes are never shown on public vault pages. They are stored unencrypted in PostgreSQL, so protect database access and backups.
 *   **Brute-Force Protection**: Token-bucket rate limiting per IP (IPv6 per /64), a per-account failed-login limit, and a cap on concurrent password hashing.
-*   **Accounts**: New passwords need at least 12 characters; email verification links expire after 24 hours and are stored hashed.
+*   **Accounts**: New passwords need at least 12 characters; email verification links expire after 24 hours and are stored hashed. Confirming the link asks for the account password; registering an unverified address again replaces its password, so only the inbox owner who knows the latest password can activate it.
 *   **Audit Logging**: Every sensitive action (Login, Register, Add Card) is immutable logged to the `audit_logs` table.
 *   **Session Integrity**: Signed and encrypted HttpOnly/Secure session cookies. Logging out or changing the password revokes the account's sessions on every device.
 *   **Validation**: Mandatory password confirmation during registration and CSRF protection on all POST methods.
@@ -98,7 +98,7 @@ Pokget maintains a local, versioned card catalog without API keys or paid servic
 | Weiss Schwarz | [Official English card search](https://en.ws-tcg.com/cardlist/searchresults/) |
 | Yu-Gi-Oh! | [YGOPRODeck](https://ygoprodeck.com/api-guide/) |
 
-Imports retain source provenance and sync history. A successful full snapshot deactivates records no longer present; failed, incremental, and unchanged runs never remove active records. Reference images are downloaded through an exact hostname allowlist, content-addressed by SHA-256, and indexed with perceptual hashes for the original and small rotations.
+Imports retain source provenance and sync history. A successful full snapshot deactivates records no longer present; failed, incremental, and unchanged runs never remove active records. A run that skipped a set, page or language after an upstream error is partial and deactivates nothing, and so is a "complete" snapshot with less than half of the previous complete record count (after confirming a genuine shrink of that size, set `catalog_source_state.last_record_count` to 0 for the source and run a full sync). The application attempts a full sync per source when the last full attempt is older than seven days. The application worker and the catalog CLI share a per-source lease (renewed while a run is active, released on completion, failure or shutdown); a source that is already syncing elsewhere is skipped, not failed. Reference images are downloaded through an exact hostname allowlist, content-addressed by SHA-256, and indexed with perceptual hashes for the original and small rotations.
 
 The application performs scheduled updates automatically. Operators can also run:
 
@@ -334,13 +334,13 @@ eight images in complete groups; incomplete groups are omitted.
 Its answer must still identify a card from the evidence-backed catalog shortlist;
 uncertain printings require confirmation. Provider failures and invalid answers
 are retried up to three total primary attempts, with five seconds between failed
-attempts. A running primary completion has no application-imposed time limit;
-canceling the scan still cancels the request and any pending retry. After three
+attempts. Canceling the request cancels the completion and any pending retry. After three
 failures, the existing `OLLAMA_*` provider receives its own bounded request budget.
 A valid abstention is a completed answer and does not trigger retries or fallback.
-`SCAN_TIMEOUT_SECONDS` still bounds detector queueing and local image analysis;
-it does not terminate an active primary completion. Scan and binder-name requests
-remain cancellable when their caller disconnects. Leave `LLM_BASE_URL` empty for
+`SCAN_TIMEOUT_SECONDS` bounds a whole scan: detector queueing, local image analysis
+and any primary completion. `SCAN_MAX_CONCURRENT` sizes the detector slots, and
+each account runs one scan at a time. Every scan names its TCG (`game`). Scan and
+binder-name requests remain cancellable when their caller disconnects. Leave `LLM_BASE_URL` empty for
 Ollama-only operation. Keep the key in `.env`, never in source or logs.
 
 For Ollama-only scans, optional text disambiguation takes at most five seconds

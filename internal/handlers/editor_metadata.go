@@ -40,10 +40,7 @@ func (h *Handler) EditorMetadata(w http.ResponseWriter, r *http.Request) {
 	if currency != "USD" {
 		currency = "EUR"
 	}
-	symbol := "€"
-	if currency == "USD" {
-		symbol = "$"
-	}
+	symbol := currencySymbol(currency)
 
 	rows, err := h.DB.QueryContext(r.Context(), "SELECT id, name FROM binders WHERE user_id = $1 ORDER BY name, id", userID)
 	if err != nil {

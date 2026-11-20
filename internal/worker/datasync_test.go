@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/shopspring/decimal"
 )
 
 type closeablePriceClient struct {
@@ -256,82 +255,4 @@ func TestFetchCardPriceWithoutSources(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when no price source is configured")
 	}
-}
-
-func TestCheckPriceAlerts(t *testing.T) {
-	card := models.Card{ID: "card-1", Name: "Charizard"}
-
-	t.Run("QueryError", func(t *testing.T) {
-		db, mock, _ := sqlmock.New()
-		defer db.Close()
-
-		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").
-			WithArgs(card.ID).
-			WillReturnError(errors.New("db error"))
-
-		worker := &DataSyncWorker{db: db}
-		worker.checkPriceAlerts(context.Background(), card, 150)
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	t.Run("TargetNotHitLeavesAlertActive", func(t *testing.T) {
-		db, mock, _ := sqlmock.New()
-		defer db.Close()
-
-		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price"}).
-			AddRow(1, "user-1", decimal.NewFromFloat(100))
-		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").
-			WithArgs(card.ID).
-			WillReturnRows(alertRows)
-		// No UPDATE expectation: a price above target must not claim the alert.
-
-		worker := &DataSyncWorker{db: db}
-		worker.checkPriceAlerts(context.Background(), card, 150)
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	t.Run("UnclaimedAlertIsIgnored", func(t *testing.T) {
-		db, mock, _ := sqlmock.New()
-		defer db.Close()
-
-		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price"}).
-			AddRow(1, "user-1", decimal.NewFromFloat(200))
-		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").
-			WithArgs(card.ID).
-			WillReturnRows(alertRows)
-		mock.ExpectExec("UPDATE price_alerts").
-			WithArgs(1).
-			WillReturnResult(sqlmock.NewResult(0, 0))
-
-		worker := &DataSyncWorker{db: db}
-		worker.checkPriceAlerts(context.Background(), card, 150)
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	t.Run("ScanErrorSkipsRow", func(t *testing.T) {
-		db, mock, _ := sqlmock.New()
-		defer db.Close()
-
-		alertRows := sqlmock.NewRows([]string{"id", "user_id", "target_price"}).
-			AddRow("not-an-int", "user-1", decimal.NewFromFloat(200))
-		mock.ExpectQuery("SELECT id, user_id, target_price FROM price_alerts").
-			WithArgs(card.ID).
-			WillReturnRows(alertRows)
-
-		worker := &DataSyncWorker{db: db}
-		worker.checkPriceAlerts(context.Background(), card, 150)
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatal(err)
-		}
-	})
 }

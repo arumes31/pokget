@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 type syncTestProvider struct {
@@ -62,6 +63,41 @@ func TestSyncerBatchesAndCompletes(t *testing.T) {
 	}
 	if !repository.completed || repository.failed || completion.Changes.CardsInserted != 3 {
 		t.Fatalf("unexpected completion=%+v repository=%+v", completion, repository)
+	}
+}
+
+type leaseLosingRepository struct {
+	syncTestRepository
+}
+
+func (r *leaseLosingRepository) RenewLease(context.Context, string) error { return ErrLeaseLost }
+
+type blockingSyncProvider struct{ syncTestProvider }
+
+func (p blockingSyncProvider) Fetch(ctx context.Context, _ FetchRequest, _ func(CardRecord) error) (FetchResult, error) {
+	<-ctx.Done()
+	return FetchResult{}, ctx.Err()
+}
+
+// A run whose lease was taken over must stop instead of writing on.
+func TestSyncerStopsWhenLeaseIsLost(t *testing.T) {
+	previous := leaseRenewInterval
+	leaseRenewInterval = time.Millisecond
+	defer func() { leaseRenewInterval = previous }()
+
+	repository := &leaseLosingRepository{}
+	done := make(chan error, 1)
+	go func() {
+		_, err := (&Syncer{Repository: repository}).Sync(context.Background(), blockingSyncProvider{}, SyncModeFull, FetchRequest{})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrLeaseLost) || !repository.failed || repository.completed {
+			t.Fatalf("error=%v repository=%+v", err, repository)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("sync kept running after losing its lease")
 	}
 }
 

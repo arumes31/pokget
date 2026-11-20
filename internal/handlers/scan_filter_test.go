@@ -10,36 +10,20 @@ import (
 	"pokget/internal/models"
 )
 
-func TestFilterCardsByGame(t *testing.T) {
+func TestCardsForGame(t *testing.T) {
 	cards := []models.Card{
 		{ID: "pokemon-card", Game: "pokemon"},
 		{ID: "magic-card", Game: "magic"},
 		{ID: "one-piece-card", Game: "One Piece"},
 	}
-
-	filtered, ok := filterCardsByGame(cards, "PoKeMoN")
-	if !ok || len(filtered) != 1 || filtered[0].ID != "pokemon-card" {
-		t.Fatalf("unexpected filter result: ok=%v cards=%+v", ok, filtered)
+	if got := cardsForGame(cards, models.TCGPokemon); len(got) != 1 || got[0].ID != "pokemon-card" {
+		t.Fatalf("pokemon cards = %+v", got)
 	}
-	if _, ok := filterCardsByGame(cards, "unknown"); ok {
-		t.Fatal("unsupported game was accepted")
+	if got := cardsForGame(cards, models.TCGLorcana); len(got) != 0 {
+		t.Fatalf("lorcana cards = %+v, want none", got)
 	}
-	for _, game := range []string{
-		"flesh_and_blood", "fab", "digimon", "grand_archive", "gatcg", "altered", "sorcery",
-		"dragon_ball_super", "dbs", "dbs_masters", "dbs_fusion_world", "fusion_world",
-		"union_arena", "unionarena", "gundam", "gundam_tcg", "battlespirits_saga", "bss",
-		"world_of_warcraft", "wow", "wow_tcg",
-		"fftcg", "godzilla", "shadowverse_evolve", "universus", "vanguard",
-		"hololive", "duel_masters", "cookie_run", "force_of_will", "wixoss",
-		"alpha_clash", "riftbound",
-	} {
-		if _, ok := filterCardsByGame(cards, game); !ok {
-			t.Fatalf("expected game %q to be valid", game)
-		}
-	}
-	onePiece, ok := filterCardsByGame(cards, "one-piece")
-	if !ok || len(onePiece) != 1 || onePiece[0].ID != "one-piece-card" {
-		t.Fatalf("legacy One Piece label was not normalized: ok=%v cards=%+v", ok, onePiece)
+	if got := cardsForGame(cards, models.TCGOnePiece); len(got) != 1 || got[0].ID != "one-piece-card" {
+		t.Fatalf("legacy One Piece label was not normalized: %+v", got)
 	}
 }
 

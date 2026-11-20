@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -288,30 +289,60 @@ func (s *tcgcsvBulkSource) FetchPrices(ctx context.Context, emit func(BulkPriceU
 	}
 
 	var emitMu sync.Mutex
+	var emitErr error
 	emitSafe := func(update BulkPriceUpdate) error {
 		emitMu.Lock()
 		defer emitMu.Unlock()
-		return emit(update)
+		// A failed write (the caller's database) is terminal: later rows would only
+		// pile up behind it, and the group goroutines would log it as a skipped set.
+		if emitErr == nil {
+			emitErr = emit(update)
+		}
+		return emitErr
 	}
 
+	// A broken category must not cost the others their prices: its error is kept
+	// and returned after the loop, so the caller still applies what was collected.
+	var errs []error
+	fetch := func(game string, languages []string, category int) bool {
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, err)
+			return false
+		}
+		if err := s.fetchCategory(ctx, base, game, languages, category, concurrency, emitSafe); err != nil {
+			errs = append(errs, err)
+		}
+		emitMu.Lock()
+		failed := emitErr
+		emitMu.Unlock()
+		if failed != nil {
+			errs = append(errs, fmt.Errorf("tcgcsv emit %s: %w", game, failed))
+			return false
+		}
+		return true
+	}
 	for game, category := range categories {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := s.fetchCategory(ctx, base, game, nil, category, concurrency, emitSafe); err != nil {
-			return err
+		if !fetch(game, nil, category) {
+			return errors.Join(errs...)
 		}
 	}
-
 	for _, extra := range s.LanguageCategories {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := s.fetchCategory(ctx, base, extra.Game, extra.Languages, extra.Category, concurrency, emitSafe); err != nil {
-			return err
+		if !fetch(extra.Game, extra.Languages, extra.Category) {
+			return errors.Join(errs...)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
+}
+
+// BoundLanguages lists the languages each game prices through its own category.
+// The caller needs them even when that category failed, otherwise the generic
+// category's fallback would put English prices on those printings.
+func (s *tcgcsvBulkSource) BoundLanguages() map[string][]string {
+	bound := make(map[string][]string, len(s.LanguageCategories))
+	for _, extra := range s.LanguageCategories {
+		bound[extra.Game] = append(bound[extra.Game], extra.Languages...)
+	}
+	return bound
 }
 
 // fetchCategory streams every group of one TCGplayer category. Failing groups are

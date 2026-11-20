@@ -178,14 +178,10 @@ func runSync(ctx context.Context, database *sql.DB, args []string) error {
 			sourceCtx, cancel := context.WithTimeout(ctx, *timeout)
 			completion, syncErr := syncer.Sync(sourceCtx, provider, mode, state.FetchRequest(mode))
 			cancel()
-			if syncErr != nil {
+			if syncErr != nil && !errors.Is(syncErr, catalog.ErrSourceBusy) {
 				return fmt.Errorf("catalog: sync %s: %w", provider.ID(), syncErr)
 			}
-			if err := encoder.Encode(map[string]interface{}{
-				"source":     provider.ID(),
-				"game":       provider.Game(),
-				"completion": completion,
-			}); err != nil {
+			if err := encoder.Encode(syncReport(provider, completion, syncErr)); err != nil {
 				return err
 			}
 		}
@@ -226,7 +222,7 @@ func runSync(ctx context.Context, database *sql.DB, args []string) error {
 			completion, syncErr := syncer.Sync(sourceCtx, p, mode, state.FetchRequest(mode))
 			cancel()
 
-			if syncErr != nil {
+			if syncErr != nil && !errors.Is(syncErr, catalog.ErrSourceBusy) {
 				errMu.Lock()
 				if firstErr == nil {
 					firstErr = fmt.Errorf("catalog: sync %s: %w", p.ID(), syncErr)
@@ -236,11 +232,7 @@ func runSync(ctx context.Context, database *sql.DB, args []string) error {
 			}
 
 			encMu.Lock()
-			encErr := encoder.Encode(map[string]interface{}{
-				"source":     p.ID(),
-				"game":       p.Game(),
-				"completion": completion,
-			})
+			encErr := encoder.Encode(syncReport(p, completion, syncErr))
 			encMu.Unlock()
 
 			if encErr != nil {
@@ -258,6 +250,15 @@ func runSync(ctx context.Context, database *sql.DB, args []string) error {
 		firstErr = ctx.Err()
 	}
 	return firstErr
+}
+
+// syncReport is one JSON line per source; a source the app worker is syncing
+// right now is reported as skipped instead of failing the command.
+func syncReport(provider catalog.Provider, completion catalog.Completion, syncErr error) map[string]interface{} {
+	if errors.Is(syncErr, catalog.ErrSourceBusy) {
+		return map[string]interface{}{"source": provider.ID(), "game": provider.Game(), "skipped": "busy"}
+	}
+	return map[string]interface{}{"source": provider.ID(), "game": provider.Game(), "completion": completion}
 }
 
 func providersFor(gameName, language string, delay time.Duration, maxWeissPages int) ([]catalog.Provider, error) {

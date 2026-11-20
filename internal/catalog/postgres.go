@@ -26,10 +26,12 @@ func NewPostgresRepository(db *sql.DB) (*PostgresRepository, error) {
 func (r *PostgresRepository) SourceState(ctx context.Context, sourceID string) (SourceState, error) {
 	var state SourceState
 	state.SourceID = sourceID
-	var lastSuccessAt, lastFullSyncAt sql.NullTime
+	var lastSuccessAt, lastFullSyncAt, lastFullAttemptAt sql.NullTime
 	err := r.db.QueryRowContext(ctx, `
 		SELECT COALESCE(cursor, ''), COALESCE(etag, ''), COALESCE(last_modified, ''),
 		       COALESCE(upstream_version, ''), last_success_at, last_full_sync_at,
+		       (SELECT MAX(started_at) FROM catalog_sync_runs
+		        WHERE source_id = $1 AND mode = 'full'),
 		       last_record_count, COALESCE(last_error, '')
 		FROM catalog_source_state
 		WHERE source_id = $1`, sourceID).Scan(
@@ -39,6 +41,7 @@ func (r *PostgresRepository) SourceState(ctx context.Context, sourceID string) (
 		&state.UpstreamVersion,
 		&lastSuccessAt,
 		&lastFullSyncAt,
+		&lastFullAttemptAt,
 		&state.LastRecordCount,
 		&state.LastError,
 	)
@@ -53,6 +56,9 @@ func (r *PostgresRepository) SourceState(ctx context.Context, sourceID string) (
 	}
 	if lastFullSyncAt.Valid {
 		state.LastFullSyncAt = &lastFullSyncAt.Time
+	}
+	if lastFullAttemptAt.Valid {
+		state.LastFullAttemptAt = &lastFullAttemptAt.Time
 	}
 	return state, nil
 }
@@ -74,15 +80,20 @@ func (r *PostgresRepository) BeginRun(
 		return "", fmt.Errorf("catalog: beginning sync run transaction: %w", err)
 	}
 
+	// The app worker and the catalog CLI may sync the same source; the lease
+	// lets only one of them run it. It is short and renewed (RenewLease), so a
+	// killed process blocks the source for one lease period at most.
 	result, err := tx.ExecContext(
 		ctx,
 		`UPDATE catalog_source_state
-		 SET last_attempt_at = NOW(), updated_at = NOW()
-		 WHERE source_id = $1`,
+		 SET last_attempt_at = NOW(), updated_at = NOW(),
+		     lease_owner = NULL, lease_until = NOW() + $2 * INTERVAL '1 second'
+		 WHERE source_id = $1 AND (lease_until IS NULL OR lease_until < NOW())`,
 		sourceID,
+		leaseSeconds,
 	)
 	if err != nil {
-		return "", rollback(tx, fmt.Errorf("catalog: updating source attempt: %w", err))
+		return "", rollback(tx, fmt.Errorf("catalog: acquiring source lease: %w", err))
 	}
 
 	rows, err := result.RowsAffected()
@@ -90,15 +101,45 @@ func (r *PostgresRepository) BeginRun(
 		return "", rollback(tx, fmt.Errorf("catalog: reading source update result: %w", err))
 	}
 	if rows == 0 {
-		return "", rollback(tx, fmt.Errorf("%w: %q", ErrSourceNotFound, sourceID))
+		var exists bool
+		err := tx.QueryRowContext(ctx,
+			`SELECT EXISTS (SELECT 1 FROM catalog_source_state WHERE source_id = $1)`, sourceID,
+		).Scan(&exists)
+		switch {
+		case err != nil:
+			return "", rollback(tx, fmt.Errorf("catalog: checking source state: %w", err))
+		case exists:
+			return "", rollback(tx, fmt.Errorf("%w: %q", ErrSourceBusy, sourceID))
+		default:
+			return "", rollback(tx, fmt.Errorf("%w: %q", ErrSourceNotFound, sourceID))
+		}
+	}
+
+	// The lease was free, so a run still marked running lost its process.
+	_, err = tx.ExecContext(
+		ctx,
+		`UPDATE catalog_sync_runs
+		 SET status = 'failed', finished_at = NOW(), error = 'abandoned: the sync process stopped'
+		 WHERE source_id = $1 AND status = 'running'`,
+		sourceID,
+	)
+	if err != nil {
+		return "", rollback(tx, fmt.Errorf("catalog: closing abandoned sync runs: %w", err))
 	}
 
 	var runID string
 	err = tx.QueryRowContext(
 		ctx,
-		`INSERT INTO catalog_sync_runs (source_id, mode, status)
-		 VALUES ($1, $2, 'running')
-		 RETURNING id::text`,
+		`WITH run AS (
+		     INSERT INTO catalog_sync_runs (source_id, mode, status)
+		     VALUES ($1, $2, 'running')
+		     RETURNING id
+		 ), lease AS (
+		     UPDATE catalog_source_state
+		     SET lease_owner = (SELECT id::text FROM run)
+		     WHERE source_id = $1
+		 )
+		 SELECT id::text FROM run`,
 		sourceID,
 		mode,
 	).Scan(&runID)
@@ -110,6 +151,36 @@ func (r *PostgresRepository) BeginRun(
 		return "", fmt.Errorf("catalog: committing sync run: %w", err)
 	}
 	return runID, nil
+}
+
+// RunLeaseTTL is how long a source lease lasts without renewal. Syncer renews
+// it every RunLeaseTTL/5 while a run is active.
+const RunLeaseTTL = 10 * time.Minute
+
+var leaseSeconds = int(RunLeaseTTL / time.Second)
+
+// RenewLease extends the source lease held by runID. ErrLeaseLost means another
+// process took the source over after the lease expired.
+func (r *PostgresRepository) RenewLease(ctx context.Context, runID string) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE catalog_source_state
+		 SET lease_until = NOW() + $2 * INTERVAL '1 second'
+		 WHERE lease_owner = $1`,
+		runID,
+		leaseSeconds,
+	)
+	if err != nil {
+		return fmt.Errorf("catalog: renewing source lease: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("catalog: reading lease renewal result: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: run %q", ErrLeaseLost, runID)
+	}
+	return nil
 }
 
 // UpsertBatch writes one batch in a transaction and retries when the transaction
@@ -242,13 +313,24 @@ func (r *PostgresRepository) CompleteRun(
 		return counts, fmt.Errorf("catalog: beginning completion transaction: %w", err)
 	}
 
-	sourceID, mode, err := lockRun(ctx, tx, runID)
+	sourceID, mode, previous, err := lockSourceAndRun(ctx, tx, runID)
 	if err != nil {
 		return counts, rollback(tx, err)
 	}
 
-	isCompleteFullSync := mode == SyncModeFull && completion.Fetch.CompleteSnapshot
-	if isCompleteFullSync && !completion.Fetch.NotModified {
+	complete := completion.Fetch.CompleteSnapshot
+	// Checked for incremental runs too: they set the baseline the next full run is
+	// compared with.
+	if complete && !completion.Fetch.NotModified {
+		complete = !shrunkSnapshot(completion.Fetch.Count, previous)
+		if !complete {
+			// A source that claims completeness after losing half its catalog
+			// more likely failed silently; a genuine shrink needs an operator.
+			slog.Warn("Catalog: snapshot shrank by more than half, treating it as partial (no deactivation)",
+				"source", sourceID, "mode", mode, "records", completion.Fetch.Count, "previous_records", previous)
+		}
+	}
+	if mode == SyncModeFull && complete && !completion.Fetch.NotModified {
 		cards, err := deactivateUnseenCards(ctx, tx, sourceID, runID)
 		if err != nil {
 			return counts, rollback(tx, err)
@@ -300,9 +382,12 @@ func (r *PostgresRepository) CompleteRun(
 		         WHEN $6 = 'full' AND NOT $7 AND $9 THEN NOW()
 		         ELSE last_full_sync_at
 		     END,
-		     last_record_count = CASE WHEN $7 THEN last_record_count ELSE $8 END,
+		     -- Only a complete snapshot is a baseline for the shrink guard.
+		     last_record_count = CASE WHEN NOT $7 AND $9 THEN $8 ELSE last_record_count END,
 		     last_error = NULL, consecutive_failures = 0,
-		     lease_owner = NULL, lease_until = NULL, updated_at = NOW()
+		     lease_owner = CASE WHEN lease_owner = $10 THEN NULL ELSE lease_owner END,
+		     lease_until = CASE WHEN lease_owner = $10 THEN NULL ELSE lease_until END,
+		     updated_at = NOW()
 		 WHERE source_id = $1`,
 		sourceID,
 		completion.Fetch.Cursor,
@@ -312,7 +397,8 @@ func (r *PostgresRepository) CompleteRun(
 		mode,
 		completion.Fetch.NotModified,
 		completion.Fetch.Count,
-		completion.Fetch.CompleteSnapshot,
+		complete,
+		runID,
 	)
 	if err != nil {
 		return counts, rollback(tx, fmt.Errorf("catalog: updating successful source state: %w", err))
@@ -336,7 +422,7 @@ func (r *PostgresRepository) FailRun(ctx context.Context, runID string, cause er
 	if err != nil {
 		return fmt.Errorf("catalog: beginning failure transaction: %w", err)
 	}
-	sourceID, _, err := lockRun(ctx, tx, runID)
+	sourceID, _, _, err := lockSourceAndRun(ctx, tx, runID)
 	if err != nil {
 		return rollback(tx, err)
 	}
@@ -357,10 +443,13 @@ func (r *PostgresRepository) FailRun(ctx context.Context, runID string, cause er
 		ctx,
 		`UPDATE catalog_source_state
 		 SET last_error = $2, consecutive_failures = consecutive_failures + 1,
-		     lease_owner = NULL, lease_until = NULL, updated_at = NOW()
+		     lease_owner = CASE WHEN lease_owner = $3 THEN NULL ELSE lease_owner END,
+		     lease_until = CASE WHEN lease_owner = $3 THEN NULL ELSE lease_until END,
+		     updated_at = NOW()
 		 WHERE source_id = $1`,
 		sourceID,
 		cause.Error(),
+		runID,
 	)
 	if err != nil {
 		return rollback(tx, fmt.Errorf("catalog: updating failed source state: %w", err))
@@ -457,7 +546,7 @@ func (u upsertContext) images(
 	for _, image := range images {
 		kind := defaultString(image.Kind, "front")
 		var imageID int64
-		var inserted bool
+		var inserted, reset bool
 		err := u.tx.QueryRowContext(
 			u.ctx,
 			`INSERT INTO card_images (
@@ -520,29 +609,24 @@ func (u upsertContext) images(
 			         ELSE card_images.downloaded_at
 			     END,
 			     last_seen_at = NOW()
-			 RETURNING id, (xmax = 0)`,
+			 RETURNING id, (xmax = 0), (status = 'pending' AND content_sha256 IS NULL)`,
 			cardID,
 			image.SourceImageID,
 			kind,
 			image.URL,
-		).Scan(&imageID, &inserted)
+		).Scan(&imageID, &inserted, &reset)
 		if err != nil {
 			return nil, counts, fmt.Errorf("catalog: upserting image %q: %w", image.SourceImageID, err)
 		}
 
 		imageIDs[image.SourceImageID] = imageID
-		_, err = u.tx.ExecContext(
-			u.ctx,
-			`DELETE FROM card_fingerprints
-			 WHERE image_id = $1
-			   AND EXISTS (
-			       SELECT 1 FROM card_images
-			       WHERE id = $1 AND status = 'pending' AND content_sha256 IS NULL
-			   )`,
-			imageID,
-		)
-		if err != nil {
-			return nil, counts, fmt.Errorf("catalog: clearing stale fingerprints for image %q: %w", image.SourceImageID, err)
+		// A new image has no fingerprints, and a ready one keeps them; only an
+		// existing image without content (URL changed) can hold stale ones.
+		if !inserted && reset {
+			_, err = u.tx.ExecContext(u.ctx, `DELETE FROM card_fingerprints WHERE image_id = $1`, imageID)
+			if err != nil {
+				return nil, counts, fmt.Errorf("catalog: clearing stale fingerprints for image %q: %w", image.SourceImageID, err)
+			}
 		}
 
 		if inserted {
@@ -682,6 +766,37 @@ func verifyRun(ctx context.Context, tx *sql.Tx, batch Batch) error {
 	return nil
 }
 
+// lockSourceAndRun locks the source state row before the run row, the same
+// order BeginRun uses (state lease, then abandoned runs); the opposite order
+// let a takeover and a completion deadlock. It also returns last_record_count.
+func lockSourceAndRun(ctx context.Context, tx *sql.Tx, runID string) (string, SyncMode, int64, error) {
+	var stateSourceID string
+	var previous int64
+	err := tx.QueryRowContext(
+		ctx,
+		`SELECT source_id, last_record_count
+		 FROM catalog_source_state
+		 WHERE source_id = (SELECT source_id FROM catalog_sync_runs WHERE id = $1)
+		 FOR UPDATE`,
+		runID,
+	).Scan(&stateSourceID, &previous)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", 0, fmt.Errorf("%w: %q", ErrRunNotRunning, runID)
+	}
+	if err != nil {
+		return "", "", 0, fmt.Errorf("catalog: locking source state: %w", err)
+	}
+	// lockRun still requires status 'running', so a displaced run cannot write.
+	sourceID, mode, err := lockRun(ctx, tx, runID)
+	if err != nil {
+		return "", "", 0, err
+	}
+	if sourceID != stateSourceID {
+		return "", "", 0, fmt.Errorf("catalog: run %q changed source", runID)
+	}
+	return sourceID, mode, previous, nil
+}
+
 func lockRun(ctx context.Context, tx *sql.Tx, runID string) (string, SyncMode, error) {
 	var sourceID string
 	var mode SyncMode
@@ -771,6 +886,12 @@ func deactivateUnseenPrintings(
 		return 0, fmt.Errorf("catalog: reading deactivated printing count: %w", err)
 	}
 	return count, nil
+}
+
+// shrunkSnapshot reports whether a complete snapshot holds less than half of the
+// previous complete snapshot. A first sync (previous 0) is never shrunk.
+func shrunkSnapshot(count, previous int64) bool {
+	return previous > 0 && count*2 < previous
 }
 
 func metadataString(metadata json.RawMessage) string {

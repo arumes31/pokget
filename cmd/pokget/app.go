@@ -38,7 +38,6 @@ import (
 	"pokget/internal/config"
 	"pokget/internal/db"
 	"pokget/internal/handlers"
-	"pokget/internal/models"
 	"pokget/internal/service"
 	"pokget/internal/worker"
 )
@@ -139,29 +138,18 @@ func initServices(cfg *config.Config, database *sql.DB, fingerprintIndexDirty *a
 	return services, nil
 }
 
-// loadCardsCache fetches all cards from the database for handlers (caching in
-// memory for fast scanning).
-func loadCardsCache(database *sql.DB) []models.Card {
-	var allCards []models.Card
-	if database != nil {
-		rows, err := database.Query("SELECT id, name, set_name, COALESCE(price_usd, 0), COALESCE(price_eur, 0), COALESCE(image_url, ''), COALESCE(variant, ''), COALESCE(change_24h, 0), phash, COALESCE(game, ''), COALESCE(language, ''), COALESCE(rarity, ''), COALESCE(set_code, ''), COALESCE(collector_number, ''), catalog_active FROM cards WHERE superseded_by_card_id IS NULL AND (source_id IS NULL OR catalog_active = TRUE)")
-		if err != nil {
-			slog.Error("Database: Failed to load cards cache", "error", err)
-		} else {
-			defer rows.Close()
-			for rows.Next() {
-				var c models.Card
-				if err := rows.Scan(&c.ID, &c.Name, &c.Set, &c.PriceUSD, &c.PriceEUR, &c.ImageURL, &c.Variant, &c.Change24h, &c.Phash, &c.Game, &c.Language, &c.Rarity, &c.SetCode, &c.CollectorNumber, &c.CatalogActive); err == nil {
-					allCards = append(allCards, c)
-				}
-			}
-			if err := rows.Err(); err != nil {
-				slog.Error("Database: Failed while loading cards cache", "error", err)
-			}
-			slog.Info("Database: Loaded cards into cache", "count", len(allCards))
-		}
+// warmCardsCache fills the handler's card cache at startup through the same
+// loader the workers use. A failure is logged, not fatal: the next catalog
+// change reloads the cache.
+func warmCardsCache(h *handlers.Handler) {
+	if h.DB == nil {
+		return
 	}
-	return allCards
+	if count, err := h.ReloadCardsOnly(); err != nil {
+		slog.Error("Database: Failed to load cards cache", "error", err)
+	} else {
+		slog.Info("Database: Loaded cards into cache", "count", count)
+	}
 }
 
 // templateFuncMap returns the helper functions available to HTML templates.
@@ -200,7 +188,6 @@ func newHandler(
 	cfg *config.Config,
 	database *sql.DB,
 	templates *template.Template,
-	allCards []models.Card,
 	services *appServices,
 	detectionPipeline *service.DetectionPipeline,
 	cryptoSvc *service.CryptoService,
@@ -212,21 +199,21 @@ func newHandler(
 		prices = service.NewPriceService(defaultPriceClients())
 	}
 	return &handlers.Handler{
-		Templates:     templates,
-		MockCards:     allCards,
-		Fingerprint:   services.fingerprintSvc, // BUG-H01: Reuse fingerprintSvc instead of creating new one
-		Detection:     detectionPipeline,
-		Audit:         services.auditSvc,
-		Crypto:        cryptoSvc,
-		Game:          service.NewGamificationService(database),
-		LLM:           llmSvc,
-		PriceClient:   service.NewScraperPriceClient(),
-		Prices:        prices,
-		Photos:        service.NewPhotoStore(cfg.Portfolio.PhotoStore),
-		DB:            database,
-		BuildVersion:  buildVersion,
-		ScanTimeout:   time.Duration(cfg.Scan.TimeoutSeconds) * time.Second,
-		SecureCookies: cfg.App.SecureCookies, // BUG-C03: Wire up configurable Secure flag
+		Templates:         templates,
+		Fingerprint:       services.fingerprintSvc, // BUG-H01: Reuse fingerprintSvc instead of creating new one
+		Detection:         detectionPipeline,
+		Audit:             services.auditSvc,
+		Crypto:            cryptoSvc,
+		Game:              service.NewGamificationService(database),
+		LLM:               llmSvc,
+		PriceClient:       service.NewScraperPriceClient(),
+		Prices:            prices,
+		Photos:            service.NewPhotoStore(cfg.Portfolio.PhotoStore),
+		DB:                database,
+		BuildVersion:      buildVersion,
+		ScanTimeout:       time.Duration(cfg.Scan.TimeoutSeconds) * time.Second,
+		ScanMaxConcurrent: cfg.Scan.MaxConcurrent,
+		SecureCookies:     cfg.App.SecureCookies, // BUG-C03: Wire up configurable Secure flag
 	}
 }
 

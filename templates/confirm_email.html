@@ -27,9 +27,15 @@
                 Confirm this link to activate your account and secure your collection.
             </p>
 
-            <form hx-post="/auth/confirm" hx-target="#confirm-content" hx-swap="outerHTML">
+            <form hx-post="/auth/confirm" hx-target="#confirm-content" hx-swap="outerHTML"
+                hx-on::response-error="this.querySelector('[role=alert]').textContent = event.detail.xhr.responseText">
                 <input type="hidden" name="token" value="{{.Token}}">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+                <label data-i18n for="confirm-password" class="block text-left text-sm font-semibold mb-2">Password</label>
+                <input id="confirm-password" type="password" name="password" required autocomplete="current-password"
+                    class="input w-full min-h-12 mb-2">
+                <p data-i18n class="text-left text-xs text-zinc-500 dark:text-zinc-400 mb-4">Enter the password you chose when registering.</p>
+                <p data-i18n role="alert" aria-live="assertive" class="empty:hidden text-left text-sm text-red-500 mb-4"></p>
 
                 <button data-i18n type="submit" class="btn-primary w-full min-h-12 text-base">
                     Verify my account

@@ -64,6 +64,7 @@ func (p *UniVersusProvider) Fetch(ctx context.Context, request catalog.FetchRequ
 	}
 	if totalItems < 1 {
 		totalItems = 50
+		result.CompleteSnapshot = false // unknown catalog size: the first page proves nothing
 	}
 
 	totalPages := (totalItems + 49) / 50

@@ -342,9 +342,10 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		// User exists but is NOT verified — same response as a new account,
-		// credentials untouched and no email sent.
-		mock.ExpectQuery("SELECT is_verified").WillReturnRows(sqlmock.NewRows([]string{"is_verified"}).AddRow(false))
+		// User exists but is NOT verified and was mailed recently — same
+		// response as a new account; only the password is replaced.
+		mock.ExpectQuery("SELECT is_verified").WillReturnRows(sqlmock.NewRows([]string{"is_verified", "last_email_sent_at"}).AddRow(false, time.Now()))
+		mock.ExpectExec("UPDATE users SET password_hash").WillReturnResult(sqlmock.NewResult(0, 1))
 
 		h.Mailer = &service.MockMailer{}
 		h.Register(rr, req)
@@ -419,7 +420,7 @@ func TestHandlers(t *testing.T) {
 
 		// User exists and IS verified — same response as a new account to
 		// avoid email enumeration.
-		mock.ExpectQuery("SELECT is_verified").WillReturnRows(sqlmock.NewRows([]string{"is_verified"}).AddRow(true))
+		mock.ExpectQuery("SELECT is_verified").WillReturnRows(sqlmock.NewRows([]string{"is_verified", "last_email_sent_at"}).AddRow(true, nil))
 
 		h.Register(rr, req)
 
@@ -493,8 +494,8 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE users").WithArgs(hashVerificationToken("invalid")).
-			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectQuery("SELECT id, password_hash FROM users").WithArgs(hashVerificationToken("invalid")).
+			WillReturnError(sql.ErrNoRows)
 
 		h.ProcessConfirmEmail(rr, req)
 
@@ -511,7 +512,7 @@ func TestHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE users").WithArgs(hashVerificationToken("token")).
+		mock.ExpectQuery("SELECT id, password_hash FROM users").WithArgs(hashVerificationToken("token")).
 			WillReturnError(sql.ErrConnDone)
 
 		h.ProcessConfirmEmail(rr, req)
@@ -709,11 +710,14 @@ func TestHandlers(t *testing.T) {
 		pipeline := service.NewDetectionPipeline(nil, nil)
 		pipeline.Claude = stubScanDetector{}
 		h.Detection = pipeline
+		h.MockCards = []models.Card{{ID: "card-1", Name: "Pikachu", Game: "pokemon"}}
 
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)
 		part, _ := writer.CreateFormFile("card_image", "test.txt")
 		_, _ = part.Write([]byte("not an image"))
+		_ = writer.WriteField("game", "pokemon")
+		_ = writer.WriteField("lang", "en")
 		_ = writer.Close()
 
 		req := httptest.NewRequest("POST", "/api/scan", body)
@@ -781,11 +785,14 @@ func TestHandlers(t *testing.T) {
 		h, mock, cleanup := setupTestHandler(t)
 		defer cleanup()
 
-		req := httptest.NewRequest("POST", "/confirm", strings.NewReader("token=valid-token"))
+		req := httptest.NewRequest("POST", "/confirm", strings.NewReader("token=valid-token&password=long-enough-pass"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("UPDATE users").WithArgs(hashVerificationToken("valid-token")).
+		hash := fastPasswordHash(t, "long-enough-pass")
+		mock.ExpectQuery("SELECT id, password_hash FROM users").WithArgs(hashVerificationToken("valid-token")).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "password_hash"}).AddRow("u1", hash))
+		mock.ExpectExec("UPDATE users").WithArgs("u1", hashVerificationToken("valid-token"), hash).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		h.ProcessConfirmEmail(rr, req)

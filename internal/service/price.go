@@ -643,7 +643,7 @@ func (s *ScraperPriceClient) FetchPriceContext(ctx context.Context, card models.
 		if err := errors.Join(scrapeErr, tcgErr); err != nil {
 			return 0, 0, err
 		}
-		return 0, 0, fmt.Errorf("no price for %q from any source", card.Name)
+		return 0, 0, fmt.Errorf("%w for %q from any source", ErrNoPrice, card.Name)
 	}
 	return usd, eur, scrapeErr
 }
