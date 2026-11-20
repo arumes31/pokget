@@ -278,6 +278,7 @@ func startBackgroundWorkers(
 						// The tie-break reads card.Phash from the card cache.
 						if _, err := h.ReloadCardsOnly(); err != nil {
 							slog.Error("Catalog image fingerprints reload failed", "error", err)
+							fingerprintIndexDirty.Store(true) // retry on the next tick
 						} else {
 							slog.Info("Catalog image fingerprints reloaded", "duration_ms", time.Since(reloadStarted).Milliseconds())
 						}
