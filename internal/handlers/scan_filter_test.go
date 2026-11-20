@@ -10,19 +10,20 @@ import (
 	"pokget/internal/models"
 )
 
-func TestGameHasCards(t *testing.T) {
+func TestCardsForGame(t *testing.T) {
 	cards := []models.Card{
 		{ID: "pokemon-card", Game: "pokemon"},
+		{ID: "magic-card", Game: "magic"},
 		{ID: "one-piece-card", Game: "One Piece"},
 	}
-	if !gameHasCards(cards, models.TCGPokemon) {
-		t.Fatal("pokemon card not found")
+	if got := cardsForGame(cards, models.TCGPokemon); len(got) != 1 || got[0].ID != "pokemon-card" {
+		t.Fatalf("pokemon cards = %+v", got)
 	}
-	if gameHasCards(cards, models.TCGMagic) {
-		t.Fatal("magic reported without magic cards")
+	if got := cardsForGame(cards, models.TCGLorcana); len(got) != 0 {
+		t.Fatalf("lorcana cards = %+v, want none", got)
 	}
-	if !gameHasCards(cards, models.TCGOnePiece) {
-		t.Fatal("legacy One Piece label was not normalized")
+	if got := cardsForGame(cards, models.TCGOnePiece); len(got) != 1 || got[0].ID != "one-piece-card" {
+		t.Fatalf("legacy One Piece label was not normalized: %+v", got)
 	}
 }
 

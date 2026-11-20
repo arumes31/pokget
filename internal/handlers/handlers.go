@@ -1493,7 +1493,10 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unsupported TCG", http.StatusBadRequest)
 		return
 	}
-	if !gameHasCards(cards, tcg) {
+	// The detector sizes its scope map from the slice it gets, so it receives
+	// only this game's cards, never the whole catalog.
+	cards = cardsForGame(cards, tcg)
+	if len(cards) == 0 {
 		logger.Warn("Scan scope empty", "game", tcg, "eligible_cards", 0)
 		http.Error(w, "No cards are available for the selected TCG", http.StatusUnprocessableEntity)
 		return
@@ -1657,6 +1660,11 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 		}
 		if best := result.BestMatchCard(); best != nil {
 			resp["set"] = best.Set
+			if best.Set == "" {
+				// An uncataloged read may carry only the set code; the add form
+				// mints the card from these fields.
+				resp["set"] = best.SetCode
+			}
 			resp["collector_number"] = best.CollectorNumber
 			resp["language"] = best.Language
 		}
@@ -1688,13 +1696,14 @@ func (h *Handler) executeScan(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Card recognition is not configured on this server", http.StatusServiceUnavailable)
 }
 
-// gameHasCards reports whether the cache holds a card of tcg. It does not
-// copy: the detector narrows the snapshot to its scope itself.
-func gameHasCards(cards []models.Card, tcg models.TCG) bool {
+// cardsForGame returns the cached cards of tcg. It has no capacity hint on
+// purpose: sizing it by the whole catalog cost a full copy per scan.
+func cardsForGame(cards []models.Card, tcg models.TCG) []models.Card {
+	var filtered []models.Card
 	for i := range cards {
 		if models.NormalizeGame(cards[i].Game) == string(tcg) {
-			return true
+			filtered = append(filtered, cards[i])
 		}
 	}
-	return false
+	return filtered
 }

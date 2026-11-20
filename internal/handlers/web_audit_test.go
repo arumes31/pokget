@@ -244,6 +244,9 @@ func TestExecuteScanReturnsUncatalogedMatchWithoutPersisting(t *testing.T) {
 	if resp["detected"] != "Pikachu" || resp["id"] != "" {
 		t.Fatalf("detected=%v id=%v, want Pikachu without an id", resp["detected"], resp["id"])
 	}
+	if resp["set"] != "SV1" {
+		t.Fatalf("set = %v, want the read set code so adding keeps it", resp["set"])
+	}
 	if len(h.MockCards) != before {
 		t.Fatal("a scan added a card to the shared cache")
 	}
@@ -483,7 +486,7 @@ func TestAPICardPriceRecordsCheckAndSkipsCachedWrites(t *testing.T) {
 			WillReturnRows(priceCardRow().AddRow("card-1", "Charizard", "Base Set", "BS", "4", "pokemon", "en", "Rare", "normal", "tcgdex", "base1-4", 0, 0))
 		mock.ExpectQuery("SELECT currency FROM users").WillReturnRows(sqlmock.NewRows([]string{"currency"}).AddRow("EUR"))
 	}
-	mock.ExpectExec(`price_checked_at = NOW\(\)`).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`price_eur_estimated = CASE WHEN quote.eur > 0 THEN FALSE .*price_checked_at = NOW\(\)`).WillReturnResult(sqlmock.NewResult(0, 1))
 	for range 2 {
 		h.APICardPrice(httptest.NewRecorder(), authedRequest(t, http.MethodGet, "/api/cards/price?id=card-1", ""))
 	}

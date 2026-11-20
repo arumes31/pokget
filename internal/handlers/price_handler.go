@@ -66,12 +66,14 @@ func (h *Handler) persistResolvedPrice(r *http.Request, cardID string, quote ser
 		return
 	}
 	// price_checked_at records that a source verified the price; last_updated
-	// moves only when a stored value actually changes (both DECIMAL(12,2)).
+	// moves only when a stored value actually changes (both DECIMAL(12,2)). A
+	// native EUR clears price_eur_estimated so the worker's FX pass keeps it.
 	_, err := h.DB.ExecContext(r.Context(), `
 		WITH quote AS (SELECT ROUND($1::numeric, 2) AS usd, ROUND($2::numeric, 2) AS eur)
 		UPDATE cards
 		SET price_usd = CASE WHEN quote.usd > 0 THEN quote.usd ELSE price_usd END,
 		    price_eur = CASE WHEN quote.eur > 0 THEN quote.eur ELSE price_eur END,
+		    price_eur_estimated = CASE WHEN quote.eur > 0 THEN FALSE ELSE price_eur_estimated END,
 		    last_updated = CASE
 		        WHEN (quote.usd > 0 AND price_usd IS DISTINCT FROM quote.usd)
 		          OR (quote.eur > 0 AND price_eur IS DISTINCT FROM quote.eur)
