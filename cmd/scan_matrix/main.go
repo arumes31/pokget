@@ -497,6 +497,8 @@ func scanOne(ctx context.Context, client *http.Client, pipeline *service.Detecti
 	}
 	if !row.Exact {
 		row.Notes = differenceNotes(sample.Card, result.OCRText)
+	}
+	if !row.Exact || row.NeedsReview {
 		row.Extracted = result.OCRText
 	}
 	return row

@@ -1512,3 +1512,36 @@ func TestClaudeDetection_OfficialSetTotalRejectsPromoTie(t *testing.T) {
 		t.Fatalf("a promo set cannot print 090/159: %+v", matches[0])
 	}
 }
+
+func TestClaudeDetection_PrintedTotalRulesOutOtherProductSiblings(t *testing.T) {
+	// The 30th-anniversary Azumarill prints 068/128. Marill #068 of another set
+	// extends nothing in this product and that set cannot print /128, and a
+	// lettered Platinum SH6-style row cannot print it either: neither may send
+	// the exact read to review.
+	info := &claudedetect.DetectedCardInfo{
+		Game:            "pokemon",
+		Name:            "Azumarill",
+		CollectorNumber: "068/128",
+		Set:             "Pokémon TCG 30th Celebration",
+		Language:        "de",
+		Confidence:      0.95,
+	}
+	cards := []models.Card{
+		{ID: "30th-068", Name: "Azumarill", CollectorNumber: "068", Set: "30 Jahre", SetCode: "30th", Language: "de", Game: "pokemon", SetTotal: 128},
+		{ID: "sv08-068", Name: "Marill", CollectorNumber: "068", Set: "Stürmische Funken", SetCode: "sv08", Language: "de", Game: "pokemon", SetTotal: 191},
+		{ID: "pl1-sh68", Name: "Azumarill", CollectorNumber: "SH68", Set: "Platin", SetCode: "pl1", Language: "de", Game: "pokemon", SetTotal: 127},
+	}
+	matches := matchCardsWithClaude(info, cards)
+	if len(matches) == 0 || matches[0].Card.ID != "30th-068" || matches[0].NeedsReview {
+		t.Fatalf("the printed total identifies the 30th printing without review: %+v", matches)
+	}
+
+	// Without published sizes the same rows stay suspicious.
+	for index := range cards {
+		cards[index].SetTotal = 0
+	}
+	matches = matchCardsWithClaude(info, cards)
+	if len(matches) == 0 || !matches[0].NeedsReview {
+		t.Fatalf("unknown set sizes must keep the sibling guard: %+v", matches)
+	}
+}
