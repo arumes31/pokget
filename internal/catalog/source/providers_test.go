@@ -600,3 +600,77 @@ func TestTCGdexProviderSetFetchErrorMakesSnapshotPartial(t *testing.T) {
 		t.Fatal("a skipped set must not complete the snapshot, or a full sync retires all of its cards")
 	}
 }
+
+// A listing whose page or result count cannot be read gives no idea how big the
+// catalog is, so the first page alone must not be a complete snapshot.
+func TestPagedProvidersWithoutPageCountArePartial(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<html><ul></ul></html>`))
+	}))
+	defer server.Close()
+
+	providers := []catalog.Provider{
+		&HololiveProvider{HTTP: testHTTP(server), BaseURL: server.URL},
+		&VanguardProvider{HTTP: testHTTP(server), BaseURL: server.URL},
+		&WeissProvider{HTTP: testHTTP(server), BaseURL: server.URL},
+		&ShadowverseEvolveProvider{HTTP: testHTTP(server), BaseURL: server.URL},
+		&UniVersusProvider{HTTP: testHTTP(server), BaseURL: server.URL},
+	}
+	for _, provider := range providers {
+		t.Run(provider.ID(), func(t *testing.T) {
+			_, result := fetchRecords(t, provider)
+			if result.CompleteSnapshot {
+				t.Fatalf("missing page count must make the snapshot partial: %+v", result)
+			}
+		})
+	}
+}
+
+// Altered: a set missing in a translation (404) is skipped, any other failure
+// or missing set metadata makes the snapshot partial instead of complete.
+func TestAlteredSetErrorsMakeSnapshotPartial(t *testing.T) {
+	set := `[{"reference":"ALT_CORE_B_AX_01_C","name":"Card","cardSet":{"reference":"CORE","name":"Core"}}]`
+	run := func(t *testing.T, metadata bool, deStatus int) catalog.FetchResult {
+		t.Helper()
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/META/card_sets_en.json":
+				if !metadata {
+					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				_, _ = w.Write([]byte(`{"hydra:member":[{"reference":"CORE","name":"Core"}]}`))
+			case "/SETS/CORE/CORE_EN.json":
+				_, _ = w.Write([]byte(set))
+			case "/SETS/CORE/CORE_DE.json":
+				if deStatus != http.StatusOK {
+					http.Error(w, "nope", deStatus)
+					return
+				}
+				_, _ = w.Write([]byte(set))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+		p := &AlteredProvider{HTTP: testHTTP(server), BaseURL: server.URL, Language: "de"}
+		result, err := p.Fetch(context.Background(), catalog.FetchRequest{Mode: catalog.SyncModeFull}, func(catalog.CardRecord) error { return nil })
+		if err != nil {
+			t.Fatalf("Fetch() error = %v", err)
+		}
+		return result
+	}
+	if result := run(t, true, http.StatusOK); !result.CompleteSnapshot || result.Count != 1 {
+		t.Fatalf("complete translation: %+v", result)
+	}
+	if result := run(t, true, http.StatusNotFound); !result.CompleteSnapshot {
+		t.Fatalf("a set without this translation is not missing data: %+v", result)
+	}
+	if result := run(t, true, http.StatusServiceUnavailable); result.CompleteSnapshot {
+		t.Fatalf("a failed set download must make the snapshot partial: %+v", result)
+	}
+	// The hard-coded fallback list may be stale, so it never proves completeness.
+	if result := run(t, false, http.StatusOK); result.CompleteSnapshot || result.Count != 1 {
+		t.Fatalf("missing set metadata must make the snapshot partial: %+v", result)
+	}
+}

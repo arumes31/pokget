@@ -47,6 +47,8 @@ func (p *VanguardProvider) Fetch(ctx context.Context, request catalog.FetchReque
 	pageCount := 1
 	if match := vgMaxPagePattern.FindStringSubmatch(html); len(match) == 2 {
 		pageCount, _ = strconv.Atoi(match[1])
+	} else {
+		result.CompleteSnapshot = false // unknown catalog size: the first page proves nothing
 	}
 	if pageCount < 1 {
 		return result, fmt.Errorf("vanguard: invalid page count")

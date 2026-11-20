@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -53,6 +54,22 @@ func (o HTTPOptions) newRequest(ctx context.Context, method, url string, fetch c
 	return req, nil
 }
 
+// httpStatusError lets a source tell a confirmed 404 from a transient failure.
+type httpStatusError struct {
+	URL    string
+	Status string
+	Code   int
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("catalog source: GET %s returned %s", e.URL, e.Status)
+}
+
+func isNotFound(err error) bool {
+	var status *httpStatusError
+	return errors.As(err, &status) && status.Code == http.StatusNotFound
+}
+
 type responseMeta struct {
 	ETag         string
 	LastModified string
@@ -80,7 +97,7 @@ func getJSON(ctx context.Context, options HTTPOptions, url string, fetch catalog
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
-		return meta, fmt.Errorf("catalog source: GET %s returned %s", url, resp.Status)
+		return meta, &httpStatusError{URL: url, Status: resp.Status, Code: resp.StatusCode}
 	}
 
 	limited := io.LimitReader(resp.Body, options.maxBodyBytes()+1)
