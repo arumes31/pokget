@@ -24,3 +24,7 @@ test.webp
 test.png
 media__*.jpg
 NotoSansCJKjp-Regular.otf
+.stfolder
+.stignore
+**/*.py
+.claude/
