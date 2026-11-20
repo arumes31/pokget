@@ -149,13 +149,11 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 			currency = "EUR"
 		}
 
-		rank := h.Game.GetUserRank(xp)
 		_, _, xpPercent := h.Game.GetProgressToNextRank(xp)
 
 		data["UserXP"] = xp
 		data["UserRank"] = rankTitle
 		data["UserXPPercent"] = xpPercent
-		data["UserRankIcon"] = rank.IconURL
 		data["UserCurrency"] = currency
 		data["CurrencySymbol"] = currencySymbol(currency)
 	}
