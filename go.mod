@@ -6,7 +6,7 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/PuerkitoBio/goquery v1.14.0
 	github.com/anthonynsimon/bild v0.17.1
-	github.com/chromedp/cdproto v0.160.6
+	github.com/chromedp/cdproto v0.160.8
 	github.com/chromedp/chromedp v0.24.0
 	github.com/corona10/goimagehash v1.1.0
 	github.com/gocolly/colly/v2 v2.3.0
