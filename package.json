@@ -22,6 +22,6 @@
     "@tailwindcss/cli": "^4.3.5",
     "acorn": "^8.19.0",
     "parse5": "^8.1.1",
-    "terser": "5.51.2"
+    "terser": "5.51.4"
   }
 }
